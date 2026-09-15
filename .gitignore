@@ -1,0 +1,8 @@
+
+# secrets, never commit
+.env
+.env.local
+.env*.local
+
+# dependencies
+node_modules/
