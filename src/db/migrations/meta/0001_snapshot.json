@@ -1,0 +1,2420 @@
+{
+  "id": "1399a753-1ce7-4d9b-9bb2-44f249b414bf",
+  "prevId": "2060d022-260c-4279-9dfa-20dcdba35f78",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.claim_tokens": {
+      "name": "claim_tokens",
+      "schema": "",
+      "columns": {
+        "token_hash": {
+          "name": "token_hash",
+          "type": "bytea",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "claim_id": {
+          "name": "claim_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "issued_at": {
+          "name": "issued_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "claim_tokens_claim_id_participant_claims_id_fk": {
+          "name": "claim_tokens_claim_id_participant_claims_id_fk",
+          "tableFrom": "claim_tokens",
+          "columnsFrom": [
+            "claim_id"
+          ],
+          "tableTo": "participant_claims",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.dare_positions": {
+      "name": "dare_positions",
+      "schema": "",
+      "columns": {
+        "dare_id": {
+          "name": "dare_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "claim_id": {
+          "name": "claim_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "stake": {
+          "name": "stake",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "value": {
+          "name": "value",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "confidence_bps": {
+          "name": "confidence_bps",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "enter_signature": {
+          "name": "enter_signature",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "entered_by": {
+          "name": "entered_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "score": {
+          "name": "score",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "net": {
+          "name": "net",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "entered_at": {
+          "name": "entered_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "acknowledged_at": {
+          "name": "acknowledged_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "dismissed_at": {
+          "name": "dismissed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "dare_positions_dare_id_dares_id_fk": {
+          "name": "dare_positions_dare_id_dares_id_fk",
+          "tableFrom": "dare_positions",
+          "columnsFrom": [
+            "dare_id"
+          ],
+          "tableTo": "dares",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "dare_positions_user_id_users_id_fk": {
+          "name": "dare_positions_user_id_users_id_fk",
+          "tableFrom": "dare_positions",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "dare_positions_claim_id_participant_claims_id_fk": {
+          "name": "dare_positions_claim_id_participant_claims_id_fk",
+          "tableFrom": "dare_positions",
+          "columnsFrom": [
+            "claim_id"
+          ],
+          "tableTo": "participant_claims",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "dare_positions_entered_by_users_id_fk": {
+          "name": "dare_positions_entered_by_users_id_fk",
+          "tableFrom": "dare_positions",
+          "columnsFrom": [
+            "entered_by"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "dare_positions_dare_user": {
+          "name": "dare_positions_dare_user",
+          "columns": [
+            "dare_id",
+            "user_id"
+          ],
+          "nullsNotDistinct": false
+        },
+        "dare_positions_dare_claim": {
+          "name": "dare_positions_dare_claim",
+          "columns": [
+            "dare_id",
+            "claim_id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "dare_positions_user_xor_claim": {
+          "name": "dare_positions_user_xor_claim",
+          "value": "(\"dare_positions\".\"user_id\" is null) <> (\"dare_positions\".\"claim_id\" is null)"
+        },
+        "dare_positions_user_acknowledged": {
+          "name": "dare_positions_user_acknowledged",
+          "value": "\"dare_positions\".\"user_id\" is null or \"dare_positions\".\"acknowledged_at\" is not null"
+        },
+        "dare_positions_stake_positive": {
+          "name": "dare_positions_stake_positive",
+          "value": "\"dare_positions\".\"stake\" > 0"
+        },
+        "dare_positions_confidence_bps_range": {
+          "name": "dare_positions_confidence_bps_range",
+          "value": "\"dare_positions\".\"confidence_bps\" is null or (\"dare_positions\".\"confidence_bps\" between 0 and 10000)"
+        },
+        "dare_positions_score_range": {
+          "name": "dare_positions_score_range",
+          "value": "\"dare_positions\".\"score\" is null or (\"dare_positions\".\"score\" between 0 and 10000)"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.dare_statements": {
+      "name": "dare_statements",
+      "schema": "",
+      "columns": {
+        "dare_id": {
+          "name": "dare_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "statement": {
+          "name": "statement",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "stated_at": {
+          "name": "stated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "dare_statements_dare_id_dares_id_fk": {
+          "name": "dare_statements_dare_id_dares_id_fk",
+          "tableFrom": "dare_statements",
+          "columnsFrom": [
+            "dare_id"
+          ],
+          "tableTo": "dares",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "dare_statements_user_id_users_id_fk": {
+          "name": "dare_statements_user_id_users_id_fk",
+          "tableFrom": "dare_statements",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "dare_statements_dare_id_user_id_pk": {
+          "name": "dare_statements_dare_id_user_id_pk",
+          "columns": [
+            "dare_id",
+            "user_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.dare_votes": {
+      "name": "dare_votes",
+      "schema": "",
+      "columns": {
+        "dare_id": {
+          "name": "dare_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "outcome": {
+          "name": "outcome",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "signature": {
+          "name": "signature",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "signed_at": {
+          "name": "signed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "dare_votes_dare_id_dares_id_fk": {
+          "name": "dare_votes_dare_id_dares_id_fk",
+          "tableFrom": "dare_votes",
+          "columnsFrom": [
+            "dare_id"
+          ],
+          "tableTo": "dares",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "dare_votes_user_id_users_id_fk": {
+          "name": "dare_votes_user_id_users_id_fk",
+          "tableFrom": "dare_votes",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "dare_votes_dare_id_user_id_pk": {
+          "name": "dare_votes_dare_id_user_id_pk",
+          "columns": [
+            "dare_id",
+            "user_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.dares": {
+      "name": "dares",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "onchain_id": {
+          "name": "onchain_id",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "group_id": {
+          "name": "group_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pace": {
+          "name": "pace",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "creator_id": {
+          "name": "creator_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "terms_text": {
+          "name": "terms_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "outcome_labels": {
+          "name": "outcome_labels",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "range": {
+          "name": "range",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "over_under": {
+          "name": "over_under",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "denom_id": {
+          "name": "denom_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "stalemate": {
+          "name": "stalemate",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'arbitrate'"
+        },
+        "reveal_mode": {
+          "name": "reveal_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'open'"
+        },
+        "anchor_value": {
+          "name": "anchor_value",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "anchor_at": {
+          "name": "anchor_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resolves_by": {
+          "name": "resolves_by",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "locked_at": {
+          "name": "locked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "threshold": {
+          "name": "threshold",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ai_outcome": {
+          "name": "ai_outcome",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ai_confidence_bps": {
+          "name": "ai_confidence_bps",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ai_rationale": {
+          "name": "ai_rationale",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ai_proposed_at": {
+          "name": "ai_proposed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resolved_outcome": {
+          "name": "resolved_outcome",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resolved_by": {
+          "name": "resolved_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resolved_at": {
+          "name": "resolved_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "dares_group_id_groups_id_fk": {
+          "name": "dares_group_id_groups_id_fk",
+          "tableFrom": "dares",
+          "columnsFrom": [
+            "group_id"
+          ],
+          "tableTo": "groups",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "dares_creator_id_users_id_fk": {
+          "name": "dares_creator_id_users_id_fk",
+          "tableFrom": "dares",
+          "columnsFrom": [
+            "creator_id"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "dares_denom_id_denominations_id_fk": {
+          "name": "dares_denom_id_denominations_id_fk",
+          "tableFrom": "dares",
+          "columnsFrom": [
+            "denom_id"
+          ],
+          "tableTo": "denominations",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "dares_onchain_id_unique": {
+          "name": "dares_onchain_id_unique",
+          "columns": [
+            "onchain_id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "dares_kind_known": {
+          "name": "dares_kind_known",
+          "value": "\"dares\".\"kind\" in ('binary', 'numeric', 'categorical')"
+        },
+        "dares_pace_known": {
+          "name": "dares_pace_known",
+          "value": "\"dares\".\"pace\" in ('dare', 'argument')"
+        },
+        "dares_stalemate_known": {
+          "name": "dares_stalemate_known",
+          "value": "\"dares\".\"stalemate\" in ('arbitrate', 'void')"
+        },
+        "dares_reveal_mode_known": {
+          "name": "dares_reveal_mode_known",
+          "value": "\"dares\".\"reveal_mode\" in ('open', 'blind')"
+        },
+        "dares_resolved_by_known": {
+          "name": "dares_resolved_by_known",
+          "value": "\"dares\".\"resolved_by\" is null or \"dares\".\"resolved_by\" in ('quorum', 'arbitration', 'provisional')"
+        },
+        "dares_threshold_positive": {
+          "name": "dares_threshold_positive",
+          "value": "\"dares\".\"threshold\" > 0"
+        },
+        "dares_ai_confidence_bps_range": {
+          "name": "dares_ai_confidence_bps_range",
+          "value": "\"dares\".\"ai_confidence_bps\" is null or (\"dares\".\"ai_confidence_bps\" between 0 and 10000)"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.delegations": {
+      "name": "delegations",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "wallet_id": {
+          "name": "wallet_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "wallet_address": {
+          "name": "wallet_address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "encrypted_share": {
+          "name": "encrypted_share",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "encrypted_api_key": {
+          "name": "encrypted_api_key",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "granted_at": {
+          "name": "granted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "delegations_user_id_users_id_fk": {
+          "name": "delegations_user_id_users_id_fk",
+          "tableFrom": "delegations",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "delegations_user_id_wallet_id_pk": {
+          "name": "delegations_user_id_wallet_id_pk",
+          "columns": [
+            "user_id",
+            "wallet_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.denominations": {
+      "name": "denominations",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "group_id": {
+          "name": "group_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "onchain_id": {
+          "name": "onchain_id",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "template": {
+          "name": "template",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "plural_label": {
+          "name": "plural_label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "quantifiable": {
+          "name": "quantifiable",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "monetary": {
+          "name": "monetary",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "emoji": {
+          "name": "emoji",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "last_used_at": {
+          "name": "last_used_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "denominations_group_id_groups_id_fk": {
+          "name": "denominations_group_id_groups_id_fk",
+          "tableFrom": "denominations",
+          "columnsFrom": [
+            "group_id"
+          ],
+          "tableTo": "groups",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "denominations_created_by_users_id_fk": {
+          "name": "denominations_created_by_users_id_fk",
+          "tableFrom": "denominations",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "denominations_group_onchain": {
+          "name": "denominations_group_onchain",
+          "columns": [
+            "group_id",
+            "onchain_id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "denominations_template_known": {
+          "name": "denominations_template_known",
+          "value": "\"denominations\".\"template\" is null or \"denominations\".\"template\" in ('usd', 'beer', 'coffee', 'round', 'next_time')"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.expense_items": {
+      "name": "expense_items",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "expense_id": {
+          "name": "expense_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "qty": {
+          "name": "qty",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'1'"
+        },
+        "unit_price_cents": {
+          "name": "unit_price_cents",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "line_total_cents": {
+          "name": "line_total_cents",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tax_line_id": {
+          "name": "tax_line_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "expense_items_expense_id_expenses_id_fk": {
+          "name": "expense_items_expense_id_expenses_id_fk",
+          "tableFrom": "expense_items",
+          "columnsFrom": [
+            "expense_id"
+          ],
+          "tableTo": "expenses",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "expense_items_cents_nonnegative": {
+          "name": "expense_items_cents_nonnegative",
+          "value": "\"expense_items\".\"unit_price_cents\" >= 0 and \"expense_items\".\"line_total_cents\" >= 0"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.expense_tax_lines": {
+      "name": "expense_tax_lines",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "expense_id": {
+          "name": "expense_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amount_cents": {
+          "name": "amount_cents",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "expense_tax_lines_expense_id_expenses_id_fk": {
+          "name": "expense_tax_lines_expense_id_expenses_id_fk",
+          "tableFrom": "expense_tax_lines",
+          "columnsFrom": [
+            "expense_id"
+          ],
+          "tableTo": "expenses",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "expense_tax_lines_cents_nonnegative": {
+          "name": "expense_tax_lines_cents_nonnegative",
+          "value": "\"expense_tax_lines\".\"amount_cents\" >= 0"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.expenses": {
+      "name": "expenses",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "group_id": {
+          "name": "group_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payer_id": {
+          "name": "payer_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "total_cents": {
+          "name": "total_cents",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subtotal_cents": {
+          "name": "subtotal_cents",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tip_cents": {
+          "name": "tip_cents",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "0"
+        },
+        "currency": {
+          "name": "currency",
+          "type": "char(3)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'USD'"
+        },
+        "merchant": {
+          "name": "merchant",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "merchant_address": {
+          "name": "merchant_address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "receipt_photo_id": {
+          "name": "receipt_photo_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "expenses_group_id_groups_id_fk": {
+          "name": "expenses_group_id_groups_id_fk",
+          "tableFrom": "expenses",
+          "columnsFrom": [
+            "group_id"
+          ],
+          "tableTo": "groups",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "expenses_payer_id_users_id_fk": {
+          "name": "expenses_payer_id_users_id_fk",
+          "tableFrom": "expenses",
+          "columnsFrom": [
+            "payer_id"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "expenses_receipt_photo_id_photos_id_fk": {
+          "name": "expenses_receipt_photo_id_photos_id_fk",
+          "tableFrom": "expenses",
+          "columnsFrom": [
+            "receipt_photo_id"
+          ],
+          "tableTo": "photos",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "expenses_created_by_users_id_fk": {
+          "name": "expenses_created_by_users_id_fk",
+          "tableFrom": "expenses",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "expenses_source_known": {
+          "name": "expenses_source_known",
+          "value": "\"expenses\".\"source\" in ('manual', 'receipt', 'roulette')"
+        },
+        "expenses_status_known": {
+          "name": "expenses_status_known",
+          "value": "\"expenses\".\"status\" in ('draft', 'parsed', 'needs_review', 'claiming', 'finalized')"
+        },
+        "expenses_cents_nonnegative": {
+          "name": "expenses_cents_nonnegative",
+          "value": "\"expenses\".\"total_cents\" >= 0 and \"expenses\".\"subtotal_cents\" >= 0 and \"expenses\".\"tip_cents\" >= 0"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.group_members": {
+      "name": "group_members",
+      "schema": "",
+      "columns": {
+        "group_id": {
+          "name": "group_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "claim_id": {
+          "name": "claim_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "joined_at": {
+          "name": "joined_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "left_at": {
+          "name": "left_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "group_members_group_id_groups_id_fk": {
+          "name": "group_members_group_id_groups_id_fk",
+          "tableFrom": "group_members",
+          "columnsFrom": [
+            "group_id"
+          ],
+          "tableTo": "groups",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "group_members_user_id_users_id_fk": {
+          "name": "group_members_user_id_users_id_fk",
+          "tableFrom": "group_members",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "group_members_claim_id_participant_claims_id_fk": {
+          "name": "group_members_claim_id_participant_claims_id_fk",
+          "tableFrom": "group_members",
+          "columnsFrom": [
+            "claim_id"
+          ],
+          "tableTo": "participant_claims",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "group_members_group_user": {
+          "name": "group_members_group_user",
+          "columns": [
+            "group_id",
+            "user_id"
+          ],
+          "nullsNotDistinct": false
+        },
+        "group_members_group_claim": {
+          "name": "group_members_group_claim",
+          "columns": [
+            "group_id",
+            "claim_id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "group_members_user_xor_claim": {
+          "name": "group_members_user_xor_claim",
+          "value": "(\"group_members\".\"user_id\" is null) <> (\"group_members\".\"claim_id\" is null)"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.groups": {
+      "name": "groups",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "onchain_id": {
+          "name": "onchain_id",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_dyad": {
+          "name": "is_dyad",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "groups_created_by_users_id_fk": {
+          "name": "groups_created_by_users_id_fk",
+          "tableFrom": "groups",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "groups_onchain_id_unique": {
+          "name": "groups_onchain_id_unique",
+          "columns": [
+            "onchain_id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.item_claims": {
+      "name": "item_claims",
+      "schema": "",
+      "columns": {
+        "expense_item_id": {
+          "name": "expense_item_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "share_num": {
+          "name": "share_num",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "share_den": {
+          "name": "share_den",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "item_claims_expense_item_id_expense_items_id_fk": {
+          "name": "item_claims_expense_item_id_expense_items_id_fk",
+          "tableFrom": "item_claims",
+          "columnsFrom": [
+            "expense_item_id"
+          ],
+          "tableTo": "expense_items",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "item_claims_user_id_users_id_fk": {
+          "name": "item_claims_user_id_users_id_fk",
+          "tableFrom": "item_claims",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "item_claims_expense_item_id_user_id_pk": {
+          "name": "item_claims_expense_item_id_user_id_pk",
+          "columns": [
+            "expense_item_id",
+            "user_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "item_claims_share_valid": {
+          "name": "item_claims_share_valid",
+          "value": "\"item_claims\".\"share_num\" >= 0 and \"item_claims\".\"share_den\" > 0 and \"item_claims\".\"share_num\" <= \"item_claims\".\"share_den\""
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.obligation_proposals": {
+      "name": "obligation_proposals",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "group_id": {
+          "name": "group_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "from_user": {
+          "name": "from_user",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "from_claim": {
+          "name": "from_claim",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "to_user": {
+          "name": "to_user",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "to_claim": {
+          "name": "to_claim",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "denom_id": {
+          "name": "denom_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "quantity": {
+          "name": "quantity",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "unique_obligation": {
+          "name": "unique_obligation",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "amount_cents": {
+          "name": "amount_cents",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "origin": {
+          "name": "origin",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "origin_id": {
+          "name": "origin_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "settle_expected": {
+          "name": "settle_expected",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "memo": {
+          "name": "memo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "conceded_at": {
+          "name": "conceded_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "resolved_at": {
+          "name": "resolved_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "obligation_proposals_group_id_groups_id_fk": {
+          "name": "obligation_proposals_group_id_groups_id_fk",
+          "tableFrom": "obligation_proposals",
+          "columnsFrom": [
+            "group_id"
+          ],
+          "tableTo": "groups",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "obligation_proposals_from_user_users_id_fk": {
+          "name": "obligation_proposals_from_user_users_id_fk",
+          "tableFrom": "obligation_proposals",
+          "columnsFrom": [
+            "from_user"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "obligation_proposals_from_claim_participant_claims_id_fk": {
+          "name": "obligation_proposals_from_claim_participant_claims_id_fk",
+          "tableFrom": "obligation_proposals",
+          "columnsFrom": [
+            "from_claim"
+          ],
+          "tableTo": "participant_claims",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "obligation_proposals_to_user_users_id_fk": {
+          "name": "obligation_proposals_to_user_users_id_fk",
+          "tableFrom": "obligation_proposals",
+          "columnsFrom": [
+            "to_user"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "obligation_proposals_to_claim_participant_claims_id_fk": {
+          "name": "obligation_proposals_to_claim_participant_claims_id_fk",
+          "tableFrom": "obligation_proposals",
+          "columnsFrom": [
+            "to_claim"
+          ],
+          "tableTo": "participant_claims",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "obligation_proposals_denom_id_denominations_id_fk": {
+          "name": "obligation_proposals_denom_id_denominations_id_fk",
+          "tableFrom": "obligation_proposals",
+          "columnsFrom": [
+            "denom_id"
+          ],
+          "tableTo": "denominations",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "obligation_proposals_from_xor": {
+          "name": "obligation_proposals_from_xor",
+          "value": "(\"obligation_proposals\".\"from_user\" is null) <> (\"obligation_proposals\".\"from_claim\" is null)"
+        },
+        "obligation_proposals_to_xor": {
+          "name": "obligation_proposals_to_xor",
+          "value": "(\"obligation_proposals\".\"to_user\" is null) <> (\"obligation_proposals\".\"to_claim\" is null)"
+        },
+        "obligation_proposals_quantity_positive": {
+          "name": "obligation_proposals_quantity_positive",
+          "value": "\"obligation_proposals\".\"quantity\" is null or \"obligation_proposals\".\"quantity\" > 0"
+        },
+        "obligation_proposals_amount_nonnegative": {
+          "name": "obligation_proposals_amount_nonnegative",
+          "value": "\"obligation_proposals\".\"amount_cents\" is null or \"obligation_proposals\".\"amount_cents\" >= 0"
+        },
+        "obligation_proposals_origin_known": {
+          "name": "obligation_proposals_origin_known",
+          "value": "\"obligation_proposals\".\"origin\" in ('manual', 'expense', 'dare', 'roulette')"
+        },
+        "obligation_proposals_status_known": {
+          "name": "obligation_proposals_status_known",
+          "value": "\"obligation_proposals\".\"status\" in ('pending', 'confirmed', 'declined', 'disputed')"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.obligations": {
+      "name": "obligations",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "token_id": {
+          "name": "token_id",
+          "type": "numeric(78, 0)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "group_id": {
+          "name": "group_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "from_user": {
+          "name": "from_user",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "to_user": {
+          "name": "to_user",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "denom_id": {
+          "name": "denom_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "quantity": {
+          "name": "quantity",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "unique_obligation": {
+          "name": "unique_obligation",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amount_cents": {
+          "name": "amount_cents",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "origin": {
+          "name": "origin",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "origin_id": {
+          "name": "origin_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "settle_expected": {
+          "name": "settle_expected",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "memo": {
+          "name": "memo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "photo_id": {
+          "name": "photo_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "confirm_tx": {
+          "name": "confirm_tx",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "obligations_group_id_groups_id_fk": {
+          "name": "obligations_group_id_groups_id_fk",
+          "tableFrom": "obligations",
+          "columnsFrom": [
+            "group_id"
+          ],
+          "tableTo": "groups",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "obligations_from_user_users_id_fk": {
+          "name": "obligations_from_user_users_id_fk",
+          "tableFrom": "obligations",
+          "columnsFrom": [
+            "from_user"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "obligations_to_user_users_id_fk": {
+          "name": "obligations_to_user_users_id_fk",
+          "tableFrom": "obligations",
+          "columnsFrom": [
+            "to_user"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "obligations_denom_id_denominations_id_fk": {
+          "name": "obligations_denom_id_denominations_id_fk",
+          "tableFrom": "obligations",
+          "columnsFrom": [
+            "denom_id"
+          ],
+          "tableTo": "denominations",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "obligations_photo_id_photos_id_fk": {
+          "name": "obligations_photo_id_photos_id_fk",
+          "tableFrom": "obligations",
+          "columnsFrom": [
+            "photo_id"
+          ],
+          "tableTo": "photos",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "obligations_quantity_positive": {
+          "name": "obligations_quantity_positive",
+          "value": "\"obligations\".\"quantity\" is null or \"obligations\".\"quantity\" > 0"
+        },
+        "obligations_amount_nonnegative": {
+          "name": "obligations_amount_nonnegative",
+          "value": "\"obligations\".\"amount_cents\" is null or \"obligations\".\"amount_cents\" >= 0"
+        },
+        "obligations_origin_known": {
+          "name": "obligations_origin_known",
+          "value": "\"obligations\".\"origin\" in ('manual', 'expense', 'dare', 'roulette')"
+        },
+        "obligations_not_self": {
+          "name": "obligations_not_self",
+          "value": "\"obligations\".\"from_user\" <> \"obligations\".\"to_user\""
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.participant_claims": {
+      "name": "participant_claims",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "phone_hash": {
+          "name": "phone_hash",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "claimed_by": {
+          "name": "claimed_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "claimed_at": {
+          "name": "claimed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "merged_into": {
+          "name": "merged_into",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "participant_claims_created_by_users_id_fk": {
+          "name": "participant_claims_created_by_users_id_fk",
+          "tableFrom": "participant_claims",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "participant_claims_claimed_by_users_id_fk": {
+          "name": "participant_claims_claimed_by_users_id_fk",
+          "tableFrom": "participant_claims",
+          "columnsFrom": [
+            "claimed_by"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "participant_claims_merged_into_participant_claims_id_fk": {
+          "name": "participant_claims_merged_into_participant_claims_id_fk",
+          "tableFrom": "participant_claims",
+          "columnsFrom": [
+            "merged_into"
+          ],
+          "tableTo": "participant_claims",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.personal_links": {
+      "name": "personal_links",
+      "schema": "",
+      "columns": {
+        "token_hash": {
+          "name": "token_hash",
+          "type": "bytea",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "dare_id": {
+          "name": "dare_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "claim_id": {
+          "name": "claim_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "issued_at": {
+          "name": "issued_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "personal_links_dare_id_dares_id_fk": {
+          "name": "personal_links_dare_id_dares_id_fk",
+          "tableFrom": "personal_links",
+          "columnsFrom": [
+            "dare_id"
+          ],
+          "tableTo": "dares",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "personal_links_claim_id_participant_claims_id_fk": {
+          "name": "personal_links_claim_id_participant_claims_id_fk",
+          "tableFrom": "personal_links",
+          "columnsFrom": [
+            "claim_id"
+          ],
+          "tableTo": "participant_claims",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "personal_links_user_id_users_id_fk": {
+          "name": "personal_links_user_id_users_id_fk",
+          "tableFrom": "personal_links",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "personal_links_claim_xor_user": {
+          "name": "personal_links_claim_xor_user",
+          "value": "(\"personal_links\".\"claim_id\" is null) <> (\"personal_links\".\"user_id\" is null)"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.photos": {
+      "name": "photos",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "uploaded_by": {
+          "name": "uploaded_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "storage_path": {
+          "name": "storage_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "taken_at": {
+          "name": "taken_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "photos_uploaded_by_users_id_fk": {
+          "name": "photos_uploaded_by_users_id_fk",
+          "tableFrom": "photos",
+          "columnsFrom": [
+            "uploaded_by"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.plan_rsvps": {
+      "name": "plan_rsvps",
+      "schema": "",
+      "columns": {
+        "plan_id": {
+          "name": "plan_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "going": {
+          "name": "going",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "plan_rsvps_plan_id_plans_id_fk": {
+          "name": "plan_rsvps_plan_id_plans_id_fk",
+          "tableFrom": "plan_rsvps",
+          "columnsFrom": [
+            "plan_id"
+          ],
+          "tableTo": "plans",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "plan_rsvps_user_id_users_id_fk": {
+          "name": "plan_rsvps_user_id_users_id_fk",
+          "tableFrom": "plan_rsvps",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "plan_rsvps_plan_id_user_id_pk": {
+          "name": "plan_rsvps_plan_id_user_id_pk",
+          "columns": [
+            "plan_id",
+            "user_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.plans": {
+      "name": "plans",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "group_id": {
+          "name": "group_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "occurs_at": {
+          "name": "occurs_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "location": {
+          "name": "location",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "plans_group_id_groups_id_fk": {
+          "name": "plans_group_id_groups_id_fk",
+          "tableFrom": "plans",
+          "columnsFrom": [
+            "group_id"
+          ],
+          "tableTo": "groups",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "plans_created_by_users_id_fk": {
+          "name": "plans_created_by_users_id_fk",
+          "tableFrom": "plans",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "plans_status_known": {
+          "name": "plans_status_known",
+          "value": "\"plans\".\"status\" in ('proposed', 'confirmed', 'happened', 'cancelled')"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.room_codes": {
+      "name": "room_codes",
+      "schema": "",
+      "columns": {
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "dare_id": {
+          "name": "dare_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "opened_by": {
+          "name": "opened_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "opened_at": {
+          "name": "opened_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "closed_at": {
+          "name": "closed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "room_codes_dare_id_dares_id_fk": {
+          "name": "room_codes_dare_id_dares_id_fk",
+          "tableFrom": "room_codes",
+          "columnsFrom": [
+            "dare_id"
+          ],
+          "tableTo": "dares",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "room_codes_opened_by_users_id_fk": {
+          "name": "room_codes_opened_by_users_id_fk",
+          "tableFrom": "room_codes",
+          "columnsFrom": [
+            "opened_by"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "room_codes_six_unambiguous": {
+          "name": "room_codes_six_unambiguous",
+          "value": "\"room_codes\".\"code\" ~ '^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$'"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.users": {
+      "name": "users",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "dynamic_user_id": {
+          "name": "dynamic_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "phone_hash": {
+          "name": "phone_hash",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ledger_wallet": {
+          "name": "ledger_wallet",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "governance_wallet": {
+          "name": "governance_wallet",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "avatar_url": {
+          "name": "avatar_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "users_dynamic_user_id_unique": {
+          "name": "users_dynamic_user_id_unique",
+          "columns": [
+            "dynamic_user_id"
+          ],
+          "nullsNotDistinct": false
+        },
+        "users_phone_hash_unique": {
+          "name": "users_phone_hash_unique",
+          "columns": [
+            "phone_hash"
+          ],
+          "nullsNotDistinct": false
+        },
+        "users_ledger_wallet_unique": {
+          "name": "users_ledger_wallet_unique",
+          "columns": [
+            "ledger_wallet"
+          ],
+          "nullsNotDistinct": false
+        },
+        "users_governance_wallet_unique": {
+          "name": "users_governance_wallet_unique",
+          "columns": [
+            "governance_wallet"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "views": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

@@ -1,0 +1,47 @@
+# yaml-language-server: $schema=./node_modules/envio/evm.schema.json
+# Dareful indexer: DarefulLedger and DarefulDares on Monad testnet (10143).
+# Every event in PLANNING.md section 5a. Syncs from the Alchemy RPC (MONAD_RPC_URL) from the deployment block.
+name: dareful-indexer
+description: Dareful social ledger and markets on Monad
+disable_default_cross_chain: true
+field_selection:
+  transaction_fields:
+    - hash
+chains:
+  - id: 10143
+    start_block: 63143972
+    # Historical sync and head following come from MONAD_INDEXER_RPC_URL. The public Monad testnet RPC
+    # (https://testnet-rpc.monad.xyz) allows 100-block eth_getLogs ranges; the Alchemy free tier caps them at
+    # 10 blocks and rate-limits hard enough that a backfill stalls. HyperSync is the real answer: once an
+    # Envio API token exists (ENVIO_API_TOKEN), delete this rpc block and HyperSync takes over.
+    rpc:
+      - url: ${MONAD_INDEXER_RPC_URL}
+        for: sync
+        initial_block_interval: 100
+        interval_ceiling: 100
+        acceleration_additive: 0
+        backoff_multiplicative: 0.9
+        backoff_millis: 500
+        query_timeout_millis: 20000
+    contracts:
+      - name: DarefulLedger
+        address:
+          - "0x4B6BB760E70677B9c522A5e007F37630F7284981"
+        events:
+          - event: Confirmed(bytes32 indexed groupId, bytes32 indexed denomId, address indexed debtor, address creditor, uint256 id, uint256 qty, bytes16 obligationId, bool unique)
+          - event: Closed(uint256 indexed id, address indexed creditor, uint256 qty, uint8 reason, bytes16 obligationId)
+          - event: Netted(bytes32 indexed groupId, bytes32 indexed denomId, address a, address b, uint256 qty)
+          - event: GroupCreated(bytes32 indexed groupId, address[] ledgers, address[] governances)
+          - event: MemberAdded(bytes32 indexed groupId, address ledger, address governance)
+          - event: DenomCreated(bytes32 indexed groupId, bytes32 indexed denomId, bool quantifiable)
+      - name: DarefulDares
+        address:
+          - "0x4298479F66446bA2D3c959EfdDd109c59417f93d"
+        events:
+          - event: DareCreated(bytes32 indexed dareId, bytes32 indexed groupId, uint8 kind, uint8 pace, address creator, bytes32 termsHash, bytes32 denomId, uint256 range, uint8 options, uint8 stalemate, uint64 resolvesBy)
+          - event: Entered(bytes32 indexed dareId, address participant, uint256 stake, uint256 value, uint16 confidenceBps)
+          - event: DareVoided(bytes32 indexed dareId, uint8 votes)
+          - event: DareResolved(bytes32 indexed dareId, uint256 outcome, uint8 votes)
+          - event: DareArbitrated(bytes32 indexed dareId, uint256 outcome, bool voided, bytes32 rulingHash)
+          - event: DareExpired(bytes32 indexed dareId)
+          - event: Scored(bytes32 indexed dareId, address participant, uint16 score)

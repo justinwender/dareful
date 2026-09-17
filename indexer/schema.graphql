@@ -1,0 +1,255 @@
+# Dareful indexer schema. Chain state only; everything one person controls stays in Postgres.
+# Addresses and byte strings are stored lowercase so they join with the Postgres columns directly.
+
+enum DareStatus {
+  LOCKED
+  RESOLVED
+  VOIDED
+  EXPIRED
+}
+
+enum CloseReason {
+  SETTLED
+  FORGIVEN
+}
+
+# --- current state -------------------------------------------------------------------------------------
+
+type Group {
+  id: ID! # groupId, bytes32 hex
+  createdAt: Int!
+  createdTx: String!
+  members: [Member!]! @derivedFrom(field: "group")
+  denoms: [Denom!]! @derivedFrom(field: "group")
+  obligations: [Obligation!]! @derivedFrom(field: "group")
+  dares: [Dare!]! @derivedFrom(field: "group")
+}
+
+type Member {
+  id: ID! # groupId-ledger
+  group: Group!
+  ledger: String! @index
+  governance: String! @index
+  addedAt: Int!
+}
+
+type Denom {
+  id: ID! # groupId-denomId
+  group: Group!
+  denomId: String! @index
+  quantifiable: Boolean!
+  createdAt: Int!
+}
+
+# One row per confirmed mint. `remaining` is what is still open; it decreases by closes and by nets
+# attributed first-in, first-out. Open, settled, and forgiven are derived here, never stored offchain.
+type Obligation {
+  id: ID! # obligationId, bytes16 hex; the same 128 bits as the Postgres uuid
+  tokenId: BigInt! @index
+  group: Group!
+  groupId: String! @index
+  denomId: String! @index
+  debtor: String! @index
+  creditor: String! @index
+  qty: BigInt!
+  remaining: BigInt! @index
+  settled: BigInt!
+  forgiven: BigInt!
+  netted: BigInt!
+  unique: Boolean!
+  dare: Dare # set when the mint came from a resolved market
+  confirmedAt: Int!
+  confirmTx: String!
+  lastClosedAt: Int
+}
+
+type Dare {
+  id: ID! # dareId, bytes32 hex
+  group: Group!
+  groupId: String! @index
+  kind: Int!
+  pace: Int!
+  creator: String! @index
+  termsHash: String!
+  denomId: String!
+  range: BigInt!
+  options: Int!
+  stalemate: Int!
+  resolvesBy: BigInt!
+  status: DareStatus!
+  outcome: BigInt
+  votes: Int
+  voided: Boolean!
+  rulingHash: String
+  createdAt: Int!
+  createTx: String!
+  resolvedAt: Int
+  resolveTx: String
+  positions: [Position!]! @derivedFrom(field: "dare")
+  edges: [Obligation!]! @derivedFrom(field: "dare")
+}
+
+type Position {
+  id: ID! # dareId-participant
+  dare: Dare!
+  participant: String! @index
+  stake: BigInt!
+  value: BigInt!
+  confidenceBps: Int!
+  score: Int
+}
+
+# Links the Confirmed events of a settlement transaction back to the market that minted them.
+type SettlementTx {
+  id: ID! # transaction hash
+  dare: Dare!
+}
+
+# --- one entity per event, the raw log --------------------------------------------------------------
+
+type ConfirmedEvent {
+  id: ID!
+  tx: String!
+  block: Int!
+  timestamp: Int!
+  groupId: String!
+  denomId: String!
+  debtor: String!
+  creditor: String!
+  tokenId: BigInt!
+  qty: BigInt!
+  obligationId: String!
+  unique: Boolean!
+}
+
+type ClosedEvent {
+  id: ID!
+  tx: String!
+  block: Int!
+  timestamp: Int!
+  tokenId: BigInt!
+  creditor: String!
+  qty: BigInt!
+  reason: CloseReason!
+  obligationId: String!
+}
+
+type NettedEvent {
+  id: ID!
+  tx: String!
+  block: Int!
+  timestamp: Int!
+  groupId: String!
+  denomId: String!
+  a: String!
+  b: String!
+  qty: BigInt!
+}
+
+type GroupCreatedEvent {
+  id: ID!
+  tx: String!
+  block: Int!
+  timestamp: Int!
+  groupId: String!
+  ledgers: [String!]!
+  governances: [String!]!
+}
+
+type MemberAddedEvent {
+  id: ID!
+  tx: String!
+  block: Int!
+  timestamp: Int!
+  groupId: String!
+  ledger: String!
+  governance: String!
+}
+
+type DenomCreatedEvent {
+  id: ID!
+  tx: String!
+  block: Int!
+  timestamp: Int!
+  groupId: String!
+  denomId: String!
+  quantifiable: Boolean!
+}
+
+type DareCreatedEvent {
+  id: ID!
+  tx: String!
+  block: Int!
+  timestamp: Int!
+  dareId: String!
+  groupId: String!
+  kind: Int!
+  pace: Int!
+  creator: String!
+  termsHash: String!
+  denomId: String!
+  range: BigInt!
+  options: Int!
+  stalemate: Int!
+  resolvesBy: BigInt!
+}
+
+type EnteredEvent {
+  id: ID!
+  tx: String!
+  block: Int!
+  timestamp: Int!
+  dareId: String!
+  participant: String!
+  stake: BigInt!
+  value: BigInt!
+  confidenceBps: Int!
+}
+
+type DareVoidedEvent {
+  id: ID!
+  tx: String!
+  block: Int!
+  timestamp: Int!
+  dareId: String!
+  votes: Int!
+}
+
+type DareResolvedEvent {
+  id: ID!
+  tx: String!
+  block: Int!
+  timestamp: Int!
+  dareId: String!
+  outcome: BigInt!
+  votes: Int!
+}
+
+type DareArbitratedEvent {
+  id: ID!
+  tx: String!
+  block: Int!
+  timestamp: Int!
+  dareId: String!
+  outcome: BigInt!
+  voided: Boolean!
+  rulingHash: String!
+}
+
+type DareExpiredEvent {
+  id: ID!
+  tx: String!
+  block: Int!
+  timestamp: Int!
+  dareId: String!
+}
+
+type ScoredEvent {
+  id: ID!
+  tx: String!
+  block: Int!
+  timestamp: Int!
+  dareId: String!
+  participant: String!
+  score: Int!
+}

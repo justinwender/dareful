@@ -1,4 +1,3 @@
-
 # secrets, never commit
 .env
 .env.local
@@ -6,3 +5,28 @@
 
 # dependencies
 node_modules/
+indexer/node_modules/
+
+# next.js
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+
+# vercel
+.vercel
+
+# foundry artifacts
+contracts/out/
+contracts/cache/
+contracts/broadcast/**/dry-run/
+
+# envio generated code and local state
+indexer/generated/
+indexer/.envio/
+indexer/logs/
+
+# misc
+.DS_Store
+*.pem
+npm-debug.log*
