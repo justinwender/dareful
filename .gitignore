@@ -30,3 +30,6 @@ indexer/logs/
 .DS_Store
 *.pem
 npm-debug.log*
+
+# local tooling
+.claude/

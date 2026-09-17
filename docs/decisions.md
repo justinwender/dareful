@@ -247,3 +247,97 @@ Decision: on the Alchemy free tier the indexer's head polling alone saturates th
 Decision: pinned to ten-block ranges on the Alchemy free tier, the indexer advanced 68 blocks in twelve minutes against a chain that produces two to three blocks a second, with hundreds of 429s and internal promise timeouts. That is a stall, not a slow sync. The indexer's source is now `MONAD_INDEXER_RPC_URL`, set locally to the public Monad testnet RPC (`https://testnet-rpc.monad.xyz`), which allows 100-block `eth_getLogs` ranges, with the interval pinned at 100. The application still uses Alchemy for everything it does; the indexer is the only reader of historical logs, and the public endpoint carries no key. This variable disappears once `ENVIO_API_TOKEN` exists and HyperSync takes over, which is the proper fix and a one-line change.
 
 Alternative rejected: an Alchemy paid tier just for local indexing, and a second Alchemy key. Both spend money or complicate the stack for a component that is meant to run on HyperSync anyway.
+
+# Phase 1 corrections to PLANNING.md (2026-09-17)
+
+PLANNING.md froze at the Phase 0 kickoff. Everything below supersedes it where they conflict, and CLAUDE.md carries each correction wherever it changes a rule.
+
+## 2026-09-17: The documents and what each is authoritative for
+
+Decision: six documents. PLANNING.md is the architecture, frozen, authoritative except where this file records a correction. This file is authoritative over PLANNING.md on any conflict. `docs/marks-and-memories.md` is the product decision on marks and media and changes the schema. `docs/design.md` is the design specification. `docs/design/reference/UI Design.html` is the exported design, the source of truth for values and layout intent, never copied as markup. CLAUDE.md is the working brief and indexes the rest. Nothing but the app belongs in the repository root, so the design export and the marks document moved under `docs/`.
+
+## 2026-09-17: Rounding is truncation toward zero (supersedes the half-away-from-zero entry)
+
+Decision: each pairwise transfer is `trunc(min(s_i, s_j) x (S_i - S_j) / ((N - 1) x 10000))`, truncated toward zero, which is Solidity's native signed division. The Phase 0 counterexample stands: four participants at two units each, one exactly right, three transfers of two thirds each rounding to one, and the loser pays three against a stake of two. Bounded loss is the property pairwise settlement exists to provide, so it wins over sub-unit precision. Truncation is odd, so antisymmetry and zero-sum survive, and the sum of truncated magnitudes cannot exceed the sum of true magnitudes, so `|net_i| <= s_i` holds exactly. The fuzz test now asserts the exact bound.
+
+The degenerate case is handled by generalizing a rule PLANNING.md already had for unquantifiable denominations: if every transfer truncates to zero, the market collapses to a single edge, the lowest scorer owing one unit to the highest, ties at either end void and mint nothing. Unquantifiable denominations are an instance of this rather than a special case, since a stake of 1 always truncates to nothing when `N >= 3`. The two-beer four-person case is a literal test asserting no participant's net exceeds their stake.
+
+Alternative rejected: nearest rounding with a residual rule. There is no residual rule that preserves both zero-sum and the bound.
+
+## 2026-09-17: The section 8c worked example under truncation
+
+Decision: PLANNING.md printed Gabe at +$9.08 (the unrounded net rounded once). Under nearest rounding per transfer the figure was +$9.09, which the Phase 0 test asserted and the kickoff review confirmed. Under truncation, which the same review adopted, two transfers change: Alex to Gabe is 26 cents (26.67 truncated) and John to Gabe is 606 cents (606.67 truncated). The nets are Justin -160, Gabe +907, Alex +164, John -911, summing to zero. The tests assert those figures. Flagged at the seam check-in because the two corrections interact and the review confirmed +$9.09 before adopting the rule that makes it +$9.07.
+
+## 2026-09-17: One market resolution per transaction, always
+
+Decision: `resolve` and `arbitrate` are never batched. The indexer links every `Confirmed` in a settlement transaction to the market that resolved in that transaction, and that attribution is exact only when one market resolves per transaction. Accepted at the kickoff review as the invariant behind the Phase 0 attribution design.
+
+## 2026-09-17: `threshold` and gas, confirmed
+
+Decision: `threshold = floor(quorum.length / 2) + 1` computed in the contract, no caller input, and there are no unanimity markets; PLANNING.md's "default" was loose wording. The Monad-sized gas table and `scripts/gas-survey.ts` are the rule, not the Foundry report; the `DarefulDares` limits are re-measured the first time a market goes onchain in Phase 2.
+
+## 2026-09-17: Membership registration, the full risk and the fix required before mainnet (supersedes the Phase 0 entry's risk note)
+
+Decision: the Phase 0 entry understated the residual risk. A compromised relayer can register fabricated members into an existing group, enter positions for a real user with that user's delegated ledger share, vote with the fabricated members' governance wallets, and mint obligations against the real user. Existing markets are safe because the quorum is snapshotted at create; every future market in that group is not. An existing member's ledger signature does not help, because the server holds that share too.
+
+The only key the server never holds is the governance key, so the fix extends the governance wallet's role from "votes" to "votes and membership changes." That is consistent with Principle 10 because adding a member changes who can vote in every future market in the group. The asynchrony (someone binds their claim at 2am and needs a signature from the creator) is solved by the creator pre-authorizing at contact-pick time, when they are already holding the phone, with the signature redeemed at bind. Required before mainnet. Not built in Phase 1: testnet, non-transferable tokens, and a deadline.
+
+## 2026-09-17: `media` replaces `photos`; marks live on `dares` and `denominations`
+
+Decision: `docs/marks-and-memories.md` is a product decision whose schema needed three corrections against this codebase. There is no `events` table, so `media` attaches through two nullable foreign keys, `dare_id` (a market, which the document calls a market) and `obligation_id` (where the Principle 6 settlement photo lands), with the same XOR check the schema uses for `user_id` and `claim_id`. `media` is strictly richer than `photos`, so `photos` is dropped, `obligations.photo_id` becomes `obligations.media_id`, and `expenses.receipt_photo_id` becomes `expenses.receipt_media_id`; nothing maintains both. Expenses and plans get their own parent columns on `media` when those phases arrive, not now.
+
+Kept from the document: `kind` (photo or video), `storage_key`, `poster_key`, `width`, `height`, `duration_ms`, `author_id`, `captured_at` from EXIF, and `created_at`, with an index per parent on `(parent, created_at)`. `captured_at` is the only EXIF field retained; the rest of the block, GPS above all, is stripped at upload. Media is visible to the market's participants and the group it was asked in, which means a signed-URL path behind an authorization check, never a public bucket. Derivatives are 1080px long edge, 256px square, and a poster frame. Deleting media never deletes the event or the obligations it produced.
+
+Marks are `mark_kind` (`emoji` or `image`, null for none) and `mark_value` (the emoji, or a media id as text) on `dares` and `denominations`, with a check that both are null or both set. Blank is the default and stays blank; nothing is suggested or defaulted; every screen reads with marks off.
+
+Open question for the seam check-in: a picture mark on a denomination is a `media` row with no market and no obligation to attach to, which the XOR forbids. Emoji marks ship first per the document's phasing; when picture marks are built, `media` needs a `denomination_id` parent (exactly-one over three) or picture marks need their own home.
+
+Alternative rejected: keeping `photos` alongside `media`, and a generic `events` table for media to hang from. Two media tables would drift, and an events table would be a second timeline model next to the union the person view already composes.
+
+## 2026-09-17: The timeline orders by the offchain timestamp, never the chain timestamp
+
+Decision: every event row sorts on its Postgres timestamp (`created_at`, or the event's own `occurs_at` or `resolved_at`). Block timestamps say when the relayer got around to it; the seed backdates months of history while its blocks are all from one afternoon, and ordering by chain time collapses the whole thing into today. This is a rule in CLAUDE.md for every query and view, not a behavior of one.
+
+## 2026-09-17: Design tokens are CSS custom properties; the Tailwind theme reads them
+
+Decision: every value in `docs/design.md` section 1 lives in `src/app/globals.css` as a custom property on `:root`, the shadcn variables map onto them as the document specifies, and Tailwind's theme reads the same properties, so a screen built in a later phase cannot drift from one built now. Fonts load through `next/font/google` (Young Serif 400; Hanken Grotesk 400 to 700) with `display: swap`. Dark is the only shipped theme; the light values are recorded as a second set for later. The exported HTML is consulted for layout intent and never copied: it is a self-extracting bundle with inline styles and absolute positioning.
+
+## 2026-09-17: The indexer syncs from HyperSync (supersedes the public RPC entry)
+
+Decision: an Envio API token now exists in `indexer/.env`, the `rpc` block is gone from `indexer/config.yaml`, and HyperSync is the source for both history and the head. `MONAD_INDEXER_RPC_URL` is retired from `.env.example`; the value can be deleted from `.env.local`. The Alchemy key is never touched by the indexer.
+
+## 2026-09-17: `SUPABASE_URL`, and the Vercel framework preset
+
+Decision: `NEXT_PUBLIC_SUPABASE_URL` was renamed to `SUPABASE_URL` in both env files, closing the Phase 0 note; there is no `NEXT_PUBLIC_SUPABASE_*` variable. Separately, every push since Phase 0 failed on Vercel with "no output directory named public" because the project was created before the app existed and its framework was never detected, so Vercel built it as a static site. `vercel.json` now declares `"framework": "nextjs"`, which is the repository-side fix and needs no dashboard change.
+
+## 2026-09-17: The application session is a signed cookie the server issues after verifying the Dynamic token once
+
+Decision: the client sends the Dynamic login token to `/api/session` once, the server verifies it against Dynamic's JWKS (`https://app.dynamic.xyz/api/v0/sdk/<environment>/.well-known/jwks`, RS256), and then issues its own httpOnly, sameSite-lax cookie: an HS256 JWT carrying only the user id, signed with `SESSION_SECRET`, thirty days. Pages and actions read the user through `currentUser()`. The Dynamic token is never stored; it can be several kilobytes and expires on Dynamic's schedule, which is not the app's.
+
+Alternative rejected: storing the Dynamic token in the cookie and re-verifying it on every request. It couples every page load to Dynamic's availability and their session length, and a four-kilobyte cookie is over the limit some browsers enforce.
+
+## 2026-09-17: The wallet Dynamic creates at signup is the ledger wallet; the one the app creates is the governance wallet
+
+Decision: Dynamic creates one embedded wallet at signup. The client creates the second through `createWalletAccount` and then refreshes the token so both addresses are vouched for. On first login the server records the primary wallet as the ledger wallet and the other as the governance wallet; on every later login it only checks that the same two addresses are presented, in either order. The pairing is permanent, which is the same rule the ledger contract enforces.
+
+Alternative rejected: letting the client name which wallet is which. The client is also the place a compromised page would run; the server assigns once and thereafter only verifies membership of the pair.
+
+## 2026-09-17: Group invite links are signed, expiring tokens with no table behind them (fills a gap; question at the seam)
+
+Decision: PLANNING.md puts "groups and invite links" in Phase 1 but has no table for invites. A link is `base64url({groupId, invitedBy, exp}).hmac`, signed with a key derived from `SESSION_SECRET`, valid fourteen days, and redeemed by any signed-in user, who becomes a member. Nothing is stored, so nothing can be revoked short of rotating the secret, and there is no use count.
+
+Alternative, to decide at the seam: a `group_invites` table (token hash, group, creator, expiry, use count, revoked_at) that makes a link revocable and countable. Cheap to add later; the redeem path does not change.
+
+## 2026-09-17: Person hues are derived from the user id
+
+Decision: the six person hues are assigned by hashing the user id, which is stable across every group and needs no column. The design says "assigned at account creation"; a deterministic function of the id is that assignment.
+
+Alternative rejected: a `hue` column. It would be one more thing to keep, for a value that never needs to change.
+
+## 2026-09-17: The person-view timeline in Phase 1 shows obligations and pending proposals only
+
+Decision: closes (settle, forgive) are Phase 4 and have no offchain row yet, so a settled obligation renders as its original card with a "Squared up" or "Called it even" caption read from the indexer, never as a separate timeline row and never struck through. Markets, plans, and photos arrive with their phases. The union stays composed per request.
+
+## 2026-09-17: The indexer stores `bytes16` ids as sixteen bytes
+
+Decision: HyperSync decodes fixed-size byte parameters right-padded to 32 bytes, so a `bytes16` obligation id arrives in a handler as 64 hex characters with sixteen trailing zero bytes. The handlers normalize to the canonical 16 bytes before storing, so an indexed obligation's id is the same 128 bits as its Postgres uuid and the application's parser stays strict. Found when the person view first read the indexer through the app; the Phase 0 verification compared quantities per edge, not ids, and did not catch it.

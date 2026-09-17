@@ -315,25 +315,27 @@ contract DarefulDaresTest is DarefulTestBase {
         dares.scoreCategorical(0, 5000, 3, 3);
     }
 
-    function test_RoundDivIsHalfAwayFromZero() public view {
-        assertEq(dares.roundDiv(5, 10), 1);
-        assertEq(dares.roundDiv(-5, 10), -1);
-        assertEq(dares.roundDiv(4, 10), 0);
-        assertEq(dares.roundDiv(-4, 10), 0);
-        assertEq(dares.roundDiv(15, 10), 2);
-        assertEq(dares.roundDiv(-15, 10), -2);
-        assertEq(dares.roundDiv(800_000, 30_000), 27);
-        assertEq(dares.roundDiv(-800_000, 30_000), -27);
+    function test_TruncDivIsTowardZeroAndOdd() public view {
+        assertEq(dares.truncDiv(5, 10), 0);
+        assertEq(dares.truncDiv(-5, 10), 0);
+        assertEq(dares.truncDiv(15, 10), 1);
+        assertEq(dares.truncDiv(-15, 10), -1);
+        assertEq(dares.truncDiv(19, 10), 1);
+        assertEq(dares.truncDiv(-19, 10), -1);
+        assertEq(dares.truncDiv(800_000, 30_000), 26);
+        assertEq(dares.truncDiv(-800_000, 30_000), -26);
+        assertEq(dares.truncDiv(18_200_000, 30_000), 606);
     }
 
     function test_PairwiseTransferMatchesHandComputation() public view {
         // Justin (1500 at 3600) vs Gabe (2000 at 9100), N = 4: 1500 * -5500 / 30000 = -275
         assertEq(dares.pairwiseTransfer(1500, 2000, 3600, 9100, 4), -275);
         assertEq(dares.pairwiseTransfer(2000, 1500, 9100, 3600, 4), 275);
-        // Gabe vs Alex: 500 * 1600 / 30000 = 26.67 -> 27
-        assertEq(dares.pairwiseTransfer(2000, 500, 9100, 7500, 4), 27);
-        // Gabe vs John: 2000 * 9100 / 30000 = 606.67 -> 607
-        assertEq(dares.pairwiseTransfer(2000, 5000, 9100, 0, 4), 607);
+        // Gabe vs Alex: 500 * 1600 / 30000 = 26.67 -> 26 (truncated)
+        assertEq(dares.pairwiseTransfer(2000, 500, 9100, 7500, 4), 26);
+        assertEq(dares.pairwiseTransfer(500, 2000, 7500, 9100, 4), -26);
+        // Gabe vs John: 2000 * 9100 / 30000 = 606.67 -> 606 (truncated)
+        assertEq(dares.pairwiseTransfer(2000, 5000, 9100, 0, 4), 606);
         // two-person market: the whole min stake moves on a full-confidence miss
         assertEq(dares.pairwiseTransfer(1000, 1000, 10000, 0, 2), 1000);
     }
@@ -355,26 +357,26 @@ contract DarefulDaresTest is DarefulTestBase {
         emit DarefulDares.Scored(DARE, users[3].ledger, 0);
         dares.resolve(DARE, 1, v21);
 
-        // Every edge, from the lower scorer to the higher, rounded independently.
+        // Every edge, from the lower scorer to the higher, truncated independently.
         assertEq(owed(0, 1, USD), 275, "Justin pays Gabe");
         assertEq(owed(0, 2, USD), 65, "Justin pays Alex");
         assertEq(owed(3, 0, USD), 180, "John pays Justin");
-        assertEq(owed(2, 1, USD), 27, "Alex pays Gabe");
-        assertEq(owed(3, 1, USD), 607, "John pays Gabe");
+        assertEq(owed(2, 1, USD), 26, "Alex pays Gabe (26.67 truncated)");
+        assertEq(owed(3, 1, USD), 606, "John pays Gabe (606.67 truncated)");
         assertEq(owed(3, 2, USD), 125, "John pays Alex");
         assertEq(owed(1, 0, USD) + owed(2, 0, USD) + owed(0, 3, USD) + owed(1, 2, USD) + owed(1, 3, USD) + owed(2, 3, USD), 0);
 
         uint256[] memory idx = arr(0, 1, 2, 3);
         assertEq(netOf(0, USD, idx), -160, "Justin");
-        assertEq(netOf(1, USD, idx), 909, "Gabe (908.33 unrounded; per-transfer rounding gives 909)");
-        assertEq(netOf(2, USD, idx), 163, "Alex");
-        assertEq(netOf(3, USD, idx), -912, "John");
+        assertEq(netOf(1, USD, idx), 907, "Gabe (908.33 unrounded; per-transfer truncation gives 907)");
+        assertEq(netOf(2, USD, idx), 164, "Alex");
+        assertEq(netOf(3, USD, idx), -911, "John");
         assertEq(netOf(0, USD, idx) + netOf(1, USD, idx) + netOf(2, USD, idx) + netOf(3, USD, idx), 0);
 
         // The edges are real ledger obligations with derivable ids.
         bytes16 edge = dares.edgeObligationId(DARE, users[3].ledger, users[1].ledger);
         DarefulLedger.Obligation memory o = ledger.obligationOf(edge);
-        assertEq(o.minted, 607);
+        assertEq(o.minted, 606);
         assertEq(o.creditor, users[1].ledger);
         assertEq(o.tokenId, ledger.fungibleId(GROUP, USD, users[3].ledger));
     }
@@ -439,11 +441,11 @@ contract DarefulDaresTest is DarefulTestBase {
         for (uint256 i = 0; i < 4; i++) {
             int256 n = netOf(i, USD, idx);
             sum += n;
-            // Exact bound plus the rounding slack: each of the N - 1 transfers rounds by at most half a unit.
+            // Truncation never enlarges a magnitude, so the exact bound holds after rounding.
             uint256 mag = n < 0 ? uint256(-n) : uint256(n);
-            assertLe(mag, s[i] + 1, "net within stake plus rounding slack");
+            assertLe(mag, s[i], "net within stake");
         }
-        assertEq(sum, 0, "zero-sum by antisymmetry, independent rounding included");
+        assertEq(sum, 0, "zero-sum by antisymmetry, independent truncation included");
     }
 
     function test_NumericMarketSettlesByDistance() public {
@@ -476,8 +478,8 @@ contract DarefulDaresTest is DarefulTestBase {
             positionsFor(DARE, d.stalemate, arr(0, 1), arr(1000, 1000), arr(0, 1), conf);
         dares.create(d, ps, sigs, signCreate(users[0].ledgerPk, d));
         dares.resolve(DARE, 0, votesFrom(arr(0, 1, 2), DARE, 0));
-        // 1000 * (9325 - 0) / 1 / 10000 = 932.5 -> 933
-        assertEq(owed(1, 0, USD), 933);
+        // 1000 * (9325 - 0) / 1 / 10000 = 932.5 -> 932 (truncated)
+        assertEq(owed(1, 0, USD), 932);
     }
 
     function test_CategoricalRejectsOutOfRangePickAndOutcome() public {
@@ -496,6 +498,59 @@ contract DarefulDaresTest is DarefulTestBase {
         bytes[] memory v17 = votesFrom(arr(0, 1, 2), DARE, 3);
         vm.expectRevert(DarefulDares.BadOutcome.selector);
         dares.resolve(DARE, 3, v17);
+    }
+
+    // ------------------------------------------------------------------ small stakes and the collapse
+
+    function test_TwoBeersFourPeopleNeverLoseMoreThanTheirStake() public {
+        // Four people, two beers each, outcome yes. Under nearest rounding three transfers of 2/3 each became
+        // 1 and the loser paid 3 against a stake of 2. Under truncation every transfer is 0, the market
+        // collapses to one edge, and the lowest scorer owes one beer to the highest.
+        DarefulDares.Dare memory d = baseDare(DARE, DarefulDares.Kind.Binary, BEER, DarefulDares.Stalemate.Arbitrate, DEADLINE, 0, 0, 0);
+        (DarefulDares.Position[] memory ps, bytes[] memory sigs) =
+            positionsFor(DARE, d.stalemate, arr(0, 1, 2, 3), arr(2, 2, 2, 2), arr(10000, 0, 1000, 3000), noConf());
+        dares.create(d, ps, sigs, signCreate(users[0].ledgerPk, d));
+        dares.resolve(DARE, 1, votesFrom(arr(0, 1, 2), DARE, 1));
+        uint256[] memory idx = arr(0, 1, 2, 3);
+        for (uint256 i = 0; i < 4; i++) {
+            int256 n = netOf(i, BEER, idx);
+            assertLe(n < 0 ? uint256(-n) : uint256(n), 2, "no participant loses more than their two beers");
+        }
+        assertEq(owed(1, 0, BEER), 1, "the lowest scorer owes one beer to the highest");
+        assertEq(netOf(0, BEER, idx), 1);
+        assertEq(netOf(1, BEER, idx), -1);
+        assertEq(netOf(2, BEER, idx), 0);
+        assertEq(netOf(3, BEER, idx), 0);
+    }
+
+    function test_TwoBeersFourPeopleThreeWayTieAtTheBottomMintsNothing() public {
+        DarefulDares.Dare memory d = baseDare(DARE, DarefulDares.Kind.Binary, BEER, DarefulDares.Stalemate.Arbitrate, DEADLINE, 0, 0, 0);
+        (DarefulDares.Position[] memory ps, bytes[] memory sigs) =
+            positionsFor(DARE, d.stalemate, arr(0, 1, 2, 3), arr(2, 2, 2, 2), arr(10000, 0, 0, 0), noConf());
+        dares.create(d, ps, sigs, signCreate(users[0].ledgerPk, d));
+        dares.resolve(DARE, 1, votesFrom(arr(0, 1, 2), DARE, 1));
+        uint256[] memory idx = arr(0, 1, 2, 3);
+        for (uint256 i = 0; i < 4; i++) {
+            assertEq(netOf(i, BEER, idx), 0, "ties at the bottom void the single edge");
+        }
+        assertEq(uint8(dares.dareOf(DARE).status), uint8(DarefulDares.Status.Resolved));
+    }
+
+    function test_LargeStakesDoNotCollapse() public {
+        // Same numbers in cents: the transfers are nonzero and the pairwise rule applies as normal.
+        DarefulDares.Dare memory d = _binary(DARE, DarefulDares.Stalemate.Arbitrate);
+        (DarefulDares.Position[] memory ps, bytes[] memory sigs) =
+            positionsFor(DARE, d.stalemate, arr(0, 1, 2, 3), arr(200, 200, 200, 200), arr(10000, 0, 1000, 3000), noConf());
+        dares.create(d, ps, sigs, signCreate(users[0].ledgerPk, d));
+        dares.resolve(DARE, 1, votesFrom(arr(0, 1, 2), DARE, 1));
+        // user 0 (10000) vs user 1 (0): 200 * 10000 / 30000 = 66.67 -> 66
+        assertEq(owed(1, 0, USD), 66);
+        // user 0 vs user 2 (1900): 200 * 8100 / 30000 = 54
+        assertEq(owed(2, 0, USD), 54);
+        // user 0 vs user 3 (5100): 200 * 4900 / 30000 = 32.67 -> 32
+        assertEq(owed(3, 0, USD), 32);
+        uint256[] memory idx = arr(0, 1, 2, 3);
+        assertEq(netOf(0, USD, idx), 152);
     }
 
     // ------------------------------------------------------------------ unquantifiable denominations
@@ -573,7 +628,7 @@ contract DarefulDaresTest is DarefulTestBase {
         dares.arbitrate(DARE, 1, false, ruling);
         assertEq(uint8(dares.dareOf(DARE).status), uint8(DarefulDares.Status.Resolved));
         assertEq(dares.rulingHashOf(DARE), ruling);
-        assertEq(owed(3, 1, USD), 607, "arbitration settles exactly like a quorum");
+        assertEq(owed(3, 1, USD), 606, "arbitration settles exactly like a quorum");
     }
 
     function test_ArbitrateRefusesAVoidStalemateMarket() public {

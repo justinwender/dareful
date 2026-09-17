@@ -574,30 +574,6 @@ export const darefulDaresAbi = [
   },
   {
     "type": "function",
-    "name": "roundDiv",
-    "inputs": [
-      {
-        "name": "x",
-        "type": "int256",
-        "internalType": "int256"
-      },
-      {
-        "name": "d",
-        "type": "int256",
-        "internalType": "int256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "int256",
-        "internalType": "int256"
-      }
-    ],
-    "stateMutability": "pure"
-  },
-  {
-    "type": "function",
     "name": "rulingHashOf",
     "inputs": [
       {
@@ -698,6 +674,30 @@ export const darefulDaresAbi = [
         "name": "",
         "type": "uint16",
         "internalType": "uint16"
+      }
+    ],
+    "stateMutability": "pure"
+  },
+  {
+    "type": "function",
+    "name": "truncDiv",
+    "inputs": [
+      {
+        "name": "x",
+        "type": "int256",
+        "internalType": "int256"
+      },
+      {
+        "name": "d",
+        "type": "int256",
+        "internalType": "int256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "int256",
+        "internalType": "int256"
       }
     ],
     "stateMutability": "pure"

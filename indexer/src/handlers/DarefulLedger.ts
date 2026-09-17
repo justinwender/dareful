@@ -1,5 +1,5 @@
 import { indexer } from "envio";
-import { drain, eventId, lc, openEdge } from "./shared";
+import { bytes16, drain, eventId, lc, openEdge } from "./shared";
 
 indexer.onEvent({ contract: "DarefulLedger", event: "GroupCreated" }, async ({ event, context }) => {
   const groupId = lc(event.params.groupId);
@@ -60,7 +60,7 @@ indexer.onEvent({ contract: "DarefulLedger", event: "DenomCreated" }, async ({ e
 });
 
 indexer.onEvent({ contract: "DarefulLedger", event: "Confirmed" }, async ({ event, context }) => {
-  const obligationId = lc(event.params.obligationId);
+  const obligationId = bytes16(event.params.obligationId);
   const groupId = lc(event.params.groupId);
   const denomId = lc(event.params.denomId);
   const debtor = lc(event.params.debtor);
@@ -108,7 +108,7 @@ indexer.onEvent({ contract: "DarefulLedger", event: "Confirmed" }, async ({ even
 });
 
 indexer.onEvent({ contract: "DarefulLedger", event: "Closed" }, async ({ event, context }) => {
-  const obligationId = lc(event.params.obligationId);
+  const obligationId = bytes16(event.params.obligationId);
   const creditor = lc(event.params.creditor);
   const qty = event.params.qty;
   const reason = Number(event.params.reason) === 0 ? "SETTLED" : "FORGIVEN";

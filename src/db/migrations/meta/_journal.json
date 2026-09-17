@@ -15,6 +15,20 @@
       "when": 1789596518460,
       "tag": "0001_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789684117579,
+      "tag": "0002_drop_photos",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1789684117953,
+      "tag": "0003_media_and_marks",
+      "breakpoints": true
     }
   ]
 }

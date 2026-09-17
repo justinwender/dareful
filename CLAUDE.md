@@ -4,6 +4,17 @@ Working brief for Dareful (dareful.app). `PLANNING.md` is the specification; thi
 
 This repository is public. Nothing personal about the author, and no employer of the author, current or former, goes into any committed file. Everything committed is about the product.
 
+## Documents
+
+Six documents. Each is authoritative for one thing.
+
+- `PLANNING.md`: the architecture. Frozen at the Phase 0 kickoff and never updated again. Authoritative except where `docs/decisions.md` records a correction.
+- `docs/decisions.md`: every architectural decision with its rejected alternative, and every correction to `PLANNING.md` made after it froze. Authoritative over `PLANNING.md` on any conflict.
+- `docs/marks-and-memories.md`: marks (an emoji or picture a creator attaches to a market or a denomination) and media on events. Changes the schema: `media` replaces `photos`, marks live on `dares` and `denominations`.
+- `docs/design.md`: the design specification. Tokens as literal values, the two propagating rationales (obligation direction without profit-and-loss color; the visual language for denominations), component states, and the rules for deriving screens nobody drew.
+- `docs/design/reference/UI Design.html`: the exported design. Source of truth for values and layout intent, never copied as markup.
+- `CLAUDE.md`: this file, the working brief. Nothing but the app belongs in the repository root.
+
 ## What this is
 
 A social ledger for friend groups, built around the friendly dare. It records obligations between friends in whatever currency the group runs on (dollars, beers, rounds, favors, next times), created four ways: someone loses a dare, someone loses an argument, someone covers something, or a receipt gets split. Confirmed obligations live onchain (Monad) as non-transferable ERC-1155 records that nobody can move, sell, or redeem. Nothing of monetary value is ever held.
@@ -96,6 +107,8 @@ Every user has two Dynamic embedded wallets on Monad, created invisibly at first
 
 The contracts enforce the split. `DarefulLedger` registers both wallets per member. `DarefulDares` reads the quorum from `DarefulLedger.governanceOf(groupId)` inside `create`, never from calldata, and accepts votes only from those governance addresses. Whether Dynamic's per-wallet MPC shares are cryptographically isolated is an open question (PLANNING.md 15.1); until confirmed, the isolation is operational: the server never receives governance shares.
 
+Membership changes are relayer-only through submission. A compromised relayer could register fabricated members into an existing group and, with delegated ledger shares, mint obligations against a real user in every later market there. Required before mainnet (docs/decisions.md, 2026-09-17): membership changes signed by the governance wallet, with the creator pre-authorizing at contact-pick time and the signature redeemed at bind. Not built in Phase 1.
+
 The three rules:
 
 1. **The server can write the ledger but can never cast a vote.** Actions that bind only yourself may be signed silently on your behalf. Actions that bind other people always require a signature from a key the server does not hold, or a consent to arbitration signed with that key before the outcome was known. A compromised server holding every delegated share can write any ledger entry; it cannot produce a single vote.
@@ -126,7 +139,7 @@ What exists and what it is for. The full schema, with every column and constrain
 **Onchain (Monad, Foundry, OpenZeppelin ERC-1155):**
 
 - `DarefulLedger`. One ERC-1155 for all groups. Token id is the keccak of `(groupId, denomId, debtor)` for fungible obligations, with `obligationId` appended for unique ones; the creditor holds the balance. `_update` reverts every transfer unconditionally. Registers members (`Member { ledger, governance }`), groups, and denominations (with a `quantifiable` flag), and exposes `governanceOf(groupId)`. Mutations: `confirm` (debtor signs, mints to creditor), `confirmMany` (one signature over a batch, `_mintBatch`), `close` (creditor signs, burns, reason `Settled` or `Forgiven`), `net` (either party signs, burns the min of reciprocal edges), `mintFromDare` (only `DarefulDares`). Every mutation requires both parties to be registered members of the group. Every mint carries the offchain uuid as `bytes16` in `data`.
-- `DarefulDares`. A market is a question with a scoring rule; no sides, no pot, no price. `create` is one atomic call at lock carrying the market and every position with its `Enter` signature; the quorum is the group's governance wallets snapshotted from the ledger; `threshold` defaults to `floor(quorum.length / 2) + 1`. `resolve` verifies `threshold` `Vote` signatures for one outcome, deduplicated by signer (`VOID` is a valid outcome: mints nothing, toll applies). `arbitrate` (relayer only, after `resolvesBy`, only if `stalemate == Arbitrate`, records `rulingHash`, carries a `voided` flag). `expire` (anyone, after `resolvesBy`, only if `stalemate == Void`, no toll). Scoring in basis points, 0 to 10000: Binary Brier, Numeric absolute error over `range`, Categorical Brier over a distribution (divide by 20000). Pairwise settlement `transfer_ij = min(s_i, s_j) x (S_i - S_j) / (N - 1) / 10000`, each transfer rounded independently, every nonzero transfer one `mintFromDare` edge from the lower scorer to the higher. Unquantifiable denominations force every stake to 1 and collapse the market to one edge, lowest scorer to highest, ties void.
+- `DarefulDares`. A market is a question with a scoring rule; no sides, no pot, no price. `create` is one atomic call at lock carrying the market and every position with its `Enter` signature; the quorum is the group's governance wallets snapshotted from the ledger; `threshold` defaults to `floor(quorum.length / 2) + 1`. `resolve` verifies `threshold` `Vote` signatures for one outcome, deduplicated by signer (`VOID` is a valid outcome: mints nothing, toll applies). `arbitrate` (relayer only, after `resolvesBy`, only if `stalemate == Arbitrate`, records `rulingHash`, carries a `voided` flag). `expire` (anyone, after `resolvesBy`, only if `stalemate == Void`, no toll). Scoring in basis points, 0 to 10000: Binary Brier, Numeric absolute error over `range`, Categorical Brier over a distribution (divide by 20000). Pairwise settlement `transfer_ij = min(s_i, s_j) x (S_i - S_j) / (N - 1) / 10000`, each transfer truncated toward zero independently (a correction to PLANNING.md, which said nearest: truncation keeps `|net_i| <= s_i` exact), every nonzero transfer one `mintFromDare` edge from the lower scorer to the higher. If every transfer truncates to zero the market collapses to one edge, lowest scorer to highest, ties mint nothing. Unquantifiable denominations force every stake to 1 and are an instance of that rule, not a special case. One market resolution per transaction, always; the indexer links minted edges to their market through the settlement transaction.
 
 **Offchain (Postgres via Supabase, Drizzle; every query server-side over `DATABASE_URL`):**
 
@@ -135,11 +148,19 @@ What exists and what it is for. The full schema, with every column and constrain
 - `obligation_proposals`: everything not yet confirmed (pending, declined, disputed); either side may be a user or a claim. `obligations`: the offchain shadow of a confirmed mint, same uuid, holding only what the chain does not (`amount_cents` magnitude, `settle_expected`, memo, photo, confirm tx). Open, settled, and forgiven are derived from Envio, never stored.
 - `dares`, `dare_positions`, `dare_statements`, `dare_votes`: market text and terms, AI anchor and proposal, positions (a mirror of `Entered` for onchain markets, authoritative for provisional ones), arbitration statements, collected vote signatures.
 - `participant_claims`, `claim_tokens`, `personal_links`, `room_codes`: accountless participation. A claim is a first-class participant; binding rewrites every reference to the user in one transaction.
-- `plans`, `plan_rsvps`, `photos`: the forward timeline and the memory layer.
+- `plans`, `plan_rsvps`: the forward timeline.
+- `media`: photos and video on a market (`dare_id`) or an obligation (`obligation_id`, the settlement photo), exactly one of the two. Replaces `photos`. Holds kind, storage key, poster key, dimensions, duration, author, and `captured_at` from EXIF; every other EXIF field, GPS above all, is stripped at upload. Served through signed URLs behind an authorization check (the market's participants and the group it was asked in), never a public bucket. Derivatives: 1080px long edge, 256px square, poster frame.
+- Marks: `mark_kind` (`emoji` or `image`) and `mark_value` on `dares` and `denominations`. Blank by default, never suggested or defaulted, never load-bearing: every screen reads with marks off.
 - `delegations`: encrypted delegated ledger-wallet credentials, the most sensitive table; a `before insert` trigger rejects any governance wallet; accessible only from `src/lib/chain/delegated-signer.ts`.
 - `expenses`, `expense_items`, `expense_tax_lines`, `item_claims`: receipts, offchain until finalization produces proposals (Phase 8).
 
 **Indexer (Envio HyperIndex):** the only chain reader in the stack. Entities `Obligation` (with `remaining`), `Group`, `Member`, `Denom`, `Dare`, `Position`, plus one entity per event. Serves the `OpenBetween` query (PLANNING.md section 10).
+
+## Design
+
+`docs/design.md` is the specification and `docs/design/reference/UI Design.html` is the export. Port values and layout intent from the export into Tailwind and shadcn components; never copy its markup. The tokens live in `src/app/globals.css` as CSS custom properties and the Tailwind theme reads from them, so a screen built in Phase 5 cannot drift from one built in Phase 1. Dark is the only shipped theme. Young Serif for a question, an outcome, or one number that matters; Hanken Grotesk for everything else; 13px is the floor.
+
+Screens nobody drew are derived from the tokens and the two rationales in `docs/design.md` section 2: obligation direction is encoded by side, person hue, grammar, and token anatomy, never by color valence; denominations are standing-unit glyph tallies, quoted invented words, then plain numerals for money, with an optional mark in front that is never load-bearing. Do not invent a third pattern. If the rationales do not cover a case, ask.
 
 ## Conventions (verbatim from PLANNING.md section 13)
 
@@ -182,6 +203,7 @@ Real values live in `.env.local` (gitignored). `.env.example` is committed with 
 - `DATABASE_URL`: the Supabase Session pooler string (session mode, port 5432). Not a Direct connection (IPv6-only on the free tier) and not the transaction pooler on port 6543. Migrations need session mode.
 - `NEXT_PUBLIC_DYNAMIC_ENVIRONMENT_ID`: a Dynamic sandbox environment with embedded wallets enabled. Monad testnet is not a dashboard toggle; register it in code through an `evmNetworks` override in the SDK config (Phase 1).
 - `MONAD_RPC_URL`: Alchemy, carries the API key, server-only, no `NEXT_PUBLIC_` prefix. `MONAD_CHAIN_ID`: 10143 (testnet) through submission, 143 (mainnet) after.
+- `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`: server-only, for Storage. There is no `NEXT_PUBLIC_SUPABASE_*` variable and there never will be.
 - `RELAYER_ADDRESS` and `RELAYER_PRIVATE_KEY`: a fresh keypair funded with testnet MON. It holds gas and nothing else.
 - `PHONE_HASH_SALT`: permanent. Once one hash is stored it can never change.
 - `DAREFUL_LEDGER_ADDRESS` and `DAREFUL_DARES_ADDRESS`: from the Phase 0 deploy; read from environment everywhere.
@@ -189,7 +211,7 @@ Real values live in `.env.local` (gitignored). `.env.example` is committed with 
 - The browser gets no Supabase connection: no anon key, no `NEXT_PUBLIC_SUPABASE_ANON_KEY`, no client-side Supabase SDK.
 - Deploy: Vercel, custom domain `dareful.app`, DNS through Cloudflare set to DNS-only. Never use a `*.vercel.app` URL for anything auth-related.
 - MCP servers: Supabase, Vercel, Cloudflare (Dynamic is available from a terminal session). Use them rather than asking for dashboard reads.
-- Envio local run: `npm run indexer:dev` needs Docker; with Colima, export `DOCKER_HOST=unix://$HOME/.colima/default/docker.sock` first. The indexer syncs from `MONAD_INDEXER_RPC_URL` (the public Monad testnet RPC; the Alchemy free tier caps `eth_getLogs` at 10 blocks and stalls) until `ENVIO_API_TOKEN` exists, after which the `rpc` block in `indexer/config.yaml` comes out and HyperSync takes over. Stop the indexer (`npm run indexer:stop`) before running the seed when both use the Alchemy key.
+- Envio local run: `npm run indexer:dev` needs Docker; with Colima, export `DOCKER_HOST=unix://$HOME/.colima/default/docker.sock` first. The indexer syncs from HyperSync with `ENVIO_API_TOKEN` (in `indexer/.env`); it never touches the Alchemy key. Since Phase 1 there is no `rpc` block in `indexer/config.yaml`.
 - Migrations: `npm run db:generate` writes SQL to `src/db/migrations`; apply through the Supabase MCP (`apply_migration`) and then run its advisors. `drizzle-kit migrate` is not used.
 
 ## Repository layout
@@ -216,19 +238,24 @@ Real values live in `.env.local` (gitignored). `.env.example` is committed with 
 - The quorum is read from `DarefulLedger.governanceOf` inside `create`; a caller-supplied quorum is ignored.
 - `create` is atomic: the market and every position land together or not at all.
 - Scoring is in basis points; the categorical formula divides by 20000, not 2.
-- Pairwise transfers round independently; antisymmetry keeps the sum at exactly zero; no participant's net exceeds their stake in magnitude.
-- Unquantifiable denominations force every stake to 1 and collapse the market to one edge.
+- Pairwise transfers truncate toward zero independently; antisymmetry keeps the sum at exactly zero; no participant's net exceeds their stake in magnitude, exactly. When every transfer truncates to zero the market collapses to one edge, lowest to highest, ties mint nothing.
+- Unquantifiable denominations force every stake to 1; the collapse rule handles them.
 - Every relayer transaction passes explicit `gas` from `gas.ts`. Never `estimateGas`. Size the table from Monad (the calibration survey in `scripts/gas-survey.ts` and `RELAYER_LOG_GAS=1` receipts), never from the Foundry gas report: Monad prices cold storage per 128-slot page (8100), cold account access at 10100, and ecrecover at 6000, so a limit that fits a local EVM can run out on Monad.
 - The Alchemy free tier caps `eth_getLogs` at a 10-block range on Monad and rate-limits at 3,000 compute units per rolling 10 seconds. Envio is the only chain reader; the app never scans logs, and nothing else may share the relayer's RPC budget while it is sending.
+- **The timeline orders by the offchain timestamp, never the chain timestamp.** Every event row sorts on its Postgres `created_at` (or `occurs_at`, `resolved_at` as the event defines). Block timestamps are when the relayer got around to it, and the seed backdates history by months while its blocks are all from one afternoon. This is a rule for every query and every view, not a behavior of one.
+- One market resolution per transaction. Never batch two `resolve` or `arbitrate` calls.
+- Copy never says owes, debt, balance, owed, outstanding, overdue, up, down, net, or "settle up" as a noun; and no screen says wallet, transaction, gas, signature, chain, or token. There is no red and no green anywhere in the product.
 - The seed produces both regimes, always-square and let-it-ride. A one-regime seed makes Phase 1 look correct when it is not.
 - No em dashes in any generated documentation or copy.
 
 ## Current phase
 
-**Phase 0: scaffolding, contracts, indexer.** Target September 17, 2026. Submission gate October 13, 2026, 23:59 ET. Phases 0 through 2 are the minimum viable submission; the first portal submission happens at the end of Phase 2.
+**Phase 1: auth and ledger core, plus the design implementation and the marks and media schema.** Phase 0 was approved on September 17, 2026. Submission gate October 13, 2026, 23:59 ET. Phases 0 through 2 are the minimum viable submission; the first portal submission happens at the end of Phase 2.
 
-Scope: `CLAUDE.md`, `.env.example`, `docs/decisions.md`, `docs/testing.md`. Next.js App Router project, TypeScript strict, Tailwind, shadcn/ui installed with no components used yet. Drizzle schema for every table in section 5b with every check constraint written there, the `before insert` trigger on `delegations`, and the XOR checks on `obligation_proposals`, `dare_positions`, `group_members`, and `personal_links`; initial migration with row-level security enabled and denying everything on every table; runs clean against Supabase. `DarefulLedger` and `DarefulDares` implementing section 5a exactly, with Foundry tests covering: non-transferability, netting, batch confirmation under one signature, quorum sourced from the ledger and not from the caller, quorum threshold, duplicate-signer rejection, one position per wallet, atomic create with every position or none, a quorum for `VOID`, Brier and absolute-error scoring against hand-computed cases, pairwise transfers against the worked example in section 8c, zero-sum after independent rounding, loss bounded by stake under unequal stakes, arbitration gated on the stalemate setting, expiry gated on the stalemate setting. Deploy to Monad testnet with the relayer key; addresses into `.env.local`. Envio indexer with `Obligation`, `Dare`, and event entities serving GraphQL, including `OpenBetween`, running locally against the testnet deployment. Seed script producing two groups onchain and offchain, one always-square and one let-it-ride, each with months of plausible obligations, closes, and nets, written through the relayer so Envio indexes them. No UI. No routes.
+Scope: PLANNING.md section 12 Phase 1 as written, with its checkpoint as written, plus the design tokens and components from `docs/design.md`, plus the schema changes from `docs/marks-and-memories.md` as corrected in `docs/decisions.md` (2026-09-17). Two things come first: Monad testnet registered in the Dynamic SDK through an `evmNetworks` override with a wallet confirmed on chain 10143, and the timeline-ordering rule above.
 
-**Checkpoint:** contracts pass all tests on testnet, the migration runs clean, Envio returns correct balances for the seed, and `docs/decisions.md` has an entry for every choice made. Stop there and check in.
+It is the largest phase in the plan, so it splits at the seam between the account layer and the accountless layer. First: Dynamic login with both wallets, groups, denominations with marks, manual propose and confirm with prompted signing through the relayer, and the person view. Then: contacts, personal links, the composer handoff, claims, tokens, binding, merge, and the claimant's first screen. Check in at the seam rather than pushing through; Phase 2 carries the first submission and is protected.
 
-Next, only after explicit approval: Phase 1, auth and ledger core (PLANNING.md section 12).
+**Checkpoint (PLANNING.md):** two people on two phones, one Android, create and confirm an obligation and both see it in the person view within one block; the creator picks a third person from contacts, logs "I got this one" against them, and that ghost's pending obligation binds and mints when they sign up a day later on the same phone number.
+
+Next, only after explicit approval: Phase 2, the fast loop and the first submission. Media (storage, derivatives, signed URLs, the frame component, and a server-side share renderer with an emoji font) is the largest addition to Phase 2 since it was written.

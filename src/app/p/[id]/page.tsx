@@ -1,0 +1,111 @@
+import { notFound, redirect } from "next/navigation";
+import { Avatar } from "@/components/ledger/avatar";
+import { CoveredCard } from "@/components/ledger/covered-card";
+import { PersonHeader } from "@/components/ledger/person-header";
+import { ActionArea, Screen, TopBar } from "@/components/ledger/screen";
+import { SignOutButton } from "@/components/auth/sign-out-button";
+import { ButtonLink } from "@/components/ui/button";
+import { currentUser } from "@/lib/auth/session";
+import { personView, userById } from "@/lib/ledger/person";
+import { hueFor } from "@/lib/ui/hue";
+
+export const dynamic = "force-dynamic";
+
+export default async function PersonPage({ params }: { params: Promise<{ id: string }> }) {
+  const me = await currentUser();
+  if (!me) redirect("/");
+  const { id } = await params;
+  if (id === me.id) return <Self me={me} />;
+  const them = await userById(id);
+  if (!them) notFound();
+
+  const view = await personView(me, them);
+  const byId = new Map<string, { id: string; displayName: string }>([
+    [me.id, me],
+    [them.id, them],
+  ]);
+
+  return (
+    <Screen>
+      <TopBar back={{ href: "/", label: "Back" }} />
+      <div className="flex flex-col gap-6 py-2">
+        <div className="flex items-center gap-4">
+          <Avatar name={them.displayName} hue={hueFor(them.id)} size={56} />
+          <h1 className="text-display text-ink">{them.displayName}</h1>
+        </div>
+        <PersonHeader me={me} them={them} theirs={view.header.theirs} yours={view.header.yours} />
+        {view.timeline.length === 0 ? (
+          <p className="text-body text-ink-2">Nothing between you two yet.</p>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {view.timeline.map((e) => {
+              if (e.kind === "proposal") {
+                const debtor = byId.get(e.proposal.fromUser ?? "");
+                const creditor = byId.get(e.proposal.toUser ?? "");
+                if (!debtor || !creditor) return null;
+                return (
+                  <CoveredCard
+                    key={`p-${e.proposal.id}`}
+                    viewerId={me.id}
+                    creditor={creditor}
+                    debtor={debtor}
+                    denomination={e.denomination}
+                    quantity={e.proposal.quantity ?? 1n}
+                    amountCents={e.proposal.amountCents}
+                    memo={e.proposal.memo}
+                    at={e.at}
+                    groupName={e.groupName}
+                    state="pending"
+                    href={debtor.id === me.id ? `/o/${e.proposal.id}` : undefined}
+                  />
+                );
+              }
+              const debtor = byId.get(e.obligation.fromUser);
+              const creditor = byId.get(e.obligation.toUser);
+              if (!debtor || !creditor) return null;
+              const total = e.obligation.quantity ?? 1n;
+              const state = e.open === 0n ? (e.forgiven > 0n && e.settled === 0n ? "forgiven" : "settled") : e.open < total ? "partly" : "open";
+              return (
+                <CoveredCard
+                  key={e.obligation.id}
+                  viewerId={me.id}
+                  creditor={creditor}
+                  debtor={debtor}
+                  denomination={e.denomination}
+                  quantity={total}
+                  amountCents={e.obligation.amountCents}
+                  memo={e.obligation.memo}
+                  at={e.at}
+                  groupName={e.groupName}
+                  state={state}
+                />
+              );
+            })}
+          </div>
+        )}
+        {view.rally.sentence ? <p className="text-body-sm text-ink-2">{view.rally.sentence}</p> : null}
+      </div>
+      <ActionArea>
+        <ButtonLink href={`/new?person=${them.id}`} variant="primary" className="w-full">
+          I got this one
+        </ButtonLink>
+      </ActionArea>
+    </Screen>
+  );
+}
+
+function Self({ me }: { me: { id: string; displayName: string; ledgerWallet: string; governanceWallet: string } }) {
+  return (
+    <Screen>
+      <TopBar back={{ href: "/", label: "Back" }} />
+      <div className="flex flex-col gap-6 py-2">
+        <div className="flex items-center gap-4">
+          <Avatar name={me.displayName} hue={hueFor(me.id)} size={56} />
+          <h1 className="text-display text-ink">{me.displayName}</h1>
+        </div>
+        <p className="text-body text-ink-2">This is you.</p>
+        <SignOutButton />
+      </div>
+    </Screen>
+  );
+}

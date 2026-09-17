@@ -78,7 +78,7 @@ describe("DarefulLedger handlers", () => {
               event: "Netted" as const,
               params: { groupId: GROUP, denomId: USD, a: A, b: B, qty: 600n },
               transaction: { hash: tx(200) },
-              block: { number: 63_200_077, timestamp: 1005 },
+              block: { number: 99_000_077, timestamp: 1005 },
               logIndex: 5,
             },
           ],
@@ -94,7 +94,7 @@ describe("DarefulLedger handlers", () => {
     expect(o2.netted).toBe(100n);
     expect(o3.remaining).toBe(0n);
     expect(o3.netted).toBe(600n);
-    const netted = await indexer.NettedEvent.getOrThrow("10143_63200077_5");
+    const netted = await indexer.NettedEvent.getOrThrow("10143_99000077_5");
     expect(netted.qty).toBe(600n);
   });
 

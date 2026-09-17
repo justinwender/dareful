@@ -3,6 +3,17 @@ import type { Obligation } from "envio";
 /** Lowercase hex so every address and byte string joins with the Postgres columns directly. */
 export const lc = (s: string): string => s.toLowerCase();
 
+/**
+ * A bytes16 as the contracts emit it. HyperSync decodes fixed-size bytes right-padded to 32 bytes, so an
+ * obligation id arrives as 64 hex characters with sixteen trailing zero bytes. Store the canonical 16 bytes,
+ * which is the same 128 bits as the Postgres uuid.
+ */
+export const bytes16 = (s: string): string => {
+  const h = lc(s);
+  if (!h.startsWith("0x") || h.length < 34) throw new Error(`not a bytes16: ${s}`);
+  return h.slice(0, 34);
+};
+
 export const eventId = (e: { chainId: number; block: { number: number }; logIndex: number }): string =>
   `${e.chainId}_${e.block.number}_${e.logIndex}`;
 

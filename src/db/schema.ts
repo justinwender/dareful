@@ -18,6 +18,7 @@ import {
   integer,
   numeric,
   pgTable,
+  index,
   primaryKey,
   smallint,
   text,
@@ -137,6 +138,10 @@ export const denominations = pgTable(
       .notNull()
       .references(() => users.id),
     lastUsedAt: ts("last_used_at"),
+    /** 'emoji' | 'image' | null for no mark. Blank is the default and stays blank. */
+    markKind: text("mark_kind"),
+    /** The emoji, or a media id as text for a picture mark. */
+    markValue: text("mark_value"),
   },
   (t) => [
     unique("denominations_group_onchain").on(t.groupId, t.onchainId),
@@ -144,6 +149,8 @@ export const denominations = pgTable(
       "denominations_template_known",
       sql`${t.template} is null or ${t.template} in ('usd', 'beer', 'coffee', 'round', 'next_time')`,
     ),
+    check("denominations_mark_kind_known", sql`${t.markKind} is null or ${t.markKind} in ('emoji', 'image')`),
+    check("denominations_mark_both_or_neither", sql`(${t.markKind} is null) = (${t.markValue} is null)`),
   ],
 ).enableRLS();
 
@@ -198,16 +205,6 @@ export const obligationProposals = pgTable(
   ],
 ).enableRLS();
 
-export const photos = pgTable("photos", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  uploadedBy: uuid("uploaded_by")
-    .notNull()
-    .references(() => users.id),
-  storagePath: text("storage_path").notNull(),
-  takenAt: ts("taken_at"),
-  createdAt: ts("created_at").notNull().defaultNow(),
-}).enableRLS();
-
 /** The offchain shadow; one row per confirmed mint. Open, settled, and forgiven are derived from Envio. */
 export const obligations = pgTable(
   "obligations",
@@ -234,7 +231,8 @@ export const obligations = pgTable(
     originId: uuid("origin_id"),
     settleExpected: boolean("settle_expected").notNull(),
     memo: text("memo"),
-    photoId: uuid("photo_id").references(() => photos.id),
+    /** The settlement photo (Principle 6), once one is captured. */
+    mediaId: uuid("media_id").references((): AnyPgColumn => media.id),
     confirmTx: bytea("confirm_tx").notNull(),
     createdAt: ts("created_at").notNull().defaultNow(),
   },
@@ -301,8 +299,14 @@ export const dares = pgTable(
     resolvedBy: text("resolved_by"),
     resolvedAt: ts("resolved_at"),
     createdAt: ts("created_at").notNull().defaultNow(),
+    /** 'emoji' | 'image' | null for no mark. Blank is the default and stays blank. */
+    markKind: text("mark_kind"),
+    /** The emoji, or a media id as text for a picture mark. */
+    markValue: text("mark_value"),
   },
   (t) => [
+    check("dares_mark_kind_known", sql`${t.markKind} is null or ${t.markKind} in ('emoji', 'image')`),
+    check("dares_mark_both_or_neither", sql`(${t.markKind} is null) = (${t.markValue} is null)`),
     check("dares_kind_known", sql`${t.kind} in ('binary', 'numeric', 'categorical')`),
     check("dares_pace_known", sql`${t.pace} in ('dare', 'argument')`),
     check("dares_stalemate_known", sql`${t.stalemate} in ('arbitrate', 'void')`),
@@ -432,6 +436,48 @@ export const dareVotes = pgTable(
   (t) => [primaryKey({ columns: [t.dareId, t.userId] })],
 ).enableRLS();
 
+
+// ------------------------------------------------------------------------------------------------------
+// Media (docs/marks-and-memories.md, corrected in docs/decisions.md 2026-09-17)
+// ------------------------------------------------------------------------------------------------------
+
+/**
+ * Photos and video on a market (`dare_id`) or an obligation (`obligation_id`, the settlement photo), exactly
+ * one of the two. Replaces `photos`. `captured_at` is the only EXIF field retained; everything else, GPS above
+ * all, is stripped at upload. Served through signed URLs behind an authorization check, never a public bucket.
+ */
+export const media = pgTable(
+  "media",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    dareId: uuid("dare_id").references(() => dares.id),
+    obligationId: uuid("obligation_id").references(() => obligations.id),
+    /** 'photo' | 'video'. */
+    kind: text("kind").notNull(),
+    storageKey: text("storage_key").notNull(),
+    /** Video first frame. */
+    posterKey: text("poster_key"),
+    width: integer("width").notNull(),
+    height: integer("height").notNull(),
+    /** Video only. */
+    durationMs: integer("duration_ms"),
+    authorId: uuid("author_id")
+      .notNull()
+      .references(() => users.id),
+    /** From EXIF when present. */
+    capturedAt: ts("captured_at"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    check("media_parent_xor", sql`(${t.dareId} is null) <> (${t.obligationId} is null)`),
+    check("media_kind_known", sql`${t.kind} in ('photo', 'video')`),
+    check("media_dimensions_positive", sql`${t.width} > 0 and ${t.height} > 0`),
+    check("media_duration_video_only", sql`${t.kind} = 'video' or ${t.durationMs} is null`),
+    index("media_dare_created").on(t.dareId, t.createdAt),
+    index("media_obligation_created").on(t.obligationId, t.createdAt),
+  ],
+).enableRLS();
+
 // ------------------------------------------------------------------------------------------------------
 // Plans
 // ------------------------------------------------------------------------------------------------------
@@ -514,7 +560,7 @@ export const expenses = pgTable(
     /** Geocoded lazily for the map view. */
     merchantAddress: text("merchant_address"),
     occurredAt: ts("occurred_at").notNull(),
-    receiptPhotoId: uuid("receipt_photo_id").references(() => photos.id),
+    receiptMediaId: uuid("receipt_media_id").references(() => media.id),
     /** 'manual' | 'receipt' | 'roulette'. */
     source: text("source").notNull(),
     /** 'draft' | 'parsed' | 'needs_review' | 'claiming' | 'finalized'. */

@@ -17,8 +17,10 @@ import { DarefulLedger } from "./DarefulLedger.sol";
 ///            cannot supply a quorum or a threshold.
 ///         3. An outcome is set only by `threshold` distinct governance signatures for that outcome, or by the
 ///            relayer's arbitration after the deadline under a rule every participant signed at entry.
-///         4. Settlement is pairwise, rounded per transfer, antisymmetric, and every nonzero transfer becomes
-///            one non-transferable obligation on the ledger, so nothing is ever held here.
+///         4. Settlement is pairwise, truncated toward zero per transfer, antisymmetric, and every nonzero
+///            transfer becomes one non-transferable obligation on the ledger, so nothing is ever held here.
+///            Truncation is what makes |net_i| <= s_i hold exactly after rounding; when every transfer
+///            truncates to zero the market collapses to one edge, lowest scorer to highest, ties mint nothing.
 contract DarefulDares is EIP712 {
     // ----------------------------------------------------------------------------------------------------
     // Types (PLANNING.md 5a)
@@ -373,8 +375,10 @@ contract DarefulDares is EIP712 {
     }
 
     /// @notice One pairwise transfer in whole units, positive meaning `j` pays `i`:
-    ///         round(min(s_i, s_j) * (S_i - S_j) / (N - 1) / 10000), rounded half away from zero, so
-    ///         transfer(i, j) == -transfer(j, i) exactly and the market sums to zero.
+    ///         trunc(min(s_i, s_j) * (S_i - S_j) / (N - 1) / 10000), truncated toward zero. Truncation is odd,
+    ///         so transfer(i, j) == -transfer(j, i) exactly and the market sums to zero, and the sum of
+    ///         truncated magnitudes never exceeds the sum of true magnitudes, so nobody's net exceeds their
+    ///         stake.
     function pairwiseTransfer(uint256 stakeI, uint256 stakeJ, uint16 scoreI, uint16 scoreJ, uint256 n)
         public
         pure
@@ -384,14 +388,13 @@ contract DarefulDares is EIP712 {
         if (stakeI > MAX_STAKE || stakeJ > MAX_STAKE) revert BadValue();
         uint256 minStake = stakeI < stakeJ ? stakeI : stakeJ;
         int256 raw = int256(minStake) * (int256(uint256(scoreI)) - int256(uint256(scoreJ)));
-        return roundDiv(raw, int256((n - 1) * BPS));
+        return truncDiv(raw, int256((n - 1) * BPS));
     }
 
-    /// @notice Integer division rounded to the nearest whole, half away from zero. `d` must be positive.
-    function roundDiv(int256 x, int256 d) public pure returns (int256) {
+    /// @notice Integer division truncated toward zero (Solidity's native signed division). `d` must be positive.
+    function truncDiv(int256 x, int256 d) public pure returns (int256) {
         if (d <= 0) revert BadValue();
-        if (x >= 0) return (x + d / 2) / d;
-        return -((-x + d / 2) / d);
+        return x / d;
     }
 
     // ----------------------------------------------------------------------------------------------------
@@ -451,8 +454,9 @@ contract DarefulDares is EIP712 {
     }
 
     /// @dev Score everyone, then settle every pair. Each nonzero transfer is one edge on the ledger from the
-    ///      lower scorer to the higher. Unquantifiable denominations collapse to a single edge: the lowest
-    ///      scorer owes one unit to the highest, and a tie at either end mints nothing.
+    ///      lower scorer to the higher. If every transfer truncates to zero (tiny stakes, or the stake of 1 an
+    ///      unquantifiable denomination forces), the market collapses to a single edge: the lowest scorer owes
+    ///      one unit to the highest, and a tie at either end mints nothing.
     function _settle(Dare storage s) private {
         Position[] storage ps = _positions[s.id];
         uint256 n = ps.length;
@@ -462,14 +466,25 @@ contract DarefulDares is EIP712 {
             emit Scored(s.id, ps[i].ledger, scores[i]);
         }
 
-        if (!ledger.denomOf(s.groupId, s.denomId).quantifiable) {
+        int256[] memory transfers = new int256[]((n * (n - 1)) / 2);
+        bool anyNonzero = false;
+        uint256 k = 0;
+        for (uint256 i = 0; i < n; i++) {
+            for (uint256 j = i + 1; j < n; j++) {
+                transfers[k] = pairwiseTransfer(ps[i].stake, ps[j].stake, scores[i], scores[j], n);
+                if (transfers[k] != 0) anyNonzero = true;
+                k++;
+            }
+        }
+        if (!anyNonzero) {
             _settleSingleEdge(s, ps, scores);
             return;
         }
 
+        k = 0;
         for (uint256 i = 0; i < n; i++) {
             for (uint256 j = i + 1; j < n; j++) {
-                int256 t = pairwiseTransfer(ps[i].stake, ps[j].stake, scores[i], scores[j], n);
+                int256 t = transfers[k++];
                 if (t > 0) {
                     _mintEdge(s, ps[j].ledger, ps[i].ledger, uint256(t));
                 } else if (t < 0) {
