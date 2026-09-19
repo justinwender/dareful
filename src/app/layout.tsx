@@ -18,8 +18,12 @@ const youngSerif = Young_Serif({
 });
 
 export const metadata: Metadata = {
+  // Absolute origin for the Open Graph image a share route generates. Without it the image URL is relative
+  // and a messaging app's preview bot will not fetch it, so a pasted link renders as bare text.
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "https://dareful.app"),
   title: "Dareful",
   description: "A social ledger for friend groups, built around the friendly dare.",
+  openGraph: { siteName: "Dareful", type: "website" },
 };
 
 export const viewport: Viewport = {

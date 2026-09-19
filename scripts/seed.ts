@@ -15,7 +15,7 @@
 import { randomUUID } from "node:crypto";
 import { encodeAbiParameters, keccak256, stringToHex, type Address, type Hex } from "viem";
 import { mnemonicToAccount, type HDAccount } from "viem/accounts";
-import { inArray, like } from "drizzle-orm";
+import { and, inArray, like, ne, or } from "drizzle-orm";
 import { db, schema } from "../src/db";
 import { contracts } from "../src/lib/chain/contracts";
 import { gasFor } from "../src/lib/chain/gas";
@@ -284,8 +284,38 @@ async function main(): Promise<void> {
       await tx.delete(schema.obligations).where(inArray(schema.obligations.groupId, gids));
       await tx.delete(schema.obligationProposals).where(inArray(schema.obligationProposals.groupId, gids));
       await tx.delete(schema.groupMembers).where(inArray(schema.groupMembers.groupId, gids));
+      await tx.delete(schema.groupInvites).where(inArray(schema.groupInvites.groupId, gids));
       await tx.delete(schema.denominations).where(inArray(schema.denominations.groupId, gids));
       await tx.delete(schema.groups).where(inArray(schema.groups.id, gids));
+    }
+    // A seed user may have made a link in a group the seed does not own.
+    await tx.delete(schema.groupInvites).where(inArray(schema.groupInvites.createdBy, ids));
+    // Ghosts a seed user added while someone was developing as them. None of this is ledger history: nothing
+    // mints for a ghost, so these are pending rows and the links and seats that pointed at them.
+    const ghosts = await tx
+      .select({ id: schema.participantClaims.id })
+      .from(schema.participantClaims)
+      .where(or(inArray(schema.participantClaims.createdBy, ids), inArray(schema.participantClaims.claimedBy, ids)));
+    const cids = ghosts.map((g) => g.id);
+    if (cids.length > 0) {
+      await tx
+        .delete(schema.obligationProposals)
+        .where(
+          and(
+            ne(schema.obligationProposals.status, "confirmed"),
+            or(
+              inArray(schema.obligationProposals.fromClaim, cids),
+              inArray(schema.obligationProposals.toClaim, cids),
+              inArray(schema.obligationProposals.fromBoundClaim, cids),
+              inArray(schema.obligationProposals.toBoundClaim, cids),
+            ),
+          ),
+        );
+      await tx.delete(schema.claimTokens).where(inArray(schema.claimTokens.claimId, cids));
+      await tx.delete(schema.claimLinks).where(inArray(schema.claimLinks.claimId, cids));
+      await tx.delete(schema.groupMembers).where(inArray(schema.groupMembers.claimId, cids));
+      await tx.update(schema.participantClaims).set({ mergedInto: null }).where(inArray(schema.participantClaims.mergedInto, cids));
+      await tx.delete(schema.participantClaims).where(inArray(schema.participantClaims.id, cids));
     }
     await tx.delete(schema.users).where(inArray(schema.users.id, ids));
     log(`removed previous seed: ${ids.length} users, ${gids.length} groups`);

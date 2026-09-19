@@ -341,3 +341,206 @@ Decision: closes (settle, forgive) are Phase 4 and have no offchain row yet, so 
 ## 2026-09-17: The indexer stores `bytes16` ids as sixteen bytes
 
 Decision: HyperSync decodes fixed-size byte parameters right-padded to 32 bytes, so a `bytes16` obligation id arrives in a handler as 64 hex characters with sixteen trailing zero bytes. The handlers normalize to the canonical 16 bytes before storing, so an indexed obligation's id is the same 128 bits as its Postgres uuid and the application's parser stays strict. Found when the person view first read the indexer through the app; the Phase 0 verification compared quantities per edge, not ids, and did not catch it.
+
+# Phase 1, second half (2026-09-18)
+
+Rulings from the seam check-in, and the decisions made while building the accountless layer.
+
+## 2026-09-18: The section 8c figures under truncation, confirmed
+
+Decision: the figures in the 2026-09-17 entry stand, confirmed by an independent recomputation at the seam. Gabe is 275 plus trunc(26.67) plus trunc(606.67), which is 275 plus 26 plus 606, for +907. Alex is +164, John is -911, Justin is -160, and the column sums to zero. PLANNING.md is frozen and still prints +$9.08; this file is the correction, and the tests assert +907. The flag raised at the seam (that the review confirmed +$9.09 before adopting the rule that makes it +$9.07) is closed.
+
+## 2026-09-18: Picture marks get their own table; the `media` XOR is not widened (closes the open question)
+
+Decision: `media` keeps exactly two parents, `dare_id` and `obligation_id`. A `media` row carries an author, a capture time, a counter, a credit chip, and the rule that media belongs to the story. A denomination mark has none of those. If picture marks are built, they get their own small table. Emoji marks only for now, which is what `docs/marks-and-memories.md` phases anyway.
+
+Alternative rejected: a third parent, `denomination_id`, with an exactly-one-of-three check. Every media query would then start by excluding marks, and a mark would inherit columns that mean nothing for it.
+
+## 2026-09-18: Group invites are rows in `group_invites`, revocable and counted (supersedes the signed-token entry)
+
+Decision: a group invite is a row: `token_hash`, `group_id`, `created_by`, `expires_at`, `use_count`, `revoked_at`, `created_at`. Joining a group is a bigger grant than a market link, because it makes someone a quorum member in every later market there. Read together with the membership-registration entry (2026-09-17), a fourteen-day token that nobody can revoke is the wrong default. Expiry stays at fourteen days. Migration `0004_group_invites`.
+
+Two consequences follow from storing only the hash. A link cannot be shown again after it is made, so making one is an explicit action on the group page rather than something every page render does, which is also what keeps the count meaningful. And the signed tokens from the first half stop working; none was ever redeemed by a real login.
+
+Redeeming locks the invite row for the transaction, so two redemptions of one link (a double tap, or an effect that runs twice) serialize and count once. Only an actual join is a use; an existing member tapping the link again is not. A revoked or expired link reads exactly like one that never existed, with no reason given.
+
+Alternative rejected: keeping the stateless signed token and adding a revocation list. That is a table anyway, with none of the counting.
+
+## 2026-09-18: Any current member can turn off any of the group's links (fills a gap)
+
+Decision: the ruling made invites revocable and did not say by whom. Any current member of the group can revoke any of its links, not only the person who made it. A group has no roles anywhere in the schema, and a leaked link is every member's problem, since the person who joins through it votes in everyone's markets. Making a link also requires current membership. Flagged for review because it fills a gap.
+
+Alternative rejected: only the link's creator can revoke it. That quietly introduces a per-link owner role into a model that has none, and it fails exactly when it matters: the creator is asleep and someone else noticed the leak.
+
+## 2026-09-18: One token primitive for every link
+
+Decision: `src/lib/ledger/tokens.ts` is the single place a link token is made or hashed: 32 random bytes as base64url, with only the sha256 stored. `group_invites` uses it now, and `claim_tokens` and `personal_links` use it as they are built, which is the convention the schema comments already stated for those two tables. A string that is not shaped like a token is rejected before it reaches a query. A token says which row a link points at and nothing about who is holding it: a link never authenticates.
+
+Alternative rejected: a helper per table. Three copies of the same twenty lines would drift, and the one that drifted would be a security bug.
+
+## 2026-09-18: A claim link is a row in `claim_links`, and its token is never the browser token (fills a gap; ruled)
+
+Decision: PLANNING.md says a creator can send a claim link to a ghost and that opening it "issues a new token bound to the same claim", but specifies no table for the link. `personal_links.dare_id` is `not null`, so a personal link exists only for a market, and markets are Phase 2, while the Phase 1 checkpoint has a ghost from an "I got this one" receiving a link and binding later. A claim link is therefore its own small table: `token_hash`, `claim_id`, `created_by`, `issued_at`, `revoked_at`. Opening one issues a fresh `claim_tokens` row for that browser, which is "two tokens, one claim" as written. `personal_links` stays exactly as specified for Phase 2. Same reasoning as the picture-marks ruling: do not widen what a table means, give the new thing its own small table.
+
+Alternatives rejected: making `personal_links.dare_id` nullable, which changes a specified column and makes every personal-link query branch on null; and letting the link token be a `claim_tokens` row, which makes the URL itself the browser credential, held by the creator who composed the message.
+
+## 2026-09-18: An existing account binds to a claim on one explicit tap, never silently (fills a gap; ruled)
+
+Decision: PLANNING.md makes token binding "automatic, silent, exact" at signup and does not cover someone who is already signed in opening a claim link. A link is minted by the creator and can be forwarded, so a silent bind would attach a ghost's pending rows to whoever tapped first. A signed-in person sees who the creator thinks they are and binds only on a yes. Signup in a browser already holding the token stays automatic, as specified. This is the second rule ("a link never authenticates") applied to binding: a link may say who the creator thinks you are, and only you can say they are right.
+
+Alternatives rejected: binding silently like signup (consistent, and misbinding is already recoverable, but a forwarded link binds to the wrong person with nobody deciding anything), and never binding from a tap (leaves creator merge as the only path for a friend who signed up on another device, which makes the creator do the work in the common case).
+
+## 2026-09-18: Phone numbers are parsed to E.164 with a default region before hashing (fills a gap; corrects the first half)
+
+Decision: `normalizeE164` stripped non-digits and prepended a plus. A contact saved the way most people save numbers, `(212) 555-0142`, hashed as `+2125550142`, while the same person's login arrives from Dynamic as `+12125550142`. Two hashes for one phone, so a picked ghost would never bind on signup, and nothing would report it: the silent failure Principle 9 forbids, on the path the Phase 1 checkpoint ends with. Numbers are now parsed with `libphonenumber-js`. A number in national format is read in a default region, the country of the person who picked it (the platform's `x-vercel-ip-country` header, `US` when absent), on the reasoning that a contact saved without a country code is almost always in the saver's own country. Anything that does not parse to a valid number throws rather than hashing as something, and a national number with no region does not hash at all.
+
+`phoneOf` had the same family of bug: it skipped the country code whenever the national number began with the code's digits, which is legitimate for some countries (`+7 7xx`). It now joins code and national number, validates, and accepts the bare digits only if the joined form is not a valid number.
+
+This had to happen now. `PHONE_HASH_SALT` is permanent because a stored hash can never be recomputed, and the normalization is permanent for the same reason: a different spelling is a different hash. At the time of the change no phone hash was stored anywhere (zero on `users`, zero on `participant_claims`), so it was the last moment the rule could change for free. Verified with seven spellings of one US number giving one hash, a login matching a saved contact, and the `+7` case.
+
+Alternative rejected: keeping digit-stripping and asking creators to save contacts in international format. Nobody does, and the failure would be invisible. Also rejected: storing each user's country code to use as the default region, which keeps a piece of the phone number the design otherwise discards.
+
+Known limit, recorded: a contact saved in national format by someone travelling abroad is read in the wrong region and will not match. The typed-name and claim-link paths still bind that person; only the automatic phone match is missed.
+
+## 2026-09-18: Proposals remember which side used to be a ghost (fills a gap)
+
+Decision: binding rewrites `from_claim` or `to_claim` into a user, and the XOR checks force the claim column to null, so the rewrite destroys the one fact two later rules need: that this side used to be a ghost. `obligation_proposals` gains `from_bound_claim` and `to_bound_claim`, nullable, set only at bind, each checked to sit only beside a user on that side. A pending row with `to_bound_claim` set is the creditor-side re-confirmation PLANNING.md requires: the debtor confirms who the creditor turned out to be. A row with `from_bound_claim` set is an edge from a position entered as a ghost, which the third rule says always prompts, delegated or not; Phase 3's delegated signer reads this column and refuses. It also puts the claimant's first screen one query away.
+
+The creditor-side re-confirmation needs no new state. The debtor's `Confirm` signature names the creditor's address, so for a row whose creditor was a ghost it can only be made after the bind, over the bound person's address. The re-confirmation is that tap; what the column adds is the framing ("this Gabe") and the guarantee that delegation never makes the tap for them.
+
+Alternative rejected: deriving provenance from `participant_claims.claimed_by`. After the rewrite nothing on the proposal points at the claim, so there is nothing to join through.
+
+## 2026-09-18: A browser token is issued on an explicit "that's me", never on a page view (fills a gap)
+
+Decision: opening a claim link reads and changes nothing. A `claim_tokens` row is issued only when someone taps "that's me" without a session. This reconciles two things. PLANNING.md says a ghost binds "on the next login in that browser", automatically; the ruling says an existing account binds only on an explicit tap. With tokens issued only on a tap, holding one always means someone affirmatively said so in that browser, so binding at any login (new account or existing) is automatic and still never silent in the sense the ruling cares about. A signed-in person skips the token entirely: their tap binds directly. It also means a link-preview bot fetching the URL creates nothing. The token lives in an httpOnly cookie; a browser may hold several, since two creators' ghosts of one person are two claims until a phone login merges them.
+
+Alternative rejected: issuing the token when the page loads. Every preview fetch would mint a token, and a forwarded link would arm whoever opened it first.
+
+## 2026-09-18: Binding does not merge dyads; the oldest dyad wins (fills a gap; known limit)
+
+Decision: a ghost and its creator share an implicit dyad. Binding rewrites the ghost's seat to the user, so when the user already had a dyad with that creator, the pair now has two. They are not merged: a denomination belongs to one group, so moving proposals across dyads means finding or creating an equivalent unit in the other and re-pointing every row, which is a second rewrite with its own failure modes for a case that only arises on a merge into an existing friend. The common case, a new signup, has no prior dyad and produces no duplicate. `ensureDyad` now picks the oldest matching dyad, so every caller lands on the same one. The cost, recorded: edges in the two dyads do not net against each other, since netting is per group and denomination. The person view is cross-group, so nothing is hidden.
+
+Alternative rejected: collapsing dyads at bind time. Worth revisiting with netting in Phase 4, where the cost becomes visible.
+
+## 2026-09-18: Only the person who added a ghost can link, merge, or dismiss them (fills a gap)
+
+Decision: PLANNING.md calls the third bind path "creator merge" and lets "the creator" send claim links and dismiss. A ghost in a named group is visible to every member, but only `participant_claims.created_by` can act on them. Pointing a ghost at an account-holder also requires that the creator shares a group with that person, so a ghost's pending rows cannot be pushed onto an arbitrary account. A creator can never be their own ghost, by any path.
+
+Alternative rejected: any member of a group the ghost is in. It would let one member rebind or dismiss a person another member added, and the ghost's rows are the adder's claims about what happened.
+
+## 2026-09-18: Dismissing a ghost in Phase 1 (fills a gap)
+
+Decision: PLANNING.md defines dismissal per market, with re-scoring, and markets are Phase 2. What Phase 1 can build is dismissing the ghost: their pending rows close as `declined` (the only terminal state that never mints; there is no separate "withdrawn"), they leave their groups through `left_at`, their claim links are revoked, and the phone hash is deleted, which is the one deletion the product makes because it was never ledger history. The ghost row stays. Picking the same number later starts a fresh ghost. The per-market half, removing a position and re-scoring, arrives with markets.
+
+## 2026-09-18: A bind that would produce a cover of oneself closes the row instead
+
+Decision: if a ghost binds to a user who is the other party on one of its pending rows, rewriting would produce a row from a person to themselves, which `obligations_not_self` would refuse at mint. Those rows close as `declined` inside the bind transaction rather than surviving as something that can never be confirmed.
+
+## 2026-09-18: `ConfirmMany` typed data verified against the deployed ledger
+
+Decision, and a gap closed: the seed never calls `confirmMany`, so until now the TypeScript `ConfirmMany` typed data had only ever been checked by Foundry, which builds its digest with its own hashing rather than viem's. EIP-712 array encoding is easy to get subtly wrong (the contract hashes each array with `abi.encodePacked`, which pads every element to 32 bytes, left for `address`, `uint256`, and `bool`, right for `bytes16`). Verified on chain 10143 with a read-only `eth_call`: the deployed ledger accepted a three-item batch across two creditors signed by a seed wallet through the app's typed data, and refused the same signature over an altered batch. Batches are capped at twelve, because the declared gas grows per item and Monad charges what is declared.
+
+## 2026-09-18: Concern recorded: a picked number is an account-existence oracle
+
+Not a decision, a flag for review. PLANNING.md specifies that a picked contact whose hash matches `users.phone_hash` resolves to that user, and also that "nobody can query whether an arbitrary number is in Dareful." These pull against each other. The Contact Picker constrains an honest client to real contacts, but the server action takes a number from the client, so a signed-in person with a modified client can submit arbitrary numbers and learn, from whether the result is an account or a ghost, which numbers have accounts, along with each account's display name. Built as specified. Mitigations to choose between: a per-user rate limit on new picks, or resolving to the account silently while showing the creator only the name they typed until the other person confirms.
+
+## 2026-09-18: What a share card says, and what it never says (fills a gap)
+
+Decision: PLANNING.md makes the Open Graph card "the distribution mechanism" and a Phase 1 deliverable, and does not say what goes on one. A card is fetched by a messaging app's preview bot with no session and then cached by it, so a card says only what the sender's own message already implies: for a claim link, the sender's first name and whether it is one thing or several ("Alex got these."); for a group invite, the group's name and how many are in. Never an amount, never a memo, never a phone, on the card or in the text metadata beside it. Count before amount applies to a preview more than anywhere. A dead, revoked, or unknown link gets the plain brand card, identical in every case, so a preview can never be used to learn whether a token is live. One renderer, `src/lib/ui/share-card.tsx`, serves every share route, and `metadataBase` is set at the root so the image URL is absolute; without it a pasted link renders as bare text.
+
+Not done in Phase 1, stated plainly: the card's headline is in the renderer's default face, not Young Serif. The image renderer needs a font file on disk and cannot use `next/font`. That arrives with the Phase 2 share renderer and its emoji font. The `/o/[id]` confirm route has no card yet either: it requires a session, so a preview bot sees only the redirect, and a card for it needs a decision about what a signed-out visitor may learn.
+
+Alternative rejected: a generic card with no names. It leaks nothing, and it also does nothing: a bare "Dareful" card in a group chat is not the mechanism PLANNING.md describes. The sender's first name reveals nothing the recipient does not already know from who texted them.
+
+## 2026-09-18: The claimant's first screen comes first once, not every time (fills a gap)
+
+Decision: PLANNING.md puts the claimant's screen "before anything else" after signup. The login flow routes there once, straight after a login that bound something. After that it is a strip at the top of the home screen, not a redirect. Redirecting home to it for as long as any row remains would trap someone who wants to look around before answering, and would make the app feel like it is collecting: the thing Principle 1 exists to prevent. Someone with nothing waiting never sees an empty inbox; `/welcome` sends them home to the ordinary empty state, as `docs/design.md` 3.10 says.
+
+Confirm-all covers at most twelve, oldest first, and says so when there are more. Each row also opens on its own page for an individual yes or no. Dispute, as distinct from "not this one", belongs to rows that came from a market and arrives with markets in Phase 2.
+
+# Phase 1, closing (2026-09-18)
+
+Rulings on the second half, and the decisions made while closing the phase.
+
+## 2026-09-18: Binding folds a ghost dyad into the pair's existing dyad (supersedes "the oldest dyad wins")
+
+Decision: the earlier entry called two dyads for one pair a known limit. It is a bug. Obligations are scoped to a group in the token id, so two dyads between the same two people can never net against each other, and which one a screen prefers is cosmetic. On bind, if the other member of a ghost's dyad already has a dyad with the person binding, the ghost's dyad folds into that one inside the bind transaction: each of its units maps onto an equivalent unit in the surviving dyad (same template, or for a custom unit the same label, countability, and monetary flag) or moves there if there is none; every row that named the ghost dyad is repointed (`obligation_proposals`, `dares`, `plans`, `expenses`); and the ghost dyad, its seats, and its invites are deleted. A first-time signup has no prior dyad and nothing folds.
+
+The fold is possible only because a ghost dyad has no onchain state by construction: nothing mints for a ghost, so the group and its units were never registered. That is checked rather than assumed. A ghost dyad with an `onchain_id`, a registered unit, or a minted obligation refuses to fold with an error, and the whole bind rolls back, because deleting a registered group would orphan its onchain state silently.
+
+This deletes a `groups` row, which is compatible with "no deletion of ledger history": a ghost dyad holds only unconfirmed proposals, and those survive the fold in the other dyad.
+
+Alternative rejected: keeping both dyads and merging them at netting time in Phase 4. Netting is onchain and per group id; by then the second dyad would have minted and the two could never be reconciled.
+
+## 2026-09-18: The account-existence oracle: what was mitigated and what remains (correction to PLANNING.md)
+
+PLANNING.md says a picked contact whose hash matches an account resolves to that account, and also that nobody can query whether an arbitrary number is in Dareful. Both cannot hold for a signed-in person with a modified client. This is a defect in the frozen document. The correction: resolution stays as specified, and the second sentence is weakened to "nobody can query it cheaply or in bulk."
+
+Two mitigations, as ruled. First, the response to a request that resolves a number is identical whether it found an account or made a ghost: adding a person to a group always answers `{ ok: true }` with one message, and logging a cover for someone new always lands on the cover's own page, `/o/<id>`, never on a person page whose URL shape says which kind of person it is. Second, resolutions that carry a phone number are limited to twenty per person per rolling hour (`contact_resolutions`, migration `0006`), counted under a per-user advisory lock so a parallel burst cannot read the same count and all pass. The table records who asked and when and nothing about the number: not the number, not its hash, not the result. Hitting the limit is a plain message that offers adding by name, not a silent drop.
+
+The residual, stated plainly because it is larger than "identical responses" suggests: the distinction is gone from the answer to the request, not from the app. The next page the creator loads shows a ghost ("not here yet") or an account with its display name. So the cost of one probe went from one request to two, and the real ceiling is the rate limit: at most twenty numbers an hour per account, each probe of a real account leaving a pending row in that person's app with the prober's name on it. Removing the residual means deferring resolution until the other person next opens the app, so the creator always sees a ghost until the other side acts. That changes what the people list and the group page mean and is post-hackathon work.
+
+Alternative rejected: the deferral, now. It is the right design and a redesign of three screens two weeks before submission.
+
+## 2026-09-18: A shared cover link has a card, and a signed-out page that says no more than the card
+
+Decision: `/o/[id]` used to redirect a signed-out visitor home, so a preview bot saw a redirect and the link pasted as bare text. It now answers with a page and a card carrying the first name of the person who covered and that there is something to look at: "Alex got this one." No amount, no unit, no memo, and not the name of the person it is against. These links land in group chats where everyone sees the preview. An unknown id, a malformed one, and a cover that is no longer pending all get the plain brand card, byte-identical, and the signed-out page for them says nothing. The signed-out response was checked whole, serialized props included, not only its visible text. A cover against a ghost is now viewable by the person who logged it (it is where logging a cover for someone new lands).
+
+The id in the URL is a uuid, not a secret. What it buys a stranger who guesses one is a first name. Accepted.
+
+## 2026-09-18: Cards and preview metadata carry a first name, enforced in one place (a bug found by the audit)
+
+The share-card decision said "the sender's first name". The claim card and its `og:title` carried the full display name, clipped to eighteen characters, and no check looked. `src/lib/ledger/share.ts` now builds what every share route shows a sessionless visitor, as data, so the rule is tested as data rather than by looking at a PNG.
+
+## 2026-09-18: Times render in the viewer's zone, and "yesterday" is a calendar day
+
+Decision: `whenLabel` formatted in the server's zone and called anything 24 to 48 hours old "yesterday", so something from last night could read as a weekday two days back. This violated the conventions rather than filling a gap. `whenLabel` now takes the zone and compares calendar days in it. A server cannot know the viewer's zone, so the browser reports it once in a cookie (`dareful_tz`, validated before use, a display preference and nothing else); the server paints with it, and a small client component (`When`) recomputes in the browser's own zone after mount and corrects the cookie if it was missing or stale. Only a first-ever visit paints in UTC for a moment. One "now" is read per request and passed down, so render stays pure.
+
+Alternative rejected: formatting only on the client. Every timestamp would flash from empty or wrong on every load, and a timeline is mostly timestamps.
+
+## 2026-09-18: After the first login the client's wallet pick is ignored (amends the wallet-pairing entry)
+
+The test account has three embedded wallets because Dynamic's create-on-signup was briefly on alongside the app's own bootstrap. The `users` row recorded the intended pair. The client sends two of whatever it holds, and had it sent the orphan, the session route would have answered 409 and locked the account out. For an existing user the route now checks only that the login still vouches for the recorded ledger and governance wallets. Signing already selects the wallet by recorded address, so the orphan can never sign anything.
+
+With create-on-signup now off, the app creates both wallets, and the first created (Dynamic's primary) is the ledger wallet. The earlier entry's "the wallet Dynamic creates at signup" reads as "the first wallet created".
+
+## 2026-09-18: The checks are a permanent suite, and the suite is audited by mutation (Principle 9 applied to tests)
+
+Decision: the accountless session verified its work with about a hundred checks in throwaway scripts that were deleted after they passed. They were recovered from that session's transcript. Two could not fail: one was `check(name, true)` for a test never written ("opening the link issued no token"), and one compared two string literals. They now live in `tests/` in three layers (`unit`, `db` against the real database with every row tracked by id and removed, `http` against a running server with forged sessions for temporary users), on Node's built-in test runner through `tsx`, with no new dependency.
+
+`npm run test:audit` is the audit of the suite itself. Each mutant in `tests/mutation/mutants.ts` breaks one rule in the source (removes a guard, drops a filter, reverts a fix to the bug it fixed), runs the tests that claim to cover that rule, and requires every one of them to fail; then it restores the file and verifies the tree byte for byte. A test that no mutant kills is reported: nothing shows it can fail. Where a rule is guarded in two places, the mutant removes both, because a test should fail when the rule breaks, not when one of two redundant guards goes.
+
+Two constraints on mutants, learned while writing them. A mutant must never widen what the code does to rows the test did not make: the "phone bind ignores the hash" mutant is confined to marker names, because the honest version of that break would bind every real ghost in the database to a temporary user. And a tampered control that exercises the deployed contract rather than this repository (the altered `confirmMany` batches) cannot be killed by any source mutant, so the controls live inside the acceptance test they give meaning to.
+
+Alternative rejected: vitest for the app, as the indexer uses. It buys watch mode and costs a dependency and a config for a suite whose value is the audit, not the runner.
+
+## 2026-09-18: `agentRules: false`
+
+`next dev` (16.3.5) appends a generated block to `CLAUDE.md` when it detects a coding agent. The brief is written by hand and is the one document every session reads as authoritative; nothing else writes to it. Turned off in `next.config.ts`, file restored.
+
+## 2026-09-18: The Dynamic dashboard and the code agree on Monad testnet; chain 143 is a label only
+
+Read from Dynamic's public settings payload: Monad Testnet enabled with chain id 10143, RPC `https://testnet-rpc.monad.xyz`, explorer `https://testnet.monadexplorer.com`, identical to the three `NEXT_PUBLIC_MONAD_*` values the `evmNetworks` override is built from. Monad mainnet is not enabled. The only references to 143 in the code are the constant `MONAD_MAINNET_CHAIN_ID` in `contracts.ts` and one comparison in `networks.ts`, both used only to pick the display name for whatever chain id the environment supplies; nothing selects 143.
+
+## 2026-09-18: What the audit of the checks found
+
+Recorded because the findings are the argument for keeping the audit. Of the recovered checks and the ones written while porting them:
+
+- Two could not fail by construction: `check("opening the link left no set-cookie and issued no token", true)`, and a phone check that compared two string literals. The first is now a real assertion (no `set-cookie` header, no `claim_tokens` row after fetching the page and its card) and its mutant, a page view that mints a token, kills it.
+- One rule had no check at all and was broken: cards carried the full display name (previous entry).
+- Five passed against deliberately broken code and were rewritten. The batch cap was checked with unknown ids, which are refused anyway, so removing the cap changed nothing; it now asserts the refusal is about the size. "That row is not on the claimant's first screen" asked about a screen the row could never be on. "A ghost in a group you are not in is not suggested" used a person with no groups at all, for whom nothing is ever suggested. "Someone with nothing waiting sees no strip" used a person whose home screen never reaches the strip. The burst test against the rate limit was a coin flip; it now spends nineteen and then fires ten at once, so exactly one may pass.
+- One cannot be checked locally: `next dev` points a generated card's URL at localhost whatever `metadataBase` says. It is a separate test that runs only against a deployed origin, and is skipped locally rather than asserted in a form that cannot fail.
+- Three rules are guarded twice (a creator binding their own ghost by token, merging a ghost into oneself, and tokens following a merge), so their mutants remove both guards.
+- The tampered `confirmMany` batches test the deployed contract, which no source mutant can change, so they moved inside the acceptance test they are the controls for.
+
+The audit also found two defects in the test harness itself, both of the kind it exists to catch. Cleanup threw on rows that broken code had created and the test had not tracked, and because it threw before closing the database client, the process never exited: a hang, not a failure. And a timed-out run killed the test runner's parent process but not its worker, which sat on three database connections. Cleanup now removes everything a temporary user created and always closes the client, audited tests run in one process, the runner journals originals to disk so a killed run is undone by the next, and `npm run test:sweep` removes orphaned test rows.
+
+Final state: 130 tests (27 unit, 75 database, 27 HTTP, 1 deployed-only), 140 mutants, every locally runnable test killed by at least one.
+
+## 2026-09-18: Concern recorded: fifteen pooler clients is the whole budget
+
+Not a decision, a flag for review. The Supabase Session pooler on this plan admits fifteen clients (`EMAXCONNSESSION`, seen when three orphaned test workers held nine). `src/db/index.ts` opens up to five per process, so three warm serverless instances exhaust it, and a fourth request fails with an error rather than waiting. The Session pooler string is a fixed constraint of the project (migrations need session mode) and was not touched. Options, to choose before the Phase 2 submission puts real traffic on it: lower `max` to one or two per instance (one line, no new constraint broken), or keep the Session string for migrations and give the app runtime a second variable on the transaction pooler, which the kickoff rules currently forbid.
+
+## 2026-09-18: The indexer is prepared for Envio Cloud
+
+Envio Cloud builds whatever is pushed to a deploy branch (`envio` by default) with pnpm 10.32.0 on Node 24. Checked against its requirements before spending one of three deployments: `envio` is pinned at 3.12.0 in `indexer/package.json` dependencies (at least 2.21.5, not 2.29.x); the indexer imports nothing outside `indexer/`; the repository is 62 MB against a 100 MB limit; and from a clean copy of the tracked files, `pnpm@10.32.0 install`, `envio codegen`, and the seven handler tests all pass. `indexer/pnpm-lock.yaml` is committed so the cloud build resolves what was tested, and `engines.node` is now `>=24`. The only custom variable is `ENVIO_API_TOKEN`, which already carries the required `ENVIO_` prefix. Logging in to Envio and installing its GitHub App are the account owner's steps.

@@ -10,6 +10,7 @@ import { gasFor } from "@/lib/chain/gas";
 import { submit } from "@/lib/chain/relayer";
 import { ledgerDomain, ledgerTypes } from "@/lib/chain/typed-data";
 import { cents, units, type Cents, type Units } from "@/lib/money";
+import { ensureDyadWithClaim, isClaimMember, type Person } from "./claims";
 import { denominationById, touchDenomination } from "./denominations";
 import { ensureDyad, isMember } from "./groups";
 import { denomOnchainId, groupOnchainId, hexToBuffer, uuidToBytes16 } from "./ids";
@@ -20,7 +21,7 @@ export type ProposalRow = typeof schema.obligationProposals.$inferSelect;
 
 export type ProposeCoverInput = {
   creditorId: string; // the signed-in user; only the person who covered can create the obligation
-  debtorUserId: string;
+  debtor: Person; // an account-holder, or a ghost: nothing mints for a ghost until they bind and confirm
   groupId?: string; // omitted: the implicit dyad
   denomId: string;
   quantity: Units | null; // null iff the denomination is unquantifiable
@@ -30,16 +31,18 @@ export type ProposeCoverInput = {
 };
 
 export async function proposeCover(input: ProposeCoverInput): Promise<ProposalRow> {
-  if (input.creditorId === input.debtorUserId) throw new Error("you cannot cover yourself");
+  const { debtor } = input;
+  if (debtor.kind === "user" && input.creditorId === debtor.userId) throw new Error("you cannot cover yourself");
   const denom = await denominationById(input.denomId);
   if (!denom) throw new Error("unknown unit");
   let groupId = input.groupId;
   if (!groupId) {
-    const dyad = await ensureDyad(input.creditorId, input.debtorUserId);
+    const dyad = debtor.kind === "user" ? await ensureDyad(input.creditorId, debtor.userId) : await ensureDyadWithClaim(input.creditorId, debtor.claimId);
     groupId = dyad.id;
   }
   if (denom.groupId !== groupId) throw new Error("that unit belongs to another group");
-  if (!(await isMember(groupId, input.creditorId)) || !(await isMember(groupId, input.debtorUserId))) {
+  const debtorIn = debtor.kind === "user" ? await isMember(groupId, debtor.userId) : await isClaimMember(groupId, debtor.claimId);
+  if (!(await isMember(groupId, input.creditorId)) || !debtorIn) {
     throw new Error("both people must be in the group");
   }
   if (denom.quantifiable && (input.quantity === null || input.quantity <= 0n)) throw new Error("how many?");
@@ -53,7 +56,8 @@ export async function proposeCover(input: ProposeCoverInput): Promise<ProposalRo
     .insert(schema.obligationProposals)
     .values({
       groupId,
-      fromUser: input.debtorUserId,
+      fromUser: debtor.kind === "user" ? debtor.userId : null,
+      fromClaim: debtor.kind === "claim" ? debtor.claimId : null,
       toUser: input.creditorId,
       denomId: denom.id,
       quantity: input.quantity,
@@ -125,7 +129,7 @@ export async function confirmProposal(proposalId: string, debtorUserId: string, 
 
   const typed = confirmTypedData(proposal, creditor.ledgerWallet as Address);
   const ok = await verifyTypedData({ ...typed, address: debtor.ledgerWallet as Address, signature });
-  if (!ok) throw new ConfirmError("that signature does not belong to you", "bad_signature");
+  if (!ok) throw new ConfirmError("that did not come from your account", "bad_signature");
 
   // Lazy registration: the first confirmed obligation in a group or a unit registers it.
   await ensureGroupOnchain(proposal.groupId);
@@ -174,6 +178,122 @@ export async function confirmProposal(proposalId: string, debtorUserId: string, 
       .where(eq(schema.obligationProposals.id, proposal.id));
   });
   return { obligationId: proposal.id, txHash };
+}
+
+/** At most this many in one batch: the declared gas grows per item, and Monad charges what is declared. */
+export const CONFIRM_MANY_MAX = 12;
+
+/**
+ * What the debtor signs to confirm several at once: one signature over the whole batch, in the order given.
+ * The order is part of what is signed, so the page and the submit both take it from the same sorted query.
+ */
+export function confirmManyTypedData(proposals: ProposalRow[], creditorLedgers: Map<string, Address>) {
+  const { chainId, ledger } = contracts();
+  const creditors = proposals.map((p) => {
+    const a = p.toUser ? creditorLedgers.get(p.toUser) : undefined;
+    if (!a) throw new ConfirmError("the creditor has no account yet", "not_pending");
+    return a;
+  });
+  return {
+    domain: ledgerDomain(chainId, ledger.address),
+    types: ledgerTypes,
+    primaryType: "ConfirmMany" as const,
+    message: {
+      groupIds: proposals.map((p) => groupOnchainId(p.groupId)),
+      denomIds: proposals.map((p) => denomOnchainId(p.denomId)),
+      creditors,
+      qtys: proposals.map((p) => p.quantity ?? 1n),
+      obligationIds: proposals.map((p) => uuidToBytes16(p.id)),
+      uniques: proposals.map((p) => p.uniqueObligation),
+    },
+  };
+}
+
+/** Loads a batch for one debtor in the order it is signed in, refusing anything that is not theirs to confirm. */
+export async function loadConfirmBatch(proposalIds: string[], debtorUserId: string): Promise<{ proposals: ProposalRow[]; creditorLedgers: Map<string, Address> }> {
+  if (proposalIds.length === 0) throw new ConfirmError("nothing to confirm", "not_pending");
+  if (proposalIds.length > CONFIRM_MANY_MAX) throw new ConfirmError(`that is more than ${CONFIRM_MANY_MAX} at once`, "not_pending");
+  if (new Set(proposalIds).size !== proposalIds.length) throw new ConfirmError("the same one is listed twice", "not_pending");
+  const rows = await db.select().from(schema.obligationProposals).where(inArray(schema.obligationProposals.id, proposalIds));
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const proposals = proposalIds.map((id) => {
+    const p = byId.get(id);
+    if (!p) throw new ConfirmError("unknown proposal", "not_pending");
+    if (p.fromUser !== debtorUserId) throw new ConfirmError("only the person named can confirm this", "not_debtor");
+    if (p.status !== "pending") throw new ConfirmError("one of these is already settled one way or the other", "not_pending");
+    if (!p.toUser) throw new ConfirmError("the creditor has no account yet", "not_pending");
+    return p;
+  });
+  const creditorIds = Array.from(new Set(proposals.map((p) => p.toUser).filter((x): x is string => Boolean(x))));
+  const creditors = await db.select({ id: schema.users.id, ledgerWallet: schema.users.ledgerWallet }).from(schema.users).where(inArray(schema.users.id, creditorIds));
+  return { proposals, creditorLedgers: new Map(creditors.map((c) => [c.id, c.ledgerWallet as Address])) };
+}
+
+/**
+ * Confirm-all: the claimant's one prompt. One signature over the batch, one `confirmMany` through the relayer,
+ * which mints one batch per creditor or reverts whole. Registration runs first, because a person who just
+ * bound is not yet a registered member of the groups their ghost was in. Every step fails visibly.
+ */
+export async function confirmManyProposals(proposalIds: string[], debtorUserId: string, signature: Hex): Promise<{ obligationIds: string[]; txHash: Hex }> {
+  const { proposals, creditorLedgers } = await loadConfirmBatch(proposalIds, debtorUserId);
+  const [debtor] = await db.select().from(schema.users).where(eq(schema.users.id, debtorUserId)).limit(1);
+  if (!debtor) throw new ConfirmError("unknown user", "not_pending");
+
+  const typed = confirmManyTypedData(proposals, creditorLedgers);
+  const ok = await verifyTypedData({ ...typed, address: debtor.ledgerWallet as Address, signature });
+  if (!ok) throw new ConfirmError("that did not come from your account", "bad_signature");
+
+  // ensureDenomOnchain registers its group first, and adds any member who has appeared since.
+  for (const groupId of new Set(proposals.map((p) => p.groupId))) await ensureGroupOnchain(groupId);
+  for (const denomId of new Set(proposals.map((p) => p.denomId))) await ensureDenomOnchain(denomId);
+
+  const { ledger } = contracts();
+  const m = typed.message;
+  let txHash: Hex;
+  try {
+    const result = await submit({
+      label: `confirmMany ${proposals.length} for ${debtorUserId}`,
+      address: ledger.address,
+      abi: ledger.abi,
+      functionName: "confirmMany",
+      args: [m.groupIds, m.denomIds, m.creditors, m.qtys, m.obligationIds, m.uniques, signature],
+      gas: gasFor.confirmMany(proposals.length),
+    });
+    txHash = result.hash;
+  } catch (err) {
+    throw new ConfirmError(err instanceof Error ? err.message : "the chain write failed", "chain");
+  }
+
+  const debtorAddr = debtor.ledgerWallet as Address;
+  const now = new Date();
+  await db.transaction(async (tx) => {
+    await tx.insert(schema.obligations).values(
+      proposals.map((p, i) => {
+        const groupId = m.groupIds[i] as Hex;
+        const denomId = m.denomIds[i] as Hex;
+        const obligationId = m.obligationIds[i] as Hex;
+        return {
+          id: p.id,
+          tokenId: p.uniqueObligation ? uniqueTokenId(groupId, denomId, debtorAddr, obligationId) : fungibleTokenId(groupId, denomId, debtorAddr),
+          groupId: p.groupId,
+          fromUser: debtorUserId,
+          toUser: p.toUser as string, // loadConfirmBatch refused any row without a creditor account
+          denomId: p.denomId,
+          quantity: p.quantity,
+          uniqueObligation: p.uniqueObligation,
+          amountCents: p.amountCents,
+          origin: p.origin,
+          originId: p.originId,
+          settleExpected: p.settleExpected,
+          memo: p.memo,
+          confirmTx: hexToBuffer(txHash),
+          createdAt: p.createdAt,
+        };
+      }),
+    );
+    await tx.update(schema.obligationProposals).set({ status: "confirmed", resolvedAt: now }).where(inArray(schema.obligationProposals.id, proposalIds));
+  });
+  return { obligationIds: proposals.map((p) => p.id), txHash };
 }
 
 export async function declineProposal(proposalId: string, debtorUserId: string): Promise<void> {

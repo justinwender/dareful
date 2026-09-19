@@ -7,25 +7,36 @@ import { Avatar, AvatarStack } from "@/components/ledger/avatar";
 import { CoveredCard } from "@/components/ledger/covered-card";
 import { ActionArea, Screen, SectionLabel, TopBar } from "@/components/ledger/screen";
 import { ButtonLink } from "@/components/ui/button";
+import { SuggestedGhost } from "@/components/ledger/suggested-ghost";
 import { currentUser } from "@/lib/auth/session";
+import { boundPendingForDebtor, ghostsForCreator, suggestedGhostsFor } from "@/lib/ledger/claims";
 import { denominationsByIds } from "@/lib/ledger/denominations";
 import { groupsForUser, peopleForUser } from "@/lib/ledger/groups";
 import { pendingForDebtor } from "@/lib/ledger/proposals";
 import { hueFor } from "@/lib/ui/hue";
+import { viewerClock } from "@/lib/ui/zone";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
+  const clock = await viewerClock();
   const user = await currentUser();
   if (!user) return <SignedOut />;
 
-  const [groups, people, pending] = await Promise.all([groupsForUser(user.id), peopleForUser(user.id), pendingForDebtor(user.id)]);
+  const [groups, people, pending, ghosts, waiting, suggested] = await Promise.all([
+    groupsForUser(user.id),
+    peopleForUser(user.id),
+    pendingForDebtor(user.id),
+    ghostsForCreator(user.id),
+    boundPendingForDebtor(user.id),
+    suggestedGhostsFor(user.id, user.displayName),
+  ]);
   const creditorIds = Array.from(new Set(pending.map((p) => p.toUser).filter((x): x is string => Boolean(x))));
   const creditors = creditorIds.length ? await db.select().from(schema.users).where(inArray(schema.users.id, creditorIds)) : [];
   const creditorById = new Map(creditors.map((c) => [c.id, c]));
   const denoms = await denominationsByIds(pending.map((p) => p.denomId));
   const groupName = new Map(groups.map((g) => [g.id, g.name]));
-  const empty = groups.length === 0 && people.length === 0 && pending.length === 0;
+  const empty = groups.length === 0 && people.length === 0 && pending.length === 0 && ghosts.length === 0 && suggested.length === 0;
 
   return (
     <Screen>
@@ -49,10 +60,29 @@ export default async function Home() {
             <ButtonLink href="/g/new" variant="primary">
               Start a group
             </ButtonLink>
+            <ButtonLink href="/new" variant="secondary">
+              I got this one
+            </ButtonLink>
           </div>
         </div>
       ) : (
         <div className="flex flex-col gap-7 py-2">
+          {waiting.length > 0 ? (
+            <Link href="/welcome" className="flex items-center justify-between gap-3 rounded-card border border-dashed border-line-strong px-4 py-3.5">
+              <span className="text-body-strong text-ink">{waiting.length === 1 ? "One thing was waiting for you" : `${waiting.length} things were waiting for you`}</span>
+              <span className="text-[15px] font-semibold text-ink-2">Have a look</span>
+            </Link>
+          ) : null}
+
+          {suggested.length > 0 ? (
+            <section className="flex flex-col gap-3">
+              <SectionLabel>Is this you?</SectionLabel>
+              {suggested.map((g) => (
+                <SuggestedGhost key={g.claimId} claimId={g.claimId} name={g.displayName} creatorName={g.creatorName} />
+              ))}
+            </section>
+          ) : null}
+
           {pending.length > 0 ? (
             <section className="flex flex-col gap-3">
               <SectionLabel>Needs you</SectionLabel>
@@ -62,6 +92,7 @@ export default async function Home() {
                 if (!creditor || !denomination) return null;
                 return (
                   <CoveredCard
+                    clock={clock}
                     key={p.id}
                     viewerId={user.id}
                     creditor={creditor}
@@ -82,7 +113,7 @@ export default async function Home() {
 
           <section className="flex flex-col gap-3">
             <SectionLabel>People</SectionLabel>
-            {people.length === 0 ? (
+            {people.length === 0 && ghosts.length === 0 ? (
               <p className="text-body-sm text-ink-2">Nobody yet. Share a group link and they show up here.</p>
             ) : (
               <ul className="flex flex-col gap-1.5">
@@ -92,6 +123,15 @@ export default async function Home() {
                       <Avatar name={p.displayName} hue={hueFor(p.id)} size={32} />
                       <span className="flex-1 text-body-strong text-ink">{p.displayName}</span>
                       <span className="text-caption text-ink-3">{sharedGroups === 1 ? "1 group" : `${sharedGroups} groups`}</span>
+                    </Link>
+                  </li>
+                ))}
+                {ghosts.map((g) => (
+                  <li key={g.id}>
+                    <Link href={`/p/c/${g.id}`} className="flex h-14 items-center gap-3 rounded-button bg-surface px-3">
+                      <Avatar name={g.displayName} hue="stone" size={32} ghost />
+                      <span className="flex-1 text-body-strong text-ink">{g.displayName}</span>
+                      <span className="text-caption text-ink-3">not here yet</span>
                     </Link>
                   </li>
                 ))}
@@ -125,7 +165,7 @@ export default async function Home() {
           </div>
         </div>
       )}
-      {!empty && people.length > 0 ? (
+      {!empty ? (
         <ActionArea>
           <ButtonLink href="/new" variant="primary" className="w-full">
             I got this one

@@ -1,6 +1,6 @@
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { and, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { hashToken, newToken } from "@/lib/ledger/tokens";
 
 export type GroupRow = typeof schema.groups.$inferSelect;
 export type UserRow = typeof schema.users.$inferSelect;
@@ -11,6 +11,8 @@ export type GroupMember = {
   displayName: string;
   ledgerWallet: string | null;
   joinedAt: Date;
+  /** For a ghost, who added them: only that person can link, merge, or let them go. Null for account-holders. */
+  addedBy: string | null;
 };
 
 export async function groupsForUser(userId: string): Promise<Array<GroupRow & { members: GroupMember[] }>> {
@@ -37,6 +39,7 @@ export async function membersOfGroups(groupIds: string[]): Promise<Map<string, G
       userName: schema.users.displayName,
       ledgerWallet: schema.users.ledgerWallet,
       claimName: schema.participantClaims.displayName,
+      claimAddedBy: schema.participantClaims.createdBy,
     })
     .from(schema.groupMembers)
     .leftJoin(schema.users, eq(schema.groupMembers.userId, schema.users.id))
@@ -51,6 +54,7 @@ export async function membersOfGroups(groupIds: string[]): Promise<Map<string, G
       displayName: r.userName ?? r.claimName ?? "Friend",
       ledgerWallet: r.ledgerWallet,
       joinedAt: r.joinedAt,
+      addedBy: r.claimId ? r.claimAddedBy : null,
     });
     out.set(r.groupId, list);
   }
@@ -85,31 +89,26 @@ export async function createGroup(input: { name: string; createdBy: string; memb
   });
 }
 
-/** The implicit two-person group between two account-holders, created lazily on first obligation. */
+/**
+ * The implicit two-person group between two account-holders, created lazily on first obligation. The oldest
+ * one wins: binding a ghost to someone the creator already had a dyad with leaves the pair with two, and
+ * every caller must land on the same one (docs/decisions.md 2026-09-18).
+ */
 export async function ensureDyad(a: string, b: string): Promise<GroupRow> {
   if (a === b) throw new Error("a dyad needs two people");
-  const candidates = await db
-    .select({ id: schema.groups.id })
-    .from(schema.groups)
-    .where(eq(schema.groups.isDyad, true));
-  if (candidates.length > 0) {
-    const ids = candidates.map((c) => c.id);
-    const rows = await db
-      .select({ groupId: schema.groupMembers.groupId, userId: schema.groupMembers.userId, claimId: schema.groupMembers.claimId })
-      .from(schema.groupMembers)
-      .where(inArray(schema.groupMembers.groupId, ids));
-    const byGroup = new Map<string, Array<string | null>>();
-    for (const r of rows) {
-      const list = byGroup.get(r.groupId) ?? [];
-      list.push(r.userId ?? (r.claimId ? `claim:${r.claimId}` : null));
-      byGroup.set(r.groupId, list);
-    }
-    for (const [groupId, members] of byGroup) {
-      if (members.length === 2 && members.includes(a) && members.includes(b)) {
-        const [g] = await db.select().from(schema.groups).where(eq(schema.groups.id, groupId)).limit(1);
-        if (g) return g;
-      }
-    }
+  const found = await db.execute<{ id: string }>(sql`
+    select g.id
+    from ${schema.groups} g
+    join ${schema.groupMembers} x on x.group_id = g.id and x.user_id = ${a}
+    join ${schema.groupMembers} y on y.group_id = g.id and y.user_id = ${b}
+    where g.is_dyad
+    order by g.created_at asc
+    limit 1
+  `);
+  const hit = Array.from(found)[0];
+  if (hit) {
+    const [g] = await db.select().from(schema.groups).where(eq(schema.groups.id, hit.id)).limit(1);
+    if (g) return g;
   }
   return db.transaction(async (tx) => {
     const [group] = await tx.insert(schema.groups).values({ name: null, isDyad: true, createdBy: a }).returning();
@@ -139,52 +138,123 @@ export async function peopleForUser(userId: string): Promise<Array<{ user: UserR
 }
 
 // ---------------------------------------------------------------------------------------------- invites
-// A group invite is a signed, expiring token with no table behind it (docs/decisions.md 2026-09-17).
-
-function inviteSecret(): Buffer {
-  const s = process.env.SESSION_SECRET;
-  if (!s) throw new Error("SESSION_SECRET is not set");
-  return Buffer.from(`invite:${s}`);
-}
+// A group invite is a row in group_invites, revocable and counted (docs/decisions.md 2026-09-18). Joining a
+// group makes someone a quorum member in every later market there, so the link has to be something a member
+// can turn off. Only the token's hash is stored, so a link is shown once, when it is made.
 
 const INVITE_DAYS = 14;
 
-export function createInviteToken(groupId: string, invitedBy: string): string {
-  const exp = Math.floor(Date.now() / 1000) + INVITE_DAYS * 86_400;
-  const payload = Buffer.from(JSON.stringify({ g: groupId, u: invitedBy, exp })).toString("base64url");
-  const mac = createHmac("sha256", inviteSecret()).update(payload).digest("base64url");
-  return `${payload}.${mac}`;
+export type InviteRow = typeof schema.groupInvites.$inferSelect;
+
+export type ActiveInvite = {
+  /** Hex of the token hash: identifies the row to revoke and cannot be turned back into a link. */
+  id: string;
+  createdBy: string;
+  createdByName: string;
+  expiresAt: Date;
+  useCount: number;
+};
+
+/** Makes a link for the group. The caller must be a current member. Returns the token, which is never readable again. */
+export async function createInvite(groupId: string, createdBy: string): Promise<string> {
+  const [group] = await db.select().from(schema.groups).where(eq(schema.groups.id, groupId)).limit(1);
+  if (!group || group.isDyad) throw new Error("that group cannot be joined by link");
+  if (!(await isMember(groupId, createdBy))) throw new Error("only someone in the group can make a link");
+  const token = newToken();
+  const tokenHash = hashToken(token);
+  if (!tokenHash) throw new Error("could not make a link");
+  const expiresAt = new Date(Date.now() + INVITE_DAYS * 86_400_000);
+  await db.insert(schema.groupInvites).values({ tokenHash, groupId, createdBy, expiresAt });
+  return token;
 }
 
-export function readInviteToken(token: string): { groupId: string; invitedBy: string } | null {
-  const [payload, mac] = token.split(".");
-  if (!payload || !mac) return null;
-  const expected = createHmac("sha256", inviteSecret()).update(payload).digest("base64url");
-  const a = Buffer.from(mac);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
-  try {
-    const parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { g?: string; u?: string; exp?: number };
-    if (!parsed.g || !parsed.u || !parsed.exp || parsed.exp < Math.floor(Date.now() / 1000)) return null;
-    return { groupId: parsed.g, invitedBy: parsed.u };
-  } catch {
-    return null;
-  }
+/** The live invite behind a token: exists, not revoked, not expired. Null otherwise, with no reason given. */
+export async function readInvite(token: string): Promise<InviteRow | null> {
+  const tokenHash = hashToken(token);
+  if (!tokenHash) return null;
+  const [row] = await db
+    .select()
+    .from(schema.groupInvites)
+    .where(and(eq(schema.groupInvites.tokenHash, tokenHash), isNull(schema.groupInvites.revokedAt), gt(schema.groupInvites.expiresAt, new Date())))
+    .limit(1);
+  return row ?? null;
 }
 
-/** Adds the user to the group if the invite is valid. Returns the group. Idempotent for existing members. */
+/** Links that still work, newest first, for the group page. */
+export async function activeInvites(groupId: string): Promise<ActiveInvite[]> {
+  const rows = await db
+    .select({
+      tokenHash: schema.groupInvites.tokenHash,
+      createdBy: schema.groupInvites.createdBy,
+      createdByName: schema.users.displayName,
+      expiresAt: schema.groupInvites.expiresAt,
+      useCount: schema.groupInvites.useCount,
+    })
+    .from(schema.groupInvites)
+    .innerJoin(schema.users, eq(schema.groupInvites.createdBy, schema.users.id))
+    .where(and(eq(schema.groupInvites.groupId, groupId), isNull(schema.groupInvites.revokedAt), gt(schema.groupInvites.expiresAt, new Date())))
+    .orderBy(desc(schema.groupInvites.createdAt));
+  return rows.map((r) => ({
+    id: r.tokenHash.toString("hex"),
+    createdBy: r.createdBy,
+    createdByName: r.createdByName,
+    expiresAt: r.expiresAt,
+    useCount: r.useCount,
+  }));
+}
+
+/** Any current member can turn off any of the group's links; there are no roles in a group. Idempotent. */
+export async function revokeInvite(groupId: string, inviteId: string, userId: string): Promise<void> {
+  if (!/^[0-9a-f]{64}$/.test(inviteId)) throw new Error("that link does not exist");
+  if (!(await isMember(groupId, userId))) throw new Error("only someone in the group can turn off a link");
+  await db
+    .update(schema.groupInvites)
+    .set({ revokedAt: new Date() })
+    .where(
+      and(
+        eq(schema.groupInvites.tokenHash, Buffer.from(inviteId, "hex")),
+        eq(schema.groupInvites.groupId, groupId),
+        isNull(schema.groupInvites.revokedAt),
+      ),
+    );
+}
+
+/**
+ * Adds the user to the group if the invite is live. Returns the group. Idempotent for existing members, and
+ * only an actual join counts as a use. The invite row is locked for the transaction so two redemptions of one
+ * link (a double tap, or an effect that runs twice) serialize instead of both counting.
+ */
 export async function redeemInvite(token: string, userId: string): Promise<GroupRow | null> {
-  const invite = readInviteToken(token);
-  if (!invite) return null;
-  const [group] = await db.select().from(schema.groups).where(eq(schema.groups.id, invite.groupId)).limit(1);
-  if (!group || group.isDyad) return null;
-  if (!(await isMember(group.id, userId))) {
-    await db
-      .insert(schema.groupMembers)
-      .values({ groupId: group.id, userId })
-      .onConflictDoUpdate({ target: [schema.groupMembers.groupId, schema.groupMembers.userId], set: { leftAt: null } });
-  }
-  return group;
+  const tokenHash = hashToken(token);
+  if (!tokenHash) return null;
+  return db.transaction(async (tx) => {
+    const [invite] = await tx
+      .select()
+      .from(schema.groupInvites)
+      .where(and(eq(schema.groupInvites.tokenHash, tokenHash), isNull(schema.groupInvites.revokedAt), gt(schema.groupInvites.expiresAt, new Date())))
+      .limit(1)
+      .for("update");
+    if (!invite) return null;
+    const [group] = await tx.select().from(schema.groups).where(eq(schema.groups.id, invite.groupId)).limit(1);
+    if (!group || group.isDyad) return null;
+    const [existing] = await tx
+      .select({ leftAt: schema.groupMembers.leftAt })
+      .from(schema.groupMembers)
+      .where(and(eq(schema.groupMembers.groupId, group.id), eq(schema.groupMembers.userId, userId)))
+      .limit(1);
+    if (existing && existing.leftAt === null) return group;
+    if (existing) {
+      await tx
+        .update(schema.groupMembers)
+        .set({ leftAt: null })
+        .where(and(eq(schema.groupMembers.groupId, group.id), eq(schema.groupMembers.userId, userId)));
+    } else {
+      await tx.insert(schema.groupMembers).values({ groupId: group.id, userId });
+    }
+    await tx
+      .update(schema.groupInvites)
+      .set({ useCount: sql`${schema.groupInvites.useCount} + 1` })
+      .where(eq(schema.groupInvites.tokenHash, tokenHash));
+    return group;
+  });
 }
-
-export const groupSql = sql;

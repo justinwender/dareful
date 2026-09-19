@@ -4,8 +4,10 @@ import { isAddress } from "viem";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { evmAddressesOf, InvalidLoginToken, phoneOf, suggestedNameOf, verifyDynamicToken } from "@/lib/auth/jwt";
+import { clearClaimTokens, readClaimTokens } from "@/lib/auth/claim-cookie";
 import { hashPhone } from "@/lib/auth/phone";
 import { clearSessionCookie, issueSessionCookie } from "@/lib/auth/session";
+import { bindByBrowserTokens, bindByPhone } from "@/lib/ledger/claims";
 
 const Body = z.object({
   token: z.string().min(20),
@@ -48,19 +50,25 @@ export async function POST(req: Request): Promise<Response> {
   const [existing] = await db.select().from(schema.users).where(eq(schema.users.dynamicUserId, claims.sub)).limit(1);
   let user = existing;
   if (existing) {
-    // The pairing is permanent (the ledger contract enforces the same rule). Later logins may present the
-    // two wallets in either order; they must be the same two. Refuse loudly rather than rewrite.
-    const pair = new Set([existing.ledgerWallet, existing.governanceWallet]);
-    if (!pair.has(primary) || !pair.has(other)) {
+    // The pairing is permanent (the ledger contract enforces the same rule). After the first login the
+    // client's pick is ignored: what matters is that the login still vouches for the recorded pair. A login
+    // carrying a third embedded wallet (an orphan) must not lock the person out because the client happened
+    // to send it. Refuse loudly rather than rewrite if either recorded wallet is gone.
+    if (!vouched.has(existing.ledgerWallet) || !vouched.has(existing.governanceWallet)) {
       return NextResponse.json({ error: "wallets do not match this account" }, { status: 409 });
     }
     if (phoneHash && !existing.phoneHash) {
-      const [updated] = await db
-        .update(schema.users)
-        .set({ phoneHash })
-        .where(eq(schema.users.id, existing.id))
-        .returning();
-      user = updated ?? existing;
+      try {
+        const [updated] = await db
+          .update(schema.users)
+          .set({ phoneHash })
+          .where(eq(schema.users.id, existing.id))
+          .returning();
+        user = updated ?? existing;
+      } catch (err) {
+        // Another account already carries this phone. The login still stands; this account just has no hash.
+        console.error("phone hash already belongs to another account", { userId: existing.id, err });
+      }
     }
   } else {
     const name = displayName ?? suggestedNameOf(claims) ?? "Friend";
@@ -72,9 +80,26 @@ export async function POST(req: Request): Promise<Response> {
   }
   if (!user) return NextResponse.json({ error: "could not create user" }, { status: 500 });
 
+  // Binding, in order of authority (PLANNING.md section 4). Phone: every ghost carrying this login's hash,
+  // across every creator who picked them. Token: the ghosts someone said "that's me" to in this browser.
+  // Both are silent and exact. Nothing mints here: binding only makes the rows theirs to confirm or decline.
+  // A failure must not cost the person their login, and must not be quiet either.
+  let bound = 0;
+  try {
+    if (user.phoneHash) bound += (await bindByPhone(user.id, user.phoneHash)).length;
+    const tokens = await readClaimTokens();
+    if (tokens.length > 0) {
+      bound += (await bindByBrowserTokens(user.id, tokens)).length;
+      await clearClaimTokens();
+    }
+  } catch (err) {
+    console.error("binding at login failed", { userId: user.id, err });
+  }
+
   await issueSessionCookie(user.id);
   return NextResponse.json({
     user: { id: user.id, displayName: user.displayName, ledgerWallet: user.ledgerWallet, governanceWallet: user.governanceWallet },
+    bound,
   });
 }
 

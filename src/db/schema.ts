@@ -24,6 +24,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
@@ -54,22 +55,33 @@ export const users = pgTable("users", {
   createdAt: ts("created_at").notNull().defaultNow(),
 }).enableRLS();
 
-export const participantClaims = pgTable("participant_claims", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  displayName: text("display_name").notNull(),
-  /** From the contact picker when the creator picked this person; null for typed names. */
-  phoneHash: bytea("phone_hash"),
-  /** The creator whose link they first tapped. */
-  createdBy: uuid("created_by")
-    .notNull()
-    .references(() => users.id),
-  /** Set on bind; every row referencing this claim is rewritten to the user. */
-  claimedBy: uuid("claimed_by").references(() => users.id),
-  claimedAt: ts("claimed_at"),
-  /** Set when a creator merges two ghosts; the survivor is merged_into's target. */
-  mergedInto: uuid("merged_into").references((): AnyPgColumn => participantClaims.id),
-  createdAt: ts("created_at").notNull().defaultNow(),
-}).enableRLS();
+export const participantClaims = pgTable(
+  "participant_claims",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    displayName: text("display_name").notNull(),
+    /** From the contact picker when the creator picked this person; null for typed names. */
+    phoneHash: bytea("phone_hash"),
+    /** The creator whose link they first tapped. */
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+    /** Set on bind; every row referencing this claim is rewritten to the user. */
+    claimedBy: uuid("claimed_by").references(() => users.id),
+    claimedAt: ts("claimed_at"),
+    /** Set when a creator merges two ghosts; the survivor is merged_into's target. */
+    mergedInto: uuid("merged_into").references((): AnyPgColumn => participantClaims.id),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    // Phone binding looks claims up by hash across every creator who ever picked that person.
+    index("participant_claims_phone_hash").on(t.phoneHash),
+    // One creator picking the same contact twice reuses the ghost instead of racing into a second one.
+    uniqueIndex("participant_claims_creator_phone")
+      .on(t.createdBy, t.phoneHash)
+      .where(sql`${t.phoneHash} is not null and ${t.claimedBy} is null and ${t.mergedInto} is null`),
+  ],
+).enableRLS();
 
 export const claimTokens = pgTable("claim_tokens", {
   /** sha256 of the browser token; the token itself is never stored. */
@@ -79,6 +91,28 @@ export const claimTokens = pgTable("claim_tokens", {
     .references(() => participantClaims.id),
   issuedAt: ts("issued_at").notNull().defaultNow(),
 }).enableRLS();
+
+/**
+ * A link a creator sends a ghost through their own composer. Its token is never the browser token: opening
+ * the link issues a fresh claim_tokens row for that browser, so one claim can have several tokens
+ * (docs/decisions.md 2026-09-18). Like every link, it never authenticates.
+ */
+export const claimLinks = pgTable(
+  "claim_links",
+  {
+    /** sha256 of the link token; the token itself is never stored. */
+    tokenHash: bytea("token_hash").primaryKey(),
+    claimId: uuid("claim_id")
+      .notNull()
+      .references(() => participantClaims.id),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+    issuedAt: ts("issued_at").notNull().defaultNow(),
+    revokedAt: ts("revoked_at"),
+  },
+  (t) => [index("claim_links_claim").on(t.claimId)],
+).enableRLS();
 
 // ------------------------------------------------------------------------------------------------------
 // Groups and denominations
@@ -114,6 +148,35 @@ export const groupMembers = pgTable(
     check("group_members_user_xor_claim", sql`(${t.userId} is null) <> (${t.claimId} is null)`),
     unique("group_members_group_user").on(t.groupId, t.userId),
     unique("group_members_group_claim").on(t.groupId, t.claimId),
+  ],
+).enableRLS();
+
+/**
+ * A link that lets a signed-in person join a group. Joining makes someone a quorum member in every later
+ * market there, so a link is revocable and its joins are counted (docs/decisions.md 2026-09-18). Like every
+ * link, it never authenticates.
+ */
+export const groupInvites = pgTable(
+  "group_invites",
+  {
+    /** sha256 of the link token; the token itself is never stored. */
+    tokenHash: bytea("token_hash").primaryKey(),
+    groupId: uuid("group_id")
+      .notNull()
+      .references(() => groups.id),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+    expiresAt: ts("expires_at").notNull(),
+    /** Joins through this link. An existing member tapping it again is not a use. */
+    useCount: integer("use_count").notNull().default(0),
+    /** Set by any current member of the group; a revoked link reads as expired. */
+    revokedAt: ts("revoked_at"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    check("group_invites_use_count_nonnegative", sql`${t.useCount} >= 0`),
+    index("group_invites_group_created").on(t.groupId, t.createdAt),
   ],
 ).enableRLS();
 
@@ -154,6 +217,24 @@ export const denominations = pgTable(
   ],
 ).enableRLS();
 
+/**
+ * One row per contact resolution that carried a phone number, for the per-user hourly limit. A picked number
+ * resolving to an account or to a ghost is an account-existence oracle (docs/decisions.md 2026-09-18); the
+ * limit caps how fast one signed-in person can ask. The row holds who asked and when, and nothing about the
+ * number: not the number, not its hash, not what it resolved to.
+ */
+export const contactResolutions = pgTable(
+  "contact_resolutions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("contact_resolutions_user_created").on(t.userId, t.createdAt)],
+).enableRLS();
+
 // ------------------------------------------------------------------------------------------------------
 // Obligations
 // ------------------------------------------------------------------------------------------------------
@@ -189,11 +270,22 @@ export const obligationProposals = pgTable(
     status: text("status").notNull(),
     /** Accountless debtor tapped "you got me"; no binding force. */
     concededAt: ts("conceded_at"),
+    /**
+     * Provenance, set only when a claim binds. Binding rewrites from_claim or to_claim into a user, and these
+     * keep the one fact that rewrite would lose: this side used to be a ghost. A pending row with
+     * to_bound_claim set needs the debtor's fresh confirmation of who the creditor turned out to be, and a
+     * row with from_bound_claim set always prompts, delegated or not (docs/decisions.md 2026-09-18).
+     */
+    fromBoundClaim: uuid("from_bound_claim").references(() => participantClaims.id),
+    toBoundClaim: uuid("to_bound_claim").references(() => participantClaims.id),
     createdAt: ts("created_at").notNull().defaultNow(),
     resolvedAt: ts("resolved_at"),
   },
   (t) => [
     check("obligation_proposals_from_xor", sql`(${t.fromUser} is null) <> (${t.fromClaim} is null)`),
+    // Provenance describes a side that is now a user, so it can never sit beside a live claim on that side.
+    check("obligation_proposals_from_bound_is_user", sql`${t.fromBoundClaim} is null or ${t.fromUser} is not null`),
+    check("obligation_proposals_to_bound_is_user", sql`${t.toBoundClaim} is null or ${t.toUser} is not null`),
     check("obligation_proposals_to_xor", sql`(${t.toUser} is null) <> (${t.toClaim} is null)`),
     check("obligation_proposals_quantity_positive", sql`${t.quantity} is null or ${t.quantity} > 0`),
     check("obligation_proposals_amount_nonnegative", sql`${t.amountCents} is null or ${t.amountCents} >= 0`),

@@ -8,10 +8,12 @@ import { ButtonLink } from "@/components/ui/button";
 import { currentUser } from "@/lib/auth/session";
 import { personView, userById } from "@/lib/ledger/person";
 import { hueFor } from "@/lib/ui/hue";
+import { viewerClock } from "@/lib/ui/zone";
 
 export const dynamic = "force-dynamic";
 
 export default async function PersonPage({ params }: { params: Promise<{ id: string }> }) {
+  const clock = await viewerClock();
   const me = await currentUser();
   if (!me) redirect("/");
   const { id } = await params;
@@ -45,6 +47,7 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
                 if (!debtor || !creditor) return null;
                 return (
                   <CoveredCard
+                    clock={clock}
                     key={`p-${e.proposal.id}`}
                     viewerId={me.id}
                     creditor={creditor}
@@ -67,6 +70,7 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
               const state = e.open === 0n ? (e.forgiven > 0n && e.settled === 0n ? "forgiven" : "settled") : e.open < total ? "partly" : "open";
               return (
                 <CoveredCard
+                  clock={clock}
                   key={e.obligation.id}
                   viewerId={me.id}
                   creditor={creditor}

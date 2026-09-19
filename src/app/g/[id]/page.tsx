@@ -2,7 +2,8 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { Avatar } from "@/components/ledger/avatar";
 import { UnitGlyph } from "@/components/ledger/glyphs";
-import { InviteShare } from "@/components/ledger/invite-share";
+import { AddGhost } from "@/components/ledger/add-ghost";
+import { GroupInvites } from "@/components/ledger/group-invites";
 import { MarkStamp } from "@/components/ledger/mark-stamp";
 import { ObligationToken } from "@/components/ledger/obligation-token";
 import { ActionArea, Screen, SectionLabel, TopBar } from "@/components/ledger/screen";
@@ -10,16 +11,18 @@ import { ButtonLink } from "@/components/ui/button";
 import { currentUser } from "@/lib/auth/session";
 import { denominationsForGroup } from "@/lib/ledger/denominations";
 import { openInGroup } from "@/lib/ledger/envio";
-import { createInviteToken, groupWithMembers, isMember } from "@/lib/ledger/groups";
+import { activeInvites, groupWithMembers, isMember } from "@/lib/ledger/groups";
 import { bufferToHex, bytes16ToUuid } from "@/lib/ledger/ids";
 import { db, schema } from "@/db";
 import { inArray } from "drizzle-orm";
 import { hueFor } from "@/lib/ui/hue";
 import { glyphKeyOf } from "@/lib/ui/units";
+import { viewerClock } from "@/lib/ui/zone";
 
 export const dynamic = "force-dynamic";
 
 export default async function GroupPage({ params }: { params: Promise<{ id: string }> }) {
+  const clock = await viewerClock();
   const me = await currentUser();
   if (!me) redirect("/");
   const { id } = await params;
@@ -43,8 +46,7 @@ export default async function GroupPage({ params }: { params: Promise<{ id: stri
     })
     .filter((e): e is NonNullable<typeof e> => Boolean(e));
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://dareful.app";
-  const invite = `${appUrl}/join/${createInviteToken(group.id, me.id)}`;
+  const invites = group.isDyad ? [] : await activeInvites(group.id);
   const name = group.name ?? "Just you two";
 
   return (
@@ -63,22 +65,36 @@ export default async function GroupPage({ params }: { params: Promise<{ id: stri
                     <Avatar name={m.displayName} hue={hueFor(m.userId)} size={28} />
                     <span className="text-body-strong text-ink">{m.displayName}</span>
                   </Link>
+                ) : m.claimId && m.addedBy === me.id ? (
+                  <Link href={`/p/c/${m.claimId}`} className="flex h-12 items-center gap-3 rounded-button bg-surface px-3">
+                    <Avatar name={m.displayName} hue="stone" size={28} ghost />
+                    <span className="text-body-strong text-ink">{m.displayName}</span>
+                    <span className="text-caption text-ink-3">not here yet</span>
+                  </Link>
                 ) : (
                   <div className="flex h-12 items-center gap-3 rounded-button bg-surface px-3">
                     <Avatar name={m.displayName} hue={m.userId ? hueFor(m.userId) : "stone"} size={28} ghost={!m.userId} />
                     <span className="text-body-strong text-ink">{m.userId === me.id ? "You" : m.displayName}</span>
-                    {!m.userId ? <span className="text-caption text-ink-3">not signed up yet</span> : null}
+                    {!m.userId ? <span className="text-caption text-ink-3">not here yet</span> : null}
                   </div>
                 )}
               </li>
             ))}
           </ul>
           {!group.isDyad ? (
-            <div className="flex flex-col gap-2 rounded-card border border-dashed border-line-strong p-4">
-              <p className="text-body-sm text-ink-2">Anyone with this link joins the group. Send it from your own messages.</p>
-              <InviteShare url={invite} text={`Join ${name} on Dareful:`} />
-            </div>
+            <GroupInvites
+              groupId={group.id}
+              groupName={name}
+              clock={clock}
+              invites={invites.map((i) => ({
+                id: i.id,
+                madeBy: i.createdBy === me.id ? "You" : i.createdByName,
+                expiresAt: i.expiresAt.toISOString(),
+                joined: i.useCount,
+              }))}
+            />
           ) : null}
+          {!group.isDyad ? <AddGhost groupId={group.id} /> : null}
         </section>
 
         <section className="flex flex-col gap-3">
@@ -125,7 +141,7 @@ export default async function GroupPage({ params }: { params: Promise<{ id: stri
           )}
         </section>
       </div>
-      {group.members.some((m) => m.userId && m.userId !== me.id) ? (
+      {group.members.length > 1 ? (
         <ActionArea>
           <ButtonLink href={`/new?group=${group.id}`} variant="primary" className="w-full">
             I got this one

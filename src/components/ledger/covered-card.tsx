@@ -1,13 +1,15 @@
 import Link from "next/link";
 import type { DenominationRow } from "@/lib/ledger/denominations";
 import { hueFor } from "@/lib/ui/hue";
-import { coveredSentence, gotSentence, whenLabel } from "@/lib/ui/copy";
+import { coveredSentence, gotSentence } from "@/lib/ui/copy";
+import { When } from "./when";
 import { formatMoney } from "@/lib/ui/units";
 import { Chip } from "./chip";
 import { CoveredGlyph } from "./glyphs";
 import { ObligationToken } from "./obligation-token";
 
-type Person = { id: string; displayName: string };
+/** `ghost`: someone who has not joined yet. Stone hue and a dashed ring, per docs/design.md 3.1. */
+type Person = { id: string; displayName: string; ghost?: boolean };
 
 export type CoveredCardProps = {
   viewerId: string;
@@ -18,9 +20,13 @@ export type CoveredCardProps = {
   amountCents: bigint | null;
   memo: string | null;
   at: Date;
+  /** From `viewerClock()`; the card never formats a time in the server's zone. */
+  clock: { zone: string; now: number };
   groupName: string | null;
   state: "pending" | "open" | "partly" | "settled" | "forgiven";
   href?: string;
+  /** Replaces "Tap to confirm" where the card is not a control, such as a claim link seen before signing in. */
+  pendingHint?: string;
 };
 
 /**
@@ -29,7 +35,13 @@ export type CoveredCardProps = {
  */
 export function CoveredCard(p: CoveredCardProps) {
   const subject = p.memo ?? coveredSentence(p.creditor, p.viewerId);
-  const support = [whenLabel(p.at), p.denomination.monetary && p.amountCents !== null ? formatMoney(p.amountCents, { cents: true }) : null].filter(Boolean).join(" · ");
+  const money = p.denomination.monetary && p.amountCents !== null ? formatMoney(p.amountCents, { cents: true }) : null;
+  const support = (
+    <>
+      <When iso={p.at.toISOString()} zone={p.clock.zone} serverNow={p.clock.now} />
+      {money ? ` · ${money}` : null}
+    </>
+  );
   const consequence = gotSentence(p.debtor, p.creditor, p.viewerId);
   const stateLine =
     p.state === "settled" ? "Squared up" : p.state === "forgiven" ? "Called it even" : p.state === "partly" ? "Partly squared" : p.state === "pending" ? (p.debtor.id === p.viewerId ? "Waiting on you" : `Waiting for ${p.debtor.displayName}`) : null;
@@ -46,9 +58,9 @@ export function CoveredCard(p: CoveredCardProps) {
       <p className="text-body-strong text-ink">{subject}</p>
       {support ? <p className="text-body-sm text-ink-2">{support}</p> : null}
       <div className="mt-1 flex items-center justify-between gap-3 border-t border-line pt-3">
-        <span className="text-body-sm text-ink-2">{p.state === "pending" && p.debtor.id === p.viewerId ? "Tap to confirm" : consequence}</span>
+        <span className="text-body-sm text-ink-2">{p.state === "pending" && p.debtor.id === p.viewerId ? (p.pendingHint ?? "Tap to confirm") : consequence}</span>
         <ObligationToken
-          owner={{ id: p.debtor.id, displayName: p.debtor.displayName, hue: hueFor(p.debtor.id) }}
+          owner={{ id: p.debtor.id, displayName: p.debtor.displayName, hue: p.debtor.ghost ? "stone" : hueFor(p.debtor.id), ghost: p.debtor.ghost }}
           other={p.creditor}
           viewerId={p.viewerId}
           denomination={p.denomination}

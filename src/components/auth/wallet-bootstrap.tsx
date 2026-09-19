@@ -60,7 +60,11 @@ export function WalletBootstrap() {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(body.error ?? "Could not sign you in.");
       }
+      // Things a friend logged before this person had an account became theirs at this login. That screen
+      // comes before anything else, once; after that it is a strip on the home screen.
+      const body = (await res.json().catch(() => ({}))) as { bound?: number };
       setPhase("done");
+      if (typeof body.bound === "number" && body.bound > 0) router.push("/welcome");
       router.refresh();
     };
     run()

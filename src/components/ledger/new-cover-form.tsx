@@ -9,8 +9,18 @@ import { createDenominationAction, reuseDenominationAction, type UnitSummary } f
 import { proposeCoverAction } from "@/lib/actions/proposals";
 import type { GlyphKey } from "@/lib/ui/units";
 
-export type PersonOption = { id: string; displayName: string };
-export type GroupOption = { id: string; name: string | null; isDyad: boolean; memberIds: string[]; units: UnitSummary[] };
+/** An account-holder, or a ghost the viewer added earlier: previously picked people are offered first. */
+export type PersonOption = { id: string; displayName: string; kind: "user" | "claim" };
+export type GroupOption = { id: string; name: string | null; isDyad: boolean; memberIds: string[]; ghostIds: string[]; units: UnitSummary[] };
+
+/** The Contact Picker API, where the browser has one (Android Chrome). Everywhere else a name is typed. */
+type PickedContact = { name?: string[]; tel?: string[] };
+type ContactsManager = { select(props: Array<"name" | "tel">, opts?: { multiple?: boolean }): Promise<PickedContact[]> };
+function contactPicker(): ContactsManager | null {
+  if (typeof navigator === "undefined") return null;
+  const c = (navigator as Navigator & { contacts?: ContactsManager }).contacts;
+  return c && typeof c.select === "function" ? c : null;
+}
 
 const PRESETS: Array<{ template: "beer" | "coffee" | "round" | "next_time"; label: string }> = [
   { template: "next_time", label: "a next time" },
@@ -25,7 +35,13 @@ const PRESETS: Array<{ template: "beer" | "coffee" | "round" | "next_time"; labe
  */
 export function NewCoverForm({ people, groups, recent, initialPerson, initialGroup }: { people: PersonOption[]; groups: GroupOption[]; recent: UnitSummary[]; initialPerson?: string; initialGroup?: string }) {
   const [personId, setPersonId] = useState(initialPerson ?? people[0]?.id ?? "");
-  const sharedGroups = useMemo(() => groups.filter((g) => !g.isDyad && g.memberIds.includes(personId)), [groups, personId]);
+  // Someone new: a name, and the number from the contact card when they were picked. The number is sent once
+  // with the form, hashed on the server, and kept nowhere, including here after the submit.
+  const [someoneNew, setSomeoneNew] = useState<{ name: string; phone?: string } | null>(people.length === 0 ? { name: "" } : null);
+  const sharedGroups = useMemo(
+    () => (someoneNew ? [] : groups.filter((g) => !g.isDyad && (g.memberIds.includes(personId) || g.ghostIds.includes(personId)))),
+    [groups, personId, someoneNew],
+  );
   const [groupId, setGroupId] = useState<string | null>(initialGroup ?? sharedGroups[0]?.id ?? null);
   const group = groups.find((g) => g.id === groupId) ?? null;
   const [units, setUnits] = useState<UnitSummary[]>(group?.units ?? []);
@@ -54,9 +70,29 @@ export function NewCoverForm({ people, groups, recent, initialPerson, initialGro
   }
 
   function pickPerson(id: string) {
+    setSomeoneNew(null);
     setPersonId(id);
-    const shared = groups.filter((g) => !g.isDyad && g.memberIds.includes(id));
+    const shared = groups.filter((g) => !g.isDyad && (g.memberIds.includes(id) || g.ghostIds.includes(id)));
     pickGroup(shared[0]?.id ?? null);
+  }
+
+  function startSomeoneNew() {
+    setSomeoneNew({ name: "" });
+    pickGroup(null); // someone new starts between just the two of you
+  }
+
+  async function pickFromContacts() {
+    const picker = contactPicker();
+    if (!picker) return;
+    try {
+      const [c] = await picker.select(["name", "tel"], { multiple: false });
+      if (!c) return;
+      const first = (c.name?.[0] ?? "").trim().split(/\s+/)[0] ?? "";
+      setSomeoneNew({ name: first.slice(0, 40), phone: c.tel?.[0] });
+      pickGroup(null);
+    } catch {
+      // The sheet was closed without picking anyone.
+    }
   }
 
   async function addPreset(template: (typeof PRESETS)[number]["template"]) {
@@ -108,10 +144,16 @@ export function NewCoverForm({ people, groups, recent, initialPerson, initialGro
 
   function submit() {
     setError(null);
-    if (!personId) {
+    if (someoneNew ? !someoneNew.name.trim() : !personId) {
       setError("Who did you get?");
       return;
     }
+    const existing = people.find((p) => p.id === personId);
+    const who = someoneNew
+      ? { kind: "new" as const, name: someoneNew.name.trim(), phone: someoneNew.phone }
+      : existing?.kind === "claim"
+        ? { kind: "claim" as const, claimId: personId }
+        : { kind: "user" as const, userId: personId };
     const amountCents = dollars.trim() ? toCents(dollars) : null;
     if (dollars.trim() && amountCents === null) {
       setError("That amount doesn't look right.");
@@ -124,7 +166,7 @@ export function NewCoverForm({ people, groups, recent, initialPerson, initialGro
     const qty = isMoney ? null : quantifiable ? count.replace(/\D/g, "") || "1" : null;
     start(async () => {
       const result = await proposeCoverAction({
-        debtorUserId: personId,
+        who,
         groupId: group && !group.isDyad ? group.id : null,
         unit,
         quantity: qty,
@@ -146,12 +188,43 @@ export function NewCoverForm({ people, groups, recent, initialPerson, initialGro
         <div className="flex flex-wrap gap-2">
           {people.map((p) => (
             <button key={p.id} type="button" onClick={() => pickPerson(p.id)} className="rounded-pill">
-              <Chip size={36} selected={p.id === personId}>
+              <Chip size={36} selected={!someoneNew && p.id === personId}>
                 {p.displayName}
               </Chip>
             </button>
           ))}
+          <button type="button" onClick={startSomeoneNew} className="rounded-pill">
+            <Chip size={36} selected={someoneNew !== null}>
+              + someone new
+            </Chip>
+          </button>
         </div>
+        {someoneNew ? (
+          <div className="flex flex-col gap-2 rounded-card border border-line bg-surface p-4">
+            {contactPicker() ? (
+              <div>
+                <Button variant="secondary" size="inline" onClick={pickFromContacts}>
+                  Pick from contacts
+                </Button>
+              </div>
+            ) : null}
+            <label className="text-label text-ink-3" htmlFor="new-name">
+              {contactPicker() ? "Or type a first name" : "Their first name"}
+            </label>
+            <input
+              id="new-name"
+              value={someoneNew.name}
+              onChange={(e) => setSomeoneNew((s) => ({ ...(s ?? { name: "" }), name: e.target.value }))}
+              maxLength={40}
+              placeholder="Gabe"
+              autoComplete="off"
+              className="h-12 rounded-tile border border-line bg-ground px-3 text-body text-ink"
+            />
+            <p className="text-caption text-ink-3">
+              They don’t need the app. It waits here until they say it’s right.{someoneNew.phone ? " Their number is only used to recognize them if they join; it isn’t kept." : ""}
+            </p>
+          </div>
+        ) : null}
         {sharedGroups.length > 0 ? (
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={() => pickGroup(null)} className="rounded-pill">

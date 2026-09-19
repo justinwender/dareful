@@ -29,6 +29,27 @@
       "when": 1789684117953,
       "tag": "0003_media_and_marks",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789755351910,
+      "tag": "0004_group_invites",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1789756349603,
+      "tag": "0005_claim_links_and_bind_provenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789775842538,
+      "tag": "0006_contact_resolutions",
+      "breakpoints": true
     }
   ]
 }

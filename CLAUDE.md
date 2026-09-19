@@ -147,7 +147,7 @@ What exists and what it is for. The full schema, with every column and constrain
 - `groups`, `group_members`, `denominations`: group and denomination identity and labels. `onchain_id` is null until the first confirmed mint registers it lazily. Dyads are implicit two-person groups created lazily; `group_id` is never null on an obligation. `group_members` accepts a `claim_id` in place of a `user_id` (ghost members).
 - `obligation_proposals`: everything not yet confirmed (pending, declined, disputed); either side may be a user or a claim. `obligations`: the offchain shadow of a confirmed mint, same uuid, holding only what the chain does not (`amount_cents` magnitude, `settle_expected`, memo, photo, confirm tx). Open, settled, and forgiven are derived from Envio, never stored.
 - `dares`, `dare_positions`, `dare_statements`, `dare_votes`: market text and terms, AI anchor and proposal, positions (a mirror of `Entered` for onchain markets, authoritative for provisional ones), arbitration statements, collected vote signatures.
-- `participant_claims`, `claim_tokens`, `personal_links`, `room_codes`: accountless participation. A claim is a first-class participant; binding rewrites every reference to the user in one transaction.
+- `participant_claims`, `claim_tokens`, `claim_links`, `personal_links`, `room_codes`: accountless participation. A claim is a first-class participant; binding rewrites every reference to the user in one transaction, records which side used to be a ghost (`from_bound_claim`, `to_bound_claim`), and folds a ghost dyad into the pair's existing dyad so one pair never has two. `group_invites`: revocable, counted group links. `contact_resolutions`: who resolved a phone number and when, for the hourly limit, and nothing about the number.
 - `plans`, `plan_rsvps`: the forward timeline.
 - `media`: photos and video on a market (`dare_id`) or an obligation (`obligation_id`, the settlement photo), exactly one of the two. Replaces `photos`. Holds kind, storage key, poster key, dimensions, duration, author, and `captured_at` from EXIF; every other EXIF field, GPS above all, is stripped at upload. Served through signed URLs behind an authorization check (the market's participants and the group it was asked in), never a public bucket. Derivatives: 1080px long edge, 256px square, poster frame.
 - Marks: `mark_kind` (`emoji` or `image`) and `mark_value` on `dares` and `denominations`. Blank by default, never suggested or defaulted, never load-bearing: every screen reads with marks off.
@@ -207,7 +207,7 @@ Real values live in `.env.local` (gitignored). `.env.example` is committed with 
 - `RELAYER_ADDRESS` and `RELAYER_PRIVATE_KEY`: a fresh keypair funded with testnet MON. It holds gas and nothing else.
 - `PHONE_HASH_SALT`: permanent. Once one hash is stored it can never change.
 - `DAREFUL_LEDGER_ADDRESS` and `DAREFUL_DARES_ADDRESS`: from the Phase 0 deploy; read from environment everywhere.
-- `SEED_MNEMONIC`: derives the seed script's test wallets. `ENVIO_GRAPHQL_URL`: the indexer's GraphQL endpoint.
+- `SEED_MNEMONIC`: derives the seed script's test wallets. `ENVIO_GRAPHQL_URL`: the indexer's GraphQL endpoint: `localhost:8080` for a local run, the Envio Cloud endpoint in Vercel. Envio Cloud deploys whatever is pushed to the `envio` branch, with `indexer` as its root directory.
 - The browser gets no Supabase connection: no anon key, no `NEXT_PUBLIC_SUPABASE_ANON_KEY`, no client-side Supabase SDK.
 - Deploy: Vercel, custom domain `dareful.app`, DNS through Cloudflare set to DNS-only. Never use a `*.vercel.app` URL for anything auth-related.
 - MCP servers: Supabase, Vercel, Cloudflare (Dynamic is available from a terminal session). Use them rather than asking for dashboard reads.
@@ -225,6 +225,7 @@ Real values live in `.env.local` (gitignored). `.env.example` is committed with 
 /src/lib/ai        every model call, behind typed functions
 /src/db            Drizzle schema and migrations
 /scripts           seed
+/tests             unit, db (real database, rows tracked and removed), http (running server); mutation audit
 ```
 
 ## Easy to get wrong
@@ -245,6 +246,10 @@ Real values live in `.env.local` (gitignored). `.env.example` is committed with 
 - **The timeline orders by the offchain timestamp, never the chain timestamp.** Every event row sorts on its Postgres `created_at` (or `occurs_at`, `resolved_at` as the event defines). Block timestamps are when the relayer got around to it, and the seed backdates history by months while its blocks are all from one afternoon. This is a rule for every query and every view, not a behavior of one.
 - One market resolution per transaction. Never batch two `resolve` or `arbitrate` calls.
 - Copy never says owes, debt, balance, owed, outstanding, overdue, up, down, net, or "settle up" as a noun; and no screen says wallet, transaction, gas, signature, chain, or token. There is no red and no green anywhere in the product.
+- **A check that cannot fail is worse than no check.** Every test in `tests/` is covered by a mutant in `tests/mutation/mutants.ts` that breaks the rule it names, and `npm run test:audit` requires the test to fail under it. A new test arrives with its mutant. Never `check(name, true)`, never a comparison of two literals, never a throwaway script deleted after it passes. A mutant must never widen what the code does to rows the test did not make: the database is the real one.
+- A share card and its preview metadata say a first name and that there is something to look at. Never an amount, a unit, a memo, a full display name, or who it is against; a dead, unknown, or closed link gets the plain card, byte-identical. Built as data in `src/lib/ledger/share.ts`.
+- Whether a picked number resolved to an account or a ghost never appears in the response to the request that resolved it, and resolutions by number are limited per person per hour. The next page still shows it; that residual is logged in `docs/decisions.md`.
+- Times render in the viewer's zone through `When` and `viewerClock()`, never with a bare `toLocaleDateString`; "yesterday" is a calendar day in that zone.
 - The seed produces both regimes, always-square and let-it-ride. A one-regime seed makes Phase 1 look correct when it is not.
 - No em dashes in any generated documentation or copy.
 

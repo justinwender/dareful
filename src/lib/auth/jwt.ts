@@ -4,6 +4,7 @@
  */
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 import { z } from "zod";
+import { normalizeE164 } from "@/lib/auth/phone";
 
 const VerifiedCredential = z
   .object({
@@ -81,13 +82,26 @@ export function evmAddressesOf(claims: DynamicClaims): string[] {
     .filter((a): a is string => Boolean(a));
 }
 
-/** The E.164 phone number the token vouches for, if phone login was used. */
+/**
+ * The E.164 phone number the token vouches for, if phone login was used. Dynamic sends the national number and
+ * the country code separately, so the number is the code followed by the national number. Guessing from a
+ * shared prefix is wrong where national numbers legitimately begin with the country code's digits (+7 7xx),
+ * and a wrong spelling here is a ghost that silently never binds. The bare digits are accepted only if the
+ * joined form is not a valid number, in case a token ever carries the code inside the number.
+ */
 export function phoneOf(claims: DynamicClaims): string | undefined {
   const c = claims.verified_credentials.find((x) => x.format === "phoneNumber" && x.phone_number);
   if (!c?.phone_number) return undefined;
   const code = c.phone_country_code ? c.phone_country_code.replace(/[^\d]/g, "") : "";
   const digits = c.phone_number.replace(/[^\d]/g, "");
-  return `+${digits.startsWith(code) && code ? digits : code + digits}`;
+  for (const candidate of [`+${code}${digits}`, `+${digits}`]) {
+    try {
+      return normalizeE164(candidate);
+    } catch {
+      // try the next spelling
+    }
+  }
+  return undefined;
 }
 
 /** A display name to start with. Principle 7: a first name is all anyone types. */
