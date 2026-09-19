@@ -4,9 +4,10 @@ The build reference for the Dareful client. Every value here is literal. Where a
 need is not in the canvas, the reasoning sections and the decision rules are what you build
 from, so read those before improvising.
 
-Canvas: the Design artifact "Dareful". Board names referenced below (`Main`, `Story`,
-`Entry`, `States`, `Leaderboard`, `Split`, `Memory`, `Claim`, `Empty`, share cards, plus the
-three spec boards) match the artboards there.
+Canvas: the Design artifact "Dareful". Board names referenced below match the artboards there:
+`Main`, `Story`, `Entry`, `States`, `Leaderboard`, `Split`, `Memory`, `Claim`, `Home`, `Join`,
+`JoinLink`, `FirstRun`, `Empty`, the three share cards, and the four spec boards (`Tokens`,
+`Language`, `Marks`, `Errors`).
 
 Target: mobile web, installable as a PWA, 390px reference width. Tailwind plus shadcn/ui.
 Dark is the default and only shipped theme for v1; light values are given so nothing has to be
@@ -359,9 +360,10 @@ Kinds and states:
   soft line tying an open obligation to the plan.
 - **Voided**: subject line, "Nobody could tell, so it's void," no consequences, no toll, and
   no explanation of who failed to resolve it.
-- **Loading**: the card shape with 8px and 12px `--line`/`--line-strong` bars in place of
-  text, hatched block in place of media, no shimmer, minimum 200ms on screen to avoid a
-  flash.
+- **Loading**: only when the card is loading into a screen that is already on display (5.3);
+  the card shape with 8px and 12px `--line`/`--line-strong` bars in place of text, hatched
+  block in place of media, no shimmer, minimum 200ms on screen to avoid a flash. A navigation
+  never renders this.
 - **Error**: the card shape with one `body-sm` line, "Couldn't load this one," and a 44px
   "Try again" text button. Never a red state.
 
@@ -482,9 +484,8 @@ events total** (hide the rally entirely; it needs a pattern to show one); **all 
 | Icon only | 48 | 999 | transparent | `--ink`, glyph 22-24px, `aria-label` required |
 
 States: **pressed** (opacity 0.88, 120ms); **disabled** (`--ink-3` text, 1px `--line` border,
-no fill, no opacity trick); **loading** (label is replaced by "…" at the same width, button
-keeps its size, control stays disabled); **destructive** (secondary styling, `--ink` text, and
-a confirmation sheet; no red).
+no fill, no opacity trick); **pending** (5.2); **destructive** (secondary styling, `--ink`
+text, and a confirmation sheet; no red).
 
 At most one primary button per viewport.
 
@@ -530,6 +531,77 @@ pin on the tiles at that position).
   around." Entries queue and send on reconnect.
 - **A number that failed to send**: the entry screen stays, with a 15px line, "Your number
   didn't send," and a "Try again" tertiary button. The number is never silently dropped.
+
+### 3.15 Needs-you row
+
+One `--surface` card, radius 18, rows divided by 1px `--line`. Each row is a grid of
+`minmax(0,1fr) auto` with 12px gap and 14px by 16px padding. The left column is a 13px
+`--ink-3` context line saying why it needs this person and when it closes, then the subject:
+Young Serif 17/22 when the subject is a question, `body-strong` otherwise, plus a token row
+when the item is an obligation. The right column is a 44px secondary button whose label is the
+verb: Vote, Enter, Yep, Finish.
+
+Ordering: soonest deadline first, then longest waiting, then whatever is fastest to finish.
+
+States: **empty** (the section and its heading are removed entirely, not shown empty);
+**one item**; **more than four** (show four, then a 44px "2 more" tertiary row); **resolved
+elsewhere while on screen** (the row collapses over 200ms, no toast, no "done" confirmation);
+**abandoned draft** (same shape, context line "You started this and never sent it", verb
+"Finish"); **acted on** (row collapses, the action's result shows up in Just happened).
+
+Never: a count badge on the heading, a number in an app icon, a red dot, or a row that reports
+how long something has been waiting in days.
+
+### 3.16 Code input
+
+Two forms of the same thing.
+
+**Compact** (home, first run): a 48px text input, radius 14, 1px `--line`, `--surface` fill,
+17px with `letter-spacing: 0.08em` and `text-transform: uppercase`, placeholder a real-shaped
+code (`K7QMD3`), and a 48px secondary Join button beside it. Never `type="number"`.
+
+**Focused** (the joining screen): six boxes of 48 by 60, radius 12, 1px `--line`, 24px 600
+tabular, 8px gap. The active box takes a 2px `--marigold` border. Typing advances, backspace
+retreats, and pasting six characters fills all six at once.
+
+Alphabet: A-Z and 2-9 minus O, I and Z, which leaves 31 unambiguous characters. Input is
+case-insensitive and always displays uppercase, because the common case is one person reading
+it off another person's screen in a dark room.
+
+States: **empty**; **partially filled** (submit disabled); **full** (submit enabled);
+**invalid shape** (5.1, at the field); **unknown or expired code** (form-level message, the
+typed characters are kept); **already a member** (no error at all: go straight in).
+
+### 3.17 Invite preview
+
+The card someone sees before they commit to anything. `--surface`, radius 18, 16px padding:
+an inviter row (32px avatar, "Priya invited you", group chip right), the market's 44px mark
+stamp beside the question in `question`, a participant stack with a plain-language count
+("Four friends are in"), then a divider and two 15px facts: when it decides, and how it works.
+
+It shows no amounts. No stakes, no dollar figures, no leaderboard, no obligations, and no
+names beyond the inviter. What someone sees before joining is what it is and who asked, never
+what it could cost.
+
+States: **market invite**; **group invite** (the question becomes the group name in `display`
+and the facts become what the group has going); **expired** ("This one's finished," plus a
+link to the result if the market is visible to that group); **revoked or malformed token** (no
+card: the joining screen with a form-level message).
+
+### 3.18 Person row
+
+56px minimum height, 12px gap, 36px avatar, name in `body-strong`, and the person's open
+obligations as a single token on the right, keeping the anatomy rule so ownership survives the
+compression (owner's avatar leads for theirs, trails for yours). "Nothing open" in 13px
+`--ink-3` when there is nothing. Long names truncate to one line; the avatar never changes.
+
+### 3.19 Group chip
+
+36px tall, radius 999, 1px `--line-strong`, transparent fill, 15px 500 `--ink-2`. A group that
+came out of a single occasion and has not recurred takes a dashed border, which is the same
+"has not happened yet" meaning applied to a group that may never become one. Tapping filters
+the screen it sits on; it never navigates into a group container. Selected: `--surface-2`
+fill, `--ink-3` border, and a 44px Clear tertiary appears beside the row.
 
 ---
 
@@ -603,21 +675,125 @@ everyone else. Numbers never open a sentence in the interface. Times are relativ
 week ("Sat, Sep 12" after that). No exclamation marks in system copy. The app never thanks the
 user for settling something and never congratulates anyone for winning.
 
+### 4.7 Home, and why it is event-first
+
+Home is the root screen, it has no back control, and every other screen has a 48px back
+control in its top left. The app is installed to a home screen with no browser chrome, so
+nothing may depend on a browser back button.
+
+The hierarchy is fixed, and the reasoning matters more than the order because you will have to
+place new things into it:
+
+1. **Ask something.** The only marigold button on the screen. Creating a market is the act the
+   product exists for, and everything else on home is downstream of somebody having done it.
+2. **Join.** A code field and a button, directly under the primary action. It is not marigold,
+   because two marigold controls is none, but it sits above everything else because a person
+   who cannot join from inside the app has to leave the app.
+3. **Needs you.** Only things that will not move without this person: a resolution to vote on,
+   a market they have not entered, an obligation to confirm, a claim to accept, a draft they
+   abandoned. This is the strip that makes the app worth opening, and it is the one place the
+   no-nagging rule is under real pressure. The discipline that keeps it honest: every row is
+   an action this person can complete now, the section disappears when it is empty, and
+   nothing in it counts or ages.
+4. **Just happened.** Resolved markets, closed obligations, covers that landed. Stories keep
+   their story anatomy here (4.4); this is a feed of what the group did, not a notification
+   list.
+5. **People.** The person view is where the product's thesis lives, so home keeps a short path
+   into it.
+6. **Groups.** Last, and as chips. A group is a label on an event and a filter over this
+   screen, never a container you navigate into. Someone should be able to use this app for
+   weeks without thinking about groups as objects, which is also what the data does: a group
+   forms lazily out of whoever was involved, and naming one is what happens when an occasion
+   turns out to recur.
+
+Placing something new on home: if it is an action only this person can take, it goes in Needs
+you. If it is something the group did, it goes in Just happened. If it is a way to reach
+people, it goes in People. If it is organisational, it is a chip or it does not belong on home
+at all.
+
 ---
 
-## 5. What we did not design, and how to derive it
+## 5. Errors and waiting
 
-Not drawn in this canvas: group creation and the group list, market creation, argument
-creation, receipt scanning and splitting, capture standings, credit-card roulette, plans and
-RSVPs, profile and settings, notification inbox, search, the light theme in situ, and any
-desktop layout.
+### 5.1 Errors
+
+There is no red in this product, so color cannot carry an error and the build's marigold
+version cannot stand either: marigold already means what happened, today, and the next tap,
+and a marigold error competes with the button at the moment a person most needs to find it.
+Ink carries errors instead, on four channels: position, weight, a glyph, and the words.
+
+**A field error.** The field's border goes from 1px `--line` to 1.5px `--ink`. Under it, a row
+with the 16px alert glyph and the message in `--ink` at 15/20. The field's label does not
+change color. Focus rings stay 2px `--marigold`, which is what keeps focus and error
+distinguishable.
+
+**A form error.** Every field error repeats once in a summary block directly above the submit
+button: `--surface-2` fill, 1px `--line-strong`, radius 14, 12px by 14px padding, the alert
+glyph and the message in `--ink` at 15/20, problems listed in the order the fields appear. A
+server or network failure uses the same block with a 44px "Try again" inside it. It is never a
+toast, and it never blames the person.
+
+**Timing.** Validate on submit, then on blur for any field already marked. Never on keystroke.
+A failed submit keeps everything typed and moves focus to the first field with a problem.
+
+**Wiring.** `aria-invalid` on the field, `aria-describedby` pointing at its message,
+`role="alert"` on the summary block so it is announced once when it appears.
+
+**Voice.** Say what is wrong and what to do: "Codes are six characters. This one is five." Not
+"Invalid input", not an apology, not an error code. "No market with that code. Worth checking
+the last two characters." "This one closed at 11pm, so you can watch but not enter." "Your
+number didn't send. Tap to try again."
+
+### 5.2 Buttons that are working
+
+A tap dims the control to 0.88 for 120ms. If the action has not finished in 300ms the control
+enters **pending**: the label stays exactly where it was, the control holds its size, opacity
+stays at 0.88, and a 2px indeterminate line runs along its bottom edge on a 1.2s loop. On a
+marigold button the track is `rgba(29,22,8,0.25)` and the runner is `--on-marigold`; on a
+secondary button the track is `--surface-2` and the runner is `--marigold`. The control is
+`aria-busy` and not interactive; every other control on the screen stays live, so a slow
+action can still be abandoned.
+
+At 3 seconds, a 13px `--ink-3` line appears under the control: "Still going." At 10 seconds it
+becomes the 5.1 summary block with "Try again". A tap is never silently dropped.
+
+### 5.3 Waiting, and the one place a skeleton is allowed
+
+A tap keeps the screen it was made on. The control carries the wait; the screen does not
+replace itself with a skeleton of itself. Two reasons beyond the aesthetic one: a route-level
+streamed loading state made this app answer 404s with a 200, and a person reading a screen in
+a bar who loses it loses their place.
+
+Under 300ms: nothing beyond the press. A spinner that lives for 180ms reads as a glitch.
+
+Skeletons are allowed in exactly one case: content loading into a screen that is already on
+display, such as pagination, older events on a person view, or media opening inside a story.
+Bars at 8px and 12px, hatched blocks for media, no shimmer, minimum 200ms so they cannot
+flash. Navigations never get one, and route handlers keep returning real status codes.
+
+### 5.4 What none of this is allowed to become
+
+No red, no toasts that disappear before they are read, no modal error dialogs, no full-screen
+error pages inside the app, no error codes in front of people, and no message that makes
+someone feel audited for typing a code wrong in a dark room.
+
+---
+
+## 6. What we did not design, and how to derive it
+
+Not drawn in this canvas: group management (leaving, archiving, renaming, the group view
+itself), market creation, argument creation, receipt scanning and splitting, capture
+standings, credit-card roulette, plans and RSVPs, profile and settings, notification inbox,
+search, the light theme in situ, and any desktop layout. Group management is deferred
+deliberately, not forgotten: it needs the answer to what happens to an occasion group that is
+over, and that is a product question before it is a design one.
 
 To build one of them without waiting for a design pass:
 
 1. **Find its nearest relative in the canvas.** Market creation is the entry screen run
    backwards: terms as a `dl` with 104px labels, the same stake chips, the same primary
-   button, plus the mark picker from 3.9. The group list is the claimant screen's grouped
-   sections without the confirm controls.
+   button, plus the mark picker from 3.9. A group view, if one is ever needed, is home
+   filtered by that group's chip rather than a screen of its own (4.7).
 2. **Classify every event it shows** with 4.4, then use the row or story anatomy as given.
 3. **Encode any obligation** with 2.1: side, hue, grammar, anatomy. If the screen has no
    "you," fall back to sentence order with the owner's avatar leading.

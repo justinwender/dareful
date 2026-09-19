@@ -16,7 +16,7 @@ What changed: the Phase 1 login acceptance test includes a passkey failure path 
 
 ## Session 2: first real use, two platforms
  
-**Date:** September 19, 2026
+**Date:** September 18-19, 2026
 **Testers:** the author on two accounts (one email login, one phone login), and a family member on Android
 **Devices:** one iPhone (number and email), one macbook (same number and email as iphone), one Android
 **Build:** production, `dareful.app`
@@ -94,4 +94,73 @@ not. [Note whether both platforms were similar.]
 - What the contact picker did on each platform, and whether behavior differed
   between an installed PWA and a browser tab.
 - Whether registration time differed between iOS and Android.
+ 
+## Session 3: four accounts, first markets
+ 
+**Date:** september 19, 2026
+**Testers:** the author, two additional accounts of the author's, and one other
+person (referred to below as the Android tester)
+**Devices:** desktop browser, installed PWA on iOS, Android phone
+**Build:** production, `dareful.app`, after Phase 2A
+ 
+First session with markets. Four accounts in one group: the author's primary,
+two plus-addressed accounts (account A and account B), and the Android tester's.
+ 
+### What worked
+ 
+Market setup was good. Account B tapped through creation, the AI asked useful
+scoping questions, the terms read correctly, and the market was created when
+account B entered their own position.
+ 
+### Blocker
+ 
+**Two of four accounts cannot create a market or enter a position.** Both the
+Android tester and account A get "account is still setting up. give it a second
+and try again." The Android account was created more than an hour earlier and
+account A more than twenty minutes earlier. Account B was created at roughly the
+same time as account A and works normally.
+ 
+An hour is not a transient delay, so a message telling people to wait describes a
+state that will not resolve on its own. Either the wallet bootstrap failed
+silently on those accounts and a generic transient error is covering a permanent
+failure, or the check gating market creation reads something other than the
+recorded wallet pair. After three more hours, both still return the same error.
+ 
+Note for diagnosis: account A was on the installed PWA rather than a browser tab.
+Worth checking whether both failing accounts share a runtime, since an installed
+PWA has its own storage context.
+ 
+This blocks the four-person market checkpoint.
+ 
+### Structural findings
+ 
+These are two symptoms of one thing.
+ 
+**A group can only be joined from outside the app.** Someone already signed in
+and looking at their home screen has no way to enter a group; they have to go
+back to their messages and find the link. There is no join-by-code field and no
+entry point on any screen after login.
+ 
+**A group cannot be left, archived, or cleaned up.** Once joined, a group is
+permanent in the interface. There is no answer to a group made for a one-time
+occasion, or to a person who is no longer part of one.
+ 
+Both follow from groups being the way into the product. The suggested rework is
+to make the home screen event-first: creating or joining a market is the primary
+action, groups form as a consequence of markets rather than as the route in, and
+naming a group is what happens when an occasion recurs rather than a step at the
+start. That matches the schema, where groups already form lazily from a member
+set, and it matches the existing design intent that groups are secondary
+navigation and squareness is computed rather than declared.
+ 
+### Still to record
+ 
+- Whether login survives in the installed PWA separately from a browser tab.
+- Whether the contact picker behaves the same in the installed PWA as in a tab,
+  on each platform.
+- Whether a shared link opens in the installed app or in a browser tab for
+  someone who has it installed.
+- Whether Open Graph cards render in a real messaging client.
+- Whether the back gesture works in the installed PWA, which has no browser
+  chrome.
  
