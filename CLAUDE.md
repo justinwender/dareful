@@ -146,13 +146,13 @@ What exists and what it is for. The full schema, with every column and constrain
 - `users`: one row per account; both wallet addresses, `phone_hash` (salted, never exposed through any API), display name.
 - `groups`, `group_members`, `denominations`: group and denomination identity and labels. `onchain_id` is null until the first confirmed mint registers it lazily. Dyads are implicit two-person groups created lazily; `group_id` is never null on an obligation. `group_members` accepts a `claim_id` in place of a `user_id` (ghost members).
 - `obligation_proposals`: everything not yet confirmed (pending, declined, disputed); either side may be a user or a claim. `obligations`: the offchain shadow of a confirmed mint, same uuid, holding only what the chain does not (`amount_cents` magnitude, `settle_expected`, memo, photo, confirm tx). Open, settled, and forgiven are derived from Envio, never stored.
-- `dares`, `dare_positions`, `dare_statements`, `dare_votes`: market text and terms, AI anchor and proposal, positions (a mirror of `Entered` for onchain markets, authoritative for provisional ones), arbitration statements, collected vote signatures.
+- `dares`, `dare_positions`, `dare_statements`, `dare_votes`: market text and terms, AI anchor and proposal, positions (a mirror of `Entered` for onchain markets, authoritative for provisional ones), one line per person about what happened (read by the outcome proposal, and by arbitration), collected vote signatures. A market's state is derived, never stored: no `creator_signature` is a draft only its creator sees; a signature is open; `locked_at` is locked (the first chain write); `resolved_at` is decided. "Nobody can tell" is `-1` offchain (`VOID_OUTCOME`) and the largest uint256 onchain. What a market mints gets shadow `obligations` rows with `origin = 'dare'` and `origin_id` the market, and those render inside the market's story, never as ledger rows.
 - `participant_claims`, `claim_tokens`, `claim_links`, `personal_links`, `room_codes`: accountless participation. A claim is a first-class participant; binding rewrites every reference to the user in one transaction, records which side used to be a ghost (`from_bound_claim`, `to_bound_claim`), and folds a ghost dyad into the pair's existing dyad so one pair never has two. `group_invites`: revocable, counted group links. `contact_resolutions`: who resolved a phone number and when, for the hourly limit, and nothing about the number.
 - `plans`, `plan_rsvps`: the forward timeline.
 - `media`: photos and video on a market (`dare_id`) or an obligation (`obligation_id`, the settlement photo), exactly one of the two. Replaces `photos`. Holds kind, storage key, poster key, dimensions, duration, author, and `captured_at` from EXIF; every other EXIF field, GPS above all, is stripped at upload. Served through signed URLs behind an authorization check (the market's participants and the group it was asked in), never a public bucket. Derivatives: 1080px long edge, 256px square, poster frame.
 - Marks: `mark_kind` (`emoji` or `image`) and `mark_value` on `dares` and `denominations`. Blank by default, never suggested or defaulted, never load-bearing: every screen reads with marks off.
 - `delegations`: encrypted delegated ledger-wallet credentials, the most sensitive table; a `before insert` trigger rejects any governance wallet; accessible only from `src/lib/chain/delegated-signer.ts`.
-- `expenses`, `expense_items`, `expense_tax_lines`, `item_claims`: receipts, offchain until finalization produces proposals (Phase 8).
+- `expenses`, `expense_items`, `expense_tax_lines`, `item_claims`: one total split across a group today (the manual path: even by default, the residual cent on the payer, one `expense`-origin proposal per person), and receipts in Phase 8, which fill the same tables.
 
 **Indexer (Envio HyperIndex):** the only chain reader in the stack. Entities `Obligation` (with `remaining`), `Group`, `Member`, `Denom`, `Dare`, `Position`, plus one entity per event. Serves the `OpenBetween` query (PLANNING.md section 10).
 
@@ -208,7 +208,8 @@ Real values live in `.env.local` (gitignored). `.env.example` is committed with 
 - `RELAYER_ADDRESS` and `RELAYER_PRIVATE_KEY`: a fresh keypair funded with testnet MON. It holds gas and nothing else.
 - `PHONE_HASH_SALT`: permanent. Once one hash is stored it can never change.
 - `DAREFUL_LEDGER_ADDRESS` and `DAREFUL_DARES_ADDRESS`: from the Phase 0 deploy; read from environment everywhere.
-- `SEED_MNEMONIC`: derives the seed script's test wallets. `ENVIO_GRAPHQL_URL`: the indexer's GraphQL endpoint: `localhost:8080` for a local run, the Envio Cloud endpoint in Vercel. Envio Cloud deploys whatever is pushed to the `envio` branch, with `indexer` as its root directory.
+- `ANTHROPIC_API_KEY`: server-only. `AI_MODEL_DRAFTING` and `AI_MODEL_RULING` override the defaults in `src/lib/ai/client.ts`.
+- `SEED_MNEMONIC`: derives the seed script's test wallets. `ENVIO_GRAPHQL_URL`: the indexer's GraphQL endpoint: `localhost:8080` for a local run, the Envio Cloud endpoint in Vercel. Envio Cloud builds from the `envio` branch with `indexer` as its root directory; auto-deploy is off, so a deploy is `envio-cloud deployment deploy dareful <commit>`, by the runbook in `docs/decisions.md`. Three deployments alive at once; deleting one frees its slot. The hosted endpoint allows 100 queries a minute.
 - The browser gets no Supabase connection: no anon key, no `NEXT_PUBLIC_SUPABASE_ANON_KEY`, no client-side Supabase SDK.
 - Deploy: Vercel, custom domain `dareful.app`, DNS through Cloudflare set to DNS-only. Never use a `*.vercel.app` URL for anything auth-related.
 - MCP servers: Supabase, Vercel, Cloudflare (Dynamic is available from a terminal session). Use them rather than asking for dashboard reads.
@@ -225,7 +226,7 @@ Real values live in `.env.local` (gitignored). `.env.example` is committed with 
 /src/lib/chain     contracts.ts, relayer.ts, delegated-signer.ts, gas.ts, typed-data.ts
 /src/lib/ai        every model call, behind typed functions
 /src/db            Drizzle schema and migrations
-/scripts           seed
+/scripts           seed, verify-envio (obligations and markets against the chain), gas surveys, dev tooling
 /tests             unit, db (real database, rows tracked and removed), http (running server); mutation audit
 ```
 
@@ -251,17 +252,27 @@ Real values live in `.env.local` (gitignored). `.env.example` is committed with 
 - A share card and its preview metadata say a first name and that there is something to look at. Never an amount, a unit, a memo, a full display name, or who it is against; a dead, unknown, or closed link gets the plain card, byte-identical. Built as data in `src/lib/ledger/share.ts`.
 - Whether a picked number resolved to an account or a ghost never appears in the response to the request that resolved it, and resolutions by number are limited per person per hour. The next page still shows it; that residual is logged in `docs/decisions.md`.
 - Times render in the viewer's zone through `When` and `viewerClock()`, never with a bare `toLocaleDateString`; "yesterday" is a calendar day in that zone.
+- The scoring rule has one hand-verified answer: section 8c is scores 3600, 9100, 7500, 0; edges 275, 65, 180, 26, 606, 125; nets -160, +907, +164, -911. `src/lib/ledger/scoring.ts` mirrors the contract from the specification, is cross-checked against the deployed contract's pure functions, and is what `verify-envio` recomputes every market's edges with. Change one only with the other, and with the hand figures in front of you.
+- A vote is a governance-wallet signature. The server relays votes and can never make one: `castVote` verifies against `governance_wallet`, and a ledger-wallet signature is refused. A position is a ledger-wallet signature by its owner over exactly the numbers submitted. Both are checked offchain before anything is sent, and again by the contract.
+- Numbers before lock: in an open market only someone who has picked sees anyone's number; in a blind market nobody does. After lock everyone in the group does. Someone outside the group never sees who is in.
+- No route-level `loading.tsx`. It makes the response stream, and a streamed response cannot answer 404 or redirect. Tap feedback is `LinkPending` inside the link and `loading` on the button.
+- A refusal is a statement at the field it is about (`Problem`), marked in marigold, never a question and never plain body text at the bottom of a form.
+- A model is never on the critical path. Every call is in `src/lib/ai/`, Zod-parsed, with a plain fallback; it proposes, the creator approves terms, and a quorum decides outcomes.
+- Read your own writes at the block they were mined in, and expect a simulate right after your own transaction to see stale state: the RPC is load-balanced.
+- Wallets are counted from the login token on the server (`src/lib/auth/login.ts`), never from the SDK's client-side list, and Dynamic's phone credential keys are camelCase (`phoneNumber`, `phoneCountryCode`) while the rest are snake_case. Build test fixtures with Dynamic's own serializer, not by hand.
 - The seed produces both regimes, always-square and let-it-ride. A one-regime seed makes Phase 1 look correct when it is not.
 - No em dashes in any generated documentation or copy.
 
 ## Current phase
 
-**Phase 1: auth and ledger core, plus the design implementation and the marks and media schema.** Phase 0 was approved on September 17, 2026. Submission gate October 13, 2026, 23:59 ET. Phases 0 through 2 are the minimum viable submission; the first portal submission happens at the end of Phase 2.
+**Phase 2A: markets core.** Phase 1 closed on September 19, 2026, with one checkpoint criterion still open (below). Submission gate October 13, 2026, 23:59 ET. Phase 2 is five parts: 2A markets core, 2B the submission, 2C the argument settler, 2D accountless and in-person, 2E media.
 
-Scope: PLANNING.md section 12 Phase 1 as written, with its checkpoint as written, plus the design tokens and components from `docs/design.md`, plus the schema changes from `docs/marks-and-memories.md` as corrected in `docs/decisions.md` (2026-09-17). Two things come first: Monad testnet registered in the Dynamic SDK through an `evmNetworks` override with a wallet confirmed on chain 10143, and the timeline-ordering rule above.
+2A built, in order: the Phase 1 checkpoint on the record and the two bugs it found (phone hashes never stored; two more wallets on every new device); the six bugs from the first real session; measured performance and tap feedback everywhere; and binary markets end to end (quick-mode creation with AI scoping, signed entry, one atomic `create` at lock, an AI outcome proposal from what people say happened, governance-wallet votes, `resolve` in its own transaction, the leaderboard, and markets as stories in every timeline). DarefulDares gas is re-measured. The hosted indexer needed no redeploy.
 
-It is the largest phase in the plan, so it splits at the seam between the account layer and the accountless layer. First: Dynamic login with both wallets, groups, denominations with marks, manual propose and confirm with prompted signing through the relayer, and the person view. Then: contacts, personal links, the composer handoff, claims, tokens, binding, merge, and the claimant's first screen. Check in at the seam rather than pushing through; Phase 2 carries the first submission and is protected.
+Open from Phase 1: the ghost half of the checkpoint (pick a contact, log a cover, that person signs up a day later by phone and it binds) has never been run by real people. It could not have passed before 2A's phone-hash fix.
 
-**Checkpoint (PLANNING.md):** two people on two phones, one Android, create and confirm an obligation and both see it in the person view within one block; the creator picks a third person from contacts, logs "I got this one" against them, and that ghost's pending obligation binds and mints when they sign up a day later on the same phone number.
+**Checkpoint (2A):** four account holders enter a binary market, it resolves by quorum with one dissenter, the leaderboard shows the scores, and every edge appears on the right timelines, on production. Verified with seed wallets and with temporary wallets against the real chain; it needs four real people on production to close.
 
-Next, only after explicit approval: Phase 2, the fast loop and the first submission. Media (storage, derivatives, signed URLs, the frame component, and a server-side share renderer with an emoji font) is the largest addition to Phase 2 since it was written.
+Not in 2A: `arbitrate` and `expire` screens, arguments, careful mode, numeric and categorical questions, close-time lock, notifications, provisional markets and ghosts in markets.
+
+Next, only after explicit approval: Phase 2B, the submission.

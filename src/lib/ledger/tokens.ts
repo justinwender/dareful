@@ -5,7 +5,7 @@
  *
  * A token is never authentication. It says which row a link points at, nothing about who is holding it.
  */
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 
 const TOKEN_BYTES = 32;
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
@@ -18,4 +18,15 @@ export function newToken(): string {
 export function hashToken(token: string): Buffer | null {
   if (!TOKEN_PATTERN.test(token)) return null;
   return createHash("sha256").update(token).digest();
+}
+
+/**
+ * A token that can be made again from its seed. Used where a link has to be shown more than once (a group's
+ * invite, which its members re-send): the seed is stored, the token never is, and the seed is worthless
+ * without the server secret. Same shape as a random token, so everything downstream treats it the same.
+ */
+export function derivedToken(seed: string): string {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret || secret.length < 32) throw new Error("SESSION_SECRET is not set or too short");
+  return createHmac("sha256", secret).update(`dareful:link-token:v1:${seed}`).digest("base64url");
 }

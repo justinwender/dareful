@@ -43,6 +43,15 @@ const unit: Mutant[] = [
     kills: ["a +7 number whose national part starts with 7 keeps its country code"],
     why: "the old prefix guess: a national number starting with the code's digits loses the code",
   },
+  {
+    id: "phone-login-reads-snake-case",
+    file: JWT,
+    find: 'x.format === "phoneNumber" && x.phoneNumber);',
+    replace: 'x.format === "phoneNumber" && (x as { phone_number?: string }).phone_number);',
+    suite: U_PHONE,
+    kills: ["a US login normalizes to E.164", "the login hash equals the saved-contact hash", "a UK login matches them", "a +7 number whose national part starts with 7 keeps its country code"],
+    why: "the production bug: the credential is read under a key Dynamic never sends, so no phone login stores a hash",
+  },
   { id: "phone-unsalted", file: PHONE, find: 'createHmac("sha256", salt)', replace: 'createHmac("sha256", "fixed")', suite: U_PHONE, kills: ["the hash is keyed by the salt"], why: "the salt is not used" },
   { id: "phone-constant-hash", file: PHONE, find: ".update(normalizeE164(raw, defaultRegion))", replace: '.update("x")', suite: U_PHONE, kills: ["two different numbers hash differently"], why: "every number hashes the same" },
   {
@@ -63,7 +72,7 @@ const unit: Mutant[] = [
     kills: ["garbage does not hash", "a national number with no region does not hash as something"],
     why: "unparseable input hashes as something",
   },
-  { id: "phone-invented-credential", file: JWT, find: "if (!c?.phone_number) return undefined;", replace: 'if (!c?.phone_number) return "+12125550142";', suite: U_PHONE, kills: ["a login with no phone credential yields nothing"], why: "a login with no phone is given one" },
+  { id: "phone-invented-credential", file: JWT, find: "if (!c?.phoneNumber) return undefined;", replace: 'if (!c?.phoneNumber) return "+12125550142";', suite: U_PHONE, kills: ["a login with no phone credential yields nothing"], why: "a login with no phone is given one" },
   { id: "phone-default-region", file: PHONE, find: 'country.toUpperCase() : "US";', replace: 'country : "GB";', suite: U_PHONE, kills: ["the default region comes from the platform header, US when absent"], why: "wrong default region and no case folding" },
 
   { id: "token-short", file: TOKENS, find: "const TOKEN_BYTES = 32;", replace: "const TOKEN_BYTES = 16;", suite: U_TOKENS, kills: ["a token is 32 random bytes as base64url"], why: "half the entropy" },
@@ -108,7 +117,7 @@ const unit: Mutant[] = [
 
 const LIVE = "isNull(schema.groupInvites.revokedAt), gt(schema.groupInvites.expiresAt, new Date())";
 const invites: Mutant[] = [
-  { id: "invite-never-reads", file: GROUPS, find: "  return row ?? null;\n}\n\n/** Links that still work", replace: "  return null;\n}\n\n/** Links that still work", suite: D_INVITES, kills: ["a member can make a link, and it reads as live"], why: "a live link reads as nothing" },
+  { id: "invite-never-reads", file: GROUPS, find: "  return row ?? null;\n}\n\n/** The token for a stored seed", replace: "  return null;\n}\n\n/** The token for a stored seed", suite: D_INVITES, kills: ["a member can make a link, and it reads as live"], why: "a live link reads as nothing" },
   { id: "invite-anyone-makes", file: GROUPS, find: 'if (!(await isMember(groupId, createdBy))) throw new Error("only someone in the group can make a link");', replace: "", suite: D_INVITES, kills: ["a non-member cannot make a link"], why: "no membership check on making a link" },
   { id: "invite-double-counts", file: GROUPS, find: "${schema.groupInvites.useCount} + 1", replace: "${schema.groupInvites.useCount} + 2", suite: D_INVITES, kills: ["redeeming joins the group and counts once", "a live link is listed with its count and its maker"], why: "a join counts twice" },
   { id: "invite-joins-nobody", file: GROUPS, find: "      await tx.insert(schema.groupMembers).values({ groupId: group.id, userId });", replace: "", suite: D_INVITES, kills: ["redeeming joins the group and counts once"], why: "redeeming counts a use and seats nobody" },
@@ -126,7 +135,7 @@ const invites: Mutant[] = [
   { id: "invite-expired-still-joins", file: GROUPS, find: LIVE, nth: 3, replace: "isNull(schema.groupInvites.revokedAt)", suite: D_INVITES, kills: ["an expired link reads as nothing, joins no one, and is not listed"], why: "an expired link still joins people" },
   { id: "invite-thirty-days", file: GROUPS, find: "const INVITE_DAYS = 14;", replace: "const INVITE_DAYS = 30;", suite: D_INVITES, kills: ["a new link is good for fourteen days"], why: "wrong expiry" },
   { id: "invite-dyad-joinable", file: GROUPS, find: 'if (!group || group.isDyad) throw new Error("that group cannot be joined by link");', replace: 'if (!group) throw new Error("that group cannot be joined by link");', suite: D_INVITES, kills: ["a dyad cannot be joined by link"], why: "a dyad can be given a link" },
-  { id: "invite-stores-the-token", file: GROUPS, find: "values({ tokenHash, groupId, createdBy, expiresAt })", replace: "values({ tokenHash: Buffer.from(token), groupId, createdBy, expiresAt })", suite: D_INVITES, kills: ["only the hash is stored, never the token"], why: "the token itself is stored" },
+  { id: "invite-stores-the-token", file: GROUPS, find: "values({ tokenHash, seed, groupId, createdBy, expiresAt })", replace: "values({ tokenHash: Buffer.from(token), seed, groupId, createdBy, expiresAt })", suite: D_INVITES, kills: ["only the hash is stored, never the token"], why: "the token itself is stored" },
 ];
 
 
@@ -274,4 +283,123 @@ const client: Mutant[] = [
   { id: "db-connections-held-forever", file: "src/db/index.ts", find: "idle_timeout: 20, prepare: false", replace: "prepare: false", suite: "tests/db/client.test.ts", kills: ["the client sends no prepared statements and gives idle connections back"], why: "an idle instance never gives its connections back" },
 ];
 
-export const MUTANTS: Mutant[] = [...unit, ...invites, ...claims, ...many, ...share, ...http, ...client];
+const LOGIN = "src/lib/auth/login.ts";
+const U_LOGIN = "tests/unit/login.test.ts";
+const l = (id: string, find: string, replace: string, kills: string[], why: string): Mutant => ({ id, file: LOGIN, find, replace, suite: U_LOGIN, kills, why });
+const login: Mutant[] = [
+  l("login-existing-told-to-make-wallets", 'return { kind: "refuse", reason: "wallets do not match this account" };', 'return { kind: "need-wallets", have: vouched.length };', ["an existing account is never told it needs wallets, however few the client could see", "a login that no longer vouches for the recorded pair is refused, not rewritten"], "the production bug: an existing account is sent off to make more wallets"),
+  l("login-orphan-locks-out", "!vouched.includes(existing.ledgerWallet.toLowerCase())", "!vouched.slice(0, 2).includes(existing.ledgerWallet.toLowerCase())", ["an orphan wallet on the login, in any position, does not lock the account out"], "only the first two wallets on the login are considered"),
+  l("login-half-a-pair", " || !vouched.includes(existing.governanceWallet.toLowerCase())", "", ["a login that no longer vouches for the recorded pair is refused, not rewritten"], "the governance wallet is not checked"),
+  l("login-counts-duplicates", "Array.from(new Set(input.vouched.map((a) => a.toLowerCase())))", "input.vouched.map((a) => a.toLowerCase())", ["a new person is told how many wallets the token has, and gets exactly the missing ones"], "one wallet listed twice counts as a pair"),
+  l("login-nameless-account", '  if (!name) return { kind: "need-name" };\n', "", ["a new person is asked their name before an account exists, and is never called Friend"], "an account is created with no name"),
+  l("login-pair-swapped", "const [ledgerWallet, governanceWallet] = vouched;", "const [governanceWallet, ledgerWallet] = vouched;", ["the first wallet the token lists is the ledger wallet and the second the governance wallet"], "the assignment is reversed"),
+  l("login-placeholder-kept", "if (existing.displayName === PLACEHOLDER_NAME)", "if (existing.displayName === PLACEHOLDER_NAME + \"!\")", ["someone still carrying the placeholder name is asked once, and renamed when they answer"], "a person called Friend is never asked"),
+];
+
+const SPLIT = "src/lib/ledger/split.ts";
+const EXPENSES = "src/lib/ledger/expenses.ts";
+const DENOMS = "src/lib/ledger/denominations.ts";
+const U_SPLIT = "tests/unit/split.test.ts";
+const D_COVERS = "tests/db/covers.test.ts";
+const sp = (id: string, find: string, replace: string, kills: string[], why: string): Mutant => ({ id, file: SPLIT, find, replace, suite: U_SPLIT, kills, why });
+const cv = (id: string, file: string, find: string, replace: string, kills: string[], why: string): Mutant => ({ id, file, find, replace, suite: D_COVERS, kills, why });
+const covers: Mutant[] = [
+  sp("split-ignores-the-payer", "BigInt(even.length) + (payerIn ? 1n : 0n)", "BigInt(even.length)", ["a hundred dollars among five, the payer one of them, is twenty each", "a hundred dollars among three: thirty-three thirty-three each, and the odd cent is the payer's", "one person pinned to an amount, the rest split what is left"], "the payer's own share is charged to everyone else"),
+  sp("split-rounds-up", "const each = heads === 0n ? 0n : rest / heads;", "const each = heads === 0n ? 0n : (rest + heads - 1n) / heads;", ["a hundred dollars among three: thirty-three thirty-three each, and the odd cent is the payer's", "when the payer bought for the others, the total is split among the others only"], "friends are asked for the cent that division invented"),
+  sp("split-loses-the-residual", "const payerCents = totalCents - othersSum;", "const payerCents = payerIn ? each : 0n;", ["the shares and the payer's part always sum to the total exactly"], "the odd cents vanish"),
+  sp("split-always-charges-the-payer", "(payerIn ? 1n : 0n)", "1n", ["when the payer bought for the others, the total is split among the others only"], "the payer takes a share of something that was all theirs"),
+  sp("split-ignores-pins", "cents: fixed.get(personId) ?? each", "cents: each", ["one person pinned to an amount, the rest split what is left", "everyone pinned: what is left is the payer's"], "an adjusted amount is ignored"),
+  sp("split-accepts-nonsense", '  if (fixedSum > totalCents) throw new SplitError("Those amounts add up to more than the total.");\n', "", ["amounts that cannot add up are refused out loud"], "pinned amounts above the total go through"),
+  sp("split-counts-a-person-twice", "const present = Array.from(new Set(input.present));", "const present = input.present;", ["the same person listed twice is one person"], "a double tap charges someone twice"),
+  cv("split-proposal-for-the-payer", EXPENSES, ".filter((id) => id !== input.payerId);", ";", ["the payer listed among those present is not asked to cover themselves"], "the payer is asked to confirm a cover of themselves"),
+  cv("split-skips-the-membership-check", EXPENSES, '  if (present.some((id) => !inGroup.has(id))) throw new SplitError("Everyone you pick has to be in the group.");\n', "", ["someone outside the group cannot be split with, and nothing is written"], "a split reaches people outside the group"),
+  cv("split-wrong-creditor", EXPENSES, "fromUser: s.personId, toUser: input.payerId,", "fromUser: input.payerId, toUser: s.personId,", ["one total becomes one pending proposal per person who was there, and the payer's share is nobody's"], "the direction of every cover is reversed"),
+  cv("split-claims-dont-reconcile", EXPENSES, "{ userId: input.payerId, cents: split.payerCents }].filter", "].filter", ["the expense rows reconcile: the claimed shares are exact fractions that sum to the whole"], "the payer's share is missing from the expense, so the rows do not add up to the total"),
+  cv("split-zero-proposals", EXPENSES, "const owed = split.shares.filter((s) => s.cents > 0n);", "const owed = split.shares;", ["a person pinned at nothing gets no proposal"], "someone is sent a cover of nothing"),
+  cv("unit-duplicated-per-save", DENOMS, "  if (existing) return existing;\n  return createDenomination({\n    groupId,\n    createdBy,\n    template: spec.template,", "  return createDenomination({\n    groupId,\n    createdBy,\n    template: spec.template,", ["a unit named between two people is registered with their dyad, once", "a custom unit is found again whatever its capitalization, keeps its mark, and is separate per group"], "every cover makes a new copy of the unit"),
+  cv("unit-found-in-any-group", DENOMS, "    .where(and(eq(schema.denominations.groupId, groupId), spec.template ?", "    .where(and(spec.template ?", ["a custom unit is found again whatever its capitalization, keeps its mark, and is separate per group"], "a unit from another group is handed back, so the cover fails or lands on the wrong group's unit (confined to reads)"),
+  cv("unit-next-time-countable", DENOMS, "    quantifiable: preset ? preset.quantifiable : true,\n    monetary: false,\n    markEmoji: preset", "    quantifiable: true,\n    monetary: false,\n    markEmoji: preset", ["a unit named between two people is registered with their dyad, once"], "a next time becomes something you can count"),
+];
+
+const resend: Mutant[] = [
+  { id: "invite-not-shown-again", file: GROUPS, find: "    token: rederive(r.seed, r.tokenHash),", replace: "    token: null,", suite: D_INVITES, kills: ["a member is shown the same link again, so there is no reason to make a second"], why: "the testing bug: a link cannot be sent a second time, so people mint another" },
+  { id: "invite-token-is-the-seed", file: TOKENS, find: "return createHmac(\"sha256\", secret).update(`dareful:link-token:v1:${seed}`).digest(\"base64url\");", replace: "return Buffer.from(seed.replace(/-/g, \"\").padEnd(64, \"0\"), \"hex\").toString(\"base64url\");", suite: D_INVITES, kills: ["the link is made again from a seed and a server secret; the seed alone is not the link"], why: "a database read yields working invite links" },
+  { id: "invite-unverified-rederive", file: GROUPS, find: "  return again && again.equals(tokenHash) ? token : null;", replace: "  return token;", suite: D_INVITES, kills: ["a link whose seed does not reproduce it is never shown, and an older link with no seed is listed without one", "the link is made again from a seed and a server secret; the seed alone is not the link"], why: "a member is shown a link that does not work" },
+];
+
+const SCORING = "src/lib/ledger/scoring.ts";
+const U_SCORING = "tests/unit/scoring.test.ts";
+const sc = (id: string, find: string, replace: string, kills: string[], why: string): Mutant => ({ id, file: SCORING, find, replace, suite: U_SCORING, kills, why });
+const T_SCORES = "section 8c scores: 3600, 9100, 7500, 0";
+const T_EDGES = "section 8c edges, each truncated toward zero on its own";
+const T_NETS = "section 8c nets: -160, +907, +164, -911, summing to zero";
+const T_BEERS = "two beers each, four people: every transfer truncates to zero, so one beer moves, lowest to highest";
+const T_TIES = "a tie at the top or the bottom of a collapsed market mints nothing";
+const scoring: Mutant[] = [
+  sc("score-halved-brier", "return BPS - (miss * miss) / BPS;", "return BPS - (miss * miss) / (2n * BPS);", [T_SCORES, T_EDGES, T_NETS], "the categorical divisor (20000) used for a binary market"),
+  sc("settle-rounds-to-nearest", "  return x / d;", "  return (x >= 0n ? x + d / 2n : x - d / 2n) / d;", [T_EDGES, T_NETS, T_BEERS, "nobody's net exceeds their stake, and the nets sum to zero, across a sweep of markets", "truncation is toward zero for either sign, and a transfer is antisymmetric"], "the rule PLANNING.md printed and the kickoff corrected: nearest rounding, under which a stake of two can lose three"),
+  sc("settle-larger-stake-at-risk", "const atRisk = stakeI < stakeJ ? stakeI : stakeJ;", "const atRisk = stakeI > stakeJ ? stakeI : stakeJ;", [T_EDGES, T_NETS], "you can win more from someone than they put up"),
+  sc("settle-divides-by-n", "(n - 1n) * BPS", "n * BPS", [T_EDGES, T_NETS], "divided across N instead of the N - 1 counterparties"),
+  sc("settle-edges-backwards", "if (t > 0n) edges.push({ debtor: b.id, creditor: a.id, qty: t });", "if (t > 0n) edges.push({ debtor: a.id, creditor: b.id, qty: t });", [T_EDGES, T_NETS], "the better forecaster pays"),
+  sc("settle-never-collapses", "  if (edges.length > 0) return edges;\n", "  if (edges.length >= 0) return edges;\n", [T_BEERS, "a next time (every stake 1) is the same rule: one edge, lowest to highest", T_TIES], "a market whose transfers all truncate to zero settles nothing, so two beers and a next time can never be bet"),
+  sc("settle-ties-pay", "  if (top === bottom || highest.length !== 1 || lowest.length !== 1) return [];", "  if (top === bottom) return [];", [T_TIES], "a tie at the top or bottom picks an arbitrary winner or loser"),
+  sc("score-accepts-anything", '  if (valueBps < 0n || valueBps > BPS) throw new RangeError("a probability is 0 to 10000 basis points");\n', "", ["a probability outside 0 to 10000, or an outcome that is not 0 or 1, is refused"], "a probability above 100 percent is scored"),
+  sc("group-number-unweighted", "return positions.reduce((a, p) => a + p.stake * p.value, 0n) / total;", "return positions.reduce((a, p) => a + p.value, 0n) / BigInt(positions.length);", ["the group's number is the stake-weighted mean, and nothing when nobody is in"], "a plain mean, ignoring stakes"),
+];
+
+const MARKETS = "src/lib/ledger/markets.ts";
+const MVIEW = "src/lib/ledger/market-view.ts";
+const D_MARKETS = "tests/db/markets.test.ts";
+const D_MVIEW = "tests/db/market-view.test.ts";
+const D_CHAIN = "tests/db/scoring-chain.test.ts";
+const mk = (id: string, find: string, replace: string, kills: string[], why: string, extra: Partial<Mutant> = {}): Mutant => ({ id, file: MARKETS, find, replace, suite: D_MARKETS, kills, why, ...extra });
+const mv = (id: string, file: string, find: string, replace: string, kills: string[], why: string): Mutant => ({ id, file, find, replace, suite: D_MVIEW, kills, why });
+const T_DRAFT = "a draft is nobody's but its creator's, and only their own signature opens it";
+const T_POSITION = "a position is a stake and a number signed by its owner's ledger wallet, and by nobody else's";
+const T_ONCHAIN = "four people, the section 8c numbers, one dissenter: locked, resolved by quorum, and settled to the cent";
+const marketMutants: Mutant[] = [
+  mk("market-anyone-opens", '  if (d.creatorId !== creatorId) throw new MarketError("Only the person who asked it can open it.", "not_yours");\n', "", [T_DRAFT], "someone else opens the creator's draft"),
+  mk("market-opens-unsigned", '  if (!ok) throw new MarketError("That didn\'t come from your account.", "bad_signature");\n  const [row] = await db.update(schema.dares)', "  const [row] = await db.update(schema.dares)", [T_DRAFT], "a market opens on a signature that is not its creator's, and then fails at lock in front of everyone"),
+  mk("market-draft-enterable", 'if (stateOf(d) !== "open") throw new MarketError(stateOf(d) === "draft"', 'if (stateOf(d) === "locked") throw new MarketError(stateOf(d) === "draft"', [T_DRAFT], "people can enter terms nobody approved"),
+  mk("market-asked-from-outside", '  if (!(await isMember(input.groupId, input.creatorId))) throw new MarketError("You\'re not in that group.", "not_member");\n', "", ["a market cannot be asked in a group you are not in, in another group's unit, or with a deadline already past"], "a non-member asks a group something"),
+  mk("market-past-deadline", '  if (input.resolvesBy.getTime() <= Date.now()) throw new MarketError("Pick a time that hasn\'t passed.", "bad_input");\n', "", ["a market cannot be asked in a group you are not in, in another group's unit, or with a deadline already past"], "a market whose deadline has already passed"),
+  mk("market-position-unsigned", '  if (!ok) throw new MarketError("That didn\'t come from your account.", "bad_signature");\n\n  const existing = await positionsOf(d.id);', "  const existing = await positionsOf(d.id);", [T_POSITION], "the second rule broken: a position is recorded that its owner did not sign, and would be refused onchain at lock"),
+  mk("market-position-any-key", "address: user.ledgerWallet as Address, signature: input.signature });\n  if (!ok) throw new MarketError(\"That didn't come from your account.\", \"bad_signature\");\n\n  const existing", "address: user.governanceWallet as Address, signature: input.signature });\n  if (!ok) throw new MarketError(\"That didn't come from your account.\", \"bad_signature\");\n\n  const existing", [T_POSITION], "positions are checked against the wrong one of the two wallets"),
+  mk("market-entered-from-outside", '  if (!(await isMember(d.groupId, input.userId))) throw new MarketError("This one is for the people in its group.", "not_member");\n  if (input.valueBps', "  if (input.valueBps", ["entering is for the group, in range, with something on it"], "someone outside the group enters"),
+  mk("market-impossible-probability", '  if (input.valueBps < 0n || input.valueBps > 10_000n) throw new MarketError("A number from 0 to 100.", "bad_input");\n', "", ["entering is for the group, in range, with something on it"], "a probability above 100 percent is accepted and fails at lock"),
+  mk("market-second-position", "set: { stake: input.stake, value: input.valueBps, enterSignature: hexToBuffer(input.signature) } })", "set: { stake: input.stake, value: input.valueBps } })", ["a number can be changed until lock, and the change is a fresh signature over the new numbers"], "a changed number keeps the old signature, which the contract refuses at lock"),
+  mk("market-uncountable-stake", '  if (!denom.quantifiable && input.stake !== 1n) throw new MarketError("With this unit everyone puts up exactly one.", "bad_input");\n', "", ["with a unit nobody can count, everyone puts up exactly one"], "two next times on it, which the contract refuses at lock"),
+  mk("market-anyone-locks", '  if (d.creatorId !== byUserId) throw new MarketError("Only the person who asked it can lock it.", "not_yours");\n', "  if (byUserId.length < 0) return { txHash: \"0x\" as Hex, threshold: 0, quorum: [] };\n", ["only the creator locks, and it takes two"], "anyone in the group can end entry for everyone (the mutant fails on its way to the chain, so it sends nothing)", { also: [{ file: MARKETS, find: '  if (positions.length < 2) throw new MarketError("It takes two to lock it in.", "wrong_state");', replace: '  if (positions.length < 2) throw new MarketError("It takes two to lock it in.", "wrong_state");\n  if (d.creatorId !== byUserId) throw new MarketError("stopped before the chain", "chain");' }] }),
+  mk("market-locks-alone", '  if (positions.length < 2) throw new MarketError("It takes two to lock it in.", "wrong_state");', '  if (positions.length < 1) throw new MarketError("It takes two to lock it in.", "wrong_state");\n  if (positions.length < 2) throw new MarketError("stopped before the chain", "chain");', ["only the creator locks, and it takes two"], "a market with one person in it goes to the chain, which refuses it"),
+  mk("market-tally-first-vote-wins", ".sort((a, b) => b.votes - a.votes);", ";", ["a tally counts each person once and leads with the most"], "the leading outcome is whichever was voted first, not the one with the most votes"),
+  mk("market-void-is-yes", "export const toChainOutcome = (o: bigint): bigint => (o === VOID_OUTCOME ? VOID : o);", "export const toChainOutcome = (o: bigint): bigint => (o === VOID_OUTCOME ? 1n : o);", ["a tally counts each person once and leads with the most", "two people agree nobody can tell: voided, nothing minted, and recorded as voided"], "a vote that nobody can tell is signed and sent as a vote for yes (the signature check fails before anything is sent)"),
+  mk("market-ledger-key-votes", "address: user.governanceWallet as Address, signature: input.signature });", "address: user.ledgerWallet as Address, signature: input.signature });", [T_ONCHAIN], "the first rule broken: a key the server will hold in Phase 3 can cast a vote (every honest vote then fails here, before anything is sent)"),
+];
+
+const viewMutants: Mutant[] = [
+  mv("view-numbers-before-picking", MVIEW, '  return d.revealMode === "open" && viewerHasPosition;', '  return d.revealMode === "open";', ["in an open market, someone who has not picked sees who is in and nobody's number; someone who has sees them all"], "an early number anchors everyone after it"),
+  mv("view-blind-is-not-blind", MVIEW, '  return d.revealMode === "open" && viewerHasPosition;', "  return viewerHasPosition;", ["a blind market hides every number from everyone until it is locked"], "a blind market shows numbers to anyone who is in"),
+  mv("view-hidden-after-lock", MVIEW, "  if (d.lockedAt) return true;\n", "", ["a blind market hides every number from everyone until it is locked"], "numbers stay hidden after lock"),
+  mv("view-nags-after-voting", MVIEW, '!votes.some((v) => v.dareId === d.id && v.userId === input.viewerId) ? "Say how it came out"', '!votes.some((v) => v.dareId === d.id && v.userId === "nobody") ? "Say how it came out"', ["a market says what it needs from the person looking, and nothing once they have done it"], "someone who has voted is still asked to"),
+  { ...mv("view-drafts-listed", MVIEW, "isNotNull(schema.dares.creatorSignature)))", "isNotNull(schema.dares.createdAt)))", ["a draft is listed to nobody, and someone outside the group sees none of the group's markets"], "both guards gone: unapproved drafts appear in the group's timeline"), also: [{ file: MVIEW, find: '    if (state === "draft") continue;\n', replace: "" }] },
+  mv("view-whole-market-on-a-person-page", MVIEW, "const between = (e: (typeof edges)[number]) => !input.withUserId ||", "const between = (e: (typeof edges)[number]) => true ||", ["in a timeline a resolved market is one story, carrying only what it left between the two people in view"], "a person page shows what a market left between other people"),
+  mv("view-market-edges-as-rows", "src/lib/ledger/person.ts", '    if (o.origin === "dare") continue;\n', "", ["in a timeline a resolved market is one story, carrying only what it left between the two people in view"], "the thing the spec forbids: a market rendered as ledger rows"),
+  mv("view-void-has-an-outcome", MVIEW, 'd.resolvedOutcome !== VOID_OUTCOME ? (Number(d.resolvedOutcome) as 0 | 1) : null,', '(Number(d.resolvedOutcome) as 0 | 1),', ["a voided market reads as voided, with no outcome and nothing beneath it"], "a void is drawn with an outcome"),
+  mv("market-card-for-a-draft", SHARE, "  if (!row || !row.opened) return { ...PLAIN, question: null };", "  if (!row) return { ...PLAIN, question: null };", ["a draft, a malformed id, and an id that matches nothing all get the same plain card"], "an unapproved draft's question leaks through its preview"),
+  mv("market-card-names-the-asker", SHARE, "  const question = clip(row.title, 110);", "  const question = clip(`Ana asks: ${row.title}`, 110);", ["a question's share card is the question and an invitation: no number, no name, nothing about what is on it"], "a name on a card in a group chat"),
+  { id: "chain-score-mirror-drifts", file: SCORING, find: "return BPS - (miss * miss) / BPS;", replace: "return BPS - (miss * miss) / (BPS + 1n);", suite: D_CHAIN, kills: ["scores agree with the deployed contract across the whole probability range"], why: "the mirror drifts from the contract by a rounding" },
+  { id: "chain-transfer-mirror-drifts", file: SCORING, find: "  return x / d;", replace: "  return (x >= 0n ? x + d / 2n : x - d / 2n) / d;", suite: D_CHAIN, kills: ["pairwise transfers agree with the deployed contract, including where truncation bites"], why: "the mirror rounds where the contract truncates" },
+];
+
+const P_MARKET = "src/app/m/[id]/page.tsx";
+const httpMarkets: Mutant[] = [
+  h("question-preview-names-the-asker", SHARE, "  const question = clip(row.title, 110);", "  const question = clip(`Priya asks: ${row.title}`, 110);", ["a shared question answers a preview bot with the question, and nothing about who is in or at what"], "a name in a preview that lands in a group chat"),
+  h("question-draft-open-to-the-group", P_MARKET, '  if (state === "draft" && d.creatorId !== me.id) notFound();\n', "", ["a draft is a 404 to everyone but the person who asked it, and its preview says nothing"], "terms nobody approved are readable by the group"),
+  h("question-open-to-outsiders", P_MARKET, "  if (!member) {\n", "  if (!member && d.title.length < 0) {\n", ["someone in the group who has not picked sees who is in and no number; someone outside sees neither"], "someone outside the group reads who is in and the terms"),
+  h("question-numbers-before-picking", MVIEW, '  return d.revealMode === "open" && viewerHasPosition;', '  return d.revealMode === "open";', ["someone in the group who has not picked sees who is in and no number; someone outside sees neither"], "numbers are on the screen before the person has picked their own"),
+  h("question-hides-the-stalemate-rule", P_MARKET, "everyone says their piece and the app calls it. Being in means you’re fine with that.", "it gets sorted out.", ["the terms and the stalemate rule are on the screen before anyone is in"], "people consent, in their entry signature, to a rule the screen never told them"),
+  h("banned-on-question", P_MARKET, "How we’ll know", "How the chain will know", ["no banned word on a question, before picking", "no banned word on a question, once in"], "banned word on the page"),
+  h("banned-on-ask-screen", "src/components/markets/ask-form.tsx", "What are you wondering?", "What is your balance?", ["no banned word on the ask screen"], "banned word on the page"),
+];
+
+export const MUTANTS: Mutant[] = [...httpMarkets, ...marketMutants, ...viewMutants, ...scoring, ...resend, ...unit, ...invites, ...claims, ...many, ...share, ...http, ...client, ...login, ...covers];

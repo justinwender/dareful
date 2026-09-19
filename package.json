@@ -23,6 +23,7 @@
     "indexer:stop": "node scripts/with-env.mjs --cwd indexer npx envio stop"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.127.0",
     "@base-ui/react": "^1.8.0",
     "@dynamic-labs/ethereum": "^5.9.0",
     "@dynamic-labs/sdk-react-core": "^5.9.0",
@@ -42,6 +43,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@dynamic-labs/sdk-api-core": "^0.32.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

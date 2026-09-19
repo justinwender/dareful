@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { LinkPending } from "@/components/ui/link-pending";
+import { MarketCardFrom } from "@/components/markets/market-card-from";
+import { marketCards } from "@/lib/ledger/market-view";
 import { inArray } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { SignInButton } from "@/components/auth/sign-in-button";
@@ -23,20 +26,21 @@ export default async function Home() {
   const user = await currentUser();
   if (!user) return <SignedOut />;
 
-  const [groups, people, pending, ghosts, waiting, suggested] = await Promise.all([
+  const [groups, people, pending, ghosts, waiting, suggested, asks] = await Promise.all([
     groupsForUser(user.id),
     peopleForUser(user.id),
     pendingForDebtor(user.id),
     ghostsForCreator(user.id),
     boundPendingForDebtor(user.id),
     suggestedGhostsFor(user.id, user.displayName),
+    marketCards({ viewerId: user.id, limit: 12 }),
   ]);
   const creditorIds = Array.from(new Set(pending.map((p) => p.toUser).filter((x): x is string => Boolean(x))));
   const creditors = creditorIds.length ? await db.select().from(schema.users).where(inArray(schema.users.id, creditorIds)) : [];
   const creditorById = new Map(creditors.map((c) => [c.id, c]));
   const denoms = await denominationsByIds(pending.map((p) => p.denomId));
   const groupName = new Map(groups.map((g) => [g.id, g.name]));
-  const empty = groups.length === 0 && people.length === 0 && pending.length === 0 && ghosts.length === 0 && suggested.length === 0;
+  const empty = groups.length === 0 && people.length === 0 && pending.length === 0 && ghosts.length === 0 && suggested.length === 0 && asks.length === 0;
 
   return (
     <Screen>
@@ -83,9 +87,10 @@ export default async function Home() {
             </section>
           ) : null}
 
-          {pending.length > 0 ? (
+          {pending.length > 0 || asks.some((m) => m.needsYou) ? (
             <section className="flex flex-col gap-3">
               <SectionLabel>Needs you</SectionLabel>
+              {asks.filter((m) => m.needsYou).map((m) => <MarketCardFrom key={m.dare.id} m={m} viewerId={user.id} clock={clock} />)}
               {pending.map((p) => {
                 const creditor = p.toUser ? creditorById.get(p.toUser) : undefined;
                 const denomination = denoms.get(p.denomId);
@@ -111,6 +116,13 @@ export default async function Home() {
             </section>
           ) : null}
 
+          {asks.some((m) => !m.needsYou) ? (
+            <section className="flex flex-col gap-3">
+              <SectionLabel>Lately</SectionLabel>
+              {asks.filter((m) => !m.needsYou).slice(0, 4).map((m) => <MarketCardFrom key={m.dare.id} m={m} viewerId={user.id} clock={clock} />)}
+            </section>
+          ) : null}
+
           <section className="flex flex-col gap-3">
             <SectionLabel>People</SectionLabel>
             {people.length === 0 && ghosts.length === 0 ? (
@@ -119,7 +131,8 @@ export default async function Home() {
               <ul className="flex flex-col gap-1.5">
                 {people.map(({ user: p, sharedGroups }) => (
                   <li key={p.id}>
-                    <Link href={`/p/${p.id}`} className="flex h-14 items-center gap-3 rounded-button bg-surface px-3">
+                    <Link href={`/p/${p.id}`} className="relative flex h-14 items-center gap-3 rounded-button bg-surface px-3">
+                      <LinkPending />
                       <Avatar name={p.displayName} hue={hueFor(p.id)} size={32} />
                       <span className="flex-1 text-body-strong text-ink">{p.displayName}</span>
                       <span className="text-caption text-ink-3">{sharedGroups === 1 ? "1 group" : `${sharedGroups} groups`}</span>
@@ -128,7 +141,8 @@ export default async function Home() {
                 ))}
                 {ghosts.map((g) => (
                   <li key={g.id}>
-                    <Link href={`/p/c/${g.id}`} className="flex h-14 items-center gap-3 rounded-button bg-surface px-3">
+                    <Link href={`/p/c/${g.id}`} className="relative flex h-14 items-center gap-3 rounded-button bg-surface px-3">
+                      <LinkPending />
                       <Avatar name={g.displayName} hue="stone" size={32} ghost />
                       <span className="flex-1 text-body-strong text-ink">{g.displayName}</span>
                       <span className="text-caption text-ink-3">not here yet</span>
@@ -151,7 +165,8 @@ export default async function Home() {
                 .filter((g) => !g.isDyad)
                 .map((g) => (
                   <li key={g.id}>
-                    <Link href={`/g/${g.id}`} className="flex h-14 items-center gap-3 rounded-button bg-surface px-3">
+                    <Link href={`/g/${g.id}`} className="relative flex h-14 items-center gap-3 rounded-button bg-surface px-3">
+                      <LinkPending />
                       <span className="flex-1 text-body-strong text-ink">{g.name}</span>
                       <AvatarStack people={g.members.map((m) => ({ name: m.displayName, hue: m.userId ? hueFor(m.userId) : "stone", ghost: !m.userId }))} size={26} />
                     </Link>
@@ -167,9 +182,16 @@ export default async function Home() {
       )}
       {!empty ? (
         <ActionArea>
-          <ButtonLink href="/new" variant="primary" className="w-full">
-            I got this one
-          </ButtonLink>
+          <div className="flex gap-2">
+            {groups.some((g) => !g.isDyad) ? (
+              <ButtonLink href="/m/new" variant="primary" className="flex-1">
+                Ask something
+              </ButtonLink>
+            ) : null}
+            <ButtonLink href="/new" variant={groups.some((g) => !g.isDyad) ? "secondary" : "primary"} size="primary" className="flex-1">
+              I got this one
+            </ButtonLink>
+          </div>
         </ActionArea>
       ) : null}
     </Screen>

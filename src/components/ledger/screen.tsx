@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { LinkPending } from "@/components/ui/link-pending";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
@@ -12,7 +13,8 @@ export function TopBar({ back, title, right }: { back?: { href: string; label: s
     <header className="flex h-14 items-center justify-between">
       <div className="flex min-w-0 items-center gap-2">
         {back ? (
-          <Link href={back.href} aria-label={back.label} className="-ml-2 inline-flex h-12 w-12 items-center justify-center rounded-pill text-ink">
+          <Link href={back.href} aria-label={back.label} className="relative -ml-2 inline-flex h-12 w-12 items-center justify-center rounded-pill text-ink">
+            <LinkPending />
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M15 5l-7 7 7 7" />
             </svg>

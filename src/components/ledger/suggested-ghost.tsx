@@ -25,7 +25,7 @@ export function SuggestedGhost({ claimId, name, creatorName }: { claimId: string
       <div>
         <Button
           variant="secondary"
-          disabled={pending}
+          loading={pending}
           onClick={() =>
             start(async () => {
               setError(null);
@@ -43,7 +43,7 @@ export function SuggestedGhost({ claimId, name, creatorName }: { claimId: string
         </Button>
       </div>
       {error ? (
-        <p role="alert" className="text-body-sm text-ink-2">
+        <p role="alert" className="border-l-2 border-marigold pl-3 text-body-sm text-ink">
           {error}
         </p>
       ) : null}

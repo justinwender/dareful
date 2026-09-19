@@ -2,6 +2,7 @@ import * as React from "react";
 import Link from "next/link";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
+import { LinkPending } from "./link-pending";
 
 /**
  * docs/design.md 3.12. Five kinds, fixed heights, no shadows, no red. Pressed is opacity 0.88 over 120ms;
@@ -59,8 +60,13 @@ export function Button({ className, variant = "secondary", size, loading, disabl
 
 export type ButtonLinkProps = React.ComponentProps<typeof Link> & Variants;
 
-export function ButtonLink({ className, variant = "secondary", size, ...props }: ButtonLinkProps) {
-  return <Link className={cn(buttonVariants({ variant, size: sizeFor(variant, size) }), className)} {...props} />;
+export function ButtonLink({ className, variant = "secondary", size, children, ...props }: ButtonLinkProps) {
+  return (
+    <Link className={cn(buttonVariants({ variant, size: sizeFor(variant, size) }), "relative overflow-hidden", className)} {...props}>
+      {children}
+      <LinkPending />
+    </Link>
+  );
 }
 
 export { buttonVariants };

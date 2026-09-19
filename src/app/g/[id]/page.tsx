@@ -1,4 +1,6 @@
 import { notFound, redirect } from "next/navigation";
+import { MarketCardFrom } from "@/components/markets/market-card-from";
+import { marketCards } from "@/lib/ledger/market-view";
 import Link from "next/link";
 import { Avatar } from "@/components/ledger/avatar";
 import { UnitGlyph } from "@/components/ledger/glyphs";
@@ -23,6 +25,7 @@ export const dynamic = "force-dynamic";
 
 export default async function GroupPage({ params }: { params: Promise<{ id: string }> }) {
   const clock = await viewerClock();
+  const appOrigin = process.env.NEXT_PUBLIC_APP_URL ?? "https://dareful.app";
   const me = await currentUser();
   if (!me) redirect("/");
   const { id } = await params;
@@ -47,6 +50,7 @@ export default async function GroupPage({ params }: { params: Promise<{ id: stri
     .filter((e): e is NonNullable<typeof e> => Boolean(e));
 
   const invites = group.isDyad ? [] : await activeInvites(group.id);
+  const asks = await marketCards({ viewerId: me.id, groupId: group.id, limit: 20 });
   const name = group.name ?? "Just you two";
 
   return (
@@ -88,14 +92,24 @@ export default async function GroupPage({ params }: { params: Promise<{ id: stri
               clock={clock}
               invites={invites.map((i) => ({
                 id: i.id,
-                madeBy: i.createdBy === me.id ? "You" : i.createdByName,
+                createdAt: i.createdAt.toISOString(),
                 expiresAt: i.expiresAt.toISOString(),
                 joined: i.useCount,
+                url: i.token ? `${appOrigin}/join/${i.token}` : null,
               }))}
             />
           ) : null}
           {!group.isDyad ? <AddGhost groupId={group.id} /> : null}
         </section>
+
+        {asks.length > 0 ? (
+          <section className="flex flex-col gap-3">
+            <SectionLabel>What’s been asked</SectionLabel>
+            {asks.map((m) => (
+              <MarketCardFrom key={m.dare.id} m={m} viewerId={me.id} clock={clock} />
+            ))}
+          </section>
+        ) : null}
 
         <section className="flex flex-col gap-3">
           <SectionLabel>Open</SectionLabel>
@@ -143,9 +157,16 @@ export default async function GroupPage({ params }: { params: Promise<{ id: stri
       </div>
       {group.members.length > 1 ? (
         <ActionArea>
-          <ButtonLink href={`/new?group=${group.id}`} variant="primary" className="w-full">
-            I got this one
-          </ButtonLink>
+          <div className="flex gap-2">
+            {!group.isDyad ? (
+              <ButtonLink href={`/m/new?group=${group.id}`} variant="primary" className="flex-1">
+                Ask something
+              </ButtonLink>
+            ) : null}
+            <ButtonLink href={`/new?group=${group.id}`} variant={group.isDyad ? "primary" : "secondary"} size="primary" className="flex-1">
+              I got this one
+            </ButtonLink>
+          </div>
         </ActionArea>
       ) : null}
     </Screen>

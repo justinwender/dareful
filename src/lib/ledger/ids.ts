@@ -24,6 +24,11 @@ export function denomOnchainId(denomUuid: string): Hex {
   return keccak256(stringToHex(`dareful:denom:${denomUuid}`));
 }
 
+/** Deterministic onchain market id from the offchain uuid, known before lock so entries can be signed over it. */
+export function dareOnchainId(dareUuid: string): Hex {
+  return keccak256(stringToHex(`dareful:dare:${dareUuid}`));
+}
+
 export function hexToBuffer(hex: Hex): Buffer {
   return Buffer.from(hex.slice(2), "hex");
 }

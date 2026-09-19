@@ -46,3 +46,24 @@ export async function claimShareCard(token: string): Promise<ProposalShare> {
   const title = `${who} got this one`;
   return { card: { kicker: "Dareful", headline: n > 1 ? `${who} got these.` : `${title}.`, footer: DESCRIPTION }, title, description: DESCRIPTION, sender: who };
 }
+
+/**
+ * A question someone asked their group. The card carries the question, because the question is the invitation
+ * (PLANNING.md 8b: the terms are on the card before anyone enters), and how many are in. Never a number anyone
+ * gave, never what is on it, never a name. A draft, or an id that matches nothing, gets the plain card.
+ */
+export async function marketShare(rawId: string): Promise<ProposalShare & { question: string | null }> {
+  const id = z.string().uuid().safeParse(rawId);
+  if (!id.success) return { ...PLAIN, question: null };
+  const rows = await db
+    .select({ title: schema.dares.title, opened: schema.dares.creatorSignature, resolvedAt: schema.dares.resolvedAt })
+    .from(schema.dares)
+    .where(eq(schema.dares.id, id.data))
+    .limit(1)
+    .catch(() => []);
+  const row = rows[0];
+  if (!row || !row.opened) return { ...PLAIN, question: null };
+  const question = clip(row.title, 110);
+  const description = row.resolvedAt ? "See how everyone did." : "Put your number on it.";
+  return { card: { kicker: "Dareful", headline: question, footer: description }, title: question, description, sender: null, question };
+}

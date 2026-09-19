@@ -66,7 +66,7 @@ export function GhostActions({ claimId, name, mergeOptions }: { claimId: string;
         <>
           <p className="text-body-sm text-ink-2">{name} hasn’t joined yet. Everything here waits until they say it’s right.</p>
           <div>
-            <Button variant="secondary" onClick={makeLink} disabled={pending}>
+            <Button variant="secondary" onClick={makeLink} loading={pending}>
               Make a link for {name}
             </Button>
           </div>
@@ -101,7 +101,7 @@ export function GhostActions({ claimId, name, mergeOptions }: { claimId: string;
         <div className="flex flex-col gap-2">
           <p className="text-body-sm text-ink-2">Anything waiting on {name} closes, and their link stops working. Nothing that already happened changes.</p>
           <div>
-            <Button variant="secondary" onClick={dismiss} disabled={pending}>
+            <Button variant="secondary" onClick={dismiss} loading={pending}>
               Yes, let {name} go
             </Button>
           </div>
@@ -109,7 +109,7 @@ export function GhostActions({ claimId, name, mergeOptions }: { claimId: string;
       ) : null}
 
       {error ? (
-        <p role="alert" className="text-body-sm text-ink-2">
+        <p role="alert" className="border-l-2 border-marigold pl-3 text-body-sm text-ink">
           {error}
         </p>
       ) : null}

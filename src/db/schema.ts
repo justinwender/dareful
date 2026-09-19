@@ -161,6 +161,12 @@ export const groupInvites = pgTable(
   {
     /** sha256 of the link token; the token itself is never stored. */
     tokenHash: bytea("token_hash").primaryKey(),
+    /**
+     * What the token is derived from, with a server secret, so a member can be shown the same link again
+     * without the link ever being stored. Useless without the secret. Null on links made before 2026-09-19,
+     * which still work and can be turned off but cannot be shown again.
+     */
+    seed: uuid("seed"),
     groupId: uuid("group_id")
       .notNull()
       .references(() => groups.id),
@@ -376,6 +382,13 @@ export const dares = pgTable(
     /** AI suggestion shown while entering; no onchain effect. */
     anchorValue: money("anchor_value"),
     anchorAt: ts("anchor_at"),
+    /** The one-line reason shown beside the anchor. Displayed, argued with, discarded; no onchain effect. */
+    anchorRationale: text("anchor_rationale"),
+    /**
+     * The creator's EIP-712 `Create` signature, held here until lock, as every `Enter` signature is held on its
+     * position. Null while the market is a draft only its creator can see: signing is what opens it.
+     */
+    creatorSignature: bytea("creator_signature"),
     /** Null for pace = 'argument' until the second position is entered, then that moment. */
     resolvesBy: ts("resolves_by"),
     lockedAt: ts("locked_at"),

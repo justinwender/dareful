@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 
 /** Every share goes out through the user's own composer (Web Share, then sms:), never from Dareful. */
-export function InviteShare({ url, text }: { url: string; text: string }) {
+export function InviteShare({ url, text, compact = false }: { url: string; text: string; compact?: boolean }) {
   const [copied, setCopied] = useState(false);
   async function share() {
     if (typeof navigator !== "undefined" && "share" in navigator) {
@@ -28,8 +28,8 @@ export function InviteShare({ url, text }: { url: string; text: string }) {
   }
   return (
     <div className="flex gap-2">
-      <Button variant="secondary" onClick={share}>
-        Send the link
+      <Button variant={compact ? "tertiary" : "secondary"} onClick={share}>
+        {compact ? "Send" : "Send the link"}
       </Button>
       <Button variant="tertiary" onClick={copy}>
         {copied ? "Copied" : "Copy"}

@@ -83,7 +83,7 @@ export function AddGhost({ groupId }: { groupId: string }) {
         className="h-12 rounded-tile border border-line bg-ground px-3 text-body text-ink"
       />
       <div className="flex gap-2">
-        <Button variant="primary" size="inline" onClick={() => add({ name: name.trim() })} disabled={pending || !name.trim()}>
+        <Button variant="primary" size="inline" onClick={() => add({ name: name.trim() })} loading={pending} disabled={!name.trim()}>
           Add them
         </Button>
         <Button variant="tertiary" onClick={() => setOpen(false)} disabled={pending}>
@@ -91,7 +91,7 @@ export function AddGhost({ groupId }: { groupId: string }) {
         </Button>
       </div>
       {note ? (
-        <p role="alert" className="text-body-sm text-ink-2">
+        <p role="alert" className="border-l-2 border-marigold pl-3 text-body-sm text-ink">
           {note}
         </p>
       ) : null}

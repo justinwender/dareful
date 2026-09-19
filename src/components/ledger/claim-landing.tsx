@@ -38,7 +38,7 @@ export function ClaimChoice({ token, name, signedIn, held }: { token: string; na
   return (
     <div className="flex flex-col gap-3">
       {error ? (
-        <p role="alert" className="text-body-sm text-ink-2">
+        <p role="alert" className="border-l-2 border-marigold pl-3 text-body-sm text-ink">
           {error}
         </p>
       ) : null}
@@ -89,7 +89,7 @@ export function ConcedeButton({ proposalId, conceded }: { proposalId: string; co
         Fine, you got me
       </Button>
       {error ? (
-        <span role="alert" className="text-caption text-ink-3">
+        <span role="alert" className="border-l-2 border-marigold pl-3 text-caption text-ink">
           {error}
         </span>
       ) : null}

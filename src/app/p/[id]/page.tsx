@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { MarketCardFrom } from "@/components/markets/market-card-from";
 import { Avatar } from "@/components/ledger/avatar";
 import { CoveredCard } from "@/components/ledger/covered-card";
 import { PersonHeader } from "@/components/ledger/person-header";
@@ -41,6 +42,7 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
         ) : (
           <div className="flex flex-col gap-3">
             {view.timeline.map((e) => {
+              if (e.kind === "market") return <MarketCardFrom key={`m-${e.market.dare.id}`} m={e.market} viewerId={me.id} clock={clock} />;
               if (e.kind === "proposal") {
                 const debtor = byId.get(e.proposal.fromUser ?? "");
                 const creditor = byId.get(e.proposal.toUser ?? "");

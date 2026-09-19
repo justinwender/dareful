@@ -1,0 +1,1 @@
+ALTER TABLE "group_invites" ADD COLUMN "seed" uuid;

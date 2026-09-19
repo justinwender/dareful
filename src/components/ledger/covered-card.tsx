@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LinkPending } from "@/components/ui/link-pending";
 import type { DenominationRow } from "@/lib/ledger/denominations";
 import { hueFor } from "@/lib/ui/hue";
 import { coveredSentence, gotSentence } from "@/lib/ui/copy";
@@ -72,7 +73,8 @@ export function CoveredCard(p: CoveredCardProps) {
     </article>
   );
   return p.href ? (
-    <Link href={p.href} className="block rounded-card">
+    <Link href={p.href} className="relative block rounded-card">
+      <LinkPending />
       {body}
     </Link>
   ) : (

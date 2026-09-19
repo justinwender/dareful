@@ -9,6 +9,7 @@ import type { DenominationRow } from "./denominations";
 import { denominationsByIds } from "./denominations";
 import { obligationsById, openBetween, type EnvioObligation } from "./envio";
 import { bytes16ToUuid, uuidToBytes16 } from "./ids";
+import { marketCards, type MarketCardData } from "./market-view";
 import { pendingBetween, type ProposalRow } from "./proposals";
 
 export type UserRow = typeof schema.users.$inferSelect;
@@ -62,7 +63,9 @@ export function netHeader(me: UserRow, them: UserRow, open: EnvioObligation[], r
 
 export type TimelineEvent =
   | { kind: "obligation"; at: Date; obligation: ObligationRow; denomination: DenominationRow; open: bigint; settled: bigint; forgiven: bigint; netted: bigint; groupName: string | null }
-  | { kind: "proposal"; at: Date; proposal: ProposalRow; denomination: DenominationRow; groupName: string | null };
+  | { kind: "proposal"; at: Date; proposal: ProposalRow; denomination: DenominationRow; groupName: string | null }
+  /** A market both people were in: one story, with only what it left between these two beneath it. */
+  | { kind: "market"; at: Date; market: MarketCardData };
 
 export type PersonView = {
   me: UserRow;
@@ -73,7 +76,7 @@ export type PersonView = {
 };
 
 export async function personView(me: UserRow, them: UserRow): Promise<PersonView> {
-  const [open, obligations, pending] = await Promise.all([
+  const [open, obligations, pending, markets] = await Promise.all([
     openBetween(me.ledgerWallet, them.ledgerWallet),
     db
       .select()
@@ -86,6 +89,7 @@ export async function personView(me: UserRow, them: UserRow): Promise<PersonView
       )
       .orderBy(desc(schema.obligations.createdAt)),
     pendingBetween(me.id, them.id),
+    marketCards({ viewerId: me.id, withUserId: them.id }),
   ]);
 
   const rows = new Map(obligations.map((o) => [o.id, o]));
@@ -118,6 +122,8 @@ export async function personView(me: UserRow, them: UserRow): Promise<PersonView
 
   const timeline: TimelineEvent[] = [];
   for (const o of obligations) {
+    // What a market minted belongs to the market's story, not to a row of its own. It still counts in the header.
+    if (o.origin === "dare") continue;
     const denomination = denoms.get(o.denomId);
     if (!denomination) continue;
     const e = indexed.get(uuidToBytes16(o.id));
@@ -138,6 +144,7 @@ export async function personView(me: UserRow, them: UserRow): Promise<PersonView
     if (!denomination) continue;
     timeline.push({ kind: "proposal", at: p.createdAt, proposal: p, denomination, groupName: groupNames.get(p.groupId) ?? null });
   }
+  for (const m of markets) timeline.push({ kind: "market", at: m.at, market: m });
   // The offchain timestamp, never the chain timestamp.
   timeline.sort((x, y) => y.at.getTime() - x.at.getTime());
 

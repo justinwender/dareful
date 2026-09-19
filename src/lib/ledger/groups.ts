@@ -1,6 +1,7 @@
 import { and, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { hashToken, newToken } from "@/lib/ledger/tokens";
+import { randomUUID } from "node:crypto";
+import { derivedToken, hashToken } from "@/lib/ledger/tokens";
 
 export type GroupRow = typeof schema.groups.$inferSelect;
 export type UserRow = typeof schema.users.$inferSelect;
@@ -151,8 +152,15 @@ export type ActiveInvite = {
   id: string;
   createdBy: string;
   createdByName: string;
+  createdAt: Date;
   expiresAt: Date;
   useCount: number;
+  /**
+   * The link itself, made again from its seed, for a member to send a second time. Null for a link made before
+   * seeds existed, or if the derived token no longer matches what was stored (the secret changed): such a link
+   * still works for whoever already has it, and can still be turned off.
+   */
+  token: string | null;
 };
 
 /** Makes a link for the group. The caller must be a current member. Returns the token, which is never readable again. */
@@ -160,11 +168,12 @@ export async function createInvite(groupId: string, createdBy: string): Promise<
   const [group] = await db.select().from(schema.groups).where(eq(schema.groups.id, groupId)).limit(1);
   if (!group || group.isDyad) throw new Error("that group cannot be joined by link");
   if (!(await isMember(groupId, createdBy))) throw new Error("only someone in the group can make a link");
-  const token = newToken();
+  const seed = randomUUID();
+  const token = derivedToken(seed);
   const tokenHash = hashToken(token);
   if (!tokenHash) throw new Error("could not make a link");
   const expiresAt = new Date(Date.now() + INVITE_DAYS * 86_400_000);
-  await db.insert(schema.groupInvites).values({ tokenHash, groupId, createdBy, expiresAt });
+  await db.insert(schema.groupInvites).values({ tokenHash, seed, groupId, createdBy, expiresAt });
   return token;
 }
 
@@ -180,15 +189,28 @@ export async function readInvite(token: string): Promise<InviteRow | null> {
   return row ?? null;
 }
 
-/** Links that still work, newest first, for the group page. */
+/** The token for a stored seed, only if it still hashes to what was stored. Never a guess. */
+function rederive(seed: string | null, tokenHash: Buffer): string | null {
+  if (!seed) return null;
+  const token = derivedToken(seed);
+  const again = hashToken(token);
+  return again && again.equals(tokenHash) ? token : null;
+}
+
+/**
+ * Links that still work, newest first, for the group page. Only ever called for a current member (the page and
+ * the actions check), because the result carries the links themselves.
+ */
 export async function activeInvites(groupId: string): Promise<ActiveInvite[]> {
   const rows = await db
     .select({
       tokenHash: schema.groupInvites.tokenHash,
       createdBy: schema.groupInvites.createdBy,
       createdByName: schema.users.displayName,
+      createdAt: schema.groupInvites.createdAt,
       expiresAt: schema.groupInvites.expiresAt,
       useCount: schema.groupInvites.useCount,
+      seed: schema.groupInvites.seed,
     })
     .from(schema.groupInvites)
     .innerJoin(schema.users, eq(schema.groupInvites.createdBy, schema.users.id))
@@ -198,8 +220,10 @@ export async function activeInvites(groupId: string): Promise<ActiveInvite[]> {
     id: r.tokenHash.toString("hex"),
     createdBy: r.createdBy,
     createdByName: r.createdByName,
+    createdAt: r.createdAt,
     expiresAt: r.expiresAt,
     useCount: r.useCount,
+    token: rederive(r.seed, r.tokenHash),
   }));
 }
 

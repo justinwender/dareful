@@ -15,8 +15,12 @@ const VerifiedCredential = z
     wallet_name: z.string().optional(),
     wallet_provider: z.string().optional(),
     email: z.string().optional(),
-    phone_number: z.string().optional(),
-    phone_country_code: z.string().optional(),
+    // Dynamic serializes most credential keys in snake_case and these three in camelCase (see
+    // JwtVerifiedCredentialToJSON in @dynamic-labs/sdk-api-core). Reading the snake_case spelling found
+    // nothing, silently, and no phone login ever stored a hash (docs/decisions.md 2026-09-19).
+    phoneNumber: z.string().optional(),
+    phoneCountryCode: z.string().optional(),
+    isoCountryCode: z.string().optional(),
   })
   .passthrough();
 
@@ -90,10 +94,10 @@ export function evmAddressesOf(claims: DynamicClaims): string[] {
  * joined form is not a valid number, in case a token ever carries the code inside the number.
  */
 export function phoneOf(claims: DynamicClaims): string | undefined {
-  const c = claims.verified_credentials.find((x) => x.format === "phoneNumber" && x.phone_number);
-  if (!c?.phone_number) return undefined;
-  const code = c.phone_country_code ? c.phone_country_code.replace(/[^\d]/g, "") : "";
-  const digits = c.phone_number.replace(/[^\d]/g, "");
+  const c = claims.verified_credentials.find((x) => x.format === "phoneNumber" && x.phoneNumber);
+  if (!c?.phoneNumber) return undefined;
+  const code = c.phoneCountryCode ? c.phoneCountryCode.replace(/[^\d]/g, "") : "";
+  const digits = c.phoneNumber.replace(/[^\d]/g, "");
   for (const candidate of [`+${code}${digits}`, `+${digits}`]) {
     try {
       return normalizeE164(candidate);
@@ -101,13 +105,17 @@ export function phoneOf(claims: DynamicClaims): string | undefined {
       // try the next spelling
     }
   }
+  // A phone login whose number cannot be read is a ghost that will never bind. Say so where someone will see it.
+  console.error("a phone credential was present and could not be normalized", { sub: claims.sub });
   return undefined;
 }
 
-/** A display name to start with. Principle 7: a first name is all anyone types. */
+/**
+ * A first name to offer in the "what do your friends call you" step, when Dynamic happens to know one.
+ * Never the local part of an email address: that is an identifier, not a name, and it would end up on
+ * share cards in other people's group chats.
+ */
 export function suggestedNameOf(claims: DynamicClaims): string | undefined {
-  if (claims.given_name) return claims.given_name;
-  const email = claims.email ?? claims.verified_credentials.find((c) => c.format === "email")?.email;
-  if (email) return email.split("@")[0];
-  return undefined;
+  const first = claims.given_name?.trim().split(/\s+/)[0];
+  return first ? first.slice(0, 40) : undefined;
 }

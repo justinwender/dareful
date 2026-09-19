@@ -10,7 +10,9 @@ import { SignJWT } from "jose";
 import { db, schema } from "@/db";
 import * as claims from "@/lib/ledger/claims";
 import { createGroup, createInvite } from "@/lib/ledger/groups";
-import { cleanup, cover, ghost, tempUser, track, type User } from "../db/fixture";
+import { ensureUsd } from "@/lib/ledger/denominations";
+import * as markets from "@/lib/ledger/markets";
+import { cleanup, cover, ghost, tempSigner, tempUser, track, type Signer, type User } from "../db/fixture";
 
 const BASE = process.env.TEST_BASE_URL ?? "http://localhost:3000";
 
@@ -42,6 +44,7 @@ async function cookieFor(userId: string): Promise<string> {
 let A: User, B: User, C: User, U: User;
 let cA: string, cB: string, cU: string;
 let gabe: string, linkToken: string, inviteToken: string, groupId: string, boundId: string, ghostCoverId: string;
+let asker: Signer, friend: Signer, stranger: Signer, cAsker: string, cFriend: string, cStranger: string, marketId: string, draftId: string;
 
 before(async () => {
   const up = await fetch(BASE).catch(() => null);
@@ -61,6 +64,20 @@ before(async () => {
   const group = await createGroup({ name: "Thursday Poker (check)", createdBy: A.id });
   groupId = track.group(group.id);
   inviteToken = await createInvite(group.id, A.id);
+
+  // A question in a group of two, with the asker in at a distinctive number, and a draft beside it.
+  [asker, friend, stranger] = await Promise.all([tempSigner("Priya Raman"), tempSigner("Dev"), tempSigner("Stranger")]);
+  [cAsker, cFriend, cStranger] = await Promise.all([cookieFor(asker.user.id), cookieFor(friend.user.id), cookieFor(stranger.user.id)]);
+  const mg = await createGroup({ name: "Question check", createdBy: asker.user.id });
+  track.group(mg.id);
+  await db.insert(schema.groupMembers).values({ groupId: mg.id, userId: friend.user.id });
+  const usd = await ensureUsd(mg.id, asker.user.id);
+  const ask = (title: string) => markets.draftMarket({ creatorId: asker.user.id, groupId: mg.id, denomId: usd.id, title, termsText: "Yes if the kettle is descaled by Friday.", resolvesBy: new Date(Date.now() + 86_400_000), anchorBps: 4100n, anchorRationale: "Kettles rarely get descaled." });
+  draftId = (await ask("Is this draft still a secret?")).id;
+  const d0 = await ask("Does the kettle get descaled by Friday?");
+  const d = await markets.openMarket(d0.id, asker.user.id, await asker.ledger.signTypedData(markets.createTypedData(d0)));
+  await markets.enterMarket({ dareId: d.id, userId: asker.user.id, stake: 1700n, valueBps: 8300n, signature: await asker.ledger.signTypedData(markets.enterTypedData(d, 1700n, 8300n)) });
+  marketId = d.id;
 });
 after(cleanup);
 
@@ -231,6 +248,47 @@ test("home carries a strip back to it, and someone with nothing waiting is sent 
   assert.equal(r.loc, "/");
 });
 
+// -------------------------------------------------------------------------------------------- questions
+
+test("a shared question answers a preview bot with the question, and nothing about who is in or at what", async () => {
+  const r = await get(`/m/${marketId}`);
+  assert.equal(r.status, 200);
+  assert.equal(meta(r.html, "og:title"), "Does the kettle get descaled by Friday?");
+  assert.ok(r.text.includes("Does the kettle get descaled by Friday?"));
+  // Distinctive spellings: a bare "83" turns up in script file names, and "$17" is how the page's own serialization writes a reference.
+  for (const s of ["Priya", "Raman", "83%", "8300", "17.00", "Question check", "Kettles rarely"]) assert.ok(!r.html.includes(s), `the signed-out page leaks "${s}"`);
+  const card = await get(`/m/${marketId}/opengraph-image`);
+  const plain = await get(`/m/00000000-0000-4000-8000-000000000000/opengraph-image`);
+  assert.equal(card.type, "image/png");
+  assert.ok(!card.bytes.equals(plain.bytes));
+});
+
+test("a draft is a 404 to everyone but the person who asked it, and its preview says nothing", async () => {
+  assert.equal((await get(`/m/${draftId}`, cAsker)).status, 200);
+  assert.equal((await get(`/m/${draftId}`, cFriend)).status, 404);
+  const out = await get(`/m/${draftId}`);
+  assert.equal(meta(out.html, "og:title"), "Dareful");
+  assert.ok(!out.html.includes("still a secret"));
+});
+
+test("someone in the group who has not picked sees who is in and no number; someone outside sees neither", async () => {
+  const mine = await get(`/m/${marketId}`, cFriend);
+  assert.equal(mine.status, 200);
+  assert.ok(mine.text.includes("Priya Raman") && mine.text.includes("1 of 2 in") && mine.text.includes("Numbers show when everyone’s in."));
+  assert.ok(!mine.text.includes("83%"));
+  assert.ok((await get(`/m/${marketId}`, cAsker)).text.includes("83%"));
+  const outside = await get(`/m/${marketId}`, cStranger);
+  assert.equal(outside.status, 200);
+  assert.ok(outside.text.includes("This one is for the people in Question check"));
+  for (const s of ["Priya", "83%", "8300", "17.00", "Kettles rarely", "kettle is descaled"]) assert.ok(!outside.html.includes(s), `someone outside the group is sent "${s}"`);
+});
+
+test("the terms and the stalemate rule are on the screen before anyone is in", async () => {
+  const r = await get(`/m/${marketId}`, cFriend);
+  assert.ok(r.text.includes("Yes if the kettle is descaled by Friday."));
+  assert.ok(r.text.includes("everyone says their piece and the app calls it. Being in means you’re fine with that."));
+});
+
 // ------------------------------------------------------------------------------------------------ dates
 
 test("a timestamp is painted in the zone the browser reported, not the server's", async () => {
@@ -261,6 +319,9 @@ for (const [name, path, who] of [
   ["the group page", () => `/g/${groupId}`, () => cA],
   ["the signed-out cover page", () => `/o/${boundId}`, () => undefined],
   ["the cover page", () => `/o/${boundId}`, () => cU],
+  ["a question, before picking", () => `/m/${marketId}`, () => cFriend],
+  ["a question, once in", () => `/m/${marketId}`, () => cAsker],
+  ["the ask screen", () => "/m/new", () => cAsker],
 ] as const) {
   test(`no banned word on ${name}`, async () => {
     const r = await get(path(), who());

@@ -9,6 +9,7 @@ import { like } from "drizzle-orm";
 import { db, schema } from "../src/db";
 import { contracts } from "../src/lib/chain/contracts";
 import { relayer } from "../src/lib/chain/relayer";
+import { scoreBinary, settle } from "../src/lib/ledger/scoring";
 import { z } from "zod";
 
 const OPEN_BETWEEN = /* GraphQL */ `
@@ -99,7 +100,72 @@ async function main(): Promise<void> {
     }
   }
   console.log(`[verify-envio] ${checked} edges checked across ${users.length} seed users; ${mismatches} mismatches; ${totalOpen} open units reported by Envio`);
-  if (mismatches > 0) process.exit(1);
+  const marketMismatches = await verifyMarkets();
+  if (mismatches + marketMismatches > 0) process.exit(1);
+}
+
+/**
+ * Markets, three ways at once. For every market Envio knows: the chain's own record (`dareOf`, `positionsOf`)
+ * must match Envio's status, outcome, and positions; every edge Envio attributes to it must exist onchain with
+ * that quantity and creditor (`obligationOf`); and the edges must be exactly the edges the scoring rule produces
+ * from the positions and the outcome, computed here from the specification by `src/lib/ledger/scoring.ts`. The
+ * last check is the one that would catch a settlement that was self-consistent and wrong.
+ */
+async function verifyMarkets(): Promise<number> {
+  const { dares, ledger } = contracts();
+  const { publicClient } = relayer();
+  const url = process.env.ENVIO_GRAPHQL_URL;
+  if (!url) throw new Error("ENVIO_GRAPHQL_URL is not set");
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ query: `{ Dare(limit: 500, order_by: { createdAt: asc }) { id status outcome kind positions { participant stake value score } edges { id debtor creditor qty } } }` }),
+  });
+  const parsed = z
+    .object({ data: z.object({ Dare: z.array(z.object({ id: z.string(), status: z.string(), outcome: z.string().nullable(), kind: z.number(), positions: z.array(z.object({ participant: z.string(), stake: z.string(), value: z.string(), score: z.number().nullable() })), edges: z.array(z.object({ id: z.string(), debtor: z.string(), creditor: z.string(), qty: z.string() })) })) }) })
+    .parse(await res.json());
+
+  const STATUS = ["LOCKED", "RESOLVED", "VOIDED", "EXPIRED"];
+  let bad = 0;
+  let edgesChecked = 0;
+  const fail = (m: string) => {
+    bad++;
+    console.error(`MARKET MISMATCH ${m}`);
+  };
+  for (const d of parsed.data.Dare) {
+    const tag = d.id.slice(0, 12);
+    const onchain = (await publicClient.readContract({ address: dares.address, abi: dares.abi, functionName: "dareOf", args: [d.id as Hex] })) as { status: number; outcome: bigint };
+    const ps = (await publicClient.readContract({ address: dares.address, abi: dares.abi, functionName: "positionsOf", args: [d.id as Hex] })) as ReadonlyArray<{ ledger: Address; stake: bigint; value: bigint }>;
+    if (STATUS[onchain.status] !== d.status) fail(`${tag}: envio says ${d.status}, chain says ${STATUS[onchain.status]}`);
+    if (d.status === "RESOLVED" && BigInt(d.outcome ?? "-1") !== onchain.outcome) fail(`${tag}: envio outcome ${d.outcome}, chain ${onchain.outcome}`);
+    const chainPositions = ps.map((p) => `${p.ledger.toLowerCase()}:${p.stake}:${p.value}`).sort();
+    const envioPositions = d.positions.map((p) => `${p.participant.toLowerCase()}:${p.stake}:${p.value}`).sort();
+    if (chainPositions.join() !== envioPositions.join()) fail(`${tag}: positions differ`);
+
+    for (const e of d.edges) {
+      const o = (await publicClient.readContract({ address: ledger.address, abi: ledger.abi, functionName: "obligationOf", args: [e.id as Hex] })) as { minted: bigint; creditor: Address };
+      edgesChecked++;
+      if (o.minted !== BigInt(e.qty) || o.creditor.toLowerCase() !== e.creditor.toLowerCase()) fail(`${tag}: edge ${e.id} is ${e.qty} to ${e.creditor} in envio, ${o.minted} to ${o.creditor} onchain`);
+    }
+
+    if (d.kind !== 0) continue; // only binary markets exist so far; the mirror scores those
+    const spell = (edges: Array<{ debtor: string; creditor: string; qty: bigint }>) => edges.map((e) => `${e.debtor.toLowerCase()}>${e.creditor.toLowerCase()}:${e.qty}`).sort().join();
+    if (d.status === "RESOLVED") {
+      // positionsOf is in entry order, which is the order the contract pairs people in.
+      const scored = ps.map((p) => ({ id: p.ledger.toLowerCase(), stake: p.stake, score: scoreBinary(p.value, onchain.outcome) }));
+      for (const p of scored) {
+        const seen = d.positions.find((x) => x.participant.toLowerCase() === p.id)?.score;
+        if (seen === null || seen === undefined || BigInt(seen) !== p.score) fail(`${tag}: ${p.id} scored ${seen} in envio, the rule says ${p.score}`);
+      }
+      const expected = spell(settle(scored));
+      const actual = spell(d.edges.map((e) => ({ debtor: e.debtor, creditor: e.creditor, qty: BigInt(e.qty) })));
+      if (expected !== actual) fail(`${tag}: minted edges are not the edges the scoring rule produces\n  rule:   ${expected}\n  minted: ${actual}`);
+    } else if (d.edges.length > 0) {
+      fail(`${tag}: a market that is ${d.status} minted ${d.edges.length} edges`);
+    }
+  }
+  console.log(`[verify-envio] ${parsed.data.Dare.length} markets and ${edgesChecked} minted edges checked against the chain and against the scoring rule; ${bad} mismatches`);
+  return bad;
 }
 
 main()

@@ -75,7 +75,7 @@ export function ConfirmProposal({ payload }: { payload: ConfirmPayload }) {
   return (
     <div className="flex flex-col gap-3">
       {error ? (
-        <p role="alert" className="text-body-sm text-ink-2">
+        <p role="alert" className="border-l-2 border-marigold pl-3 text-body-sm text-ink">
           {error}
         </p>
       ) : null}

@@ -3,6 +3,7 @@
  * on both sides, so rows join with Postgres without normalization.
  */
 import { z } from "zod";
+import { timed } from "@/lib/timing";
 
 const EnvioObligation = z.object({
   id: z.string(),
@@ -27,12 +28,15 @@ const FIELDS = "id tokenId groupId denomId debtor creditor qty remaining settled
 async function query<T>(gql: string, variables: Record<string, unknown>, shape: z.ZodType<T>): Promise<T> {
   const url = process.env.ENVIO_GRAPHQL_URL;
   if (!url) throw new Error("ENVIO_GRAPHQL_URL is not set");
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ query: gql, variables }),
-    cache: "no-store",
-  });
+  const name = /query (\w+)/.exec(gql)?.[1] ?? "query";
+  const res = await timed(`indexer ${name}`, () =>
+    fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ query: gql, variables }),
+      cache: "no-store",
+    }),
+  );
   if (!res.ok) throw new Error(`indexer responded ${res.status}`);
   const json = (await res.json()) as { data?: unknown; errors?: Array<{ message: string }> };
   if (json.errors?.length) throw new Error(`indexer error: ${json.errors.map((e) => e.message).join("; ")}`);
@@ -87,4 +91,32 @@ export async function obligationsById(ids: string[]): Promise<Map<string, EnvioO
     z.object({ Obligation: z.array(EnvioObligation) }),
   );
   return new Map(data.Obligation.map((o) => [o.id, o]));
+}
+
+const EnvioDare = z.object({
+  id: z.string(),
+  status: z.enum(["LOCKED", "RESOLVED", "VOIDED", "EXPIRED"]),
+  outcome: z.string().nullable(),
+  votes: z.number().nullable(),
+  voided: z.boolean(),
+  resolveTx: z.string().nullable(),
+  positions: z.array(z.object({ participant: z.string(), stake: z.string(), value: z.string(), score: z.number().nullable() })),
+  edges: z.array(z.object({ id: z.string(), tokenId: z.string(), debtor: z.string(), creditor: z.string(), qty: z.string(), unique: z.boolean(), confirmTx: z.string() })),
+});
+export type EnvioDare = z.infer<typeof EnvioDare>;
+
+/** A market as the chain recorded it: status, outcome, every position's score, and the edges it minted. */
+export async function dareByOnchainId(dareId: string): Promise<EnvioDare | null> {
+  const data = await query(
+    `query DareById($id: String!) {
+      Dare(where: { id: { _eq: $id } }) {
+        id status outcome votes voided resolveTx
+        positions { participant stake value score }
+        edges { id tokenId debtor creditor qty unique confirmTx }
+      }
+    }`,
+    { id: dareId.toLowerCase() },
+    z.object({ Dare: z.array(EnvioDare) }),
+  );
+  return data.Dare[0] ?? null;
 }

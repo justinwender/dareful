@@ -17,7 +17,7 @@ What changed: the Phase 1 login acceptance test includes a passkey failure path 
 ## Session 2: first real use, two platforms
  
 **Date:** September 19, 2026
-**Testers:** Justin Wender (email), Justin Wender (phone), David Wender (Android)
+**Testers:** the author on two accounts (one email login, one phone login), and a family member on Android
 **Devices:** one iPhone (number and email), one macbook (same number and email as iphone), one Android
 **Build:** production, `dareful.app`
  

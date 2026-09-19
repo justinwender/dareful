@@ -1,6 +1,7 @@
 /** Group invite links: revocable, counted, hashed at rest, and never a way to learn whether a token is live. */
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
+import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { activeInvites, createGroup, createInvite, ensureDyad, isMember, readInvite, redeemInvite, revokeInvite } from "@/lib/ledger/groups";
@@ -125,4 +126,40 @@ test("only the hash is stored, never the token", async () => {
   assert.equal(stored.length, 1);
   assert.deepEqual(stored[0]?.h, hashToken(g.token));
   assert.ok(!stored[0]?.h.toString("utf8").includes(g.token));
+});
+
+test("a member is shown the same link again, so there is no reason to make a second", async () => {
+  const g = await group();
+  const listed = await activeInvites(g.id);
+  assert.equal(listed[0]?.token, g.token);
+  assert.equal((await activeInvites(g.id))[0]?.token, g.token);
+});
+
+test("the link is made again from a seed and a server secret; the seed alone is not the link", async () => {
+  const g = await group();
+  const [row] = await db.select().from(schema.groupInvites).where(eq(schema.groupInvites.groupId, g.id));
+  assert.ok(row?.seed);
+  assert.ok(!g.token.includes(row.seed.replace(/-/g, "")));
+  assert.equal(await readInvite(row.seed), null);
+  const secret = process.env.SESSION_SECRET;
+  process.env.SESSION_SECRET = `${secret}-rotated-rotated-rotated-rotated`;
+  try {
+    // With a different secret the seed gives a different token, which does not match what was stored: no link.
+    assert.equal((await activeInvites(g.id))[0]?.token, null);
+  } finally {
+    process.env.SESSION_SECRET = secret;
+  }
+});
+
+test("a link whose seed does not reproduce it is never shown, and an older link with no seed is listed without one", async () => {
+  const g = await group();
+  const h = hashToken(g.token);
+  assert.ok(h);
+  await db.update(schema.groupInvites).set({ seed: randomUUID() }).where(eq(schema.groupInvites.tokenHash, h));
+  assert.equal((await activeInvites(g.id))[0]?.token, null);
+  await db.update(schema.groupInvites).set({ seed: null }).where(eq(schema.groupInvites.tokenHash, h));
+  const listed = await activeInvites(g.id);
+  assert.equal(listed.length, 1);
+  assert.equal(listed[0]?.token, null);
+  assert.notEqual(await readInvite(g.token), null); // it still works for whoever has it
 });

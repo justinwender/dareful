@@ -21,7 +21,30 @@ async function main(): Promise<void> {
     ]),
   );
   await db.transaction(async (tx) => {
+    // Markets hang off groups and users; positions, votes, statements and minted-edge shadows hang off markets.
+    const D = schema.dares;
+    const asked = await tx.select({ id: D.id }).from(D).where(or(u.length ? inArray(D.creatorId, u) : sql`false`, g.length ? inArray(D.groupId, g) : sql`false`));
+    if (asked.length) {
+      const ids = asked.map((d) => d.id);
+      await tx.delete(schema.dareVotes).where(inArray(schema.dareVotes.dareId, ids));
+      await tx.delete(schema.dareStatements).where(inArray(schema.dareStatements.dareId, ids));
+      await tx.delete(schema.darePositions).where(inArray(schema.darePositions.dareId, ids));
+      await tx.delete(schema.obligations).where(inArray(schema.obligations.originId, ids));
+      await tx.delete(D).where(inArray(D.id, ids));
+    }
+    if (u.length) await tx.delete(schema.obligations).where(or(inArray(schema.obligations.fromUser, u), inArray(schema.obligations.toUser, u)));
     const P = schema.obligationProposals;
+    // Expenses hang off groups and users, and their items and claims hang off them.
+    const E = schema.expenses;
+    const spent = await tx.select({ id: E.id }).from(E).where(or(u.length ? inArray(E.payerId, u) : sql`false`, g.length ? inArray(E.groupId, g) : sql`false`));
+    if (spent.length) {
+      const ids = spent.map((e) => e.id);
+      const items = (await tx.select({ id: schema.expenseItems.id }).from(schema.expenseItems).where(inArray(schema.expenseItems.expenseId, ids))).map((i) => i.id);
+      if (items.length) await tx.delete(schema.itemClaims).where(inArray(schema.itemClaims.expenseItemId, items));
+      await tx.delete(schema.expenseItems).where(inArray(schema.expenseItems.expenseId, ids));
+      await tx.delete(P).where(inArray(P.originId, ids));
+      await tx.delete(E).where(inArray(E.id, ids));
+    }
     const conds = [inArray(P.fromUser, u), inArray(P.toUser, u)];
     if (g.length) conds.push(inArray(P.groupId, g));
     if (c.length) conds.push(inArray(P.fromClaim, c), inArray(P.toClaim, c), inArray(P.fromBoundClaim, c), inArray(P.toBoundClaim, c));

@@ -142,3 +142,33 @@ export async function denominationsByIds(ids: string[]): Promise<Map<string, Den
   const rows = await db.select().from(schema.denominations).where(inArray(schema.denominations.id, ids));
   return new Map(rows.map((r) => [r.id, r]));
 }
+
+/**
+ * A unit someone named while composing, before the group it belongs to necessarily existed. Between two people
+ * the group is a dyad that is only created when the cover is saved, so the form cannot register a unit ahead
+ * of time; it describes the unit, and the unit is found or made here, in the group the cover lands in
+ * (docs/decisions.md 2026-09-19). Finding first means the same "beer" is never made twice in one group.
+ */
+export type UnitSpec = { template: Exclude<TemplateKey, "usd"> | null; label: string; markEmoji?: string | null };
+
+export async function ensureUnitInGroup(groupId: string, createdBy: string, spec: UnitSpec): Promise<DenominationRow> {
+  const preset = spec.template ? TEMPLATES[spec.template] : null;
+  const label = (preset ? preset.label : spec.label).trim();
+  if (!label) throw new Error("a unit needs a name");
+  const [existing] = await db
+    .select()
+    .from(schema.denominations)
+    .where(and(eq(schema.denominations.groupId, groupId), spec.template ? eq(schema.denominations.template, spec.template) : and(isNull(schema.denominations.template), sql`lower(${schema.denominations.label}) = lower(${label})`)))
+    .limit(1);
+  if (existing) return existing;
+  return createDenomination({
+    groupId,
+    createdBy,
+    template: spec.template,
+    label,
+    pluralLabel: preset ? preset.pluralLabel : label,
+    quantifiable: preset ? preset.quantifiable : true,
+    monetary: false,
+    markEmoji: preset ? null : (spec.markEmoji ?? null),
+  });
+}

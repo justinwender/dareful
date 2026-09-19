@@ -5,6 +5,7 @@
  * Temporary users carry a `tmp-check:` Dynamic id and random addresses; phone numbers are fictional.
  */
 import { randomBytes, randomUUID } from "node:crypto";
+import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 import { eq, inArray, like, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import * as claims from "@/lib/ledger/claims";
@@ -37,6 +38,21 @@ export async function tempUser(name: string, phoneHash?: Buffer): Promise<User> 
   if (!u) throw new Error("temp user");
   userIds.add(u.id);
   return u;
+}
+
+export type Signer = { user: User; ledger: PrivateKeyAccount; governance: PrivateKeyAccount };
+
+/** A temporary user whose two wallets have keys, for anything that has to be signed: entries, and votes. */
+export async function tempSigner(name: string): Promise<Signer> {
+  const ledger = privateKeyToAccount(generatePrivateKey());
+  const governance = privateKeyToAccount(generatePrivateKey());
+  const [u] = await db
+    .insert(schema.users)
+    .values({ dynamicUserId: `tmp-check:${randomUUID()}`, ledgerWallet: ledger.address.toLowerCase(), governanceWallet: governance.address.toLowerCase(), displayName: name })
+    .returning();
+  if (!u) throw new Error("temp signer");
+  userIds.add(u.id);
+  return { user: u, ledger, governance };
 }
 
 /** A fictional US number, unique within a run: 555-01xx is reserved for fiction; the area code varies. */
@@ -111,7 +127,30 @@ async function removeEverything(): Promise<void> {
   }
   const g = [...groupIds];
   await db.transaction(async (tx) => {
+    // Markets hang off groups and users; positions, votes, statements and minted-edge shadows hang off markets.
+    const D = schema.dares;
+    const asked = await tx.select({ id: D.id }).from(D).where(or(u.length ? inArray(D.creatorId, u) : sql`false`, g.length ? inArray(D.groupId, g) : sql`false`));
+    if (asked.length) {
+      const ids = asked.map((d) => d.id);
+      await tx.delete(schema.dareVotes).where(inArray(schema.dareVotes.dareId, ids));
+      await tx.delete(schema.dareStatements).where(inArray(schema.dareStatements.dareId, ids));
+      await tx.delete(schema.darePositions).where(inArray(schema.darePositions.dareId, ids));
+      await tx.delete(schema.obligations).where(inArray(schema.obligations.originId, ids));
+      await tx.delete(D).where(inArray(D.id, ids));
+    }
+    if (u.length) await tx.delete(schema.obligations).where(or(inArray(schema.obligations.fromUser, u), inArray(schema.obligations.toUser, u)));
     const P = schema.obligationProposals;
+    // Expenses hang off groups and users, and their items and claims hang off them.
+    const E = schema.expenses;
+    const spent = await tx.select({ id: E.id }).from(E).where(or(u.length ? inArray(E.payerId, u) : sql`false`, g.length ? inArray(E.groupId, g) : sql`false`));
+    if (spent.length) {
+      const ids = spent.map((e) => e.id);
+      const items = (await tx.select({ id: schema.expenseItems.id }).from(schema.expenseItems).where(inArray(schema.expenseItems.expenseId, ids))).map((i) => i.id);
+      if (items.length) await tx.delete(schema.itemClaims).where(inArray(schema.itemClaims.expenseItemId, items));
+      await tx.delete(schema.expenseItems).where(inArray(schema.expenseItems.expenseId, ids));
+      await tx.delete(P).where(inArray(P.originId, ids));
+      await tx.delete(E).where(inArray(E.id, ids));
+    }
     const conds = [];
     if (g.length) conds.push(inArray(P.groupId, g));
     if (u.length) conds.push(inArray(P.fromUser, u), inArray(P.toUser, u));

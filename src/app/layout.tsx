@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { Hanken_Grotesk, Young_Serif } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
+import { PLACEHOLDER_NAME } from "@/lib/auth/login";
+import { currentUser } from "@/lib/auth/session";
 
 const hanken = Hanken_Grotesk({
   variable: "--font-hanken",
@@ -33,11 +35,15 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  // Someone who already has a session and a name has nothing to set up, so the login bootstrap stays out of
+  // their way entirely: no round trip and no "signing you in" on every page load.
+  const me = await currentUser();
+  const settled = me !== null && me.displayName !== PLACEHOLDER_NAME;
   return (
     <html lang="en" className={`${hanken.variable} ${youngSerif.variable} dark h-full antialiased`}>
       <body className="min-h-full flex flex-col">
-        <Providers>{children}</Providers>
+        <Providers settled={settled}>{children}</Providers>
       </body>
     </html>
   );

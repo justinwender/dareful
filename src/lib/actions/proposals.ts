@@ -7,7 +7,9 @@ import { z } from "zod";
 import { regionFromHeaders, tryHashPhone } from "@/lib/auth/phone";
 import { requireUser } from "@/lib/auth/session";
 import { ClaimError, ensureDyadWithClaim, resolvePicked, spendContactResolution, type Person } from "@/lib/ledger/claims";
-import { ensureUsd } from "@/lib/ledger/denominations";
+import { denominationById, ensureUnitInGroup, ensureUsd } from "@/lib/ledger/denominations";
+import { splitCover } from "@/lib/ledger/expenses";
+import { SplitError } from "@/lib/ledger/split";
 import { ensureDyad } from "@/lib/ledger/groups";
 import { CONFIRM_MANY_MAX, confirmManyProposals, confirmProposal, ConfirmError, declineProposal, proposeCover } from "@/lib/ledger/proposals";
 import { cents, units } from "@/lib/money";
@@ -23,11 +25,21 @@ const Who = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("new"), name: z.string().trim().min(1).max(40), phone: z.string().max(40).optional() }),
 ]);
 
+/**
+ * What it was. Dollars, a unit the group already has, or a unit named in the form just now: that one is
+ * registered with the group when the cover is saved, which is what lets two people use "a next time" before
+ * their dyad exists.
+ */
+const Unit = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("usd") }),
+  z.object({ kind: z.literal("existing"), id: z.string().uuid() }),
+  z.object({ kind: z.literal("new"), template: z.enum(["beer", "coffee", "round", "next_time"]).nullable(), label: z.string().trim().min(1).max(40), markEmoji: z.string().trim().max(16).optional() }),
+]);
+
 const Propose = z.object({
   who: Who,
   groupId: z.string().uuid().nullable(),
-  /** "usd" means the group's built-in dollar unit; otherwise a denomination id. */
-  unit: z.string().min(1),
+  unit: Unit,
   quantity: z.string().regex(/^\d+$/).nullable(),
   amountCents: z.string().regex(/^\d+$/).nullable(),
   settleExpected: z.boolean(),
@@ -65,10 +77,14 @@ export async function proposeCoverAction(input: ProposeInput): Promise<{ error: 
   try {
     let groupId = d.groupId;
     if (!groupId) groupId = (debtor.kind === "user" ? await ensureDyad(user.id, debtor.userId) : await ensureDyadWithClaim(user.id, debtor.claimId)).id;
-    let denomId = d.unit;
-    if (d.unit === "usd") denomId = (await ensureUsd(groupId, user.id)).id;
     const amount = d.amountCents !== null ? cents(BigInt(d.amountCents)) : null;
-    const qty = d.unit === "usd" ? (amount === null ? null : units(amount)) : d.quantity !== null ? units(BigInt(d.quantity)) : null;
+    // The same check the form makes, made again here: a request that skipped the form must not reach the
+    // ledger's generic refusal ("how many?") when the person's actual mistake was leaving the amount empty.
+    if (d.unit.kind === "usd" && (amount === null || amount <= 0n)) return { error: "Add the amount first." };
+    const denom = d.unit.kind === "usd" ? await ensureUsd(groupId, user.id) : d.unit.kind === "existing" ? await denominationById(d.unit.id) : await ensureUnitInGroup(groupId, user.id, d.unit);
+    if (!denom) return { error: "That unit isn't around any more. Pick another." };
+    const denomId = denom.id;
+    const qty = denom.monetary ? (amount === null ? null : units(amount)) : denom.quantifiable ? units(BigInt(d.quantity ?? "1")) : null;
     made = await proposeCover({
       creditorId: user.id,
       debtor,
@@ -123,4 +139,40 @@ export async function declineProposalAction(proposalId: string): Promise<{ ok: t
   } catch (err) {
     return { error: err instanceof ConfirmError ? err.message : "That didn't go through. Try again." };
   }
+}
+
+const Split = z.object({
+  groupId: z.string().uuid(),
+  present: z.array(z.string().uuid()).min(1).max(30),
+  totalCents: z.string().regex(/^\d{1,12}$/),
+  payerIn: z.boolean(),
+  /** Only the people whose amount was changed by hand; everyone else splits what is left. */
+  fixed: z.array(z.object({ userId: z.string().uuid(), cents: z.string().regex(/^\d{1,12}$/) })).max(30),
+  settleExpected: z.boolean(),
+  memo: z.string().trim().max(140).optional(),
+});
+
+export type SplitInput = z.infer<typeof Split>;
+
+/** One total, several people: one proposal per person who was there, the odd cent stays with whoever paid. */
+export async function splitCoverAction(input: SplitInput): Promise<{ error: string } | never> {
+  const user = await requireUser();
+  const parsed = Split.safeParse(input);
+  if (!parsed.success) return { error: "Something in that form is off." };
+  const d = parsed.data;
+  try {
+    await splitCover({
+      payerId: user.id,
+      groupId: d.groupId,
+      presentUserIds: d.present,
+      totalCents: BigInt(d.totalCents),
+      payerIn: d.payerIn,
+      fixed: new Map(d.fixed.map((f) => [f.userId, BigInt(f.cents)])),
+      settleExpected: d.settleExpected,
+      memo: d.memo,
+    });
+  } catch (err) {
+    return { error: err instanceof SplitError ? err.message : "Couldn't save that. Nothing was logged." };
+  }
+  redirect(`/g/${d.groupId}`);
 }

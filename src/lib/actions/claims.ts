@@ -149,7 +149,7 @@ export async function addGhostToGroupAction(rawGroupId: string, rawPerson: unkno
   const user = await requireUser();
   const groupId = uuid.safeParse(rawGroupId);
   const person = NewPerson.safeParse(rawPerson);
-  if (!groupId.success || !person.success) return { error: "Who is it?" };
+  if (!groupId.success || !person.success) return { error: "Type their first name." };
   try {
     if (person.data.phone) await spendContactResolution(user.id);
     const phoneHash = person.data.phone ? tryHashPhone(person.data.phone, regionFromHeaders(await headers())) : null;

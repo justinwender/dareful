@@ -4,11 +4,19 @@
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { JwtVerifiedCredentialFormatEnum, JwtVerifiedCredentialToJSON } from "@dynamic-labs/sdk-api-core";
 import { phoneOf } from "@/lib/auth/jwt";
 import { hashPhone, normalizeE164, regionFromHeaders, tryHashPhone } from "@/lib/auth/phone";
 
 const hex = (b: Buffer) => b.toString("hex");
-const login = (code: string, national: string) => phoneOf({ verified_credentials: [{ format: "phoneNumber", phone_number: national, phone_country_code: code }] } as never);
+// The credential is built by Dynamic's own serializer, not by hand. The first version of this helper spelled
+// the keys the way the code under test read them (snake_case), so the tests agreed with the code and both
+// were wrong: Dynamic sends phoneNumber and phoneCountryCode in camelCase.
+const login = (code: string, national: string) =>
+  phoneOf({
+    sub: "u",
+    verified_credentials: [JwtVerifiedCredentialToJSON({ id: "c", format: JwtVerifiedCredentialFormatEnum.PhoneNumber, phoneNumber: national, phoneCountryCode: code, isoCountryCode: "US", signInEnabled: true })],
+  } as never);
 const US = ["(212) 555-0142", "212-555-0142", "212.555.0142", "2125550142", "1 212 555 0142", "+1 212 555 0142", "+12125550142"];
 
 test("seven US spellings of one number give one hash", () => {
@@ -72,7 +80,7 @@ test("a national number with no region does not hash as something", () => {
 });
 
 test("a login with no phone credential yields nothing", () => {
-  assert.equal(phoneOf({ verified_credentials: [{ format: "email", email: "x@example.com" }] } as never), undefined);
+  assert.equal(phoneOf({ sub: "u", verified_credentials: [JwtVerifiedCredentialToJSON({ id: "c", format: JwtVerifiedCredentialFormatEnum.Email, email: "x@example.com", signInEnabled: true })] } as never), undefined);
 });
 
 test("the default region comes from the platform header, US when absent", () => {

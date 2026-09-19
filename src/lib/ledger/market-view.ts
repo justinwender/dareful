@@ -1,0 +1,96 @@
+/**
+ * What a market looks like to one viewer. Markets are stories (docs/design.md 4.x): a timeline gets one card per
+ * market however many obligations it minted, with only the consequences between the people in view beneath it.
+ *
+ * Who may see numbers: before lock, in an open market, someone who has put their own number in sees everyone's;
+ * someone who has not sees only who is in, so an early number never anchors a later one by accident. A blind
+ * market hides every number from everyone until lock. After lock everyone in the group sees everything.
+ */
+import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { db, schema } from "@/db";
+import { denominationsByIds, type DenominationRow } from "./denominations";
+import { stateOf, VOID_OUTCOME, type DareRow, type MarketState, type PositionRow } from "./markets";
+
+export type MarketPerson = { id: string; displayName: string };
+export type MarketCardData = {
+  dare: DareRow;
+  state: Exclude<MarketState, "draft">;
+  at: Date;
+  groupName: string | null;
+  groupSize: number;
+  denomination: DenominationRow;
+  people: Array<{ id: string; name: string; percent: number | null }>;
+  outcome: 0 | 1 | null;
+  consequences: Array<{ from: MarketPerson; to: MarketPerson; quantity: bigint }>;
+  needsYou: string | null;
+};
+
+const percentOf = (p: PositionRow) => Number(p.value) / 100;
+
+export function numbersVisible(d: DareRow, viewerHasPosition: boolean): boolean {
+  if (d.lockedAt) return true;
+  return d.revealMode === "open" && viewerHasPosition;
+}
+
+/**
+ * The cards for a timeline. `groupId` narrows to one group; `withUserId` narrows to markets both people are in
+ * and to the consequences between just those two. Drafts are never listed: only their creator can open one.
+ */
+export async function marketCards(input: { viewerId: string; groupId?: string; withUserId?: string; limit?: number }): Promise<MarketCardData[]> {
+  const mine = await db.select({ groupId: schema.groupMembers.groupId }).from(schema.groupMembers).where(and(eq(schema.groupMembers.userId, input.viewerId), isNull(schema.groupMembers.leftAt)));
+  const groupIds = input.groupId ? mine.map((m) => m.groupId).filter((g) => g === input.groupId) : mine.map((m) => m.groupId);
+  if (groupIds.length === 0) return [];
+  const dares = await db
+    .select()
+    .from(schema.dares)
+    .where(and(inArray(schema.dares.groupId, groupIds), isNotNull(schema.dares.creatorSignature)))
+    .orderBy(desc(schema.dares.createdAt))
+    .limit(input.limit ?? 40);
+  if (dares.length === 0) return [];
+  const ids = dares.map((d) => d.id);
+
+  const [positions, votes, edges, groups, seats] = await Promise.all([
+    db.select().from(schema.darePositions).where(and(inArray(schema.darePositions.dareId, ids), isNotNull(schema.darePositions.acknowledgedAt), isNull(schema.darePositions.dismissedAt))),
+    db.select({ dareId: schema.dareVotes.dareId, userId: schema.dareVotes.userId }).from(schema.dareVotes).where(inArray(schema.dareVotes.dareId, ids)),
+    db.select().from(schema.obligations).where(and(eq(schema.obligations.origin, "dare"), inArray(schema.obligations.originId, ids))),
+    db.select({ id: schema.groups.id, name: schema.groups.name }).from(schema.groups).where(inArray(schema.groups.id, groupIds)),
+    db.select({ groupId: schema.groupMembers.groupId, userId: schema.groupMembers.userId }).from(schema.groupMembers).where(and(inArray(schema.groupMembers.groupId, groupIds), isNotNull(schema.groupMembers.userId), isNull(schema.groupMembers.leftAt))),
+  ]);
+  const userIds = Array.from(new Set([...positions.map((p) => p.userId), ...edges.flatMap((e) => [e.fromUser, e.toUser])].filter((x): x is string => Boolean(x))));
+  const users = userIds.length ? await db.select({ id: schema.users.id, displayName: schema.users.displayName }).from(schema.users).where(inArray(schema.users.id, userIds)) : [];
+  const nameOf = new Map(users.map((u) => [u.id, u.displayName]));
+  const denoms = await denominationsByIds(Array.from(new Set(dares.map((d) => d.denomId))));
+
+  const out: MarketCardData[] = [];
+  for (const d of dares) {
+    const state = stateOf(d);
+    if (state === "draft") continue;
+    const ps = positions.filter((p) => p.dareId === d.id).sort((a, b) => a.enteredAt.getTime() - b.enteredAt.getTime());
+    if (input.withUserId && !(ps.some((p) => p.userId === input.viewerId) && ps.some((p) => p.userId === input.withUserId))) continue;
+    const denomination = denoms.get(d.denomId);
+    if (!denomination) continue;
+    const iAmIn = ps.some((p) => p.userId === input.viewerId);
+    const show = numbersVisible(d, iAmIn);
+    const between = (e: (typeof edges)[number]) => !input.withUserId || ((e.fromUser === input.viewerId || e.toUser === input.viewerId) && (e.fromUser === input.withUserId || e.toUser === input.withUserId));
+    out.push({
+      dare: d,
+      state,
+      at: d.resolvedAt ?? d.lockedAt ?? d.createdAt,
+      groupName: groups.find((g) => g.id === d.groupId)?.name ?? null,
+      groupSize: seats.filter((s) => s.groupId === d.groupId).length,
+      denomination,
+      people: ps.map((p) => ({ id: p.userId as string, name: nameOf.get(p.userId as string) ?? "Someone", percent: show ? percentOf(p) : null })),
+      outcome: state === "resolved" && d.resolvedOutcome !== null && d.resolvedOutcome !== VOID_OUTCOME ? (Number(d.resolvedOutcome) as 0 | 1) : null,
+      consequences: edges
+        .filter((e) => e.originId === d.id && between(e))
+        .map((e) => ({ from: { id: e.fromUser, displayName: nameOf.get(e.fromUser) ?? "Someone" }, to: { id: e.toUser, displayName: nameOf.get(e.toUser) ?? "Someone" }, quantity: e.quantity ?? 1n })),
+      needsYou: state === "open" && !iAmIn ? "Put your number in" : state === "locked" && !votes.some((v) => v.dareId === d.id && v.userId === input.viewerId) ? "Say how it came out" : null,
+    });
+  }
+  return out;
+}
+
+/** Markets waiting on this person: open ones they are not in, locked ones they have not called. For "Needs you". */
+export async function marketsNeeding(viewerId: string): Promise<MarketCardData[]> {
+  return (await marketCards({ viewerId, limit: 60 })).filter((m) => m.needsYou !== null);
+}

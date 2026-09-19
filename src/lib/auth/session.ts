@@ -3,6 +3,7 @@
  * httpOnly cookie carrying the user id. Pages and route handlers read the user through `currentUser()`; nothing
  * client-side can forge it, and a Dynamic token is never stored.
  */
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { eq } from "drizzle-orm";
 import { SignJWT, jwtVerify } from "jose";
@@ -41,8 +42,11 @@ export async function clearSessionCookie(): Promise<void> {
 
 export type SessionUser = typeof schema.users.$inferSelect;
 
-/** The signed-in user, or null. Never throws on a bad cookie; a bad cookie is just signed out. */
-export async function currentUser(): Promise<SessionUser | null> {
+/**
+ * The signed-in user, or null. Never throws on a bad cookie; a bad cookie is just signed out. Cached for the
+ * request, so the layout and the page asking the same question cost one query, not two.
+ */
+export const currentUser = cache(async function currentUser(): Promise<SessionUser | null> {
   const jar = await cookies();
   const token = jar.get(SESSION_COOKIE)?.value;
   if (!token) return null;
@@ -56,7 +60,7 @@ export async function currentUser(): Promise<SessionUser | null> {
   if (!userId) return null;
   const [user] = await db.select().from(schema.users).where(eq(schema.users.id, userId)).limit(1);
   return user ?? null;
-}
+});
 
 export async function requireUser(): Promise<SessionUser> {
   const user = await currentUser();

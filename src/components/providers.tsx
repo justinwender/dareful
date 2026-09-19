@@ -13,7 +13,7 @@ const environmentId = process.env.NEXT_PUBLIC_DYNAMIC_ENVIRONMENT_ID ?? "";
  * network is registered here through `overrides.evmNetworks`. Nothing on any screen says wallet, chain, or
  * signature; the login is an email or phone step.
  */
-export function Providers({ children }: { children: ReactNode }) {
+export function Providers({ children, settled }: { children: ReactNode; settled: boolean }) {
   const evmNetworks = useMemo(() => (environmentId ? monadEvmNetworks() : []), []);
   if (!environmentId) {
     // Misconfigured deployment: render the app without auth rather than failing the build's prerender.
@@ -33,7 +33,7 @@ export function Providers({ children }: { children: ReactNode }) {
       }}
       theme="dark"
     >
-      <WalletBootstrap />
+      <WalletBootstrap settled={settled} />
       {children}
     </DynamicContextProvider>
   );

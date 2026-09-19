@@ -20,6 +20,7 @@ import {
   type WalletClient,
 } from "viem";
 import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
+import { timed } from "@/lib/timing";
 import { monadChain, rpcUrl } from "./contracts";
 
 export type Relayer = {
@@ -44,7 +45,9 @@ export function relayer(): Relayer {
   const transport = http(rpcUrl(), { retryCount: 6, retryDelay: 1500, timeout: 30_000 });
   cached = {
     account,
-    publicClient: createPublicClient({ chain, transport }),
+    // Monad produces a block in well under a second. viem's default is to look for a receipt every four
+    // seconds, so a receipt missed on the first look cost four seconds of someone staring at a button.
+    publicClient: createPublicClient({ chain, transport, pollingInterval: 400 }),
     walletClient: createWalletClient({ account, chain, transport }),
   };
   return cached;
@@ -66,6 +69,9 @@ export type SubmitResult = { hash: Hex; receipt: TransactionReceipt };
 /**
  * Simulate, submit with explicit gas, wait, and verify. `gas` is required by type; there is no default.
  */
+/** When this process last saw one of its own transactions mined; see the simulate retry below. */
+let lastMinedAt = 0;
+
 export async function submit<
   const TAbi extends Abi,
   TFn extends ContractFunctionName<TAbi, "nonpayable" | "payable">,
@@ -81,30 +87,48 @@ export async function submit<
   const chain = monadChain();
 
   // eth_call with the relayer as sender: catches reverts before the declared gas is charged.
-  await publicClient.simulateContract({
-    account,
-    address: req.address,
-    abi: req.abi,
-    functionName: req.functionName,
-    args: req.args,
-  } as Parameters<PublicClient["simulateContract"]>[0]);
+  // The RPC is load-balanced, and a node can lag the one that mined the relayer's previous transaction by a
+  // block. A simulate that lands there reverts against stale state ("unknown group" a moment after the group was
+  // registered). So a revert within a few seconds of the last mined transaction is asked again, briefly, before
+  // it is believed. A revert that is real is still a revert half a second later.
+  const simulate = () =>
+    publicClient.simulateContract({
+      account,
+      address: req.address,
+      abi: req.abi,
+      functionName: req.functionName,
+      args: req.args,
+    } as Parameters<PublicClient["simulateContract"]>[0]);
+  await timed(`relayer ${req.label}: simulate`, async () => {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await simulate();
+      } catch (err) {
+        if (attempt >= 2 || Date.now() - lastMinedAt > 5_000) throw err;
+        await new Promise((r) => setTimeout(r, 450));
+      }
+    }
+  });
 
-  const hash = await walletClient.writeContract({
-    account,
-    chain,
-    address: req.address,
-    abi: req.abi,
-    functionName: req.functionName,
-    args: req.args,
-    gas: req.gas,
-  } as Parameters<WalletClient["writeContract"]>[0]);
+  const hash = await timed(`relayer ${req.label}: send`, () =>
+    walletClient.writeContract({
+      account,
+      chain,
+      address: req.address,
+      abi: req.abi,
+      functionName: req.functionName,
+      args: req.args,
+      gas: req.gas,
+    } as Parameters<WalletClient["writeContract"]>[0]),
+  );
 
-  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  const receipt = await timed(`relayer ${req.label}: wait for receipt`, () => publicClient.waitForTransactionReceipt({ hash }));
   if (process.env.RELAYER_LOG_GAS) {
     // Monad receipts report gasUsed equal to the declared limit, so this line only tells you whether the
     // limit was enough (success) or not (reverted). Size gas.ts from scripts/gas-survey.ts, not from here.
     console.log(`[relayer] ${req.label}: limit ${req.gas}, receipt gasUsed ${receipt.gasUsed}, ${receipt.status}`);
   }
+  lastMinedAt = Date.now();
   if (receipt.status !== "success") throw new RelayerTransactionFailed(req.label, hash, receipt);
   return { hash, receipt };
 }
