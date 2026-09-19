@@ -268,4 +268,10 @@ const http: Mutant[] = [
   h("banned-on-cover-page", P_COVER, "Sound right? One tap and it’s on the record between you two.", "Sound right? One tap and the transaction is signed.", ["no banned word on the cover page"], "banned word on the page"),
 ];
 
-export const MUTANTS: Mutant[] = [...unit, ...invites, ...claims, ...many, ...share, ...http];
+const client: Mutant[] = [
+  { id: "db-session-pooler-accepted", file: "src/db/url.ts", find: "  if (/pooler\\.supabase\\.com:5432\\//.test(url)) {", replace: "  if (url.length < 0) {", suite: "tests/unit/db-url.test.ts", kills: ["the app refuses the session pooler, loudly, and accepts the transaction pooler"], why: "the production outage: the app runs on the fifteen-client session pooler without complaint" },
+  { id: "db-prepared-statements", file: "src/db/index.ts", find: "idle_timeout: 20, prepare: false", replace: "idle_timeout: 20, prepare: true", suite: "tests/db/client.test.ts", kills: ["the client sends no prepared statements and gives idle connections back"], why: "prepared statements over a pooler that keeps no session" },
+  { id: "db-connections-held-forever", file: "src/db/index.ts", find: "idle_timeout: 20, prepare: false", replace: "prepare: false", suite: "tests/db/client.test.ts", kills: ["the client sends no prepared statements and gives idle connections back"], why: "an idle instance never gives its connections back" },
+];
+
+export const MUTANTS: Mutant[] = [...unit, ...invites, ...claims, ...many, ...share, ...http, ...client];

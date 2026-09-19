@@ -96,7 +96,11 @@ test("opening a claim link sets no cookie and issues no token", async () => {
 // asserted in a form that could not fail, and no local mutant covers it.
 test("on a deployed app, the preview image is on the app's own origin", { skip: /\/\/(localhost|127\.)/.test(BASE) }, async () => {
   const r = await get(`/c/${linkToken}`);
-  assert.equal(new URL(meta(r.html, "og:image") ?? "").origin, new URL(BASE).origin);
+  // A plain message, not assert.equal: its character diff of two URLs prints as one spliced string
+  // ("locdarefulhost") in a terminal, which reads like a bug in the app rather than a wrong value.
+  const actual = new URL(meta(r.html, "og:image") ?? "").origin;
+  const expected = new URL(BASE).origin;
+  assert.ok(actual === expected, `og:image is served from ${actual}; expected ${expected}. NEXT_PUBLIC_APP_URL was wrong when this deployment was built.`);
 });
 
 test("the claim preview names the sender by first name only", async () => {

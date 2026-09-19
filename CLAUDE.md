@@ -200,7 +200,8 @@ Screens nobody drew are derived from the tokens and the two rationales in `docs/
 
 Real values live in `.env.local` (gitignored). `.env.example` is committed with every value blank. Never copy a real value into the example or into any committed file.
 
-- `DATABASE_URL`: the Supabase Session pooler string (session mode, port 5432). Not a Direct connection (IPv6-only on the free tier) and not the transaction pooler on port 6543. Migrations need session mode.
+- `DATABASE_URL`: the Supabase transaction pooler string (port 6543), with `prepare: false`. The app refuses the session string at startup. The session pooler admits fifteen clients in total and took production down at three warm instances (docs/decisions.md 2026-09-18). No session state anywhere in the app: only transaction-scoped locks (`pg_advisory_xact_lock`, `for update` inside a transaction). `DATABASE_URL_SESSION` is the Session pooler string (port 5432) for DDL tooling only. Never a Direct connection (IPv6-only on the free tier).
+- `NEXT_PUBLIC_APP_URL`: the app's own origin, inlined at build time. `http://localhost:3000` locally and `https://dareful.app` in Vercel; it is the origin of every share card and every link the app composes, so a local value in Vercel breaks all of them. Never copy `.env.local` into Vercel wholesale.
 - `NEXT_PUBLIC_DYNAMIC_ENVIRONMENT_ID`: a Dynamic sandbox environment with embedded wallets enabled. Monad testnet is not a dashboard toggle; register it in code through an `evmNetworks` override in the SDK config (Phase 1).
 - `MONAD_RPC_URL`: Alchemy, carries the API key, server-only, no `NEXT_PUBLIC_` prefix. `MONAD_CHAIN_ID`: 10143 (testnet) through submission, 143 (mainnet) after.
 - `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`: server-only, for Storage. There is no `NEXT_PUBLIC_SUPABASE_*` variable and there never will be.

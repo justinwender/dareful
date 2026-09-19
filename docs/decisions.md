@@ -544,3 +544,21 @@ Not a decision, a flag for review. The Supabase Session pooler on this plan admi
 ## 2026-09-18: The indexer is prepared for Envio Cloud
 
 Envio Cloud builds whatever is pushed to a deploy branch (`envio` by default) with pnpm 10.32.0 on Node 24. Checked against its requirements before spending one of three deployments: `envio` is pinned at 3.12.0 in `indexer/package.json` dependencies (at least 2.21.5, not 2.29.x); the indexer imports nothing outside `indexer/`; the repository is 62 MB against a 100 MB limit; and from a clean copy of the tracked files, `pnpm@10.32.0 install`, `envio codegen`, and the seven handler tests all pass. `indexer/pnpm-lock.yaml` is committed so the cloud build resolves what was tested, and `engines.node` is now `>=24`. The only custom variable is `ENVIO_API_TOKEN`, which already carries the required `ENVIO_` prefix. Logging in to Envio and installing its GitHub App are the account owner's steps.
+
+## 2026-09-18: The app runs on the transaction pooler (reverses the kickoff rule and the Phase 0 `DATABASE_URL` entry; closes the pooler concern)
+
+Decision, ruled after production failed: `DATABASE_URL` is the Supabase transaction pooler (port 6543) with `prepare: false` and a twenty-second idle timeout. The session string moves to `DATABASE_URL_SESSION` and is used by DDL tooling only. The app refuses to start on the session string, with a message that says where it belongs.
+
+What happened: the first HTTP run against production, one person making 28 requests in 14 seconds, returned five 500s. Vercel's function logs show one cause for all five, `(EMAXCONNSESSION) max clients reached in session mode - max clients are limited to pool_size: 15`, on the first query of the request (the session's user lookup). The same pages had returned 200 seconds earlier in the same run, which rules out the session secret and the indexer URL. In session mode every client holds a server connection for as long as it is connected, a serverless instance stays connected for as long as it lives, and the client opened up to five per instance.
+
+The kickoff rule's reason was that migrations need session mode. They do, and they never go through this client: drizzle-kit only generates SQL, and Supabase applies it. So the app never needed session mode. The cost of transaction mode is no session state, checked across the codebase: no prepared statements, no `set`, no `listen`, and the two locks the app takes are both transaction-scoped (`pg_advisory_xact_lock` in the rate limiter, `for update` inside the invite and bind transactions). The whole database layer, 77 tests including the three concurrency tests, passes over port 6543.
+
+Alternative rejected: staying in session mode with one connection per instance. It moves the ceiling from three instances to fifteen and leaves the failure mode, an error instead of a wait, in place.
+
+## 2026-09-18: `NEXT_PUBLIC_APP_URL` was localhost in production
+
+The deployed-only test, skipped locally because `next dev` cannot exercise it, failed on its first run: production served `og:image` from `http://localhost:3000`. The value in Vercel had been copied from `.env.local`, and a `NEXT_PUBLIC_` value is inlined at build time, so it needs a rebuild and not only a change. It is also the origin of every invite and claim link the app composes, so the accountless half of the checkpoint would have failed at the first text message. Nothing in the code splices origins; the odd string in the first report ("locdarefulhost") was the test runner's character diff of the two URLs drawn over itself, and the assertion now prints both values in a sentence.
+
+## 2026-09-18: Envio Cloud deploys on a push event, not on registration
+
+The deploy branch was pushed before the indexer was registered, so Envio never saw an event and "deployed automatically" produced no deployment. Pushing the same commit again sends nothing. The next commit pushed to `envio` is the first deployment. Settings as stored: root `indexer`, config `config.yaml`, branch `envio`, auto-deploy on, development tier, public endpoint (everything it serves is already public onchain: addresses, ids, quantities, and no names or memos).
