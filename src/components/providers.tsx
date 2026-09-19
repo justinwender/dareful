@@ -5,6 +5,8 @@ import { DynamicContextProvider } from "@dynamic-labs/sdk-react-core";
 import { EthereumWalletConnectors } from "@dynamic-labs/ethereum";
 import { monadEvmNetworks } from "@/lib/dynamic/networks";
 import { WalletBootstrap } from "@/components/auth/wallet-bootstrap";
+import { DeviceNotice, MeProvider } from "@/components/auth/device";
+import type { Me } from "@/lib/auth/device";
 
 const environmentId = process.env.NEXT_PUBLIC_DYNAMIC_ENVIRONMENT_ID ?? "";
 
@@ -13,7 +15,7 @@ const environmentId = process.env.NEXT_PUBLIC_DYNAMIC_ENVIRONMENT_ID ?? "";
  * network is registered here through `overrides.evmNetworks`. Nothing on any screen says wallet, chain, or
  * signature; the login is an email or phone step.
  */
-export function Providers({ children, settled }: { children: ReactNode; settled: boolean }) {
+export function Providers({ children, settled, me }: { children: ReactNode; settled: boolean; me: Me | null }) {
   const evmNetworks = useMemo(() => (environmentId ? monadEvmNetworks() : []), []);
   if (!environmentId) {
     // Misconfigured deployment: render the app without auth rather than failing the build's prerender.
@@ -33,8 +35,11 @@ export function Providers({ children, settled }: { children: ReactNode; settled:
       }}
       theme="dark"
     >
-      <WalletBootstrap settled={settled} />
-      {children}
+      <MeProvider me={me}>
+        <WalletBootstrap settled={settled} sessionDynamicUserId={me?.dynamicUserId ?? null} />
+        <DeviceNotice />
+        {children}
+      </MeProvider>
     </DynamicContextProvider>
   );
 }

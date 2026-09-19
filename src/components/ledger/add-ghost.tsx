@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { addGhostToGroupAction } from "@/lib/actions/claims";
+import { ProblemSummary } from "@/components/ledger/problem";
 
 type PickedContact = { name?: string[]; tel?: string[] };
 type ContactsManager = { select(props: Array<"name" | "tel">, opts?: { multiple?: boolean }): Promise<PickedContact[]> };
@@ -91,9 +92,7 @@ export function AddGhost({ groupId }: { groupId: string }) {
         </Button>
       </div>
       {note ? (
-        <p role="alert" className="border-l-2 border-marigold pl-3 text-body-sm text-ink">
-          {note}
-        </p>
+        <ProblemSummary messages={[note]} />
       ) : null}
     </div>
   );

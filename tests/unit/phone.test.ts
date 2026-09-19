@@ -2,11 +2,14 @@
  * Phone normalization and hashing. Two spellings of one phone must hash the same, or a picked ghost silently
  * never binds. Numbers are fictional (US 555-01xx, the UK drama range).
  */
+// UNVERIFIED AGAINST THE REAL THING (2026-09-19): the contact spellings below are guesses at what address books
+// hold. No contact picker's output has ever been captured. Until the ghost checkpoint replaces them with shapes
+// from the "picked number shape" log, treat contact parsing as unverified whatever these tests report.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { JwtVerifiedCredentialFormatEnum, JwtVerifiedCredentialToJSON } from "@dynamic-labs/sdk-api-core";
 import { phoneOf } from "@/lib/auth/jwt";
-import { hashPhone, normalizeE164, regionFromHeaders, tryHashPhone } from "@/lib/auth/phone";
+import { hashPhone, normalizeE164, phoneShape, regionFromHeaders, tryHashPhone } from "@/lib/auth/phone";
 
 const hex = (b: Buffer) => b.toString("hex");
 // The credential is built by Dynamic's own serializer, not by hand. The first version of this helper spelled
@@ -67,6 +70,11 @@ test("a +7 number whose national part starts with 7 keeps its country code", () 
 test("the same national digits read differently in different regions", () => {
   assert.equal(normalizeE164("2125550142", "US"), "+12125550142");
   assert.equal(tryHashPhone("2125550142", "GB"), null);
+});
+
+test("the logged shape of a picked number carries none of its digits", () => {
+  assert.equal(phoneShape("+1 (212) 555-0142 ext. 7"), "+9 (999) 999-9999 xxx. 9");
+  assert.equal(/[0-8]/.test(phoneShape("020 7946 0958")), false);
 });
 
 test("garbage does not hash", () => {

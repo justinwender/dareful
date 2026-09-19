@@ -24,7 +24,7 @@ import { relayer, submit } from "@/lib/chain/relayer";
 import { daresDomain, daresTypes, Kind, Pace, Stalemate, VOID } from "@/lib/chain/typed-data";
 import { denominationById } from "./denominations";
 import { dareByOnchainId } from "./envio";
-import { isMember } from "./groups";
+import { isMember, unarchiveForEveryone } from "./groups";
 import { bufferToHex, bytes16ToUuid, dareOnchainId, denomOnchainId, groupOnchainId, hexToBuffer } from "./ids";
 import { ensureDenomOnchain, ensureGroupOnchain } from "./registry";
 
@@ -40,7 +40,7 @@ export const MAX_POSITIONS = 12;
 export class MarketError extends Error {
   constructor(
     message: string,
-    public readonly code: "not_found" | "not_yours" | "not_member" | "wrong_state" | "bad_input" | "bad_signature" | "chain",
+    public readonly code: "not_found" | "not_yours" | "not_member" | "wrong_state" | "bad_input" | "bad_signature" | "chain" | "slow_down",
   ) {
     super(message);
     this.name = "MarketError";
@@ -196,6 +196,8 @@ export async function openMarket(dareId: string, creatorId: string, signature: H
   const ok = await verifyTypedData({ ...createTypedData(d), address: creator.ledgerWallet as Address, signature });
   if (!ok) throw new MarketError("That didn't come from your account.", "bad_signature");
   const [row] = await db.update(schema.dares).set({ creatorSignature: hexToBuffer(signature) }).where(and(eq(schema.dares.id, dareId), isNull(schema.dares.creatorSignature))).returning();
+  // A question is something new in its group, so nobody keeps that group hidden.
+  if (row) await unarchiveForEveryone(d.groupId);
   return row ?? d;
 }
 
@@ -313,6 +315,8 @@ export async function lockMarket(dareId: string, byUserId: string): Promise<{ tx
   // It is locked the moment the transaction succeeds; record that first, so nothing after this line can leave a
   // market locked onchain and open here.
   await db.update(schema.dares).set({ onchainId: hexToBuffer(typed.message.dareId), lockedAt: new Date() }).where(and(eq(schema.dares.id, d.id), isNull(schema.dares.lockedAt)));
+  // The room closes with the numbers: a code read out after this buys nothing.
+  await db.update(schema.roomCodes).set({ closedAt: new Date() }).where(and(eq(schema.roomCodes.dareId, d.id), isNull(schema.roomCodes.closedAt)));
 
   // Read what the contract decided, at the block it was mined in: a load-balanced RPC can otherwise answer from
   // a node that has not seen that block yet and say the market does not exist.
@@ -342,7 +346,7 @@ export async function sayWhatHappened(dareId: string, userId: string, statement:
   await db
     .insert(schema.dareStatements)
     .values({ dareId, userId, statement: text })
-    .onConflictDoUpdate({ target: [schema.dareStatements.dareId, schema.dareStatements.userId], set: { statement: text, statedAt: new Date() } });
+    .onConflictDoUpdate({ target: [schema.dareStatements.dareId, schema.dareStatements.userId, schema.dareStatements.kind], set: { statement: text, statedAt: new Date() } });
 }
 
 export type Tally = { outcome: bigint; votes: number }[];

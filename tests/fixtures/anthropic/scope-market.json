@@ -1,0 +1,44 @@
+{
+  "model": "claude-sonnet-5",
+  "id": "msg_011CfDP9MTGqCrkA5zVsqjpF",
+  "type": "message",
+  "role": "assistant",
+  "content": [
+    {
+      "type": "tool_use",
+      "id": "toolu_014iKdsmqdWHWHYHfKgXXeth",
+      "name": "write_terms",
+      "input": {
+        "title": "Does Riley finish the half marathon on Sunday?",
+        "terms": "Yes if Riley crosses the finish line of the half marathon on Sunday, no matter the time. No if Riley doesn't start, drops out, or doesn't finish by the race's official cutoff. We'll know by end of day Sunday.",
+        "ambiguous": false,
+        "criteria": [],
+        "anchorPercent": 80,
+        "anchorRationale": "Most people who register and show up for a half marathon do complete it, barring injury or unforeseen issues.",
+        "resolvesInHours": 96
+      },
+      "caller": {
+        "type": "direct"
+      }
+    }
+  ],
+  "container": null,
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "stop_details": null,
+  "usage": {
+    "input_tokens": 1242,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "cache_creation": {
+      "ephemeral_5m_input_tokens": 0,
+      "ephemeral_1h_input_tokens": 0
+    },
+    "output_tokens": 306,
+    "output_tokens_details": {
+      "thinking_tokens": 0
+    },
+    "service_tier": "standard",
+    "inference_geo": "global"
+  }
+}

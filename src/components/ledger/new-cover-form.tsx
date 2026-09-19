@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ledger/chip";
 import { MarkStamp } from "@/components/ledger/mark-stamp";
 import { UnitGlyph } from "@/components/ledger/glyphs";
-import { Problem } from "@/components/ledger/problem";
+import { FIELD_PROBLEM_CLASS, Problem, ProblemSummary } from "@/components/ledger/problem";
 import type { UnitSummary } from "@/lib/actions/denominations";
 import { proposeCoverAction, splitCoverAction } from "@/lib/actions/proposals";
 import { splitTotal, SplitError, type Split } from "@/lib/ledger/split";
@@ -217,7 +217,7 @@ export function NewCoverForm({ people, groups, recent, initialPerson, initialGro
 
   const glyphFor = (template: string | null): GlyphKey | null => (template === "beer" || template === "coffee" || template === "round" || template === "next_time" ? template : null);
   const unitLabel = (template: string | null, label: string) => (template === "next_time" ? "a next time" : template ? `a ${label}` : `“${label}”`);
-  const invalid = "border-marigold";
+  const invalid = FIELD_PROBLEM_CLASS;
 
   return (
     <div className="flex flex-col gap-7">
@@ -483,9 +483,8 @@ export function NewCoverForm({ people, groups, recent, initialPerson, initialGro
       </section>
 
       <div className="flex flex-col gap-3">
-        <Problem message={errors.form} />
-        {/* A refusal higher up the form is repeated here, where the thumb is, so a tap is never met with nothing. */}
-        {!errors.form && (errors.who || errors.unit || errors.amount || errors.split) ? <Problem message={errors.who ?? errors.unit ?? errors.amount ?? errors.split} /> : null}
+        {/* Every refusal higher up the form repeats here in field order, where the thumb is (docs/design.md 5.1). */}
+        <ProblemSummary messages={[errors.who, errors.unit, errors.amount, errors.split, errors.form]} />
         <Button variant="primary" onClick={submit} loading={pending}>
           {splitting ? `I got this one, for ${chosen.length}` : "I got this one"}
         </Button>

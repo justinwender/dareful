@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { SignInButton } from "@/components/auth/sign-in-button";
 import { Button } from "@/components/ui/button";
 import { concedeAction, thatsMeAction } from "@/lib/actions/claims";
+import { ProblemSummary } from "@/components/ledger/problem";
 
 /**
  * The choice on a claim link. The link never signs anyone in: it says who the person who sent it thinks you
@@ -38,9 +39,7 @@ export function ClaimChoice({ token, name, signedIn, held }: { token: string; na
   return (
     <div className="flex flex-col gap-3">
       {error ? (
-        <p role="alert" className="border-l-2 border-marigold pl-3 text-body-sm text-ink">
-          {error}
-        </p>
+        <ProblemSummary messages={[error]} />
       ) : null}
       {signedIn ? (
         <Button variant="primary" onClick={thatsMe} loading={pending}>
@@ -89,9 +88,7 @@ export function ConcedeButton({ proposalId, conceded }: { proposalId: string; co
         Fine, you got me
       </Button>
       {error ? (
-        <span role="alert" className="border-l-2 border-marigold pl-3 text-caption text-ink">
-          {error}
-        </span>
+        <ProblemSummary messages={[error]} />
       ) : null}
     </div>
   );

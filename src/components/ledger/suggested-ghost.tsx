@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/ledger/avatar";
 import { Button } from "@/components/ui/button";
 import { acceptSuggestionAction } from "@/lib/actions/claims";
+import { ProblemSummary } from "@/components/ledger/problem";
 
 /**
  * Claimant suggestion (PLANNING.md section 4): a friend added someone under this person's name in a group
@@ -43,9 +44,7 @@ export function SuggestedGhost({ claimId, name, creatorName }: { claimId: string
         </Button>
       </div>
       {error ? (
-        <p role="alert" className="border-l-2 border-marigold pl-3 text-body-sm text-ink">
-          {error}
-        </p>
+        <ProblemSummary messages={[error]} />
       ) : null}
     </div>
   );

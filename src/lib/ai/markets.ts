@@ -19,7 +19,7 @@ function listOfStrings(v: unknown): unknown {
   return v.split(/\n|;/).map((x) => x.replace(/^[\s\-*\d.)]+/, "").trim()).filter(Boolean);
 }
 
-const Scope = z.object({
+export const Scope = z.object({
   /** The question as it appears on a card: short, in the group's own words, ending in a question mark. */
   title: z.string().trim().min(3).max(120),
   /** How the group will know the answer. One to three plain sentences, including the chosen criterion. */
@@ -82,7 +82,7 @@ export function plainScope(line: string): { title: string; terms: string } {
   return { title: /[?]$/.test(title) ? title : `${title}?`, terms: `Yes or no: ${title}${/[.?!]$/.test(title) ? "" : "."} The group decides together what happened.` };
 }
 
-const Proposal = z.object({
+export const Proposal = z.object({
   /** "unclear" means what was said does not decide it under the terms; the ballot then opens with nothing picked. */
   outcome: z.enum(["yes", "no", "cannot_be_decided", "unclear"]),
   confidencePercent: z.number().int().min(50).max(99),

@@ -6,6 +6,7 @@ import { Chip } from "@/components/ledger/chip";
 import { InviteShare } from "@/components/ledger/invite-share";
 import { Button } from "@/components/ui/button";
 import { createClaimLinkAction, dismissGhostAction, mergeGhostAction } from "@/lib/actions/claims";
+import { ProblemSummary } from "@/components/ledger/problem";
 
 export type MergeOption = { kind: "user"; userId: string; displayName: string } | { kind: "claim"; claimId: string; displayName: string };
 
@@ -109,9 +110,7 @@ export function GhostActions({ claimId, name, mergeOptions }: { claimId: string;
       ) : null}
 
       {error ? (
-        <p role="alert" className="border-l-2 border-marigold pl-3 text-body-sm text-ink">
-          {error}
-        </p>
+        <ProblemSummary messages={[error]} />
       ) : null}
     </div>
   );

@@ -1,3 +1,5 @@
+"use client";
+
 import * as React from "react";
 import Link from "next/link";
 import { cva, type VariantProps } from "class-variance-authority";
@@ -6,11 +8,13 @@ import { LinkPending } from "./link-pending";
 
 /**
  * docs/design.md 3.12. Five kinds, fixed heights, no shadows, no red. Pressed is opacity 0.88 over 120ms;
- * disabled is ink-3 text with a line border and no fill; loading keeps the size and swaps the label.
+ * disabled is ink-3 text with a line border and no fill. Pending is 5.2: past 300ms the label stays exactly
+ * where it was, the control holds its size at 0.88, and a 2px line runs along its bottom edge; at three seconds
+ * a line under it says "Still going." A tap is never silently dropped, and nothing else on the screen locks.
  * At most one primary button per viewport.
  */
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap select-none transition-[opacity,background-color] duration-[120ms] ease-out active:opacity-[0.88] disabled:pointer-events-none disabled:text-ink-3 disabled:border disabled:border-line disabled:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-marigold/60",
+  "relative overflow-hidden inline-flex items-center justify-center gap-2 whitespace-nowrap select-none transition-[opacity,background-color] duration-[120ms] ease-out active:opacity-[0.88] disabled:pointer-events-none disabled:text-ink-3 disabled:border disabled:border-line disabled:bg-transparent aria-busy:pointer-events-none aria-busy:opacity-[0.88] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-marigold/60",
   {
     variants: {
       variant: {
@@ -45,16 +49,35 @@ function sizeFor(variant: Variants["variant"], size: Variants["size"]): Variants
   return "secondary";
 }
 
-export function Button({ className, variant = "secondary", size, loading, disabled, children, ...props }: ButtonProps) {
+/** True once `on` has been true for `ms`. Under 300ms a wait shows nothing: a spinner that lives 180ms reads as a glitch. */
+function useHeldFor(on: boolean, ms: number): boolean {
+  const [held, setHeld] = React.useState(false);
+  React.useEffect(() => {
+    if (!on) return;
+    const t = setTimeout(() => setHeld(true), ms);
+    return () => {
+      clearTimeout(t);
+      setHeld(false);
+    };
+  }, [on, ms]);
+  return on && held;
+}
+
+export function Button({ className, variant = "secondary", size, loading, disabled, children, onClick, type, ...props }: ButtonProps) {
+  const pending = useHeldFor(Boolean(loading), 300);
+  const long = useHeldFor(Boolean(loading), 3_000);
   return (
-    <button
-      className={cn(buttonVariants({ variant, size: sizeFor(variant, size) }), className)}
-      disabled={disabled || loading}
-      aria-busy={loading || undefined}
-      {...props}
-    >
-      {loading ? <span aria-hidden="true">…</span> : children}
-    </button>
+    <>
+      <button className={cn(buttonVariants({ variant, size: sizeFor(variant, size) }), className)} disabled={disabled} aria-busy={loading || undefined} onClick={loading ? undefined : onClick} type={loading && type === "submit" ? "button" : type} {...props}>
+        {children}
+        {pending ? (
+          <span aria-hidden="true" className={cn("pointer-events-none absolute inset-x-0 bottom-0 h-[2px] overflow-hidden", variant === "primary" ? "bg-[rgba(29,22,8,0.25)]" : "bg-surface-2")}>
+            <span className={cn("absolute inset-y-0 w-1/3 animate-[button-runner_1.2s_linear_infinite]", variant === "primary" ? "bg-on-marigold" : "bg-marigold")} />
+          </span>
+        ) : null}
+      </button>
+      {long ? <span className="text-center text-caption text-ink-3">Still going.</span> : null}
+    </>
   );
 }
 

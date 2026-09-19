@@ -2,12 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useUserWallets } from "@dynamic-labs/sdk-react-core";
-import { isEthereumWallet } from "@dynamic-labs/ethereum";
+import { signingProblem, useSigner } from "@/components/ledger/use-signer";
 import type { TypedDataDomain } from "viem";
 import { Button } from "@/components/ui/button";
 import { ledgerTypes } from "@/lib/chain/typed-data";
 import { confirmProposalAction, declineProposalAction } from "@/lib/actions/proposals";
+import { ProblemSummary } from "@/components/ledger/problem";
 
 export type ConfirmPayload = {
   proposalId: string;
@@ -24,27 +24,15 @@ export type ConfirmPayload = {
  */
 export function ConfirmProposal({ payload }: { payload: ConfirmPayload }) {
   const router = useRouter();
-  const wallets = useUserWallets();
+  const sign = useSigner();
   const [state, setState] = useState<"idle" | "signing" | "sending" | "done">("idle");
   const [error, setError] = useState<string | null>(null);
 
   async function confirm() {
     setError(null);
-    const wallet = wallets.find((w) => w.address.toLowerCase() === payload.ledgerWallet.toLowerCase());
-    if (!wallet || !isEthereumWallet(wallet)) {
-      setError("Your account is still setting up. Give it a second and try again.");
-      return;
-    }
     try {
       setState("signing");
-      const client = await wallet.getWalletClient();
-      const signature = await client.signTypedData({
-        account: wallet.address as `0x${string}`,
-        domain: payload.domain,
-        types: ledgerTypes,
-        primaryType: "Confirm",
-        message: { ...payload.message, qty: BigInt(payload.message.qty) },
-      });
+      const signature = await sign(payload.ledgerWallet, { domain: payload.domain, types: ledgerTypes, primaryType: "Confirm", message: { ...payload.message, qty: BigInt(payload.message.qty) } }, "confirm");
       setState("sending");
       const result = await confirmProposalAction(payload.proposalId, signature);
       if ("error" in result) {
@@ -56,7 +44,7 @@ export function ConfirmProposal({ payload }: { payload: ConfirmPayload }) {
       router.push(payload.redirectTo);
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error && /reject|denied|cancel/i.test(err.message) ? "No problem, nothing was sent." : "That didn't go through. Try again.");
+      setError(signingProblem(err));
       setState("idle");
     }
   }
@@ -75,12 +63,10 @@ export function ConfirmProposal({ payload }: { payload: ConfirmPayload }) {
   return (
     <div className="flex flex-col gap-3">
       {error ? (
-        <p role="alert" className="border-l-2 border-marigold pl-3 text-body-sm text-ink">
-          {error}
-        </p>
+        <ProblemSummary messages={[error]} />
       ) : null}
       <Button variant="primary" onClick={confirm} loading={state !== "idle"} disabled={state === "done"}>
-        {state === "signing" ? "…" : "Yep, that's right"}
+        Yep, that’s right
       </Button>
       <Button variant="tertiary" onClick={decline} disabled={state !== "idle"}>
         Not this one

@@ -12,7 +12,7 @@ import { ledgerDomain, ledgerTypes } from "@/lib/chain/typed-data";
 import { cents, units, type Cents, type Units } from "@/lib/money";
 import { ensureDyadWithClaim, isClaimMember, type Person } from "./claims";
 import { denominationById, touchDenomination } from "./denominations";
-import { ensureDyad, isMember } from "./groups";
+import { ensureDyad, isMember, unarchiveForEveryone } from "./groups";
 import { denomOnchainId, groupOnchainId, hexToBuffer, uuidToBytes16 } from "./ids";
 import { ensureDenomOnchain, ensureGroupOnchain } from "./registry";
 import { encodeAbiParameters, keccak256 } from "viem";
@@ -70,6 +70,8 @@ export async function proposeCover(input: ProposeCoverInput): Promise<ProposalRo
     .returning();
   if (!row) throw new Error("could not create the proposal");
   await touchDenomination(denom.id);
+  // Something new happened here, so nobody keeps the group hidden (PLANNING.md, "Group list and dormancy").
+  await unarchiveForEveryone(row.groupId);
   return row;
 }
 

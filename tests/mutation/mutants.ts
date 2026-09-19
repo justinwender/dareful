@@ -15,7 +15,89 @@ const U_TOKENS = "tests/unit/tokens.test.ts";
 const U_COPY = "tests/unit/copy.test.ts";
 const D_INVITES = "tests/db/invites.test.ts";
 
+const DEVICE = "src/lib/auth/device.ts";
+const U_DEVICE = "tests/unit/device.test.ts";
+
+const device: Mutant[] = [
+  { id: "device-signed-out-reads-as-waiting", file: DEVICE, find: 'if (!sdkUserId) return "signed-out";', replace: 'if (!sdkUserId) return "checking";', suite: U_DEVICE, kills: ["a session with no Dynamic login on this device is signed out, not setting up"], why: "the 2B blocker: no Dynamic login here is reported as something to wait for" },
+  { id: "device-speaks-before-sdk", file: DEVICE, find: 'if (!me || !sdkHasLoaded) return "checking";', replace: 'if (!me) return "checking";', suite: U_DEVICE, kills: ["nothing is said before the SDK has loaded"], why: "every page load flashes a sign-in notice at people who are signed in" },
+  { id: "device-ignores-whose-login", file: DEVICE, find: 'if (sdkUserId !== me.dynamicUserId) return "other-account";', replace: "void 0;", suite: U_DEVICE, kills: ["a Dynamic login for somebody else is not this person's keys"], why: "another account's login is treated as this one's" },
+  { id: "device-case-sensitive", file: DEVICE, find: "const have = new Set(addresses.map((a) => a.toLowerCase()));", replace: "const have = new Set(addresses);", suite: U_DEVICE, kills: ["both recorded keys in reach is ready, whatever their case and whatever else is there"], why: "a checksummed address never matches the recorded one" },
+  { id: "device-one-key-is-ready", file: DEVICE, find: "have.has(me.ledgerWallet.toLowerCase()) && have.has(me.governanceWallet.toLowerCase())", replace: "have.has(me.ledgerWallet.toLowerCase())", suite: U_DEVICE, kills: ["one key is not enough: a vote needs the other one"], why: "ready without the governance key, found out at the ballot" },
+  { id: "device-waits-forever", file: DEVICE, find: 'return graceOver ? "keys-missing" : "checking";', replace: 'return "checking";', suite: U_DEVICE, kills: ["one key is not enough: a vote needs the other one", "missing keys are waited for briefly and then called missing, never waited for forever"], why: "a permanent failure reported as a transient one (Principle 9)" },
+  { id: "jwt-wallet-format-misspelled", file: JWT, find: 'c.format === "blockchain" &&', replace: 'c.format === "wallet" &&', suite: U_DEVICE, kills: ["a recorded embedded-wallet credential is counted as a wallet the login vouches for"], why: "no login ever vouches for a wallet; every signup loops on making them" },
+  { id: "jwt-any-chain-is-a-wallet", file: JWT, find: '(c.chain === "eip155" || c.chain === "EVM" || c.chain === undefined)', replace: "true", suite: U_DEVICE, kills: ["the same credential on another chain is not one of the two"], why: "a wallet that cannot sign for Monad is recorded as the ledger key" },
+  { id: "fixture-wallet-key-hand-spelled", file: "tests/fixtures/dynamic-wallet-credential.json", find: '"wallet_name"', replace: '"walletName"', suite: U_DEVICE, kills: ["the recorded credential has the keys Dynamic's serializer writes, so the two cannot drift apart unseen"], why: "the phone-hash shape: a fixture spelled by hand instead of by Dynamic" },
+];
+
+const AI_CLIENT = "src/lib/ai/client.ts";
+const AI_MARKETS = "src/lib/ai/markets.ts";
+const U_AI = "tests/unit/ai.test.ts";
+
+const ai: Mutant[] = [
+  { id: "ai-reads-wrong-block", file: AI_CLIENT, find: 'const block = res.content.find((b) => b.type === "tool_use" && b.name === toolName);', replace: "const block = res.content[1];", suite: U_AI, kills: ["a recorded scoping response reads as terms and a starting number", "a recorded outcome proposal reads as an outcome and a reason"], why: "an assumed response layout instead of the recorded one" },
+  { id: "ai-any-tool-answers", file: AI_CLIENT, find: 'b.type === "tool_use" && b.name === toolName', replace: 'b.type === "tool_use"', suite: U_AI, kills: ["an answer given through some other tool is refused"], why: "another tool's input parsed as this answer" },
+  { id: "ai-prose-is-an-answer", file: AI_CLIENT, find: "if (!block) throw new Error(`the model did not answer (${label})`);", replace: "if (!block) return shape.parse({ title: 'x?', terms: 'xxxxxxxxxxx', ambiguous: false, criteria: [], anchorPercent: 50, anchorRationale: 'xxx', resolvesInHours: 1 });", suite: U_AI, kills: ["a recorded response that is only prose is refused, not read as an answer"], why: "a made-up answer when the model gave none" },
+  { id: "ai-anchor-unbounded", file: AI_MARKETS, find: "anchorPercent: z.number().int().min(1).max(99),", replace: "anchorPercent: z.number().int(),", suite: U_AI, kills: ["a starting number outside 1 to 99 is refused"], why: "a 100% anchor presented as a starting number" },
+  { id: "ai-criteria-string-unread", file: AI_MARKETS, find: "criteria: z.preprocess(listOfStrings, ", replace: "criteria: z.preprocess((v) => v, ", suite: U_AI, kills: ["criteria sent as one string are read as a list"], why: "the string form the API really sent in 2A fails the whole scope" },
+  { id: "ai-fallback-invents-number", file: AI_MARKETS, find: "return { title: /[?]$/.test(title) ? title : `${title}?`,", replace: "return { anchorPercent: 50, title: /[?]$/.test(title) ? title : title,", suite: U_AI, kills: ["with no model, the question is the line as typed and claims no number"], why: "the fallback presents a number nobody estimated" },
+];
+
+const ROOM = "src/lib/ledger/room-code.ts";
+const HOME = "src/lib/ledger/home.ts";
+const NOTICES = "src/lib/notify/messages.ts";
+const U_REWORK = "tests/unit/rework.test.ts";
+
+const rework: Mutant[] = [
+  { id: "code-alphabet-has-zero", file: ROOM, find: '"ABCDEFGHJKLMNPQRSTUVWXY23456789"', replace: '"ABCDEFGHJKLMNPQRSTUVWXY03456789"', suite: U_REWORK, kills: ["the code alphabet has no O, I, Z, zero or one, and nothing twice"], why: "a code someone reads aloud as O" },
+  { id: "code-case-sensitive", file: ROOM, find: "return raw.toUpperCase().replace(", replace: "return raw.replace(", suite: U_REWORK, kills: ["a code reads the same in any case and with the spaces people add"], why: "a code typed in lowercase matches nothing" },
+  { id: "code-keeps-spaces", file: ROOM, find: 'replace(/[\\s\\-_.]/g, "")', replace: 'replace(/[_]/g, "")', suite: U_REWORK, kills: ["a code reads the same in any case and with the spaces people add"], why: "the space a phone keyboard adds makes a right code wrong" },
+  { id: "code-length-unsaid", file: ROOM, find: "return { problem: `Codes are six characters. This one is ${count(code.length)}.` };", replace: 'return { problem: "Invalid code." };', suite: U_REWORK, kills: ["a short code is refused in words that say how short"], why: "an error that does not say what is wrong (design 5.1)" },
+  { id: "code-stray-unnamed", file: ROOM, find: "return { problem: /[OIZ01]/.test(stray) ?", replace: "return { problem: false ?", suite: U_REWORK, kills: ["a character no code contains is named, not just refused"], why: "zero-for-O is the common mistake and goes unexplained" },
+  { id: "paste-reads-any-path", file: ROOM, find: "return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(m[2]) ? { marketId: m[2].toLowerCase() } : null;", replace: "return { marketId: m[2].toLowerCase() };", suite: U_REWORK, kills: ["only this app's own market and group links are read from a paste"], why: "anything after /m/ is sent to the database as an id" },
+  { id: "label-keeps-full-title", file: "src/lib/ledger/groups.ts", find: "if (title) return title.length > CHIP_TITLE_MAX ?", replace: "if (title) return false ?", suite: U_REWORK, kills: ["an unnamed group is called by its latest question, cut short, without the question mark"], why: "a chip as long as a question" },
+  { id: "label-ignores-viewer", file: "src/lib/ledger/groups.ts", find: '(n === input.viewerName ? "You" :', replace: '(false ? "You" :', suite: U_REWORK, kills: ["with no question yet it is first names, the viewer first as You, and a count past three"], why: "the viewer is named in the third person on their own screen" },
+  { id: "needs-order-ignores-deadline", file: HOME, find: "if (a.deadline && !b.deadline) return -1;", replace: "if (a.deadline && !b.deadline) return 1;", suite: U_REWORK, kills: ["needs you: soonest deadline first, then longest waiting, then fastest to finish"], why: "tonight's question sits under a week-old draft" },
+  { id: "needs-order-newest-first", file: HOME, find: "return a.since.getTime() - b.since.getTime();", replace: "return b.since.getTime() - a.since.getTime();", suite: U_REWORK, kills: ["needs you: soonest deadline first, then longest waiting, then fastest to finish"], why: "the longest-waiting thing sinks" },
+  { id: "needs-enter-when-in", file: HOME, find: "if (!iAmIn) return { ...base, kind: \"enter\"", replace: "if (true) return { ...base, kind: \"enter\"", suite: U_REWORK, kills: ["a question someone is already in needs nothing more from them", "the creator is asked to lock when time is up, and not before, and nobody else is"], why: "a row nobody can finish: needs-you stops being honest" },
+  { id: "needs-lock-for-anyone", file: HOME, find: "if (d.creatorId === viewerId && iAmIn && (everyone || timesUp))", replace: "if (iAmIn && (everyone || timesUp))", suite: U_REWORK, kills: ["the creator is asked to lock when time is up, and not before, and nobody else is"], why: "people asked to do what only the creator can" },
+  { id: "needs-lock-always", file: HOME, find: "if (d.creatorId === viewerId && iAmIn && (everyone || timesUp))", replace: "if (d.creatorId === viewerId && iAmIn)", suite: U_REWORK, kills: ["the creator is asked to lock when time is up, and not before, and nobody else is"], why: "the creator nagged to lock from the moment they ask" },
+  { id: "needs-vote-after-voting", file: HOME, find: 'if (m.state === "locked" && !voted) {', replace: 'if (m.state === "locked") {', suite: U_REWORK, kills: ["a locked question needs a call from whoever has not made one, and links to the ballot"], why: "asked to vote on what they already called" },
+  { id: "needs-vote-no-deeplink", file: HOME, find: "href: `/m/${d.id}#ballot`, verb: \"Vote\"", replace: "href: `/m/${d.id}`, verb: \"Vote\"", suite: U_REWORK, kills: ["a locked question needs a call from whoever has not made one, and links to the ballot"], why: "the link lands above the ballot, not on it (8d)" },
+  { id: "closes-reports-lateness", file: "src/lib/ui/copy.ts", find: 'if (at.getTime() <= now.getTime()) return "soon";', replace: 'if (at.getTime() <= now.getTime()) return `${Math.round((now.getTime() - at.getTime()) / 86_400_000)} days ago`;', suite: U_REWORK, kills: ["no needs-you line ever says how long anything has waited"], why: "an aging badge in words (Principle 1)" },
+  { id: "closes-in-server-zone", file: "src/lib/ui/copy.ts", find: "const days = dayNumber(at, timeZone) - dayNumber(now, timeZone);\n  if (at.getTime() <= now.getTime()) return \"soon\";", replace: "const days = dayNumber(at, \"UTC\") - dayNumber(now, \"UTC\");\n  if (at.getTime() <= now.getTime()) return \"soon\";", suite: U_REWORK, kills: ["closes reads as tonight, tomorrow, then a weekday, in the viewer's zone"], why: "tonight read as tomorrow for anyone west of UTC" },
+  { id: "notify-asks-the-voter", file: NOTICES, find: "filter((id) => id !== input.voterId && !voted.has(id));", replace: "filter((id) => true || (id !== input.voterId && !voted.has(id)));", suite: U_REWORK, kills: ["after a vote the rest of the quorum is asked, and never the voter or anyone who has voted"], why: "people asked to vote on what they have voted on" },
+  { id: "notify-requests-after-decided", file: NOTICES, find: "return input.resolved ? { requests: [], results: waiting } : { requests: waiting, results: [] };", replace: "return { requests: waiting, results: [] };", suite: U_REWORK, kills: ["once it is decided nobody is asked: whoever had not voted gets the result instead"], why: "asked to vote on something already decided (8d)" },
+  { id: "notify-decides-miscounted", file: NOTICES, find: "const decides = input.leading + 1 >= input.threshold;", replace: "const decides = input.cast + 1 >= input.threshold;", suite: U_REWORK, kills: ["a vote notice names who voted, the count, and whether the reader's could decide it"], why: "a split vote reported as one vote from decided" },
+  { id: "notify-result-links-ballot", file: NOTICES, find: "    url: `${input.appUrl}/m/${input.marketId}`,\n  };\n}\n\n/** What the voter's own composer", replace: "    url: `${input.appUrl}/m/${input.marketId}#ballot`,\n  };\n}\n\n/** What the voter's own composer", suite: U_REWORK, kills: ["every notice opens this app, the request on the ballot and the result on the leaderboard"], why: "a result that opens a closed ballot" },
+  { id: "notify-relay-says-a-number", file: NOTICES, find: "return `Called “${short(input.title)}”, ${input.cast} of ${input.quorum} so far. Your turn:`;", replace: "return `Called “${short(input.title)}” at 85%, ${input.cast} of ${input.quorum} so far. Your turn:`;", suite: U_REWORK, kills: ["no notice or relay text carries an amount, a unit, or anyone's number"], why: "someone's number in a group chat" },
+];
+
+const ROOMS = "src/lib/ledger/rooms.ts";
+const GROUPS_LIB = "src/lib/ledger/groups.ts";
+const D_REWORK = "tests/db/rework.test.ts";
+
+const reworkDb: Mutant[] = [
+  { id: "room-new-code-each-ask", file: ROOMS, find: "if (live) return live.code;", replace: "void 0;", suite: D_REWORK, kills: ["a code someone reads out puts a signed-in person into the question's group, once"], why: "the code on the creator's screen changes under the person typing it" },
+  { id: "room-outsider-mints-code", file: ROOMS, find: 'if (!(await isMember(d.groupId, userId))) throw new MarketError("This one is for the people in its group.", "not_member");', replace: "void 0;", suite: D_REWORK, kills: ["someone outside cannot mint a code for a question they are not in"], why: "anyone with an id mints themselves a way in" },
+  { id: "room-code-outlives-lock", file: ROOMS, find: 'if (!room || !d || stateOf(d) !== "open") {', replace: "if (!room || !d) {", suite: D_REWORK, kills: ["a code stops working when numbers lock"], why: "a code read out after lock still adds a voter" },
+  { id: "room-shape-costs-a-guess", file: ROOMS, find: 'if ("problem" in read) throw new MarketError(read.problem, "bad_input");', replace: 'if ("problem" in read) { await spendGuess(userId); throw new MarketError(read.problem, "bad_input"); }', suite: D_REWORK, kills: ["a wrong shape costs no guess; codes that match nothing run out"], why: "a typo in a dark room burns the hourly limit" },
+  { id: "room-guesses-unlimited", file: ROOMS, find: "if ((Array.from(rows)[0]?.n ?? 0) >= CODE_GUESSES_PER_HOUR)", replace: "if (false)", suite: D_REWORK, kills: ["a wrong shape costs no guess; codes that match nothing run out"], why: "codes can be walked" },
+  { id: "room-draft-link-joins", file: ROOMS, find: 'if (!d || stateOf(d) === "draft") throw new MarketError("That link doesn\'t go anywhere. Ask them to send it again.", "not_found");', replace: 'if (!d) throw new MarketError("That link doesn\'t go anywhere. Ask them to send it again.", "not_found");', also: [{ file: ROOMS, find: 'if (stateOf(d) === "draft") throw new MarketError("That one doesn\'t exist.", "not_found");', replace: "void 0;" }], suite: D_REWORK, kills: ["a question's link lets an account-holder in; a draft's link goes nowhere"], why: "a draft only its creator should see admits people" },
+  { id: "chip-never-dashed", file: GROUPS_LIB, find: "once: g.name === null && mine.length <= 1,", replace: "once: false,", suite: D_REWORK, kills: ["a group nobody named is called by its latest question, dashed until it recurs, then worth naming"], why: "a one-off occasion drawn as a standing group" },
+  { id: "chip-never-worth-naming", file: GROUPS_LIB, find: "worthNaming: g.name === null && mine.length >= 2,", replace: "worthNaming: false,", suite: D_REWORK, kills: ["a group nobody named is called by its latest question, dashed until it recurs, then worth naming"], why: "the naming prompt never appears" },
+  { id: "chip-for-unsent-draft", file: GROUPS_LIB, find: "return groups.filter((g) => g.name !== null || asked.some((a) => a.groupId === g.id)).map((g) => {", replace: "return groups.map((g) => {", suite: D_REWORK, kills: ["a draft nobody sent is not a group to anyone, and is a row only its creator is asked to finish"], why: "every abandoned draft leaves a 'Just you' group behind" },
+  { id: "home-drafts-of-everyone", file: HOME, find: "where(and(eq(schema.dares.creatorId, me.id), isNull(schema.dares.creatorSignature)))", replace: "where(and(isNull(schema.dares.creatorSignature)))", suite: D_REWORK, kills: ["a draft nobody sent is not a group to anyone, and is a row only its creator is asked to finish"], why: "a draft only its creator may see, listed to everyone" },
+  { id: "home-hidden-group-still-asks", file: HOME, find: ": !chips.some((c) => c.id === groupId && c.archived));", replace: ": true);", suite: D_REWORK, kills: ["hiding a group hides it for that person only, and something new there brings it back"], why: "hiding a group hides nothing that matters" },
+  { id: "archive-for-everyone", file: GROUPS_LIB, find: ".where(and(eq(schema.groupMembers.groupId, groupId), eq(schema.groupMembers.userId, userId), isNull(schema.groupMembers.leftAt)));\n}\n\n/** Something new", replace: ".where(and(eq(schema.groupMembers.groupId, groupId), isNull(schema.groupMembers.leftAt)));\n}\n\n/** Something new", suite: D_REWORK, kills: ["hiding a group hides it for that person only, and something new there brings it back"], why: "one person's view preference becomes group state" },
+  { id: "archive-survives-new-event", file: "src/lib/ledger/markets.ts", find: "if (row) await unarchiveForEveryone(d.groupId);", replace: "void 0;", suite: D_REWORK, kills: ["hiding a group hides it for that person only, and something new there brings it back"], why: "a new question in a hidden group is never seen" },
+  { id: "statement-wrong-kind", file: "src/lib/ledger/markets.ts", find: ".values({ dareId, userId, statement: text })", replace: '.values({ dareId, userId, statement: text, kind: "statement" })', suite: D_REWORK, kills: ["what happened and somebody's case are different kinds, and the outcome proposal reads only the first"], why: "the arbitrator is handed what happened as somebody's case" },
+  { id: "notify-tells-twice", file: "src/lib/notify/index.ts", find: ".values({ userId, dareId, kind, seq, causedBy }).onConflictDoNothing()", replace: ".values({ userId, dareId, kind, seq: Math.floor(Math.random() * 1e9), causedBy }).onConflictDoNothing()", suite: D_REWORK, kills: ["the same person is told the same thing about the same question once, and every row names who caused it"], why: "a retry or a double submit notifies twice" },
+];
+
 const unit: Mutant[] = [
+  { id: "needs-enter-hides-who-is-in", file: HOME, find: "}${m.people.length} of ${m.groupSize} in`", replace: "}`", suite: U_REWORK, kills: ["an open question someone is not in needs their number, with who is in and when it closes"], why: "the row stops saying why it needs them" },
+  { id: "phone-shape-leaks-digits", file: PHONE, find: 'return raw.slice(0, 40).replace(/\\d/g, "9")', replace: "return raw.slice(0, 40)", suite: U_PHONE, kills: ["the logged shape of a picked number carries none of its digits"], why: "a picked phone number written to the logs: the one thing never to store" },
   {
     id: "phone-strip-digits",
     file: PHONE,
@@ -66,8 +148,8 @@ const unit: Mutant[] = [
   {
     id: "phone-garbage-hashes",
     file: PHONE,
-    find: "  } catch {\n    return null;\n  }",
-    replace: "  } catch {\n    return Buffer.alloc(32);\n  }",
+    find: "  } catch {\n    hash = null;\n  }",
+    replace: "  } catch {\n    hash = Buffer.alloc(32);\n  }",
     suite: U_PHONE,
     kills: ["garbage does not hash", "a national number with no region does not hash as something"],
     why: "unparseable input hashes as something",
@@ -98,7 +180,7 @@ const unit: Mutant[] = [
     kills: ["the same two instants read differently in a zone where no midnight fell between them"],
     why: "calendar days computed in a fixed zone, which is what the server's zone is",
   },
-  { id: "when-weekday-in-utc", file: COPY, find: '{ timeZone, weekday: "long" }', replace: '{ timeZone: "UTC", weekday: "long" }', suite: U_COPY, kills: ["two calendar days back reads as the weekday in the viewer's zone"], why: "weekday named in UTC" },
+  { id: "when-weekday-in-utc", file: COPY, find: '{ timeZone, weekday: "long" }', nth: 1, replace: '{ timeZone: "UTC", weekday: "long" }', suite: U_COPY, kills: ["two calendar days back reads as the weekday in the viewer's zone"], why: "weekday named in UTC" },
   { id: "when-no-just-now", file: COPY, find: 'if (ms < 60_000) return "just now";', replace: "", suite: U_COPY, kills: ["minutes, and just now"], why: "no just-now" },
   {
     id: "when-minutes-lose-to-midnight",
@@ -110,7 +192,7 @@ const unit: Mutant[] = [
     why: "forty minutes ago reads as yesterday after midnight",
   },
   { id: "when-date-in-utc", file: COPY, find: 'toLocaleDateString("en-US", { timeZone, weekday: "short"', replace: 'toLocaleDateString("en-US", { timeZone: "UTC", weekday: "short"', suite: U_COPY, kills: ["a week or more back is a date in the viewer's zone"], why: "absolute dates in UTC" },
-  { id: "day-label-in-utc", file: COPY, find: '{ timeZone, month: "short", day: "numeric" }', replace: '{ timeZone: "UTC", month: "short", day: "numeric" }', suite: U_COPY, kills: ["a day label is in the viewer's zone"], why: "day label in UTC" },
+  { id: "day-label-in-utc", file: COPY, find: '{ timeZone, month: "short", day: "numeric" }', nth: 2, replace: '{ timeZone: "UTC", month: "short", day: "numeric" }', suite: U_COPY, kills: ["a day label is in the viewer's zone"], why: "day label in UTC" },
   { id: "zone-unvalidated", file: COPY, find: "  } catch {\n    return null;\n  }", replace: "  } catch {\n    return zone;\n  }", suite: U_COPY, kills: ["a zone from a cookie is validated before it is used"], why: "a bad cookie value is used as a zone" },
   { id: "first-name-is-full-name", file: COPY, find: 'return displayName.trim().split(/\\s+/)[0] ?? "";', replace: "return displayName.trim();", suite: U_COPY, kills: ["a first name is the first word only"], why: "full display name" },
 ];
@@ -245,6 +327,16 @@ const P_WELCOME = "src/app/welcome/page.tsx";
 const P_HOME = "src/app/page.tsx";
 const h = (id: string, file: string, find: string, replace: string, kills: string[], why: string, extra: Partial<Mutant> = {}): Mutant => ({ id, file, find, replace, suite: H, kills, why, ...extra });
 
+const httpRework: Mutant[] = [
+  h("home-join-above-ask", P_HOME, "          <ButtonLink href={home.selected ? `/m/new?group=${home.selected.id}` : \"/m/new\"} variant=\"primary\">\n            Ask something\n          </ButtonLink>\n          <CodeJoinCompact />", "          <CodeJoinCompact />\n          <ButtonLink href={home.selected ? `/m/new?group=${home.selected.id}` : \"/m/new\"} variant=\"primary\">\n            Ask something\n          </ButtonLink>", ["home asks first and joins second, and a question someone is not in is a row with its verb"], "the hierarchy the home screen exists to hold (design 4.7)"),
+  h("home-needs-badge", "src/components/home/needs-you.tsx", '<h2 className="text-label text-ink-2">Needs you</h2>', '<h2 className="text-label text-ink-2">Needs you ({rows.length})</h2>', ["home asks first and joins second, and a question someone is not in is a row with its verb"], "a count badge on the heading: the nag the strip must never become"),
+  h("join-open-to-signed-out", "src/app/join/page.tsx", '  if (!me) redirect("/");\n', "", ["the joining screen is for someone signed in; signed out it sends them home"], "a join form that can only fail, shown to someone with no session"),
+  h("worker-caches", "public/sw.js", 'self.addEventListener("install", () => self.skipWaiting());', 'self.addEventListener("install", () => self.skipWaiting());\nself.addEventListener("fetch", () => {});', ["the app is installable and its worker is served from the root, where a push needs it"], "a fetch handler is the first step to serving somebody a stale ledger"),
+  h("push-any-endpoint", "src/app/api/push/subscribe/route.ts", 'return url.protocol === "https:" && PUSH_HOSTS.some((h) => h.test(url.hostname));', "return true;", ["a push subscription is taken only from someone signed in, and only for a real push service"], "the server can be made to POST to any URL"),
+  h("push-anonymous", "src/app/api/push/subscribe/route.ts", '  if (!me) return NextResponse.json({ error: "sign in first" }, { status: 401 });\n  const parsed = Body', '  const parsed = Body', ["a push subscription is taken only from someone signed in, and only for a real push service"], "a subscription with nobody it belongs to", { also: [{ file: "src/app/api/push/subscribe/route.ts", find: ".values({ userId: me.id, endpoint,", replace: ".values({ userId: me?.id ?? \"00000000-0000-4000-8000-000000000000\", endpoint," }, { file: "src/app/api/push/subscribe/route.ts", find: "set: { userId: me.id, p256dh", replace: "set: { userId: me?.id ?? \"00000000-0000-4000-8000-000000000000\", p256dh" }] }),
+  h("device-state-anonymous", "src/app/api/device-state/route.ts", "if (!me || !parsed.success)", "if (!parsed.success)", ["a device that cannot approve is only ever reported by the person it belongs to"], "anyone can write lines into the log as anyone", { also: [{ file: "src/app/api/device-state/route.ts", find: "{ userId: me.id, ...parsed.data", replace: "{ userId: me?.id, ...parsed.data" }] }),
+];
+
 const http: Mutant[] = [
   h("landing-anonymous", P_CLAIM, "{creatorName} thinks you’re", "Someone thinks you’re", ["the claim landing page says who the sender thinks you are and what they covered"], "the landing page does not say who sent it"),
   h("landing-concede-before-thats-me", P_CLAIM, "  const held = me ? false : (await claimsForBrowserTokens(await readClaimTokens())).some((c) => c.id === claim.id);", "  const held = true;", ["it offers that's-me and sign-in, and nothing that acts before someone says who they are"], "a visitor who never said who they are is offered the concede control"),
@@ -265,7 +357,7 @@ const http: Mutant[] = [
   h("home-hides-ghosts", P_HOME, "not here yet", "here", ["home lists the ghost among people, and the cover form offers the ghost and someone new"], "home does not mark ghosts"),
   h("first-screen-ungrouped", P_WELCOME, "With {creditor.displayName}", "{creditor.displayName}", ["the first screen groups what was waiting by who it is with, and offers one yes for all"], "the first screen loses its grouping"),
   h("empty-inbox-shown", P_WELCOME, '  if (rows.length === 0) redirect("/");\n', "", ["home carries a strip back to it, and someone with nothing waiting is sent home instead of an empty inbox"], "someone with nothing waiting sees an empty inbox"),
-  h("strip-for-everyone", P_HOME, "{waiting.length > 0 ? (", "{waiting.length >= 0 ? (", ["home carries a strip back to it, and someone with nothing waiting is sent home instead of an empty inbox"], "everyone is told things were waiting"),
+  h("strip-for-everyone", P_HOME, "{waiting.length > 0 && !home.selected ? (", "{waiting.length >= 0 && !home.selected ? (", ["home carries a strip back to it, and someone with nothing waiting is sent home instead of an empty inbox"], "everyone is told things were waiting"),
   h("zone-cookie-ignored", "src/lib/ui/zone.ts", '  return validZone(raw ? decodeURIComponent(raw) : null) ?? "UTC";', '  return "UTC";', ["a timestamp is painted in the zone the browser reported, not the server's"], "the spec violation as reported: times painted in a fixed zone"),
   h("banned-scan-blind", H, "const BANNED = /\\b(owes?|owed|debt|balance|outstanding|overdue|wallet|transaction|gas|signature|chain|token)\\b/i;", "const BANNED = /\\b(zzzzzz)\\b/i;", ["the banned-word scan can see a banned word when one is there"], "the scanner the seven copy checks rely on matches nothing"),
   h("banned-on-landing", P_CLAIM, "{creatorName} thinks you’re", "{creatorName} thinks you owe them and you’re", ["no banned word on the claim landing page"], "banned word on the page"),
@@ -402,4 +494,4 @@ const httpMarkets: Mutant[] = [
   h("banned-on-ask-screen", "src/components/markets/ask-form.tsx", "What are you wondering?", "What is your balance?", ["no banned word on the ask screen"], "banned word on the page"),
 ];
 
-export const MUTANTS: Mutant[] = [...httpMarkets, ...marketMutants, ...viewMutants, ...scoring, ...resend, ...unit, ...invites, ...claims, ...many, ...share, ...http, ...client, ...login, ...covers];
+export const MUTANTS: Mutant[] = [...device, ...ai, ...rework, ...reworkDb, ...httpRework, ...httpMarkets, ...marketMutants, ...viewMutants, ...scoring, ...resend, ...unit, ...invites, ...claims, ...many, ...share, ...http, ...client, ...login, ...covers];

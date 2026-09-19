@@ -52,7 +52,16 @@ export async function structured<T>(req: { label: string; model: string; system:
       throw err;
     }
   });
-  const block = res.content.find((b) => b.type === "tool_use");
-  if (!block || block.type !== "tool_use") throw new Error(`the model did not answer (${req.label})`);
-  return req.shape.parse(block.input);
+  if (process.env.AI_RECORD_TO) (await import("node:fs")).writeFileSync(`${process.env.AI_RECORD_TO}/${req.label.replace(/\s+/g, "-")}.json`, JSON.stringify(res, null, 2));
+  return answerFrom(res, req.toolName, req.shape, req.label);
+}
+
+/**
+ * The answer inside a response, or a throw. Separate from the call so it can be run against responses recorded
+ * from the API (tests/fixtures/anthropic-*.json) and not against a shape somebody imagined.
+ */
+export function answerFrom<T>(res: { content: ReadonlyArray<{ type: string; name?: string; input?: unknown }> }, toolName: string, shape: z.ZodType<T>, label: string): T {
+  const block = res.content.find((b) => b.type === "tool_use" && b.name === toolName);
+  if (!block) throw new Error(`the model did not answer (${label})`);
+  return shape.parse(block.input);
 }

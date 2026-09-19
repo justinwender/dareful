@@ -11,6 +11,10 @@ import { Screen, SectionLabel, TopBar } from "@/components/ledger/screen";
 import { When } from "@/components/ledger/when";
 import { CallLine } from "@/components/markets/call-line";
 import { Leaderboard, Transfers } from "@/components/markets/leaderboard";
+import { InvitePreview } from "@/components/markets/invite-preview";
+import { RoomCode } from "@/components/markets/room-code";
+import { AfterVote } from "@/components/notify/after-vote";
+import { relayText } from "@/lib/notify/messages";
 import { Ballot, EntryPanel, LockButton, WhatHappened, type Signing, type StakeUnit } from "@/components/markets/market-actions";
 import { currentUser } from "@/lib/auth/session";
 import { contracts } from "@/lib/chain/contracts";
@@ -22,6 +26,7 @@ import { numbersVisible } from "@/lib/ledger/market-view";
 import { createTypedData, marketById, positionsOf, reconcileFromIndexer, stateOf, tally, VOID_OUTCOME, votesOf } from "@/lib/ledger/markets";
 import { groupNumber } from "@/lib/ledger/scoring";
 import { marketShare } from "@/lib/ledger/share";
+import { closesLabel, firstName } from "@/lib/ui/copy";
 import { hueFor } from "@/lib/ui/hue";
 import { formatMoney, unitWords } from "@/lib/ui/units";
 import { viewerClock } from "@/lib/ui/zone";
@@ -64,12 +69,27 @@ export default async function MarketPage({ params }: { params: Promise<{ id: str
 
   const [group] = await db.select().from(schema.groups).where(eq(schema.groups.id, d.groupId)).limit(1);
   if (!member) {
+    // Someone signed in, holding the link, and not in yet: the invitation, and nothing it could cost (3.17).
+    const [creator] = await db.select({ id: schema.users.id, displayName: schema.users.displayName }).from(schema.users).where(eq(schema.users.id, d.creatorId)).limit(1);
+    const inCount = (await positionsOf(d.id)).length;
+    const COUNT = ["", "One friend is in", "Two friends are in", "Three friends are in", "Four friends are in", "Five friends are in", "Six friends are in"];
     return (
       <Screen>
-        <TopBar back={{ href: "/", label: "Back" }} />
-        <div className="flex flex-col gap-4 py-6">
-          <h1 className="text-question text-ink">{d.title}</h1>
-          <p className="text-body text-ink-2">This one is for the people in {group?.name ?? "its group"}. Ask one of them for the group’s link, and it will be waiting.</p>
+        <TopBar back={{ href: "/", label: "Back" }} title="dareful" />
+        <div className="py-2">
+          <InvitePreview
+            viewerName={firstName(me.displayName)}
+            data={{
+              dareId: d.id,
+              inviter: { name: firstName(creator?.displayName ?? "A friend"), hue: hueFor(d.creatorId) },
+              groupLabel: group?.name ?? null,
+              question: d.title,
+              mark: d.markKind === "emoji" ? d.markValue : null,
+              countLine: inCount === 0 ? null : (COUNT[inCount] ?? "A lot of friends are in"),
+              decidesLine: d.resolvesBy ? `Decided ${closesLabel(d.resolvesBy, new Date(clock.now), clock.zone)}, by the people in it.` : null,
+              finished: state !== "open",
+            }}
+          />
         </div>
       </Screen>
     );
@@ -80,7 +100,7 @@ export default async function MarketPage({ params }: { params: Promise<{ id: str
   const [positions, votes, statements, seats] = await Promise.all([
     positionsOf(d.id),
     votesOf(d.id),
-    db.select({ userId: schema.dareStatements.userId, statement: schema.dareStatements.statement, statedAt: schema.dareStatements.statedAt }).from(schema.dareStatements).where(eq(schema.dareStatements.dareId, d.id)).orderBy(asc(schema.dareStatements.statedAt)),
+    db.select({ userId: schema.dareStatements.userId, statement: schema.dareStatements.statement, statedAt: schema.dareStatements.statedAt }).from(schema.dareStatements).where(and(eq(schema.dareStatements.dareId, d.id), eq(schema.dareStatements.kind, "update"))).orderBy(asc(schema.dareStatements.statedAt)),
     db.select({ userId: schema.groupMembers.userId }).from(schema.groupMembers).where(and(eq(schema.groupMembers.groupId, d.groupId), isNotNull(schema.groupMembers.userId), isNull(schema.groupMembers.leftAt))),
   ]);
   const ids = Array.from(new Set([d.creatorId, ...positions.map((p) => p.userId as string), ...votes.map((v) => v.userId), ...statements.map((s) => s.userId)]));
@@ -116,7 +136,7 @@ export default async function MarketPage({ params }: { params: Promise<{ id: str
 
   return (
     <Screen>
-      <TopBar back={{ href: `/g/${d.groupId}`, label: "Back" }} right={group?.name ? <Chip>{group.name}</Chip> : null} />
+      <TopBar back={{ href: group?.name ? `/?g=${d.groupId}` : "/", label: "Back" }} right={group?.name ? <Chip>{group.name}</Chip> : null} />
       <div className="flex flex-col gap-7 py-2">
         <header className="flex flex-col gap-3">
           <h1 className="flex items-start gap-3 text-question text-ink">
@@ -165,7 +185,7 @@ export default async function MarketPage({ params }: { params: Promise<{ id: str
 
         {state === "draft" ? (
           <section className="flex flex-col gap-4">
-            <p className="text-body text-ink-2">Only you can see this so far. Put your own number on it and it goes live for {group?.name ?? "the group"}.</p>
+            <p className="text-body text-ink-2">Only you can see this so far. Put your own number on it and it goes live{group?.name ? ` for ${group.name}` : ""}. Then you send it to whoever should be in.</p>
             <EntryPanel dareId={d.id} signing={signing} unit={unit} mode="open" mark={d.markKind === "emoji" ? d.markValue : null} suggestion={d.anchorValue !== null ? { percent: Math.round(Number(d.anchorValue) / 100), rationale: d.anchorRationale } : null} average={null} />
           </section>
         ) : null}
@@ -203,6 +223,7 @@ export default async function MarketPage({ params }: { params: Promise<{ id: str
             <section className="flex flex-col gap-3">
               <SectionLabel>Get the others in</SectionLabel>
               <InviteShare url={`${appUrl}/m/${d.id}`} text={`${d.title} Put your number on it:`} />
+              <RoomCode dareId={d.id} url={`${appUrl}/m/${d.id}`} />
             </section>
             {d.creatorId === me.id ? (
               <section className="flex flex-col gap-3 border-t border-line pt-6">
@@ -247,7 +268,7 @@ export default async function MarketPage({ params }: { params: Promise<{ id: str
               <WhatHappened dareId={d.id} mine={statements.find((s) => s.userId === me.id)?.statement ?? null} />
             </section>
 
-            <section className="flex flex-col gap-3">
+            <section id="ballot" className="flex scroll-mt-4 flex-col gap-3">
               {d.aiRationale ? (
                 <div className="rounded-card border border-dashed border-line-strong px-4 py-3">
                   <p className="text-body-strong text-ink">{d.aiOutcome === null ? "The app can’t tell yet." : `The app thinks: ${word(d.aiOutcome) === "void" ? "nobody can tell" : word(d.aiOutcome)}.`}</p>
@@ -262,6 +283,7 @@ export default async function MarketPage({ params }: { params: Promise<{ id: str
                 myVote={word(votes.find((v) => v.userId === me.id)?.outcome ?? null)}
                 tallyLine={votes.length === 0 ? `It takes ${d.threshold} of you agreeing to decide it.` : `${votes.length} ${votes.length === 1 ? "has" : "have"} said so far${leading ? `, ${leading.votes} for ${word(leading.outcome) === "void" ? "nobody can tell" : word(leading.outcome)}` : ""}. It takes ${d.threshold} agreeing.`}
               />
+              {votes.some((v) => v.userId === me.id) ? <AfterVote relay={relayText({ title: d.title, cast: votes.length, quorum: seats.length })} url={`${appUrl}/m/${d.id}#ballot`} /> : null}
             </section>
           </>
         ) : null}

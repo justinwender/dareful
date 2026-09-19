@@ -91,6 +91,7 @@ export async function codeOf(fn: () => Promise<unknown>): Promise<string | null>
     await fn();
     return null;
   } catch (err) {
+    if (err instanceof Error && err.name === "MarketError" && "code" in err) return String(err.code);
     return err instanceof claims.ClaimError ? err.code : `other:${err instanceof Error ? err.message : String(err)}`;
   }
 }
@@ -132,11 +133,18 @@ async function removeEverything(): Promise<void> {
     const asked = await tx.select({ id: D.id }).from(D).where(or(u.length ? inArray(D.creatorId, u) : sql`false`, g.length ? inArray(D.groupId, g) : sql`false`));
     if (asked.length) {
       const ids = asked.map((d) => d.id);
+      await tx.delete(schema.notificationLog).where(inArray(schema.notificationLog.dareId, ids));
+      await tx.delete(schema.roomCodes).where(inArray(schema.roomCodes.dareId, ids));
       await tx.delete(schema.dareVotes).where(inArray(schema.dareVotes.dareId, ids));
       await tx.delete(schema.dareStatements).where(inArray(schema.dareStatements.dareId, ids));
       await tx.delete(schema.darePositions).where(inArray(schema.darePositions.dareId, ids));
       await tx.delete(schema.obligations).where(inArray(schema.obligations.originId, ids));
       await tx.delete(D).where(inArray(D.id, ids));
+    }
+    if (u.length) {
+      await tx.delete(schema.codeAttempts).where(inArray(schema.codeAttempts.userId, u));
+      await tx.delete(schema.pushSubscriptions).where(inArray(schema.pushSubscriptions.userId, u));
+      await tx.delete(schema.notificationLog).where(or(inArray(schema.notificationLog.userId, u), inArray(schema.notificationLog.causedBy, u)));
     }
     if (u.length) await tx.delete(schema.obligations).where(or(inArray(schema.obligations.fromUser, u), inArray(schema.obligations.toUser, u)));
     const P = schema.obligationProposals;

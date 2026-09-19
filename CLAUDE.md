@@ -208,6 +208,7 @@ Real values live in `.env.local` (gitignored). `.env.example` is committed with 
 - `RELAYER_ADDRESS` and `RELAYER_PRIVATE_KEY`: a fresh keypair funded with testnet MON. It holds gas and nothing else.
 - `PHONE_HASH_SALT`: permanent. Once one hash is stored it can never change.
 - `DAREFUL_LEDGER_ADDRESS` and `DAREFUL_DARES_ADDRESS`: from the Phase 0 deploy; read from environment everywhere.
+- `NEXT_PUBLIC_VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`: the Web Push pair; the same pair locally and in Vercel, or subscriptions made against one are dead against the other. `RESEND_API_KEY` and `EMAIL_FROM`: transactional email; off when unset. `DYNAMIC_API_TOKEN`: read-only, server-only; reads a login email at send time.
 - `ANTHROPIC_API_KEY`: server-only. `AI_MODEL_DRAFTING` and `AI_MODEL_RULING` override the defaults in `src/lib/ai/client.ts`.
 - `SEED_MNEMONIC`: derives the seed script's test wallets. `ENVIO_GRAPHQL_URL`: the indexer's GraphQL endpoint: `localhost:8080` for a local run, the Envio Cloud endpoint in Vercel. Envio Cloud builds from the `envio` branch with `indexer` as its root directory; auto-deploy is off, so a deploy is `envio-cloud deployment deploy dareful <commit>`, by the runbook in `docs/decisions.md`. Three deployments alive at once; deleting one frees its slot. The hosted endpoint allows 100 queries a minute.
 - The browser gets no Supabase connection: no anon key, no `NEXT_PUBLIC_SUPABASE_ANON_KEY`, no client-side Supabase SDK.
@@ -256,23 +257,33 @@ Real values live in `.env.local` (gitignored). `.env.example` is committed with 
 - A vote is a governance-wallet signature. The server relays votes and can never make one: `castVote` verifies against `governance_wallet`, and a ledger-wallet signature is refused. A position is a ledger-wallet signature by its owner over exactly the numbers submitted. Both are checked offchain before anything is sent, and again by the contract.
 - Numbers before lock: in an open market only someone who has picked sees anyone's number; in a blind market nobody does. After lock everyone in the group does. Someone outside the group never sees who is in.
 - No route-level `loading.tsx`. It makes the response stream, and a streamed response cannot answer 404 or redirect. Tap feedback is `LinkPending` inside the link and `loading` on the button.
-- A refusal is a statement at the field it is about (`Problem`), marked in marigold, never a question and never plain body text at the bottom of a form.
+- A refusal is a statement at the field it is about (`Problem`), never a question and never plain body text at the bottom of a form.
 - A model is never on the critical path. Every call is in `src/lib/ai/`, Zod-parsed, with a plain fallback; it proposes, the creator approves terms, and a quorum decides outcomes.
 - Read your own writes at the block they were mined in, and expect a simulate right after your own transaction to see stale state: the RPC is load-balanced.
 - Wallets are counted from the login token on the server (`src/lib/auth/login.ts`), never from the SDK's client-side list, and Dynamic's phone credential keys are camelCase (`phoneNumber`, `phoneCountryCode`) while the rest are snake_case. Build test fixtures with Dynamic's own serializer, not by hand.
+- **Two sign-ins, and only one of them travels.** The Dareful session is a thirty-day cookie; the Dynamic login lives in one browser's storage and exists only where the person typed a code. A session with no Dynamic login is the normal state of a second device, not an error. Nothing but `useDevice` (`src/components/auth/device.tsx`, rule in `src/lib/auth/device.ts`) reads the SDK's in-browser state to decide what a person can do; every signature goes through `useSigner`; the state is worked out when a screen loads; and no message ever tells anyone to wait for something that will not happen. Dynamic's `jwtDuration` and `SESSION_DAYS` are both thirty days and change only together.
+- **A fixture that stands in for an external system is derived from that system**: recorded from it (`tests/fixtures/`, `scripts/dev/record-ai.ts`) or built with its own serializer. Never typed by hand. Mutation testing cannot catch a fixture that shares the code's misunderstanding. Contact-picker parsing is unverified until real shapes from the `picked number shape` log replace the guesses in `tests/unit/phone.test.ts`.
+- Home is event-first (docs/design.md 4.7): ask, join, "Needs you", "Just happened", people, groups. A group is a chip that filters home, never a place to navigate into. "Needs you" holds only what this person can finish now, disappears when empty, and never counts, badges, or says how long anything has waited.
+- A question may have no group: the group is whoever joins, called by its latest question until somebody names it. A question's link or a room code joins an account-holder to its group at once. Room codes are six characters from `CODE_ALPHABET` (no O, I, Z, 0, 1), one live code per question, dead at lock, twenty misses an hour per person.
+- Errors are ink, never marigold and never red (docs/design.md 5.1): `Problem` under the field with `aria-invalid` and `aria-describedby`, and `ProblemSummary` once above the button. Buttons wait per 5.2: the label stays, a 2px line runs, "Still going." at three seconds.
+- Notifications are caused by a person and say so: `notification_log.caused_by` is not nullable. No notification, relay text, or share card carries an amount, a unit, or anyone's number. The service worker has no fetch handler and caches nothing. An email address is read from Dynamic when it is needed and never stored.
+- A migration must leave the build that is already deployed working: the app and the database deploy at different moments.
+- Leaving a group is not possible yet: `DarefulLedger` cannot remove a member and the quorum is read from it, so `left_at` alone would silently leave a departed voter in every later threshold.
 - The seed produces both regimes, always-square and let-it-ride. A one-regime seed makes Phase 1 look correct when it is not.
 - No em dashes in any generated documentation or copy.
 
 ## Current phase
 
-**Phase 2A: markets core.** Phase 1 closed on September 19, 2026, with one checkpoint criterion still open (below). Submission gate October 13, 2026, 23:59 ET. Phase 2 is five parts: 2A markets core, 2B the submission, 2C the argument settler, 2D accountless and in-person, 2E media.
+**Phase 2B: the blocker, the rework, and notifications.** Submission gate October 13, 2026, 23:59 ET. Phase 2 is 2A markets core (done), 2B (this), 2C the argument settler, 2D accountless and in-person, 2E media. The submission bundle is its own later phase, closer to the deadline.
 
-2A built, in order: the Phase 1 checkpoint on the record and the two bugs it found (phone hashes never stored; two more wallets on every new device); the six bugs from the first real session; measured performance and tap feedback everywhere; and binary markets end to end (quick-mode creation with AI scoping, signed entry, one atomic `create` at lock, an AI outcome proposal from what people say happened, governance-wallet votes, `resolve` in its own transaction, the leaderboard, and markets as stories in every timeline). DarefulDares gas is re-measured. The hosted indexer needed no redeploy.
+2B built, in order: the "still setting up" blocker (a Dareful session with no Dynamic login on that device, which is the ordinary state of a second device; detected when a screen loads, repaired by a code step, never described as waiting); the fixture rule (anything standing in for an external system is recorded from it or built by its serializer) with the wallet credential and model responses recorded, and contact-picker parsing marked unverified; home reworked event-first (ask, join by code, "Needs you", "Just happened", people, groups as filtering chips), questions asked with no group, the room code moved forward from 2D, the invitation for someone holding a link, hiding a group; and the vote cascade over Web Push and email with the voter-relayed nudge.
 
-Open from Phase 1: the ghost half of the checkpoint (pick a contact, log a cover, that person signs up a day later by phone and it binds) has never been run by real people. It could not have passed before 2A's phone-hash fix.
+Open, and needing people: the four-person market on production (2A's checkpoint, blocked until now by the blocker), and the ghost half of the Phase 1 checkpoint (pick a contact, log a cover, that person signs up by phone the next day and finds it waiting), which verifies the phone-hash fix and has never run.
 
-**Checkpoint (2A):** four account holders enter a binary market, it resolves by quorum with one dissenter, the leaderboard shows the scores, and every edge appears on the right timelines, on production. Verified with seed wallets and with temporary wallets against the real chain; it needs four real people on production to close.
+Open, and needing a ruling: leaving a group. The ledger contract cannot remove a member and the quorum is read from it (docs/decisions.md 2026-09-19).
 
-Not in 2A: `arbitrate` and `expire` screens, arguments, careful mode, numeric and categorical questions, close-time lock, notifications, provisional markets and ghosts in markets.
+Required before 2C: one scheduled job that locks at close time, gives `expire()` a caller, and sends the creator's deadline notice.
 
-Next, only after explicit approval: Phase 2B, the submission.
+Not in 2B: the lobby as a roll call (polled count, kick), ghosts in markets, `arbitrate` and `expire` screens, arguments, numeric and categorical questions, notifications for anything but the vote cascade.
+
+Next, only after explicit approval: Phase 2C, the argument settler.

@@ -242,6 +242,11 @@
 }
 
 /* A tapped link pulses until its page arrives (src/components/ui/link-pending.tsx). */
+@keyframes button-runner {
+  0% { left: -33%; }
+  100% { left: 100%; }
+}
+
 @keyframes link-pending {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.55; }

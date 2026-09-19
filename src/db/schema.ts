@@ -483,10 +483,23 @@ export const dareStatements = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id),
+    /**
+     * `update` is "here is what happened", read by the outcome proposal. `statement` is "here is my case", read by
+     * arbitration (2C). One table because both are a participant's words about a market; two kinds because an
+     * arbitrator handed one as the other rules on the wrong input.
+     */
+    kind: text("kind", { enum: ["update", "statement"] }).notNull().default("update"),
     statement: text("statement").notNull(),
     statedAt: ts("stated_at").notNull().defaultNow(),
   },
-  (t) => [primaryKey({ columns: [t.dareId, t.userId] })],
+  (t) => [
+    primaryKey({ columns: [t.dareId, t.userId, t.kind] }),
+    check("dare_statements_kind", sql`${t.kind} in ('update', 'statement')`),
+    // The app and the database are deployed at different moments, and the 2A build upserts on (dare, person).
+    // This keeps that build working after the key widened. 2C drops it in the migration that first writes a
+    // `statement`, by which time no running build targets it.
+    uniqueIndex("dare_statements_one_per_person_until_2c").on(t.dareId, t.userId),
+  ],
 ).enableRLS();
 
 /** A short spoken/scanned code for people in the room; lives as long as the lobby. */
@@ -727,4 +740,66 @@ export const itemClaims = pgTable(
     primaryKey({ columns: [t.expenseItemId, t.userId] }),
     check("item_claims_share_valid", sql`${t.shareNum} >= 0 and ${t.shareDen} > 0 and ${t.shareNum} <= ${t.shareDen}`),
   ],
+).enableRLS();
+
+/**
+ * A browser that agreed to be told things. Web Push only: the endpoint and the two keys the push service needs
+ * to encrypt to it. Not in PLANNING.md's schema (docs/decisions.md 2026-09-19). A subscription the push service
+ * reports gone is deleted; it was never ledger history.
+ */
+export const pushSubscriptions = pgTable(
+  "push_subscriptions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    endpoint: text("endpoint").notNull().unique(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("push_subscriptions_user").on(t.userId)],
+).enableRLS();
+
+/**
+ * What was sent to whom about which market, and never what it said. One row per person per market per kind per
+ * vote count, so a retry or a double submit cannot tell someone twice, and so "nothing is ever sent because
+ * time passed" can be checked: every row names the person whose act caused it.
+ */
+export const notificationLog = pgTable(
+  "notification_log",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    dareId: uuid("dare_id")
+      .notNull()
+      .references(() => dares.id),
+    kind: text("kind", { enum: ["vote_request", "result"] }).notNull(),
+    /** How many had voted when this was sent; 0 for a result. */
+    seq: integer("seq").notNull().default(0),
+    /** The person whose act caused this. Never null: nothing is sent because time passed. */
+    causedBy: uuid("caused_by")
+      .notNull()
+      .references(() => users.id),
+    /** Which channels took it: any of push, email. Empty means only the in-app strip carries it. */
+    channels: text("channels").array().notNull().default(sql`'{}'`),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("notification_log_once").on(t.userId, t.dareId, t.kind, t.seq)],
+).enableRLS();
+
+/** When someone typed a room code that matched nothing, and nothing about the code. For the hourly guess limit. */
+export const codeAttempts = pgTable(
+  "code_attempts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("code_attempts_user_created").on(t.userId, t.createdAt)],
 ).enableRLS();

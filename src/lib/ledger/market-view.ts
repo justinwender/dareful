@@ -23,6 +23,9 @@ export type MarketCardData = {
   outcome: 0 | 1 | null;
   consequences: Array<{ from: MarketPerson; to: MarketPerson; quantity: bigint }>;
   needsYou: string | null;
+  /** How many of the group have called it, and who first said what happened. For the "Needs you" context line. */
+  votesCast: number;
+  saidBy: string | null;
 };
 
 const percentOf = (p: PositionRow) => Number(p.value) / 100;
@@ -49,14 +52,15 @@ export async function marketCards(input: { viewerId: string; groupId?: string; w
   if (dares.length === 0) return [];
   const ids = dares.map((d) => d.id);
 
-  const [positions, votes, edges, groups, seats] = await Promise.all([
+  const [positions, votes, edges, groups, seats, said] = await Promise.all([
     db.select().from(schema.darePositions).where(and(inArray(schema.darePositions.dareId, ids), isNotNull(schema.darePositions.acknowledgedAt), isNull(schema.darePositions.dismissedAt))),
     db.select({ dareId: schema.dareVotes.dareId, userId: schema.dareVotes.userId }).from(schema.dareVotes).where(inArray(schema.dareVotes.dareId, ids)),
     db.select().from(schema.obligations).where(and(eq(schema.obligations.origin, "dare"), inArray(schema.obligations.originId, ids))),
     db.select({ id: schema.groups.id, name: schema.groups.name }).from(schema.groups).where(inArray(schema.groups.id, groupIds)),
     db.select({ groupId: schema.groupMembers.groupId, userId: schema.groupMembers.userId }).from(schema.groupMembers).where(and(inArray(schema.groupMembers.groupId, groupIds), isNotNull(schema.groupMembers.userId), isNull(schema.groupMembers.leftAt))),
+    db.select({ dareId: schema.dareStatements.dareId, userId: schema.dareStatements.userId }).from(schema.dareStatements).where(and(inArray(schema.dareStatements.dareId, ids), eq(schema.dareStatements.kind, "update"))).orderBy(schema.dareStatements.statedAt),
   ]);
-  const userIds = Array.from(new Set([...positions.map((p) => p.userId), ...edges.flatMap((e) => [e.fromUser, e.toUser])].filter((x): x is string => Boolean(x))));
+  const userIds = Array.from(new Set([...positions.map((p) => p.userId), ...said.map((x) => x.userId), ...edges.flatMap((e) => [e.fromUser, e.toUser])].filter((x): x is string => Boolean(x))));
   const users = userIds.length ? await db.select({ id: schema.users.id, displayName: schema.users.displayName }).from(schema.users).where(inArray(schema.users.id, userIds)) : [];
   const nameOf = new Map(users.map((u) => [u.id, u.displayName]));
   const denoms = await denominationsByIds(Array.from(new Set(dares.map((d) => d.denomId))));
@@ -84,6 +88,8 @@ export async function marketCards(input: { viewerId: string; groupId?: string; w
       consequences: edges
         .filter((e) => e.originId === d.id && between(e))
         .map((e) => ({ from: { id: e.fromUser, displayName: nameOf.get(e.fromUser) ?? "Someone" }, to: { id: e.toUser, displayName: nameOf.get(e.toUser) ?? "Someone" }, quantity: e.quantity ?? 1n })),
+      votesCast: votes.filter((v) => v.dareId === d.id).length,
+      saidBy: ((u) => (u ? (nameOf.get(u) ?? null) : null))(said.find((x) => x.dareId === d.id)?.userId),
       needsYou: state === "open" && !iAmIn ? "Put your number in" : state === "locked" && !votes.some((v) => v.dareId === d.id && v.userId === input.viewerId) ? "Say how it came out" : null,
     });
   }

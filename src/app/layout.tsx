@@ -26,6 +26,9 @@ export const metadata: Metadata = {
   title: "Dareful",
   description: "A social ledger for friend groups, built around the friendly dare.",
   openGraph: { siteName: "Dareful", type: "website" },
+  // What an iPhone puts on the home screen. Installing is what makes Web Push possible there at all.
+  icons: { apple: "/icons/180" },
+  appleWebApp: { capable: true, title: "Dareful", statusBarStyle: "black-translucent" },
 };
 
 export const viewport: Viewport = {
@@ -43,7 +46,9 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${hanken.variable} ${youngSerif.variable} dark h-full antialiased`}>
       <body className="min-h-full flex flex-col">
-        <Providers settled={settled}>{children}</Providers>
+        <Providers settled={settled} me={me ? { dynamicUserId: me.dynamicUserId, ledgerWallet: me.ledgerWallet, governanceWallet: me.governanceWallet } : null}>
+          {children}
+        </Providers>
       </body>
     </html>
   );

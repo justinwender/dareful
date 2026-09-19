@@ -1,14 +1,16 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+import { notifyAfterVote, voteCounts, type VoteCounts } from "@/lib/notify";
 import { isHex, type Hex } from "viem";
 import { z } from "zod";
 import { plainScope, proposeOutcome, scopeMarket } from "@/lib/ai/markets";
 import { requireUser } from "@/lib/auth/session";
 import { db, schema } from "@/db";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { denominationById, ensureUnitInGroup, ensureUsd } from "@/lib/ledger/denominations";
-import { isMember } from "@/lib/ledger/groups";
+import { createOccasionGroup, isMember } from "@/lib/ledger/groups";
 import { castVote, draftMarket, enterMarket, lockMarket, MarketError, marketById, openMarket, sayWhatHappened, stateOf, VOID_OUTCOME } from "@/lib/ledger/markets";
 
 const uuid = z.string().uuid();
@@ -41,7 +43,8 @@ const Unit = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("new"), template: z.enum(["beer", "coffee", "round", "next_time"]).nullable(), label: z.string().trim().min(1).max(40), markEmoji: z.string().trim().max(16).optional() }),
 ]);
 const Draft = z.object({
-  groupId: uuid,
+  /** Null is the ordinary case: ask first, and the group is whoever joins. */
+  groupId: uuid.nullable(),
   unit: Unit,
   title: z.string().trim().min(3).max(140),
   terms: z.string().trim().min(3).max(800),
@@ -58,12 +61,14 @@ export async function draftMarketAction(input: z.infer<typeof Draft>): Promise<{
   if (!parsed.success) return { error: "Something in that is off." };
   const d = parsed.data;
   try {
-    if (!(await isMember(d.groupId, user.id))) return { error: "You're not in that group." };
-    const denom = d.unit.kind === "usd" ? await ensureUsd(d.groupId, user.id) : d.unit.kind === "existing" ? await denominationById(d.unit.id) : await ensureUnitInGroup(d.groupId, user.id, d.unit);
+    if (d.groupId && !(await isMember(d.groupId, user.id))) return { error: "You're not in that group." };
+    if (!d.groupId && d.unit.kind === "existing") return { error: "That unit isn't around any more. Pick another." };
+    const groupId = d.groupId ?? (await createOccasionGroup(user.id)).id;
+    const denom = d.unit.kind === "usd" ? await ensureUsd(groupId, user.id) : d.unit.kind === "existing" ? await denominationById(d.unit.id) : await ensureUnitInGroup(groupId, user.id, d.unit);
     if (!denom) return { error: "That unit isn't around any more. Pick another." };
     const row = await draftMarket({
       creatorId: user.id,
-      groupId: d.groupId,
+      groupId,
       denomId: denom.id,
       title: d.title,
       termsText: d.terms,
@@ -150,7 +155,8 @@ async function refreshProposal(dareId: string): Promise<void> {
     .select({ name: schema.users.displayName, said: schema.dareStatements.statement })
     .from(schema.dareStatements)
     .innerJoin(schema.users, eq(schema.users.id, schema.dareStatements.userId))
-    .where(eq(schema.dareStatements.dareId, dareId))
+    // Only "here is what happened". Somebody's case for arbitration is a different kind and never reaches this prompt.
+    .where(and(eq(schema.dareStatements.dareId, dareId), eq(schema.dareStatements.kind, "update")))
     .orderBy(asc(schema.dareStatements.statedAt));
   try {
     const p = await proposeOutcome({ title: d.title, terms: d.termsText, statements: said, now: new Date() });
@@ -165,7 +171,7 @@ async function refreshProposal(dareId: string): Promise<void> {
 }
 
 /** A vote is a signature from the voter's governance wallet. This relays it; nothing here can make one. */
-export async function castVoteAction(rawId: string, rawOutcome: "yes" | "no" | "void", signature: string): Promise<{ ok: true; resolved: boolean } | { error: string }> {
+export async function castVoteAction(rawId: string, rawOutcome: "yes" | "no" | "void", signature: string): Promise<{ ok: true; resolved: boolean; counts: VoteCounts | null } | { error: string }> {
   const user = await requireUser();
   const id = uuid.safeParse(rawId);
   const outcome = z.enum(["yes", "no", "void"]).safeParse(rawOutcome);
@@ -173,7 +179,10 @@ export async function castVoteAction(rawId: string, rawOutcome: "yes" | "no" | "
   try {
     const r = await castVote({ dareId: id.data, userId: user.id, outcome: outcome.data === "yes" ? 1n : outcome.data === "no" ? 0n : VOID_OUTCOME, signature: signature as Hex });
     revalidatePath(`/m/${id.data}`);
-    return { ok: true, resolved: r.resolved };
+    revalidatePath("/");
+    // The rest of the quorum hears about it after the voter has their answer, never before and never instead.
+    after(() => notifyAfterVote(id.data, user.id));
+    return { ok: true, resolved: r.resolved, counts: r.resolved ? null : await voteCounts(id.data) };
   } catch (err) {
     return { error: say(err, "That didn't go through. Try again.") };
   }

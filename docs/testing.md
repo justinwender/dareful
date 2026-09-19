@@ -2,7 +2,9 @@
 
 Real-world testing: who tested (by role, never by name), what broke, and what changed because of it. Continuous from the first submittable build (end of Phase 2). This log is a submission deliverable.
 
-## September 2026: cross-device passkey testing, before any code existed
+## Session 1: cross-device passkey testing, before any code existed
+
+**Date:** September 2026
 
 Tested the passkey login flows the product will depend on, across devices and password managers, using stock sign-in pages rather than Dareful (which did not exist yet).
 
@@ -89,6 +91,40 @@ Other transitions took one to three seconds. Some of the registration time is
 the two-wallet bootstrap and is irreducible, but the absence of any feedback is
 not. [Note whether both platforms were similar.]
  
+### What changed because of it
+
+Diagnosed by reproducing each report before changing anything, and recorded in
+`docs/decisions.md` (2026-09-19, Phase 2A).
+
+- **The silent failure and the second amount field were one bug, and not the one
+  reported.** The group path did validate, and there was never a second amount
+  field. The refusal "How much was it?" was plain body text at the bottom of the
+  form, phrased as a question, so it read as one more thing to fill in and the
+  tap looked like nothing happened. Every refusal in the app is now a statement
+  at the field it is about, repeated once above the button. The look was
+  invented in 2A and then specified properly (`docs/design.md` 5.1): ink, a
+  glyph, and position carry an error, never color.
+- **Invite links** each have Send and Copy and are labeled by when they were
+  made; the main button re-sends the newest live link, so links stop piling up.
+  The link is rebuilt from a stored seed and a server secret, so the database
+  still holds nothing that works as a link.
+- **One-on-one covers** offer the same units as a group. The unit is registered
+  when the cover is saved, so composing never leaves an empty group behind.
+- **Signup asks "What do your friends call you?"** while the account is set up
+  behind the question, which also covers the three to five seconds with no
+  feedback. An account named "Friend" is asked once at its next sign-in.
+- **Covering several people** is one total, split evenly, with individual
+  amounts pinnable and the odd cent on the payer.
+- **Every tap answers at once.** Links and buttons show progress in place. A
+  route-level loading screen was tried and removed: it made a 404 answer 200.
+- **Not changed:** phone and email cannot yet be attached to one account. It is
+  a Dynamic account-linking feature and is not scheduled.
+- **Found while closing the Phase 1 checkpoint, not by testers:** no phone login
+  had ever stored its phone hash (a misspelled key, with a test fixture that
+  shared the misspelling), and every sign-in on a new device created two more
+  embedded wallets. Both fixed in 2A. The first means the contact-to-signup
+  binding path has never worked in production and is still unverified.
+
 ### Still to record
  
 - What the contact picker did on each platform, and whether behavior differed
@@ -153,9 +189,65 @@ start. That matches the schema, where groups already form lazily from a member
 set, and it matches the existing design intent that groups are secondary
 navigation and squareness is computed rather than declared.
  
+### What changed because of it
+
+**The blocker was not setup, and it was not transient.** Diagnosed before
+anything was changed (`docs/decisions.md`, 2026-09-19, Phase 2B). Every account
+had both keys recorded and both existed with the login provider; nothing had
+failed partway. The app has two sign-ins: its own session, a cookie that lasts
+thirty days, and the login provider's, which lives in one browser's storage and
+exists only where the person actually typed a code. The check in front of every
+approval read the second and described its absence as "still setting up." Later
+evidence settled which variant it was: on one account the installed app and the
+phone's browser both failed identically while the desktop browser, where that
+person had signed in, worked. So this is the ordinary path, not an edge: someone
+opens the app on a second device, is signed in as far as the app can tell, and
+cannot approve anything. Every approval that had ever worked, on any account,
+was made within minutes of a sign-in in that same browser, which is why a
+single-sitting test never saw it.
+
+- The app now works out what a device can do when a screen loads, not when
+  someone taps, so nobody finds out in the middle of a vote. A device that has
+  not checked who is holding it says so at the top of every screen and offers
+  the code step; everything stays readable.
+- A tap to approve in that state opens the code step and carries on when it is
+  done. A confirmed sign-in whose keys never arrive is called permanent, with
+  "sign in again" offered. Nothing anywhere says to wait.
+- Each of these states is logged once per page load, including whether the app
+  was installed, because the database could not show any of it.
+- The two sign-in lifetimes were two hours and thirty days. They are now both
+  thirty days and recorded as a pair that must stay matched. That stops a
+  working device from lapsing; it does nothing for a device that never signed
+  in, which is why the code fix carries the weight.
+
+**The structural finding became the home screen.** Home is event-first: Ask
+something, then a field for a code someone reads out, then only what will not
+move without this person (a vote, a question to enter, a cover to confirm, a
+draft they never sent), then what just happened, then people, then groups as
+chips that filter the screen. A question can be asked with no group at all; the
+group is whoever joins, it is called by its latest question until somebody names
+it, and naming is offered once it has been asked in twice. A signed-in person
+holding a question's link sees an invitation that says who asked and what it is,
+never what it could cost, and joins from there. A group can be hidden, for that
+person only, and anything new in it brings it back.
+
+**Leaving a group is not built, and the reason is a finding.** The ledger
+contract can add a member and has no way to remove one, and a question's voters
+are read from the contract. Someone who left would still count toward every
+later question's threshold there. It needs a contract decision before it needs a
+screen.
+
+**Votes now travel.** Each vote tells the rest of the voters, with the count,
+by push where the app is installed and by email where the person signed in with
+one; the screen after a vote offers to relay it to the chat in the voter's own
+words; and reaching the threshold sends the result, not a request, to everyone
+who had not voted. Nothing is sent because time passed.
+
 ### Still to record
  
 - Whether login survives in the installed PWA separately from a browser tab.
+  (Session 3 says it does not carry over: the installed app and the browser
+  each needed their own sign-in. Confirm on Android.)
 - Whether the contact picker behaves the same in the installed PWA as in a tab,
   on each platform.
 - Whether a shared link opens in the installed app or in a browser tab for

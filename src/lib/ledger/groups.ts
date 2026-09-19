@@ -282,3 +282,101 @@ export async function redeemInvite(token: string, userId: string): Promise<Group
     return group;
   });
 }
+
+// ------------------------------------------------------------------------------------ groups as a consequence
+
+/**
+ * A group nobody set up: whoever ends up in a question asked with no group picked. It has no name, and may
+ * never get one. Naming is what happens when an occasion turns out to recur (docs/design.md 4.7).
+ */
+export async function createOccasionGroup(createdBy: string): Promise<GroupRow> {
+  return db.transaction(async (tx) => {
+    const [group] = await tx.insert(schema.groups).values({ name: null, isDyad: false, createdBy }).returning();
+    if (!group) throw new Error("could not create group");
+    await tx.insert(schema.groupMembers).values({ groupId: group.id, userId: createdBy });
+    return group;
+  });
+}
+
+export const CHIP_TITLE_MAX = 28;
+
+/** What an unnamed group is called, as pure data: its latest question, cut short; first names when it has none. */
+export function occasionLabel(input: { latestTitle: string | null; memberNames: string[]; viewerName?: string }): string {
+  const title = input.latestTitle?.trim().replace(/\?+$/, "");
+  if (title) return title.length > CHIP_TITLE_MAX ? `${title.slice(0, CHIP_TITLE_MAX - 1).trimEnd()}…` : title;
+  const firsts = input.memberNames.map((n) => (n === input.viewerName ? "You" : (n.trim().split(/\s+/)[0] ?? n))).sort((a, b) => (a === "You" ? -1 : b === "You" ? 1 : 0));
+  if (firsts.length === 0) return "Just you";
+  if (firsts.length === 1 && firsts[0] === "You") return "Just you";
+  return firsts.length <= 3 ? firsts.join(", ") : `${firsts.slice(0, 3).join(", ")} +${firsts.length - 3}`;
+}
+
+export type GroupChip = {
+  id: string;
+  label: string;
+  /** Named by a person. An unnamed group's label is derived and changes as things happen in it. */
+  named: boolean;
+  /** Came out of one occasion and has not recurred: drawn dashed, "has not happened yet" applied to a group. */
+  once: boolean;
+  /** Unnamed, and asked in more than once: the moment to offer a name. */
+  worthNaming: boolean;
+  archived: boolean;
+  members: GroupMember[];
+};
+
+/** Every non-dyad group this person is in, as chips: labels, and whether each has recurred. */
+export async function groupChipsFor(userId: string, viewerName: string): Promise<GroupChip[]> {
+  const seats = await db
+    .select({ groupId: schema.groupMembers.groupId, archivedAt: schema.groupMembers.archivedAt })
+    .from(schema.groupMembers)
+    .innerJoin(schema.groups, eq(schema.groups.id, schema.groupMembers.groupId))
+    .where(and(eq(schema.groupMembers.userId, userId), isNull(schema.groupMembers.leftAt), eq(schema.groups.isDyad, false)));
+  const ids = seats.map((s) => s.groupId);
+  if (ids.length === 0) return [];
+  const [groups, members, asked] = await Promise.all([
+    db.select().from(schema.groups).where(inArray(schema.groups.id, ids)).orderBy(desc(schema.groups.createdAt)),
+    membersOfGroups(ids),
+    db
+      .select({ groupId: schema.dares.groupId, title: schema.dares.title, createdAt: schema.dares.createdAt })
+      .from(schema.dares)
+      .where(and(inArray(schema.dares.groupId, ids), sql`${schema.dares.creatorSignature} is not null`))
+      .orderBy(desc(schema.dares.createdAt)),
+  ]);
+  // An unnamed group with nothing asked in it is a draft somebody has not sent. It is not a group to anyone yet.
+  return groups.filter((g) => g.name !== null || asked.some((a) => a.groupId === g.id)).map((g) => {
+    const mine = asked.filter((a) => a.groupId === g.id);
+    const people = members.get(g.id) ?? [];
+    return {
+      id: g.id,
+      label: g.name ?? occasionLabel({ latestTitle: mine[0]?.title ?? null, memberNames: people.map((m) => m.displayName), viewerName }),
+      named: g.name !== null,
+      once: g.name === null && mine.length <= 1,
+      worthNaming: g.name === null && mine.length >= 2,
+      archived: seats.find((s) => s.groupId === g.id)?.archivedAt != null,
+      members: people,
+    };
+  });
+}
+
+/** Naming is any member's to do, once, and again: a name is a label, never an identifier. */
+export async function nameGroup(groupId: string, userId: string, rawName: string): Promise<void> {
+  const name = rawName.trim().replace(/\s+/g, " ").slice(0, 40);
+  if (name.length < 2) throw new Error("a name needs two characters");
+  if (!(await isMember(groupId, userId))) throw new Error("not a member");
+  await db.update(schema.groups).set({ name }).where(and(eq(schema.groups.id, groupId), eq(schema.groups.isDyad, false)));
+}
+
+/**
+ * Archiving is this member's view preference and nothing else (PLANNING.md, "Group list and dormancy"): it
+ * hides the group for them only, changes nothing for anyone else, and any new event there clears it.
+ */
+export async function setArchived(groupId: string, userId: string, archived: boolean): Promise<void> {
+  await db
+    .update(schema.groupMembers)
+    .set({ archivedAt: archived ? new Date() : null })
+    .where(and(eq(schema.groupMembers.groupId, groupId), eq(schema.groupMembers.userId, userId), isNull(schema.groupMembers.leftAt)));
+}
+
+/** Something new happened in a group, so nobody keeps it hidden. Called by whatever made the event. */
+export async function unarchiveForEveryone(groupId: string): Promise<void> {
+  await db.update(schema.groupMembers).set({ archivedAt: null }).where(and(eq(schema.groupMembers.groupId, groupId), sql`${schema.groupMembers.archivedAt} is not null`));
+}

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { TypedDataDomain } from "viem";
 import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ledger/chip";
-import { Problem } from "@/components/ledger/problem";
+import { ProblemSummary } from "@/components/ledger/problem";
 import { signingProblem, useSigner } from "@/components/ledger/use-signer";
 import { castVoteAction, enterMarketAction, lockMarketAction, openMarketAction, sayWhatHappenedAction } from "@/lib/actions/markets";
 import { daresTypes } from "@/lib/chain/typed-data";
@@ -111,7 +111,7 @@ export function EntryPanel({ dareId, signing, unit, mode, mark, suggestion, aver
         )}
         <p className="text-caption text-ink-3">The most you can be out is what you put on it, and only if you were the furthest off.</p>
       </div>
-      <Problem message={problem} />
+      <ProblemSummary messages={[problem]} />
       <Button variant="primary" onClick={submit} loading={step !== "idle"}>
         {mode === "open" ? "Looks right. I’m in" : mode === "change" ? "Change my number" : "I’m in"}
       </Button>
@@ -134,7 +134,7 @@ export function LockButton({ dareId, count }: { dareId: string; count: number })
   const [problem, setProblem] = useState<string | null>(null);
   return (
     <div className="flex flex-col gap-3">
-      <Problem message={problem} />
+      <ProblemSummary messages={[problem]} />
       <Button
         variant="primary"
         loading={pending}
@@ -179,7 +179,7 @@ export function WhatHappened({ dareId, mine }: { dareId: string; mine: string | 
         What happened?
       </label>
       <input id="what-happened" value={text} onChange={(e) => setText(e.target.value)} maxLength={280} placeholder="Out cold by the second act" className="h-12 rounded-tile border border-line bg-surface px-3 text-body text-ink placeholder:text-ink-3" />
-      <Problem message={problem} />
+      <ProblemSummary messages={[problem]} />
       <Button type="submit" variant="secondary" loading={pending}>
         {mine ? "Update what I said" : "Say it"}
       </Button>
@@ -242,7 +242,7 @@ export function Ballot({ dareId, signing, suggested, myVote, tallyLine }: { dare
           ))}
         </div>
       )}
-      <Problem message={problem} />
+      <ProblemSummary messages={[problem]} />
       {busy ? <p className="text-caption text-ink-3">One approval, from you and nobody else.</p> : null}
     </div>
   );

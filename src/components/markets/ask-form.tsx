@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ledger/chip";
-import { Problem } from "@/components/ledger/problem";
+import { ProblemSummary } from "@/components/ledger/problem";
 import { draftMarketAction, scopeMarketAction, type ScopeResult } from "@/lib/actions/markets";
 
 type Group = { id: string; name: string; size: number; units: Array<{ id: string; label: string; template: string | null; quantifiable: boolean }> };
@@ -26,10 +26,11 @@ const WHEN = [
  * and they approve the text; the write-up interrupts only when what would count is genuinely unclear, and then
  * with a single pick. If the write-up is slow or unavailable the line is used as typed, and the screen says so.
  */
-export function AskForm({ groups, initialGroup }: { groups: Group[]; initialGroup?: string }) {
+export function AskForm({ groups, initialGroup, initialLine = "" }: { groups: Group[]; initialGroup?: string; initialLine?: string }) {
   const router = useRouter();
-  const [groupId, setGroupId] = useState(groups.find((g) => g.id === initialGroup)?.id ?? groups[0]?.id ?? "");
-  const [line, setLine] = useState("");
+  // No group is the ordinary case: ask first, and the group is whoever joins (docs/design.md 4.7).
+  const [groupId, setGroupId] = useState<string | null>(groups.find((g) => g.id === initialGroup)?.id ?? null);
+  const [line, setLine] = useState(initialLine.slice(0, 280));
   const [scope, setScope] = useState<ScopeResult | null>(null);
   const [title, setTitle] = useState("");
   const [terms, setTerms] = useState("");
@@ -82,15 +83,18 @@ export function AskForm({ groups, initialGroup }: { groups: Group[]; initialGrou
           </label>
           <textarea id="ask-line" rows={2} value={line} onChange={(e) => setLine(e.target.value)} maxLength={280} placeholder="John falls asleep during the movie" className="rounded-tile border border-line bg-surface px-3 py-3 text-body text-ink placeholder:text-ink-3" />
         </div>
-        {groups.length > 1 ? (
-          <div className="flex flex-wrap gap-2">
+        {groups.length > 0 ? (
+          <div className="flex flex-col gap-2">
+            <p className="text-caption text-ink-3">{groupId ? "Everyone in it can answer." : "For whoever you send it to. Or pick a group, and everyone in it can answer."}</p>
+            <div className="flex flex-wrap gap-2">
             {groups.map((g) => (
-              <button key={g.id} type="button" onClick={() => setGroupId(g.id)} className="rounded-pill">
+              <button key={g.id} type="button" aria-pressed={g.id === groupId} onClick={() => { setGroupId(g.id === groupId ? null : g.id); setUnit({ kind: "usd" }); }} className="rounded-pill">
                 <Chip size={36} selected={g.id === groupId}>
                   {g.name}
                 </Chip>
               </button>
             ))}
+            </div>
           </div>
         ) : null}
         {scope?.ambiguous ? (
@@ -103,9 +107,9 @@ export function AskForm({ groups, initialGroup }: { groups: Group[]; initialGrou
             ))}
           </div>
         ) : null}
-        <Problem message={problem} />
+        <ProblemSummary messages={[problem]} />
         <Button variant="primary" onClick={() => writeUp()} loading={scoping}>
-          Ask {group?.name ?? "the group"}
+          {group ? `Ask ${group.name}` : "Ask it"}
         </Button>
         {scoping ? <p className="text-caption text-ink-3">Writing up how you’ll know. A few seconds.</p> : null}
       </div>
@@ -158,7 +162,7 @@ export function AskForm({ groups, initialGroup }: { groups: Group[]; initialGrou
           {PRESETS.filter((p) => !(group?.units ?? []).some((u) => u.template === p.template)).map((p) => unitChip({ kind: "new", template: p.template, label: p.template }, p.label, p.template))}
         </div>
       </div>
-      <Problem message={problem} />
+      <ProblemSummary messages={[problem]} />
       <Button variant="primary" onClick={save} loading={saving}>
         Looks right
       </Button>

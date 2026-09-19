@@ -57,6 +57,20 @@ export function whenLabel(at: Date, now: Date, timeZone: string): string {
   return absolute();
 }
 
+/**
+ * When something closes, for a line that reads "Closes tonight": today, tomorrow, a weekday within the week,
+ * a date after that, all in the viewer's zone. A time that has passed reads "soon", never as lateness: nothing
+ * in the product reports how overdue anything is.
+ */
+export function closesLabel(at: Date, now: Date, timeZone: string): string {
+  const days = dayNumber(at, timeZone) - dayNumber(now, timeZone);
+  if (at.getTime() <= now.getTime()) return "soon";
+  if (days <= 0) return Number(at.toLocaleString("en-US", { timeZone, hour: "numeric", hour12: false })) >= 17 ? "tonight" : "today";
+  if (days === 1) return "tomorrow";
+  if (days < 7) return at.toLocaleDateString("en-US", { timeZone, weekday: "long" });
+  return at.toLocaleDateString("en-US", { timeZone, month: "short", day: "numeric" });
+}
+
 /** "Good until Oct 2", in the viewer's zone. */
 export function dayLabel(at: Date, timeZone: string): string {
   return at.toLocaleDateString("en-US", { timeZone, month: "short", day: "numeric" });

@@ -6,6 +6,7 @@ import { InviteShare } from "@/components/ledger/invite-share";
 import { When } from "@/components/ledger/when";
 import { Button } from "@/components/ui/button";
 import { createInviteAction, revokeInviteAction } from "@/lib/actions/groups";
+import { ProblemSummary } from "@/components/ledger/problem";
 
 export type InviteSummary = {
   id: string;
@@ -62,9 +63,7 @@ export function GroupInvites({ groupId, groupName, invites, clock }: { groupId: 
         </div>
       )}
       {error ? (
-        <p role="alert" className="border-l-2 border-marigold pl-3 text-body-sm text-ink">
-          {error}
-        </p>
+        <ProblemSummary messages={[error]} />
       ) : null}
       {invites.length > 0 ? (
         <ul className="flex flex-col border-t border-line pt-1">

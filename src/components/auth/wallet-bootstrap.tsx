@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ChainEnum, getAuthToken, useDynamicContext, useDynamicWaas, useIsLoggedIn, useRefreshUser } from "@dynamic-labs/sdk-react-core";
 import { Button } from "@/components/ui/button";
 import { mark } from "@/lib/ui/timing";
+import { ProblemSummary } from "@/components/ledger/problem";
 
 type Answer = { user: { id: string }; bound: number } | { need: "wallets"; have: number } | { need: "name"; suggested: string } | { error: string };
 type Phase = { at: "idle" } | { at: "working"; line: string } | { at: "name"; suggested: string; ready: boolean } | { at: "done" } | { at: "error"; message: string };
@@ -21,10 +22,15 @@ type Phase = { at: "idle" } | { at: "working"; line: string } | { at: "name"; su
  * blank screen: the name question is on screen while it runs, and a sign-in with nothing to ask says what it
  * is doing.
  */
-export function WalletBootstrap({ settled }: { settled: boolean }) {
+export function WalletBootstrap({ settled, sessionDynamicUserId }: { settled: boolean; sessionDynamicUserId: string | null }) {
   const router = useRouter();
   const isLoggedIn = useIsLoggedIn();
-  const { sdkHasLoaded } = useDynamicContext();
+  const { sdkHasLoaded, user } = useDynamicContext();
+  // Someone settled has nothing to set up, unless the Dynamic login in this browser is a different person from
+  // the one the session cookie names. The login is the stronger fact (a code was typed for it), so the session
+  // follows it, through the same server check as any other login.
+  const sdkUserId = user?.userId ?? null;
+  const skip = settled && (sdkUserId === null || sdkUserId === sessionDynamicUserId);
   const { createWalletAccount, dynamicWaasIsEnabled } = useDynamicWaas();
   const refreshUser = useRefreshUser();
   const [phase, setPhase] = useState<Phase>({ at: "idle" });
@@ -70,7 +76,7 @@ export function WalletBootstrap({ settled }: { settled: boolean }) {
   );
 
   useEffect(() => {
-    if (settled || !sdkHasLoaded || !isLoggedIn || started.current) return;
+    if (skip || !sdkHasLoaded || !isLoggedIn || started.current) return;
     started.current = true;
     const run = async () => {
       setPhase({ at: "working", line: "Signing you in…" });
@@ -94,7 +100,7 @@ export function WalletBootstrap({ settled }: { settled: boolean }) {
       finish(a);
     };
     run().catch((err: unknown) => setPhase({ at: "error", message: err instanceof Error ? err.message : "Could not finish setting up your account." }));
-  }, [settled, sdkHasLoaded, isLoggedIn, ask, makeWallets, finish]);
+  }, [skip, sdkHasLoaded, isLoggedIn, ask, makeWallets, finish]);
 
   async function submitName() {
     const displayName = name.trim();
@@ -116,7 +122,7 @@ export function WalletBootstrap({ settled }: { settled: boolean }) {
     if (!isLoggedIn) started.current = false;
   }, [isLoggedIn]);
 
-  if (settled || !isLoggedIn || phase.at === "idle" || phase.at === "done") return null;
+  if (skip || !isLoggedIn || phase.at === "idle" || phase.at === "done") return null;
 
   return (
     <div role="dialog" aria-modal="true" aria-live="polite" className="fixed inset-0 z-50 flex flex-col justify-center bg-ground px-5">
@@ -126,9 +132,7 @@ export function WalletBootstrap({ settled }: { settled: boolean }) {
         ) : phase.at === "error" ? (
           <>
             <p className="text-question text-ink">That didn’t work.</p>
-            <p role="alert" className="border-l-2 border-marigold pl-3 text-body text-ink">
-              {phase.message}
-            </p>
+            <ProblemSummary messages={[phase.message]} />
             <Button variant="secondary" onClick={() => window.location.reload()}>
               Try again
             </Button>

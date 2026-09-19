@@ -239,7 +239,7 @@ test("the first screen groups what was waiting by who it is with, and offers one
 });
 
 test("home carries a strip back to it, and someone with nothing waiting is sent home instead of an empty inbox", async () => {
-  assert.ok((await get("/", cU)).text.includes("3 things were waiting for you"));
+  assert.ok((await get("/", cU)).text.includes("A few things were waiting for you"));
   // Alex has people on their home screen and nothing that arrived by binding: no strip.
   const quiet = await get("/", cA);
   assert.ok(quiet.text.includes("not here yet") && !quiet.text.includes("waiting for you"));
@@ -279,14 +279,66 @@ test("someone in the group who has not picked sees who is in and no number; some
   assert.ok((await get(`/m/${marketId}`, cAsker)).text.includes("83%"));
   const outside = await get(`/m/${marketId}`, cStranger);
   assert.equal(outside.status, 200);
-  assert.ok(outside.text.includes("This one is for the people in Question check"));
-  for (const s of ["Priya", "83%", "8300", "17.00", "Kettles rarely", "kettle is descaled"]) assert.ok(!outside.html.includes(s), `someone outside the group is sent "${s}"`);
+  // The invitation (docs/design.md 3.17): what it is and who asked, by first name, and nothing it could cost.
+  assert.ok(outside.text.includes("Priya invited you") && outside.text.includes("One friend is in") && outside.text.includes("Join as"));
+  for (const s of ["Priya Raman", "Raman", "83%", "8300", "17.00", "Kettles rarely", "kettle is descaled", "1 of 2 in"]) assert.ok(!outside.html.includes(s), `someone outside the group is sent "${s}"`);
 });
 
 test("the terms and the stalemate rule are on the screen before anyone is in", async () => {
   const r = await get(`/m/${marketId}`, cFriend);
   assert.ok(r.text.includes("Yes if the kettle is descaled by Friday."));
   assert.ok(r.text.includes("everyone says their piece and the app calls it. Being in means you’re fine with that."));
+});
+
+// ------------------------------------------------------------------------------------------ 2B: home, joining
+
+async function send(path: string, method: string, body: unknown, cookie?: string): Promise<{ status: number }> {
+  const r = await fetch(BASE + path, { method, headers: { "content-type": "application/json", ...(cookie ? { cookie: `dareful_session=${cookie}` } : {}) }, body: JSON.stringify(body) });
+  return { status: r.status };
+}
+
+test("home asks first and joins second, and a question someone is not in is a row with its verb", async () => {
+  const r = await get("/", cFriend);
+  assert.equal(r.status, 200);
+  const ask = r.text.indexOf("Ask something");
+  const join = r.text.indexOf("Someone read you a code?");
+  const needs = r.text.indexOf("Needs you");
+  assert.ok(ask >= 0 && join > ask && needs > join, "ask, then join, then needs you (docs/design.md 4.7)");
+  assert.ok(r.text.includes("Does the kettle get descaled by Friday?") && /1 of 2 in/.test(r.text) && r.text.includes("Enter"));
+  // Nothing on home counts or ages (3.15): no badge on the heading, no days waiting.
+  assert.ok(!/Needs you\s*\(?\d/.test(r.text) && !/waiting \d|\d+ days/.test(r.text));
+});
+
+test("the joining screen is for someone signed in; signed out it sends them home", async () => {
+  const out = await get("/join");
+  assert.ok(out.status === 307 || out.status === 302);
+  const r = await get("/join?code=k7qm", cFriend);
+  assert.equal(r.status, 200);
+  assert.ok(r.text.includes("Join something") && r.text.includes("no O, I, Z, zero or one") && r.text.includes("Got a link instead?"));
+});
+
+test("the app is installable and its worker is served from the root, where a push needs it", async () => {
+  const m = await get("/manifest.webmanifest");
+  assert.equal(m.status, 200);
+  const manifest = JSON.parse(m.html) as { display: string; start_url: string; icons: Array<{ src: string }> };
+  assert.deepEqual([manifest.display, manifest.start_url], ["standalone", "/"]);
+  for (const icon of manifest.icons) assert.equal((await get(icon.src)).type, "image/png", icon.src);
+  const sw = await get("/sw.js");
+  assert.ok(sw.status === 200 && sw.html.includes("notificationclick") && !sw.html.includes('addEventListener("fetch"'), "a worker that caches would serve somebody a stale ledger");
+});
+
+test("a push subscription is taken only from someone signed in, and only for a real push service", async () => {
+  const sub = (endpoint: string) => ({ endpoint, keys: { p256dh: "B".repeat(87), auth: "a".repeat(22) } });
+  assert.equal((await send("/api/push/subscribe", "POST", sub("https://fcm.googleapis.com/fcm/send/check-" + marketId))).status, 401);
+  assert.equal((await send("/api/push/subscribe", "POST", sub("https://evil.example.com/collect"), cFriend)).status, 400);
+  assert.equal((await send("/api/push/subscribe", "POST", sub("http://fcm.googleapis.com/fcm/send/x"), cFriend)).status, 400);
+  assert.equal((await send("/api/push/subscribe", "POST", sub("https://fcm.googleapis.com/fcm/send/check-" + marketId), cFriend)).status, 200);
+});
+
+test("a device that cannot approve is only ever reported by the person it belongs to", async () => {
+  assert.equal((await send("/api/device-state", "POST", { state: "signed-out", standalone: false })).status, 400);
+  assert.equal((await send("/api/device-state", "POST", { state: "anything", standalone: false }, cFriend)).status, 400);
+  assert.equal((await send("/api/device-state", "POST", { state: "signed-out", standalone: true }, cFriend)).status, 200);
 });
 
 // ------------------------------------------------------------------------------------------------ dates
