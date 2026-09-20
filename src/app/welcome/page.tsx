@@ -58,7 +58,7 @@ export default async function WelcomePage() {
 
   return (
     <Screen>
-      <TopBar title="Dareful" right={<Link href="/" className="inline-flex h-12 items-center px-2 text-[15px] font-semibold text-ink-2">Later</Link>} />
+      <TopBar title="Dareful" right={<Link prefetch={false} href="/" className="inline-flex h-12 items-center px-2 text-[15px] font-semibold text-ink-2">Later</Link>} />
       <div className="flex flex-col gap-7 py-4">
         <div className="flex flex-col gap-3">
           <h1 className="text-display-xl text-ink">{rows.length === 1 ? "Someone got one for you." : "Your friends kept track."}</h1>

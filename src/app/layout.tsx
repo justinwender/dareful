@@ -45,7 +45,10 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   const settled = me !== null && me.displayName !== PLACEHOLDER_NAME;
   return (
     <html lang="en" className={`${hanken.variable} ${youngSerif.variable} dark h-full antialiased`}>
-      <body className="min-h-full flex flex-col">
+      {/* An installed app draws under the status bar and the home indicator (viewport-fit=cover, translucent status
+          bar). The top and side insets are paid once, here, so no screen can forget them; anything fixed or sticky
+          pays its own (docs/decisions.md 2026-09-20). Sized from the parent's height, never from 100vh. */}
+      <body className="flex min-h-full flex-col pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)]">
         <Providers settled={settled} me={me ? { dynamicUserId: me.dynamicUserId, ledgerWallet: me.ledgerWallet, governanceWallet: me.governanceWallet } : null}>
           {children}
         </Providers>

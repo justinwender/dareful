@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
-import { notifyAfterVote, voteCounts, type VoteCounts } from "@/lib/notify";
+import { notifyAfterVote, notifyJoined, notifyOpened, sendNudge, voteCounts, type NudgeResult, type VoteCounts } from "@/lib/notify";
 import { isHex, type Hex } from "viem";
 import { z } from "zod";
 import { plainScope, proposeOutcome, scopeMarket } from "@/lib/ai/markets";
@@ -98,6 +98,9 @@ export async function openMarketAction(rawId: string, createSignature: string, r
     return { error: say(err, "That didn't go through. Try again.") };
   }
   revalidatePath(`/m/${id.data}`);
+  revalidatePath("/");
+  // "Priya asked something": the rest of the group hears, after Priya has her answer.
+  after(() => notifyOpened(id.data, user.id));
   return { ok: true };
 }
 
@@ -112,7 +115,25 @@ export async function enterMarketAction(rawId: string, rawPosition: z.infer<type
     return { error: say(err, "That didn't go through. Try again.") };
   }
   revalidatePath(`/m/${id.data}`);
+  revalidatePath("/");
+  after(() => notifyJoined(id.data, user.id));
   return { ok: true };
+}
+
+/**
+ * "We're waiting on you", sent by a person, on demand. Says back how many it was for and how many a channel
+ * actually reached, so the screen never claims a nudge landed when it only reached the in-app strip.
+ */
+export async function nudgeAction(rawId: string): Promise<({ ok: true } & NudgeResult) | { error: string }> {
+  const user = await requireUser();
+  const id = uuid.safeParse(rawId);
+  if (!id.success) return { error: "That one doesn't exist." };
+  try {
+    return { ok: true, ...(await sendNudge(id.data, user.id, new Date())) };
+  } catch (err) {
+    console.error("nudge failed", err);
+    return { error: "That didn't go through. Try again." };
+  }
 }
 
 export async function lockMarketAction(rawId: string): Promise<{ ok: true } | { error: string }> {

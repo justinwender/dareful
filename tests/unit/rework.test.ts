@@ -7,7 +7,8 @@ import { test } from "node:test";
 import { occasionLabel } from "@/lib/ledger/groups";
 import { needFromMarket, orderNeeds } from "@/lib/ledger/home";
 import { CODE_ALPHABET, readCode, readPastedLink } from "@/lib/ledger/room-code";
-import { recipientsAfterVote, relayText, resultNotice, voteRequest } from "@/lib/notify/messages";
+import { joinedNotice, nudgeNotice, nudgeSeq, nudgeTargets, NUDGE_WINDOW_MS, openedNotice, recipientsAfterVote, relayText, resultNotice, voteRequest } from "@/lib/notify/messages";
+import { platformOf } from "@/lib/auth/device";
 import { closesLabel } from "@/lib/ui/copy";
 
 test("the code alphabet has no O, I, Z, zero or one, and nothing twice", () => {
@@ -133,4 +134,42 @@ test("no notice or relay text carries an amount, a unit, or anyone's number", ()
   const all = [voteRequest({ ...base, cast: 2, leading: 2 }), resultNotice({ deciderName: "Gabe", title: base.title, outcome: "yes", marketId: "m1", appUrl: base.appUrl })].map((n) => `${n.title} ${n.body}`).concat(relayText({ title: base.title, cast: 2, quorum: 5 }));
   for (const text of all) assert.equal(/\$|%|beer|owe|debt/i.test(text), false, text);
   assert.equal(relayText({ title: base.title, cast: 2, quorum: 5 }), "Called “Can Theo clear the fence”, 2 of 5 so far. Your turn:");
+});
+
+const n = { title: "Can Theo clear the fence?", marketId: "m1", appUrl: "https://dareful.app" };
+test("a question opening, someone getting in, and a nudge each name the person who did it, and nothing it could cost", () => {
+  const opened = openedNotice({ ...n, askerName: "Priya" });
+  const joined = joinedNotice({ ...n, joinerName: "Gabe", inCount: 3 });
+  const nudge = nudgeNotice({ ...n, nudgerName: "Maya", stage: "enter" });
+  assert.deepEqual([opened.title, joined.title, nudge.title], ["Priya asked something", "Gabe is in", "Maya is waiting on you"]);
+  assert.equal(joined.body, "“Can Theo clear the fence?” That's 3 in.");
+  for (const x of [opened, joined, nudge]) assert.equal(/\$|%|beer|owe|debt|\d+ (day|hour)/i.test(`${x.title} ${x.body}`), false, x.body);
+});
+
+test("a nudge to vote opens on the ballot; a nudge to get in opens on the question", () => {
+  assert.equal(nudgeNotice({ ...n, nudgerName: "Maya", stage: "vote" }).url, "https://dareful.app/m/m1#ballot");
+  assert.equal(nudgeNotice({ ...n, nudgerName: "Maya", stage: "enter" }).url, "https://dareful.app/m/m1");
+});
+
+const crowd = { nudgerId: "a", nudgerIsIn: true, memberIds: ["a", "b", "c", "d"], enteredIds: ["a", "b"], quorumIds: ["a", "b", "c"], votedIds: ["b"] };
+test("a nudge goes to whoever has not got in, or once locked to whoever in the quorum has not called it, never to the nudger", () => {
+  assert.deepEqual(nudgeTargets({ ...crowd, stage: "enter" }), ["c", "d"]);
+  assert.deepEqual(nudgeTargets({ ...crowd, stage: "vote" }), ["c"]);
+});
+
+test("only someone who is in can say we're waiting on you", () => {
+  assert.deepEqual(nudgeTargets({ ...crowd, stage: "enter", nudgerId: "d", nudgerIsIn: false }), []);
+});
+
+test("two taps inside six hours are one nudge; the next window is a new one", () => {
+  const t = new Date("2026-09-20T12:00:00Z");
+  assert.equal(nudgeSeq(t), nudgeSeq(new Date(t.getTime() + NUDGE_WINDOW_MS - 1)));
+  assert.notEqual(nudgeSeq(t), nudgeSeq(new Date(t.getTime() + NUDGE_WINDOW_MS)));
+});
+
+test("a user agent is kept as one of four words and nothing finer", () => {
+  assert.equal(platformOf("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148"), "ios");
+  assert.equal(platformOf("Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36"), "android");
+  assert.equal(platformOf("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15"), "desktop");
+  assert.equal(platformOf(null), "other");
 });

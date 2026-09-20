@@ -64,7 +64,7 @@ export default async function ClaimLinkPage({ params }: { params: Promise<{ toke
         <div className="flex flex-1 flex-col justify-center gap-6 py-10">
           <h1 className="text-display text-ink">This is the link you made for {claim.displayName}.</h1>
           <p className="text-body text-ink-2">Send it to them from your own messages. It does nothing for you.</p>
-          <Link href={`/p/c/${claim.id}`} className="text-[15px] font-semibold text-ink-2">
+          <Link prefetch={false} href={`/p/c/${claim.id}`} className="text-[15px] font-semibold text-ink-2">
             Back to {claim.displayName}
           </Link>
         </div>
@@ -79,7 +79,7 @@ export default async function ClaimLinkPage({ params }: { params: Promise<{ toke
           <h1 className="text-display text-ink">Someone already said this was them.</h1>
           <p className="text-body text-ink-2">If that was you, sign in and it’s all there. If it wasn’t, tell {creatorName}.</p>
           {me ? (
-            <Link href="/" className="text-[15px] font-semibold text-ink-2">
+            <Link prefetch={false} href="/" className="text-[15px] font-semibold text-ink-2">
               Go home
             </Link>
           ) : null}

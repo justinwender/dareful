@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { TypedDataDomain } from "viem";
 import { Button } from "@/components/ui/button";
+import { Sheet } from "@/components/ui/sheet";
 import { Chip } from "@/components/ledger/chip";
 import { ProblemSummary } from "@/components/ledger/problem";
 import { signingProblem, useSigner } from "@/components/ledger/use-signer";
@@ -195,28 +196,32 @@ const LABEL = { yes: "Yes", no: "No", void: "Nobody can tell" } as const;
  * answer first. The approval comes from the second of the person's two keys, the one the app never holds, which
  * is the whole reason a vote cannot be cast for anyone.
  */
-export function Ballot({ dareId, signing, suggested, myVote, tallyLine }: { dareId: string; signing: Signing; suggested: "yes" | "no" | "void" | null; myVote: "yes" | "no" | "void" | null; tallyLine: string }) {
+export function Ballot({ dareId, signing, suggested, myVote, tallyLine, threshold }: { dareId: string; signing: Signing; suggested: "yes" | "no" | "void" | null; myVote: "yes" | "no" | "void" | null; tallyLine: string; threshold: number }) {
   const router = useRouter();
   const sign = useSigner();
   // Derived, not remembered: the suggestion arrives after someone says what happened, on a screen already open.
   const [disagreeing, setDisagreeing] = useState(false);
   const picking = suggested === null || disagreeing;
-  const [busy, setBusy] = useState<"yes" | "no" | "void" | null>(null);
+  // A vote binds everyone in the question, so it gets a deliberate moment of its own, in the app's words: pick,
+  // then say so. Things that bind only the person doing them (a number, a yep) are their own button and no more.
+  const [choice, setChoice] = useState<"yes" | "no" | "void" | null>(null);
+  const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const VOID = (1n << 256n) - 1n;
 
   async function cast(outcome: "yes" | "no" | "void") {
     setProblem(null);
-    setBusy(outcome);
+    setBusy(true);
     try {
       const signature = await sign(signing.governanceWallet, { domain: signing.domain, types: daresTypes, primaryType: "Vote", message: { dareId: signing.dareOnchainId, outcome: outcome === "yes" ? 1n : outcome === "no" ? 0n : VOID } }, "vote");
       const r = await castVoteAction(dareId, outcome, signature);
-      if ("error" in r) setProblem(r.error);
-      else router.refresh();
+      if ("error" in r) return setProblem(r.error);
+      setChoice(null);
+      router.refresh();
     } catch (err) {
       setProblem(signingProblem(err));
     } finally {
-      setBusy(null);
+      setBusy(false);
     }
   }
 
@@ -226,24 +231,53 @@ export function Ballot({ dareId, signing, suggested, myVote, tallyLine }: { dare
       {myVote ? <p className="text-body-sm text-ink-2">You said {LABEL[myVote].toLowerCase()}. You can change it until it’s decided.</p> : null}
       {suggested && !picking ? (
         <>
-          <Button variant="primary" onClick={() => cast(suggested)} loading={busy === suggested} disabled={busy !== null}>
+          <Button variant="primary" onClick={() => setChoice(suggested)}>
             {LABEL[suggested]}, that’s right
           </Button>
-          <Button variant="tertiary" onClick={() => setDisagreeing(true)} disabled={busy !== null}>
+          <Button variant="tertiary" onClick={() => setDisagreeing(true)}>
             That’s not how it went
           </Button>
         </>
       ) : (
         <div className="flex flex-col gap-2">
           {(["yes", "no", "void"] as const).map((o) => (
-            <Button key={o} variant="secondary" onClick={() => cast(o)} loading={busy === o} disabled={busy !== null}>
+            <Button key={o} variant="secondary" onClick={() => setChoice(o)}>
               {LABEL[o]}
             </Button>
           ))}
         </div>
       )}
-      <ProblemSummary messages={[problem]} />
-      {busy ? <p className="text-caption text-ink-3">One approval, from you and nobody else.</p> : null}
+      {choice === null ? <ProblemSummary messages={[problem]} /> : null}
+      <Sheet
+        open={choice !== null}
+        labelledBy="call-it-title"
+        onClose={() => {
+          if (!busy) setChoice(null);
+        }}
+      >
+        {choice ? (
+          <>
+            <div className="flex flex-col gap-2">
+              <p className="text-label text-ink-3">You’re calling it</p>
+              <h2 id="call-it-title" className="text-question text-ink">
+                {LABEL[choice]}.
+              </h2>
+            </div>
+            <p className="text-body-sm-prose text-ink-2">
+              This one counts for everyone in it, not just you. It’s decided once {threshold} of you say the same thing, and you can change yours until then. Nobody can say it for you, and the app can’t either.
+            </p>
+            <ProblemSummary messages={[problem]} />
+            <div className="flex flex-col gap-1">
+              <Button variant="primary" data-autofocus onClick={() => cast(choice)} loading={busy}>
+                Call it {LABEL[choice].toLowerCase()}
+              </Button>
+              <Button variant="tertiary" onClick={() => setChoice(null)} disabled={busy}>
+                Not yet
+              </Button>
+            </div>
+          </>
+        ) : null}
+      </Sheet>
     </div>
   );
 }

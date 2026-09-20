@@ -770,3 +770,39 @@ Not sent in 2B: the creator's deadline notice (no scheduler; it is a "Needs you"
 ## 2026-09-19: Waiting, per the specification
 
 Buttons follow 5.2: past 300ms the label stays where it was and a 2px line runs along the bottom edge; at three seconds "Still going." appears under it. The 2A button swapped its label for an ellipsis, which the specification rules out. Not built: the ten-second step that turns a wait into the 5.1 summary block with "Try again"; every action here already reports its own failure in that block, and none has been seen to run ten seconds.
+
+# Post-2B testing (2026-09-20)
+
+## 2026-09-20: Verification means a real signed-in session, and what that changed
+
+Every bug in the first 2B session on production was behind a login, and none reached me because I could not hold an authenticated session. From here on the browser used for development holds real sessions on both origins (the person signs in and types the code; a credential is never handled for them), and no fix lands without being exercised through one on the surface where it was reported. A forged session cookie and a library-level check are not verification: a forged cookie is precisely the state that has no Dynamic login, so it cannot sign, and everything past a signature went unseen. Anything that cannot be exercised that way (iOS WebKit, an installed app's insets, a push actually arriving) is reported as unverified, with the exact check for a phone.
+
+The first real two-account run (one account asking on production, the other joining, entering, nudging and voting on the development build, against the one database and the real chain) created, locked and resolved a market from a brand-new unnamed group, and is how the rest of this section was checked.
+
+## 2026-09-20: The iOS freeze on creating a question was Dynamic's own sheet, twice; its sheet is turned off and a vote gets ours
+
+Diagnosed in a real session before anything changed. Dynamic's dashboard had `showEmbeddedWalletActionsUI` on, so every signature opened Dynamic's "Signature request" sheet, which sets `overflow: clip` on the body while open. Creating a question signs twice (the question, then the asker's own number), so two sheets open back to back with the lock held across both. Chromium shows both. On iOS, entering someone else's question (one sheet) worked and creating (two) froze: the second sheet never appeared and the lock from the first stayed, with nothing on screen to dismiss, which is exactly "taps work, scrolling and navigation are dead". Two drafts from that evening never received their creator's signature. It was not the 2B code step, which was the first suspect.
+
+That sheet was also a standing violation of the copy rule: "Signature request", "Termshash" and raw hex in front of a person on every confirm, entry and vote, in a product whose rule is that no screen says signature, transaction, gas, or chain.
+
+Ruling: the sheet is turned off in Dynamic's dashboard. Rule one is about who holds the key and that the person deliberately approves, not about whose modal renders; "prompts" in the signing table means a conscious approval. So: a confirm and an entry bind only the signer, and their own button is the approval. A vote binds everyone in the question and gets a deliberate moment of its own, in the app's words: pick an answer, then a short sheet says what is being called, that it counts for everyone, how many agreeing decide it, and that nobody, the app included, can say it for them. That sheet (`src/components/ui/sheet.tsx`) never locks the page's scroll: the scrim takes the touches and the panel contains its own overscroll, so if it ever failed to render, nothing about the page underneath would have changed. Rejected: keeping Dynamic's sheet and splitting creation into one signature per tap (the hex stays, and the fix would rest on an unproven guess about which sheet iOS drops).
+
+## 2026-09-20: Safe-area insets, paid once at the body
+
+The back control sat under the clock in the installed app. `viewport-fit=cover` had been set since Phase 1 and 2B added a translucent status bar with the manifest; no `env(safe-area-inset-*)` existed anywhere, and earlier "installed" tests were bookmarks that kept the browser's chrome, so the page had never drawn under the status bar. The top and side insets are now paid once on `body`, so no screen can forget them; the screen's bottom padding, the sticky action area and the full-screen signup overlay pay the bottom inset themselves. Nothing is sized from `100vh`; layouts size from the parent's height.
+
+## 2026-09-20: Three more notifications, a nudge anyone can send, and the permission ask moved earlier
+
+No device had ever subscribed and nothing had ever been sent: joining was never an event, and the permission ask sat on the screen after a vote, which is after the first notification would have been useful. Added: a question opened in your group, to the group ("Priya asked something"), which is the canonical send-worthy notice under Principle 1; someone got in, to the asker, once per person and never for a changed number; and a nudge, one tap from someone who is in to whoever is not ("Maya is waiting on you"), to get-in while numbers are open and to the ballot once locked. The nudge is a person acting, so Principle 1 allows it where a timer would not be, and it is a notification anyone can trigger on demand. Because a person can tap twice, each recipient hears about each question at most once per six hours, whoever is asking; only someone who is in can send one; and the screen says honestly how many devices it reached, offering the sender's own composer for the rest. The permission ask now appears after asking or entering.
+
+## 2026-09-20: Prefetch is off by default
+
+Every screen is rendered per person per request, so a prefetched link is a full server render, and a person or market page also queries an indexer capped at a hundred a minute. Home was firing about a dozen on every load (seen in the production request log), which is both the likeliest cause of the slowness testers reported and a rate-limit risk with several people browsing. Prefetch is now off on every link, and on by opt-in for exactly two that are cheap and likely: the joining screen and the primary "Ask something". To be measured on production after deploy, before any other performance work.
+
+## 2026-09-20: Device states are kept in a table
+
+`device_states`: who, which state, installed or not, and one of four platform words. The host keeps log lines for an hour on this plan, and a sign-out problem that recurs over days needs evidence that outlives that. Never the user agent string. The sessions-ending report itself: Dynamic's API now reports `jwtDuration` as thirty days and a fresh login carries a thirty-day token; tokens issued before the change kept their two-hour life, and an installed app and the phone's browser each need their own code, which looks the same from a phone. If it recurs, this table says which.
+
+## 2026-09-20: Leaving a group: deferred, with a correction recorded so it is not lost
+
+Deferred while groups are being redesigned. Recorded because the premise matters when it returns: `DarefulDares.create` sets the quorum to `ledger.governanceOf(groupId)`, every member ever registered onchain for that group, and calldata cannot narrow it. An offchain `left_at` therefore cannot keep a departed member out of a new question's quorum or threshold. The contract's member list is a record of everyone who was ever in, never the current truth. A removal function stays rejected (a compromised relayer that can shrink a quorum is worse than one that can inflate a group). The shape that needs no contract change: after someone leaves, the next question in that group starts in a new group of whoever is still there.

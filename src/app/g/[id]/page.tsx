@@ -65,12 +65,12 @@ export default async function GroupPage({ params }: { params: Promise<{ id: stri
             {group.members.map((m) => (
               <li key={m.userId ?? m.claimId ?? m.displayName}>
                 {m.userId && m.userId !== me.id ? (
-                  <Link href={`/p/${m.userId}`} className="flex h-12 items-center gap-3 rounded-button bg-surface px-3">
+                  <Link prefetch={false} href={`/p/${m.userId}`} className="flex h-12 items-center gap-3 rounded-button bg-surface px-3">
                     <Avatar name={m.displayName} hue={hueFor(m.userId)} size={28} />
                     <span className="text-body-strong text-ink">{m.displayName}</span>
                   </Link>
                 ) : m.claimId && m.addedBy === me.id ? (
-                  <Link href={`/p/c/${m.claimId}`} className="flex h-12 items-center gap-3 rounded-button bg-surface px-3">
+                  <Link prefetch={false} href={`/p/c/${m.claimId}`} className="flex h-12 items-center gap-3 rounded-button bg-surface px-3">
                     <Avatar name={m.displayName} hue="stone" size={28} ghost />
                     <span className="text-body-strong text-ink">{m.displayName}</span>
                     <span className="text-caption text-ink-3">not here yet</span>

@@ -14,6 +14,7 @@ import { Leaderboard, Transfers } from "@/components/markets/leaderboard";
 import { InvitePreview } from "@/components/markets/invite-preview";
 import { RoomCode } from "@/components/markets/room-code";
 import { AfterVote } from "@/components/notify/after-vote";
+import { Nudge } from "@/components/notify/nudge";
 import { relayText } from "@/lib/notify/messages";
 import { Ballot, EntryPanel, LockButton, WhatHappened, type Signing, type StakeUnit } from "@/components/markets/market-actions";
 import { currentUser } from "@/lib/auth/session";
@@ -132,6 +133,12 @@ export default async function MarketPage({ params }: { params: Promise<{ id: str
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://dareful.app";
   const outcome = word(d.resolvedOutcome);
   const leading = tally(votes)[0];
+  // Who a nudge would go to, by first name: while open, group members with no number in; once locked, members
+  // who have not called it. The server works out the real recipients again; this is only the sentence.
+  const doneIds = new Set(state === "locked" ? votes.map((v) => v.userId) : positions.map((p) => p.userId as string));
+  const waitingIds = seats.map((x) => x.userId).filter((x): x is string => x !== null && x !== me.id && !doneIds.has(x));
+  const waitingUsers = waitingIds.length ? await db.select({ id: schema.users.id, displayName: schema.users.displayName }).from(schema.users).where(inArray(schema.users.id, waitingIds)) : [];
+  const waitingNames = waitingUsers.map((u) => firstName(u.displayName));
   const edges = state === "resolved" ? await db.select().from(schema.obligations).where(and(eq(schema.obligations.origin, "dare"), eq(schema.obligations.originId, d.id))) : [];
 
   return (
@@ -220,6 +227,12 @@ export default async function MarketPage({ params }: { params: Promise<{ id: str
                 initial={mine ? { percent: Number(mine.value) / 100, stake: mine.stake.toString() } : undefined}
               />
             </section>
+            {mine ? (
+              <section className="flex flex-col gap-3">
+                <Nudge dareId={d.id} names={waitingNames} url={`${appUrl}/m/${d.id}`} relay={`We’re waiting on you: ${d.title}`} />
+                <AfterVote relay={null} url={`${appUrl}/m/${d.id}`} />
+              </section>
+            ) : null}
             <section className="flex flex-col gap-3">
               <SectionLabel>Get the others in</SectionLabel>
               <InviteShare url={`${appUrl}/m/${d.id}`} text={`${d.title} Put your number on it:`} />
@@ -281,8 +294,10 @@ export default async function MarketPage({ params }: { params: Promise<{ id: str
                 signing={signing}
                 suggested={word(d.aiOutcome)}
                 myVote={word(votes.find((v) => v.userId === me.id)?.outcome ?? null)}
+                threshold={d.threshold}
                 tallyLine={votes.length === 0 ? `It takes ${d.threshold} of you agreeing to decide it.` : `${votes.length} ${votes.length === 1 ? "has" : "have"} said so far${leading ? `, ${leading.votes} for ${word(leading.outcome) === "void" ? "nobody can tell" : word(leading.outcome)}` : ""}. It takes ${d.threshold} agreeing.`}
               />
+              {mine ? <Nudge dareId={d.id} names={waitingNames} url={`${appUrl}/m/${d.id}#ballot`} relay={`We’re waiting on your call: ${d.title}`} /> : null}
               {votes.some((v) => v.userId === me.id) ? <AfterVote relay={relayText({ title: d.title, cast: votes.length, quorum: seats.length })} url={`${appUrl}/m/${d.id}#ballot`} /> : null}
             </section>
           </>

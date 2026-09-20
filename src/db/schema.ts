@@ -777,8 +777,11 @@ export const notificationLog = pgTable(
     dareId: uuid("dare_id")
       .notNull()
       .references(() => dares.id),
-    kind: text("kind", { enum: ["vote_request", "result"] }).notNull(),
-    /** How many had voted when this was sent; 0 for a result. */
+    kind: text("kind", { enum: ["vote_request", "result", "opened", "joined", "nudge"] }).notNull(),
+    /**
+     * What makes "the same thing" the same, per kind: how many had voted (vote_request), how many were in
+     * (joined), a six-hour window (nudge), 0 otherwise.
+     */
     seq: integer("seq").notNull().default(0),
     /** The person whose act caused this. Never null: nothing is sent because time passed. */
     causedBy: uuid("caused_by")
@@ -802,4 +805,25 @@ export const codeAttempts = pgTable(
     createdAt: ts("created_at").notNull().defaultNow(),
   },
   (t) => [index("code_attempts_user_created").on(t.userId, t.createdAt)],
+).enableRLS();
+
+/**
+ * What a signed-in person's device could not do, once per page load (docs/decisions.md 2026-09-19, 2026-09-20).
+ * It began as a log line, and the host keeps log lines for an hour: a sign-out problem that recurs over days
+ * needs evidence that outlives that. The state, whether the app was installed, a coarse platform, and the
+ * person. Never the user agent string, an address, or anything typed.
+ */
+export const deviceStates = pgTable(
+  "device_states",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    state: text("state", { enum: ["signed-out", "other-account", "keys-missing"] }).notNull(),
+    standalone: boolean("standalone").notNull(),
+    platform: text("platform", { enum: ["ios", "android", "desktop", "other"] }).notNull(),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("device_states_user_created").on(t.userId, t.createdAt)],
 ).enableRLS();

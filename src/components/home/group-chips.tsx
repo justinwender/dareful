@@ -17,7 +17,7 @@ export function GroupChips({ chips, hidden, selectedId }: { chips: GroupChip[]; 
         {chips.map((c) => {
           const selected = c.id === selectedId;
           return (
-            <Link
+            <Link prefetch={false}
               key={c.id}
               href={selected ? "/" : `/?g=${c.id}`}
               aria-current={selected ? "true" : undefined}
@@ -33,7 +33,7 @@ export function GroupChips({ chips, hidden, selectedId }: { chips: GroupChip[]; 
           );
         })}
         {selectedId ? (
-          <Link href="/" className="relative inline-flex h-11 items-center px-2 text-[15px] font-semibold text-ink-2">
+          <Link prefetch={false} href="/" className="relative inline-flex h-11 items-center px-2 text-[15px] font-semibold text-ink-2">
             <LinkPending />
             Clear
           </Link>
@@ -44,7 +44,7 @@ export function GroupChips({ chips, hidden, selectedId }: { chips: GroupChip[]; 
           <summary className="inline-flex h-11 cursor-pointer list-none items-center font-semibold">Hidden</summary>
           <div className="flex flex-wrap gap-2 pt-1">
             {hidden.map((c) => (
-              <Link key={c.id} href={`/?g=${c.id}`} className="relative inline-flex h-9 max-w-full items-center overflow-hidden rounded-pill border border-line px-[14px] text-[15px] font-medium text-ink-3">
+              <Link prefetch={false} key={c.id} href={`/?g=${c.id}`} className="relative inline-flex h-9 max-w-full items-center overflow-hidden rounded-pill border border-line px-[14px] text-[15px] font-medium text-ink-3">
                 <LinkPending />
                 <span className="truncate">{c.label}</span>
               </Link>

@@ -143,6 +143,7 @@ async function removeEverything(): Promise<void> {
     }
     if (u.length) {
       await tx.delete(schema.codeAttempts).where(inArray(schema.codeAttempts.userId, u));
+      await tx.delete(schema.deviceStates).where(inArray(schema.deviceStates.userId, u));
       await tx.delete(schema.pushSubscriptions).where(inArray(schema.pushSubscriptions.userId, u));
       await tx.delete(schema.notificationLog).where(or(inArray(schema.notificationLog.userId, u), inArray(schema.notificationLog.causedBy, u)));
     }

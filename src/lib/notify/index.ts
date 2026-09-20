@@ -12,10 +12,11 @@ import { db, schema } from "@/db";
 import { marketById, quorumOf, tally, VOID_OUTCOME, votesOf } from "@/lib/ledger/markets";
 import { firstName } from "@/lib/ui/copy";
 import { sendEmail, sendPush } from "./channels";
-import { recipientsAfterVote, resultNotice, voteRequest, type Notice } from "./messages";
+import { positionsOf } from "@/lib/ledger/markets";
+import { joinedNotice, nudgeNotice, nudgeSeq, nudgeTargets, openedNotice, recipientsAfterVote, resultNotice, voteRequest, type Notice } from "./messages";
 
 /** Claims the (person, market, kind, count) slot; false if it was already told. This is what makes a retry silent. */
-export async function claimNotice(userId: string, dareId: string, kind: "vote_request" | "result", seq: number, causedBy: string): Promise<string | null> {
+export async function claimNotice(userId: string, dareId: string, kind: "vote_request" | "result" | "opened" | "joined" | "nudge", seq: number, causedBy: string): Promise<string | null> {
   const [row] = await db.insert(schema.notificationLog).values({ userId, dareId, kind, seq, causedBy }).onConflictDoNothing().returning({ id: schema.notificationLog.id });
   return row?.id ?? null;
 }
@@ -69,4 +70,80 @@ export async function notifyAfterVote(dareId: string, voterId: string): Promise<
   } catch (err) {
     console.error("notifying after a vote failed", { dareId, err });
   }
+}
+
+const APP_URL = () => process.env.NEXT_PUBLIC_APP_URL ?? "https://dareful.app";
+
+async function nameOf(userId: string): Promise<string> {
+  const [row] = await db.select({ displayName: schema.users.displayName }).from(schema.users).where(eq(schema.users.id, userId)).limit(1);
+  return firstName(row?.displayName ?? "Someone");
+}
+
+async function accountHolders(groupId: string): Promise<string[]> {
+  const rows = await db.select({ userId: schema.groupMembers.userId }).from(schema.groupMembers).where(and(eq(schema.groupMembers.groupId, groupId), sql`${schema.groupMembers.userId} is not null`, sql`${schema.groupMembers.leftAt} is null`));
+  return rows.map((r) => r.userId).filter((x): x is string => x !== null);
+}
+
+/** Someone asked something in a group: everyone else in it hears, once. A question asked with no group has nobody to tell yet. */
+export async function notifyOpened(dareId: string, askerId: string): Promise<void> {
+  try {
+    const d = await marketById(dareId);
+    if (!d || !d.creatorSignature) return;
+    const [others, askerName] = await Promise.all([accountHolders(d.groupId), nameOf(askerId)]);
+    await Promise.all(
+      others.filter((id) => id !== askerId).map(async (userId) => {
+        const id = await claimNotice(userId, dareId, "opened", 0, askerId);
+        if (id) await deliver(userId, id, openedNotice({ askerName, title: d.title, marketId: d.id, appUrl: APP_URL() }));
+      }),
+    );
+  } catch (err) {
+    console.error("notifying that a question opened failed", { dareId, err });
+  }
+}
+
+/** Someone got in: the person who asked hears, once per person who joins. Changing a number is not joining again. */
+export async function notifyJoined(dareId: string, joinerId: string): Promise<void> {
+  try {
+    const d = await marketById(dareId);
+    if (!d || d.creatorId === joinerId) return;
+    const positions = await positionsOf(dareId);
+    const order = positions.findIndex((p) => p.userId === joinerId);
+    if (order < 0) return;
+    const id = await claimNotice(d.creatorId, dareId, "joined", order + 1, joinerId);
+    if (id) await deliver(d.creatorId, id, joinedNotice({ joinerName: await nameOf(joinerId), title: d.title, inCount: positions.length, marketId: d.id, appUrl: APP_URL() }));
+  } catch (err) {
+    console.error("notifying that someone joined failed", { dareId, err });
+  }
+}
+
+export type NudgeResult = { waitingOn: number; told: number; reached: number };
+
+/**
+ * "We're waiting on you", from one person who is in to whoever is not. It is a person acting, so it is allowed
+ * where a timer would not be (Principle 1); and because a person can tap twice, each recipient hears about each
+ * question at most once per six hours, whoever is asking. `reached` is how many a channel actually took, so the
+ * screen can say so honestly and offer the person's own composer for the rest.
+ */
+export async function sendNudge(dareId: string, nudgerId: string, now: Date): Promise<NudgeResult> {
+  const d = await marketById(dareId);
+  if (!d || !d.creatorSignature || d.resolvedAt) return { waitingOn: 0, told: 0, reached: 0 };
+  const stage = d.lockedAt ? ("vote" as const) : ("enter" as const);
+  const [positions, votes, members] = await Promise.all([positionsOf(dareId), votesOf(dareId), accountHolders(d.groupId)]);
+  const quorumWallets = stage === "vote" ? await quorumOf(d).catch(() => []) : [];
+  const quorumIds = quorumWallets.length ? (await db.select({ id: schema.users.id }).from(schema.users).where(inArray(sql`lower(${schema.users.governanceWallet})`, quorumWallets.map((w) => w.toLowerCase())))).map((u) => u.id) : [];
+  const targets = nudgeTargets({ stage, nudgerId, nudgerIsIn: positions.some((p) => p.userId === nudgerId), memberIds: members, enteredIds: positions.map((p) => p.userId).filter((x): x is string => x !== null), quorumIds, votedIds: votes.map((v) => v.userId) });
+  const nudgerName = await nameOf(nudgerId);
+  let told = 0;
+  let reached = 0;
+  await Promise.all(
+    targets.map(async (userId) => {
+      const id = await claimNotice(userId, dareId, "nudge", nudgeSeq(now), nudgerId);
+      if (!id) return;
+      told += 1;
+      await deliver(userId, id, nudgeNotice({ nudgerName, title: d.title, stage, marketId: d.id, appUrl: APP_URL() }));
+      const [row] = await db.select({ channels: schema.notificationLog.channels }).from(schema.notificationLog).where(eq(schema.notificationLog.id, id)).limit(1);
+      if ((row?.channels.length ?? 0) > 0) reached += 1;
+    }),
+  );
+  return { waitingOn: targets.length, told, reached };
 }

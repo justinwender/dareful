@@ -10,7 +10,7 @@ import { ensureUsd } from "@/lib/ledger/denominations";
 import { createOccasionGroup, groupChipsFor, isMember, nameGroup, setArchived } from "@/lib/ledger/groups";
 import { homeFor } from "@/lib/ledger/home";
 import * as markets from "@/lib/ledger/markets";
-import { claimNotice } from "@/lib/notify";
+import { claimNotice, notifyJoined, notifyOpened, sendNudge } from "@/lib/notify";
 import { CODE_GUESSES_PER_HOUR, joinByCode, joinByMarketLink, roomCodeFor } from "@/lib/ledger/rooms";
 import { cleanup, codeOf, tempSigner, track, type Signer } from "./fixture";
 
@@ -129,4 +129,33 @@ test("the same person is told the same thing about the same question once, and e
   assert.deepEqual([typeof first, again], ["string", null]);
   assert.equal(typeof (await claimNotice(row.userId, row.dareId, row.kind, 2, row.causedBy)), "string", "the next vote is a new thing to say");
   await assert.rejects(() => db.insert(schema.notificationLog).values({ ...row, seq: 3, causedBy: null as never }), "nothing is sent because time passed");
+});
+
+const told = async (dareId: string) => (await db.select().from(schema.notificationLog).where(eq(schema.notificationLog.dareId, dareId))).map((r) => `${r.kind}:${r.userId === ana.user.id ? "ana" : r.userId === ben.user.id ? "ben" : r.userId === cy.user.id ? "cy" : "?"}<-${r.causedBy === ana.user.id ? "ana" : r.causedBy === ben.user.id ? "ben" : "cy"}`).sort();
+
+test("asking tells the rest of the group once; getting in tells the asker once per person, and changing a number tells nobody", async () => {
+  const { g, d } = await open();
+  await db.insert(schema.groupMembers).values([ben, cy].map((p) => ({ groupId: g.id, userId: p.user.id })));
+  await notifyOpened(d.id, ana.user.id);
+  await notifyOpened(d.id, ana.user.id);
+  assert.deepEqual(await told(d.id), ["opened:ben<-ana", "opened:cy<-ana"]);
+  const enter = async (who: Signer, bps: bigint) => markets.enterMarket({ dareId: d.id, userId: who.user.id, stake: 1000n, valueBps: bps, signature: await who.ledger.signTypedData(markets.enterTypedData(d, 1000n, bps)) });
+  await enter(ana, 5000n);
+  await notifyJoined(d.id, ana.user.id);
+  await enter(ben, 3000n);
+  await notifyJoined(d.id, ben.user.id);
+  await enter(ben, 6000n);
+  await notifyJoined(d.id, ben.user.id);
+  assert.deepEqual((await told(d.id)).filter((x) => x.startsWith("joined")), ["joined:ana<-ben"]);
+});
+
+test("a nudge reaches whoever is not in, once per window however many times it is tapped, and only from someone who is in", async () => {
+  const { g, d } = await open();
+  await db.insert(schema.groupMembers).values([ben, cy].map((p) => ({ groupId: g.id, userId: p.user.id })));
+  await markets.enterMarket({ dareId: d.id, userId: ana.user.id, stake: 1000n, valueBps: 5000n, signature: await ana.ledger.signTypedData(markets.enterTypedData(d, 1000n, 5000n)) });
+  const now = new Date();
+  assert.deepEqual(await sendNudge(d.id, cy.user.id, now), { waitingOn: 0, told: 0, reached: 0 }, "cy is not in, so cy cannot say we");
+  assert.deepEqual(await sendNudge(d.id, ana.user.id, now), { waitingOn: 2, told: 2, reached: 0 });
+  assert.deepEqual(await sendNudge(d.id, ana.user.id, now), { waitingOn: 2, told: 0, reached: 0 }, "the second tap tells nobody again");
+  assert.deepEqual((await told(d.id)).filter((x) => x.startsWith("nudge")), ["nudge:ben<-ana", "nudge:cy<-ana"]);
 });

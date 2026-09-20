@@ -73,7 +73,7 @@ export function CoveredCard(p: CoveredCardProps) {
     </article>
   );
   return p.href ? (
-    <Link href={p.href} className="relative block rounded-card">
+    <Link prefetch={false} href={p.href} className="relative block rounded-card">
       <LinkPending />
       {body}
     </Link>

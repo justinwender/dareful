@@ -38,7 +38,7 @@ export function MarketCard(p: MarketCardProps) {
   const pins: Pin[] = p.people.filter((x): x is { id: string; name: string; percent: number } => x.percent !== null).map((x) => ({ id: x.id, name: x.name, percent: x.percent }));
   const kicker = p.state === "open" ? "Open" : p.state === "locked" ? "Waiting on an answer" : p.state === "voided" ? "No answer" : "Settled";
   return (
-    <Link href={`/m/${p.id}`} className="relative block rounded-card">
+    <Link prefetch={false} href={`/m/${p.id}`} className="relative block rounded-card">
       <LinkPending />
       <article className="flex flex-col gap-3 rounded-card border border-line bg-surface px-4 py-3.5">
         <div className="flex items-center justify-between gap-2">

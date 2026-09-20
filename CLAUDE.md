@@ -267,23 +267,24 @@ Real values live in `.env.local` (gitignored). `.env.example` is committed with 
 - A question may have no group: the group is whoever joins, called by its latest question until somebody names it. A question's link or a room code joins an account-holder to its group at once. Room codes are six characters from `CODE_ALPHABET` (no O, I, Z, 0, 1), one live code per question, dead at lock, twenty misses an hour per person.
 - Errors are ink, never marigold and never red (docs/design.md 5.1): `Problem` under the field with `aria-invalid` and `aria-describedby`, and `ProblemSummary` once above the button. Buttons wait per 5.2: the label stays, a 2px line runs, "Still going." at three seconds.
 - Notifications are caused by a person and say so: `notification_log.caused_by` is not nullable. No notification, relay text, or share card carries an amount, a unit, or anyone's number. The service worker has no fetch handler and caches nothing. An email address is read from Dynamic when it is needed and never stored.
+- **Verification is a real signed-in session.** The development browser holds real sessions on `dareful.app` and `localhost:3000` (the person signs in; a credential is never handled for them). No fix lands without being exercised through one on the surface where it was reported. A forged cookie cannot sign and a library check sees nothing past a signature; neither is verification. What cannot be exercised that way (iOS WebKit, an installed app, a push arriving) is reported as unverified, with the exact check for a phone. And a claim about something that could not be read is labeled an assumption, never stated as a reading.
+- Dynamic's own signing sheet is off in its dashboard (`showEmbeddedWalletActionsUI`): it put "Signature request" and raw hex on screen, locked the body's scroll, and two in a row froze iOS. A confirm or an entry is approved by its own button. A vote binds other people and gets the app's own short sheet (`Sheet`), which never locks the page's scroll. Never sign twice behind one tap with a third-party sheet in between.
+- Safe-area insets: top and sides are paid once on `body`; anything fixed or sticky pays its own bottom inset. Never `100vh`.
+- Prefetch is off by default (`ButtonLink`, every `Link`): each one is a full server render and often an indexer query. Opt in only where it is cheap and likely.
+- A nudge is a person acting, so it may exist; it is throttled to once per recipient per question per six hours, only someone who is in can send one, and the screen says what it actually reached.
+- The contract's group member list is everyone who was ever in, never the current truth: an offchain `left_at` cannot remove anyone from a new question's quorum.
 - A migration must leave the build that is already deployed working: the app and the database deploy at different moments.
-- Leaving a group is not possible yet: `DarefulLedger` cannot remove a member and the quorum is read from it, so `left_at` alone would silently leave a departed voter in every later threshold.
 - The seed produces both regimes, always-square and let-it-ride. A one-regime seed makes Phase 1 look correct when it is not.
 - No em dashes in any generated documentation or copy.
 
 ## Current phase
 
-**Phase 2B: the blocker, the rework, and notifications.** Submission gate October 13, 2026, 23:59 ET. Phase 2 is 2A markets core (done), 2B (this), 2C the argument settler, 2D accountless and in-person, 2E media. The submission bundle is its own later phase, closer to the deadline.
+**Post-2B testing round (2026-09-20).** Phase 2C has not started and does not start without explicit approval. Submission gate October 13, 2026, 23:59 ET; the submission bundle and demo are deliberately far off.
 
-2B built, in order: the "still setting up" blocker (a Dareful session with no Dynamic login on that device, which is the ordinary state of a second device; detected when a screen loads, repaired by a code step, never described as waiting); the fixture rule (anything standing in for an external system is recorded from it or built by its serializer) with the wallet credential and model responses recorded, and contact-picker parsing marked unverified; home reworked event-first (ask, join by code, "Needs you", "Just happened", people, groups as filtering chips), questions asked with no group, the room code moved forward from 2D, the invitation for someone holding a link, hiding a group; and the vote cascade over Web Push and email with the voter-relayed nudge.
+2B is on production. Its first real session (two iOS, one Android) found four things, all diagnosed in a real signed-in session before any fix: the iOS freeze when creating a question (Dynamic's sheet, twice; now off, with the app's own sheet for a vote); the back control under the status bar in the installed app (no safe-area insets); sessions ending (Dynamic's token was two hours; now thirty days and matched); and no notification on joining (it was never an event, and no device had ever subscribed). Added: opened, joined and nudge notifications with the permission ask after entering or asking; prefetch off by default; `device_states` kept in a table.
 
-Open, and needing people: the four-person market on production (2A's checkpoint, blocked until now by the blocker), and the ghost half of the Phase 1 checkpoint (pick a contact, log a cover, that person signs up by phone the next day and finds it waiting), which verifies the phone-hash fix and has never run.
+Needs a phone, and has not been verified: creating a question on iOS with Dynamic's sheet off; the insets in the installed app on both platforms; a push actually arriving.
 
-Open, and needing a ruling: leaving a group. The ledger contract cannot remove a member and the quorum is read from it (docs/decisions.md 2026-09-19).
+Deferred: leaving a group (groups are being redesigned; the quorum correction is logged); a database reset (propose what it destroys and preserves); the home screen's clutter (noted, wants a design pass).
 
-Required before 2C: one scheduled job that locks at close time, gives `expire()` a caller, and sends the creator's deadline notice.
-
-Not in 2B: the lobby as a roll call (polled count, kick), ghosts in markets, `arbitrate` and `expire` screens, arguments, numeric and categorical questions, notifications for anything but the vote cascade.
-
-Next, only after explicit approval: Phase 2C, the argument settler.
+Still open from earlier: the four-person market on production, and the ghost half of the Phase 1 checkpoint. Required before 2C: one scheduled job (lock at close, `expire()`, the creator's deadline notice); the host is on a plan whose cron runs daily.

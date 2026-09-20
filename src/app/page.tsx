@@ -40,7 +40,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ g
   ]);
   const empty = !home.hasAnything && ghosts.length === 0 && suggested.length === 0 && waiting.length === 0;
   const me = (
-    <Link href={`/p/${user.id}`} aria-label="You" className="inline-flex h-12 w-12 items-center justify-center rounded-pill">
+    <Link prefetch={false} href={`/p/${user.id}`} aria-label="You" className="inline-flex h-12 w-12 items-center justify-center rounded-pill">
       <Avatar name={user.displayName} hue={hueFor(user.id)} size={28} />
     </Link>
   );
@@ -57,7 +57,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ g
             <p className="text-body text-ink-2">Ask your group chat something, or join something one of them already asked.</p>
           </div>
           <div className="flex flex-col gap-3">
-            <ButtonLink href="/m/new" variant="primary">
+            <ButtonLink prefetch href="/m/new" variant="primary">
               Ask something
             </ButtonLink>
             <p className="text-body-sm text-ink-2">Everyone who joins puts a number in. Whoever lands closest comes out best. You send the link to the chat and it starts.</p>
@@ -68,7 +68,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ g
             <ul className="flex flex-col gap-1.5">
               {STARTERS.map((line) => (
                 <li key={line}>
-                  <Link href={`/m/new?line=${encodeURIComponent(line)}`} className="relative flex min-h-14 items-center rounded-button bg-surface px-4 py-3 font-serif text-[17px] leading-[22px] text-ink">
+                  <Link prefetch={false} href={`/m/new?line=${encodeURIComponent(line)}`} className="relative flex min-h-14 items-center rounded-button bg-surface px-4 py-3 font-serif text-[17px] leading-[22px] text-ink">
                     <LinkPending />
                     {line}
                   </Link>
@@ -93,7 +93,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ g
       <div className="flex flex-col gap-7 py-2">
         {/* 4.7: ask, then join. One marigold control on the screen, and joining directly under it. */}
         <div className="flex flex-col gap-4">
-          <ButtonLink href={home.selected ? `/m/new?group=${home.selected.id}` : "/m/new"} variant="primary">
+          <ButtonLink prefetch href={home.selected ? `/m/new?group=${home.selected.id}` : "/m/new"} variant="primary">
             Ask something
           </ButtonLink>
           <CodeJoinCompact />
@@ -102,7 +102,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ g
         {home.selected ? <GroupStrip chip={home.selected} /> : null}
 
         {waiting.length > 0 && !home.selected ? (
-          <Link href="/welcome" className="relative flex items-center justify-between gap-3 rounded-card border border-dashed border-line-strong px-4 py-3.5">
+          <Link prefetch={false} href="/welcome" className="relative flex items-center justify-between gap-3 rounded-card border border-dashed border-line-strong px-4 py-3.5">
             <LinkPending />
             <span className="text-body-strong text-ink">{waiting.length === 1 ? "One thing was waiting for you" : "A few things were waiting for you"}</span>
             <span className="text-[15px] font-semibold text-ink-2">Have a look</span>
@@ -155,7 +155,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ g
             <ul className="flex flex-col gap-1.5">
               {home.people.map(({ user: p, token }) => (
                 <li key={p.id}>
-                  <Link href={`/p/${p.id}`} className="relative flex min-h-14 items-center gap-3 rounded-button bg-surface px-3">
+                  <Link prefetch={false} href={`/p/${p.id}`} className="relative flex min-h-14 items-center gap-3 rounded-button bg-surface px-3">
                     <LinkPending />
                     <Avatar name={p.displayName} hue={hueFor(p.id)} size={36} />
                     <span className="min-w-0 flex-1 truncate text-body-strong text-ink">{p.displayName}</span>
@@ -177,7 +177,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ g
                 ? null
                 : ghosts.map((g) => (
                     <li key={g.id}>
-                      <Link href={`/p/c/${g.id}`} className="relative flex min-h-14 items-center gap-3 rounded-button bg-surface px-3">
+                      <Link prefetch={false} href={`/p/c/${g.id}`} className="relative flex min-h-14 items-center gap-3 rounded-button bg-surface px-3">
                         <LinkPending />
                         <Avatar name={g.displayName} hue="stone" size={36} ghost />
                         <span className="min-w-0 flex-1 truncate text-body-strong text-ink">{g.displayName}</span>

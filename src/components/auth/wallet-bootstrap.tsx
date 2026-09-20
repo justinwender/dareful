@@ -125,7 +125,7 @@ export function WalletBootstrap({ settled, sessionDynamicUserId }: { settled: bo
   if (skip || !isLoggedIn || phase.at === "idle" || phase.at === "done") return null;
 
   return (
-    <div role="dialog" aria-modal="true" aria-live="polite" className="fixed inset-0 z-50 flex flex-col justify-center bg-ground px-5">
+    <div role="dialog" aria-modal="true" aria-live="polite" className="fixed inset-0 z-50 flex flex-col justify-center bg-ground px-5 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
       <div className="mx-auto flex w-full max-w-[420px] flex-col gap-6">
         {phase.at === "working" ? (
           <p className="text-question text-ink">{phase.line}</p>

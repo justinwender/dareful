@@ -20,7 +20,7 @@ export function NeedsYou({ rows, viewer, showAll, allHref }: { rows: NeedRow[]; 
       <h2 className="text-label text-ink-2">Needs you</h2>
       <div className="overflow-hidden rounded-card border border-line bg-surface">
         {shown.map((r, i) => (
-          <Link key={`${r.kind}-${r.key}`} href={r.href} className={`relative grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-[14px] pr-[14px] pl-4 ${i > 0 ? "border-t border-line" : ""}`}>
+          <Link prefetch={false} key={`${r.kind}-${r.key}`} href={r.href} className={`relative grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-[14px] pr-[14px] pl-4 ${i > 0 ? "border-t border-line" : ""}`}>
             <LinkPending />
             <span className="flex min-w-0 flex-col gap-1">
               <span className="text-[13px] leading-4 text-ink-3">{r.context}</span>
@@ -36,7 +36,7 @@ export function NeedsYou({ rows, viewer, showAll, allHref }: { rows: NeedRow[]; 
           </Link>
         ))}
         {more > 0 ? (
-          <Link href={allHref} className="relative flex h-11 items-center border-t border-line px-4 text-[15px] font-semibold text-ink-2">
+          <Link prefetch={false} href={allHref} className="relative flex h-11 items-center border-t border-line px-4 text-[15px] font-semibold text-ink-2">
             <LinkPending />
             {more} more
           </Link>

@@ -78,6 +78,13 @@
       "when": 1789848630377,
       "tag": "0010_code_attempts",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789920425874,
+      "tag": "0011_device_states",
+      "breakpoints": true
     }
   ]
 }

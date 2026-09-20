@@ -26,3 +26,12 @@ export function deviceState(input: { me: Me | null; sdkHasLoaded: boolean; sdkUs
   if (have.has(me.ledgerWallet.toLowerCase()) && have.has(me.governanceWallet.toLowerCase())) return "ready";
   return graceOver ? "keys-missing" : "checking";
 }
+
+/** A user agent reduced to the one thing a sign-in problem turns on. Nothing finer is kept. */
+export function platformOf(userAgent: string | null): "ios" | "android" | "desktop" | "other" {
+  const ua = userAgent ?? "";
+  if (/iPhone|iPad|iPod/.test(ua)) return "ios";
+  if (/Android/.test(ua)) return "android";
+  if (/Macintosh|Windows NT|X11|CrOS/.test(ua)) return "desktop";
+  return "other";
+}

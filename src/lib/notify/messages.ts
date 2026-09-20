@@ -50,3 +50,41 @@ export function recipientsAfterVote(input: { quorumUserIds: string[]; votedUserI
   const waiting = Array.from(new Set(input.quorumUserIds)).filter((id) => id !== input.voterId && !voted.has(id));
   return input.resolved ? { requests: [], results: waiting } : { requests: waiting, results: [] };
 }
+
+/** "Priya asked something": to everyone in the group it was asked in, except Priya. The canonical send-worthy notice (Principle 1). */
+export function openedNotice(input: { askerName: string; title: string; marketId: string; appUrl: string }): Notice {
+  return { title: `${input.askerName} asked something`, body: `“${short(input.title)}?” Put your number on it.`, url: `${input.appUrl}/m/${input.marketId}` };
+}
+
+/** To the person who asked, when someone gets in. Who, and how many are in now; never their number. */
+export function joinedNotice(input: { joinerName: string; title: string; inCount: number; marketId: string; appUrl: string }): Notice {
+  return { title: `${input.joinerName} is in`, body: `“${short(input.title)}?” ${input.inCount === 2 ? "That's two of you." : `That's ${input.inCount} in.`}`, url: `${input.appUrl}/m/${input.marketId}` };
+}
+
+/** One tap from someone waiting: "we're waiting on you". A person acting, by name, on demand. */
+export function nudgeNotice(input: { nudgerName: string; title: string; stage: "enter" | "vote"; marketId: string; appUrl: string }): Notice {
+  return {
+    title: `${input.nudgerName} is waiting on you`,
+    body: input.stage === "enter" ? `“${short(input.title)}?” Everyone else has a number in.` : `“${short(input.title)}?” It needs your call on how it came out.`,
+    url: `${input.appUrl}/m/${input.marketId}${input.stage === "vote" ? "#ballot" : ""}`,
+  };
+}
+
+export const NUDGE_WINDOW_MS = 6 * 3_600_000;
+
+/**
+ * Who a nudge goes to: while numbers are open, whoever in the group has not put one in; once locked, whoever in
+ * the quorum has not called it. Never the person nudging, and only someone who is in the question may nudge, so
+ * it is always "we're waiting on you" from somebody who is themselves in.
+ */
+export function nudgeTargets(input: { stage: "enter" | "vote"; nudgerId: string; nudgerIsIn: boolean; memberIds: string[]; enteredIds: string[]; quorumIds: string[]; votedIds: string[] }): string[] {
+  if (!input.nudgerIsIn) return [];
+  const done = new Set(input.stage === "enter" ? input.enteredIds : input.votedIds);
+  const pool = input.stage === "enter" ? input.memberIds : input.quorumIds;
+  return Array.from(new Set(pool)).filter((id) => id !== input.nudgerId && !done.has(id));
+}
+
+/** The same person is nudged about the same question at most once per window, whoever is asking. */
+export function nudgeSeq(at: Date): number {
+  return Math.floor(at.getTime() / NUDGE_WINDOW_MS);
+}

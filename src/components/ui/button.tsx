@@ -83,9 +83,14 @@ export function Button({ className, variant = "secondary", size, loading, disabl
 
 export type ButtonLinkProps = React.ComponentProps<typeof Link> & Variants;
 
-export function ButtonLink({ className, variant = "secondary", size, children, ...props }: ButtonLinkProps) {
+/**
+ * Prefetch is off unless a caller asks for it. Every screen here is rendered per person per request, so a
+ * prefetch is a full server render, and a person or market page also costs a query against an indexer capped at a
+ * hundred a minute. Home used to fire a dozen of them on every load (docs/decisions.md 2026-09-20).
+ */
+export function ButtonLink({ className, variant = "secondary", size, children, prefetch = false, ...props }: ButtonLinkProps) {
   return (
-    <Link className={cn(buttonVariants({ variant, size: sizeFor(variant, size) }), "relative overflow-hidden", className)} {...props}>
+    <Link prefetch={prefetch} className={cn(buttonVariants({ variant, size: sizeFor(variant, size) }), "relative overflow-hidden", className)} {...props}>
       {children}
       <LinkPending />
     </Link>
