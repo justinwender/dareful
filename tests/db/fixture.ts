@@ -135,6 +135,7 @@ async function removeEverything(): Promise<void> {
       const ids = asked.map((d) => d.id);
       await tx.delete(schema.notificationLog).where(inArray(schema.notificationLog.dareId, ids));
       await tx.delete(schema.roomCodes).where(inArray(schema.roomCodes.dareId, ids));
+      await tx.delete(schema.dareNumberSeries).where(inArray(schema.dareNumberSeries.dareId, ids));
       await tx.delete(schema.dareVotes).where(inArray(schema.dareVotes.dareId, ids));
       await tx.delete(schema.dareStatements).where(inArray(schema.dareStatements.dareId, ids));
       await tx.delete(schema.darePositions).where(inArray(schema.darePositions.dareId, ids));

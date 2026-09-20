@@ -127,6 +127,12 @@ export const groups = pgTable("groups", {
   isDyad: boolean("is_dyad").notNull().default(false),
   createdBy: uuid("created_by").references(() => users.id),
   createdAt: ts("created_at").notNull().defaultNow(),
+  /**
+   * How many times "want to call them something?" has been waved away for this set. It is offered when a set
+   * asks its second question and never again after two (docs/design.md 3.20). A property of the set, not of a
+   * person: the point is that the set stops being asked.
+   */
+  namePromptDismissals: smallint("name_prompt_dismissals").notNull().default(0),
 }).enableRLS();
 
 export const groupMembers = pgTable(
@@ -826,4 +832,24 @@ export const deviceStates = pgTable(
     createdAt: ts("created_at").notNull().defaultNow(),
   },
   (t) => [index("device_states_user_created").on(t.userId, t.createdAt)],
+).enableRLS();
+
+/**
+ * The group's number over time, for the sparkline a slow question gets (docs/design.md 3.22). One row each time
+ * someone gets in or changes their number: the aggregate at that moment and how many were in. The aggregate
+ * only, never whose entry moved it, because plotting entries would out people's timing.
+ */
+export const dareNumberSeries = pgTable(
+  "dare_number_series",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    dareId: uuid("dare_id")
+      .notNull()
+      .references(() => dares.id),
+    /** Stake-weighted mean, in basis points. */
+    valueBps: integer("value_bps").notNull(),
+    entries: smallint("entries").notNull(),
+    at: ts("at").notNull().defaultNow(),
+  },
+  (t) => [index("dare_number_series_dare_at").on(t.dareId, t.at), check("dare_number_series_range", sql`${t.valueBps} between 0 and 10000`)],
 ).enableRLS();

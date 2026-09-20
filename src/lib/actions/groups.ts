@@ -17,7 +17,7 @@ export async function createGroupAction(formData: FormData): Promise<void> {
   const name = String(formData.get("name") ?? "").trim();
   if (!name) throw new Error("a group needs a name");
   const group = await createGroup({ name, createdBy: user.id });
-  redirect(`/g/${group.id}`);
+  redirect("/");
 }
 
 /** Makes a link and returns it once. Only the hash is stored, so this is the only moment the link is readable. */

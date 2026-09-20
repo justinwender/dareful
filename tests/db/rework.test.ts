@@ -7,7 +7,7 @@ import { after, before, test } from "node:test";
 import { and, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { ensureUsd } from "@/lib/ledger/denominations";
-import { createOccasionGroup, groupChipsFor, isMember, nameGroup, setArchived } from "@/lib/ledger/groups";
+import { createOccasionGroup, dismissNamePrompt, isMember, nameGroup, peopleSetsFor, setForPeople } from "@/lib/ledger/groups";
 import { homeFor } from "@/lib/ledger/home";
 import * as markets from "@/lib/ledger/markets";
 import { claimNotice, notifyJoined, notifyOpened, sendNudge } from "@/lib/notify";
@@ -32,7 +32,7 @@ async function open(title?: string) {
   const d = await markets.openMarket(d0.id, ana.user.id, await ana.ledger.signTypedData(markets.createTypedData(d0)));
   return { g, d };
 }
-const chipsOf = (who: Signer) => groupChipsFor(who.user.id, who.user.displayName);
+const setsOf = (who: Signer) => peopleSetsFor(who.user.id, who.user.displayName);
 const home = (who: Signer) => homeFor(who.user, { now: new Date(), closes: () => "tonight" });
 
 test("a code someone reads out puts a signed-in person into the question's group, once", async () => {
@@ -77,38 +77,81 @@ test("a question's link lets an account-holder in; a draft's link goes nowhere",
   assert.equal(await isMember(g2.id, cy.user.id), false);
 });
 
-test("a group nobody named is called by its latest question, dashed until it recurs, then worth naming", async () => {
+test("the sets offered under who's in: the last one asked first, described by names, offered a name on its second question, and never after two not-nows", async () => {
   const { g, d } = await open("Does the ferry run on Sunday?");
-  let chip = (await chipsOf(ana)).find((c) => c.id === g.id);
-  assert.deepEqual([chip?.label, chip?.named, chip?.once, chip?.worthNaming], ["Does the ferry run on Sunday", false, true, false]);
-  const d2 = await markets.draftMarket({ creatorId: ana.user.id, groupId: g.id, denomId: d.denomId, title: "Second one here?", termsText: "Yes if it happens.", resolvesBy: new Date(Date.now() + 3_600_000) });
-  await markets.openMarket(d2.id, ana.user.id, await ana.ledger.signTypedData(markets.createTypedData(d2)));
-  chip = (await chipsOf(ana)).find((c) => c.id === g.id);
-  assert.deepEqual([chip?.label, chip?.once, chip?.worthNaming], ["Second one here", false, true]);
+  await joinByMarketLink(d.id, ben.user.id);
+  const stranger = await tempSigner("Stranger");
+  const made = await setForPeople(ana.user.id, [ben.user.id, stranger.user.id]).catch(() => null);
+  assert.equal(made, null, "someone ana shares nothing with cannot be put into a question by id alone");
+  let mine = (await setsOf(ana)).find((x) => x.groupId === g.id);
+  assert.deepEqual([mine?.label, mine?.named, mine?.asked, mine?.offerName], ["Ben and you", false, 1, true]);
+  assert.equal((await setsOf(ana))[0]?.groupId, g.id, "the set asked most recently comes first, so it can be preselected");
+  await dismissNamePrompt(g.id, ana.user.id);
+  assert.equal((await setsOf(ana)).find((x) => x.groupId === g.id)?.offerName, true, "once is not never");
+  await dismissNamePrompt(g.id, ben.user.id);
+  assert.equal((await setsOf(ana)).find((x) => x.groupId === g.id)?.offerName, false);
   await nameGroup(g.id, ana.user.id, "  Ferry  people ");
-  chip = (await chipsOf(ana)).find((c) => c.id === g.id);
-  assert.deepEqual([chip?.label, chip?.named, chip?.worthNaming], ["Ferry people", true, false]);
+  mine = (await setsOf(ben)).find((x) => x.groupId === g.id);
+  assert.deepEqual([mine?.label, mine?.named, mine?.offerName], ["Ferry people", true, false]);
 });
 
-test("a draft nobody sent is not a group to anyone, and is a row only its creator is asked to finish", async () => {
+test("picking the same people again is the same set, not a second one; one other person is the two of them", async () => {
+  const { g, d } = await open();
+  await joinByMarketLink(d.id, ben.user.id);
+  await joinByMarketLink(d.id, cy.user.id);
+  track.group((await setForPeople(ana.user.id, [cy.user.id, ben.user.id])).id);
+  assert.equal((await setForPeople(ana.user.id, [cy.user.id, ben.user.id])).id, g.id);
+  assert.equal((await setForPeople(ana.user.id, [ben.user.id, cy.user.id, ben.user.id])).id, g.id);
+  const two = await setForPeople(ana.user.id, [ben.user.id]);
+  assert.equal(two.isDyad, true);
+  // A set that has never asked anything is not asked what it is called: the question comes with its second one.
+  const dana = await tempSigner("Dana Q");
+  await joinByMarketLink(d.id, dana.user.id);
+  const fresh = await setForPeople(ana.user.id, [ben.user.id, dana.user.id]);
+  track.group(fresh.id);
+  assert.notEqual(fresh.id, g.id);
+  const listed = (await setsOf(ana)).find((x) => x.groupId === fresh.id);
+  assert.deepEqual([listed?.label, listed?.asked, listed?.offerName], ["Ben, Dana and you", 0, false]);
+});
+
+test("a draft nobody sent is not a set to anyone, and is a row only its asker is asked to finish", async () => {
   const { g, d0 } = await ask("Never sent this one?");
-  assert.equal((await chipsOf(ana)).some((c) => c.id === g.id), false);
+  assert.equal((await setsOf(ana)).some((x) => x.groupId === g.id), false);
   const row = (await home(ana)).needs.find((n) => n.key === d0.id);
   assert.deepEqual([row?.kind, row?.verb, row?.context], ["finish", "Finish", "You started this and never sent it"]);
   assert.equal((await home(ben)).needs.some((n) => n.key === d0.id), false);
 });
 
-test("hiding a group hides it for that person only, and something new there brings it back", async () => {
-  const { g, d } = await open();
+test("home lists people with something open one by one and everyone square as one row; there are no groups on it", async () => {
+  const { d } = await open();
   await joinByMarketLink(d.id, ben.user.id);
-  await setArchived(g.id, ben.user.id, true);
-  assert.equal((await home(ben)).chips.some((c) => c.id === g.id), false);
-  assert.equal((await home(ben)).hidden.some((c) => c.id === g.id), true);
-  assert.equal((await home(ben)).needs.some((n) => n.key === d.id), false, "a hidden group asks for nothing");
-  assert.equal((await home(ana)).chips.some((c) => c.id === g.id), true, "nobody else's view changed");
-  const d2 = await markets.draftMarket({ creatorId: ana.user.id, groupId: g.id, denomId: d.denomId, title: "Something new here?", termsText: "Yes if it happens.", resolvesBy: new Date(Date.now() + 3_600_000) });
-  await markets.openMarket(d2.id, ana.user.id, await ana.ledger.signTypedData(markets.createTypedData(d2)));
-  assert.equal((await home(ben)).chips.some((c) => c.id === g.id), true);
+  const h = await home(ana);
+  assert.equal(h.square.some((p) => p.id === ben.user.id), true);
+  assert.equal(h.people.some((p) => p.user.id === ben.user.id), false);
+  assert.equal("chips" in h || "hidden" in h || "selected" in h, false);
+});
+
+test("getting in and changing a number each leave a point of the group's number over time, and nothing about who", async () => {
+  const { d } = await open();
+  await joinByMarketLink(d.id, ben.user.id);
+  const enter = async (who: Signer, stake: bigint, bps: bigint) => markets.enterMarket({ dareId: d.id, userId: who.user.id, stake, valueBps: bps, signature: await who.ledger.signTypedData(markets.enterTypedData(d, stake, bps)) });
+  await enter(ana, 1000n, 8000n);
+  await enter(ben, 3000n, 4000n);
+  await enter(ben, 3000n, 2000n);
+  const series = await db.select().from(schema.dareNumberSeries).where(eq(schema.dareNumberSeries.dareId, d.id)).orderBy(schema.dareNumberSeries.at);
+  assert.deepEqual(series.map((x) => [x.valueBps, x.entries]), [[8000, 1], [5000, 2], [3500, 2]]);
+  assert.equal(Object.keys(series[0] ?? {}).some((k) => /user|person|who/i.test(k)), false);
+  assert.equal((await markets.positionsOf(d.id)).find((p) => p.userId === ben.user.id)?.value, 2000n, "the number is theirs to change until it locks");
+});
+
+test("after lock a number cannot move, and nothing can be put on it for nothing", async () => {
+  const { d } = await open();
+  const sign = async (stake: bigint, bps: bigint) => ana.ledger.signTypedData(markets.enterTypedData(d, stake, bps));
+  assert.equal(await codeOf(async () => markets.enterMarket({ dareId: d.id, userId: ana.user.id, stake: 0n, valueBps: 5000n, signature: await sign(0n, 5000n) })), "bad_input", "the contract refuses a stake of zero, and one refusal fails the whole lock");
+  await markets.enterMarket({ dareId: d.id, userId: ana.user.id, stake: 1000n, valueBps: 5000n, signature: await sign(1000n, 5000n) });
+  await db.update(schema.dares).set({ lockedAt: new Date() }).where(eq(schema.dares.id, d.id));
+  assert.equal(await codeOf(async () => markets.enterMarket({ dareId: d.id, userId: ana.user.id, stake: 1000n, valueBps: 9000n, signature: await sign(1000n, 9000n) })), "wrong_state");
+  assert.equal((await markets.positionsOf(d.id))[0]?.value, 5000n);
 });
 
 test("what happened and somebody's case are different kinds, and the outcome proposal reads only the first", async () => {

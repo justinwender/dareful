@@ -16,7 +16,11 @@ import { RoomCode } from "@/components/markets/room-code";
 import { AfterVote } from "@/components/notify/after-vote";
 import { Nudge } from "@/components/notify/nudge";
 import { relayText } from "@/lib/notify/messages";
-import { Ballot, EntryPanel, LockButton, WhatHappened, type Signing, type StakeUnit } from "@/components/markets/market-actions";
+import { Ballot, LockButton, WhatHappened, type Signing, type StakeUnit } from "@/components/markets/market-actions";
+import { NumberStage, type StagePicture } from "@/components/markets/number-stage";
+import { SetupSheet } from "@/components/markets/setup-sheet";
+import { Sparkline } from "@/components/markets/sparkline";
+import { buckets, countWord, groupsNumberBps, showsMarker, sparkEligible, tenthOf, weightCaption } from "@/lib/ledger/weight";
 import { currentUser } from "@/lib/auth/session";
 import { contracts } from "@/lib/chain/contracts";
 import { daresDomain, Stalemate } from "@/lib/chain/typed-data";
@@ -25,9 +29,8 @@ import { isMember } from "@/lib/ledger/groups";
 import { dareOnchainId } from "@/lib/ledger/ids";
 import { numbersVisible } from "@/lib/ledger/market-view";
 import { createTypedData, marketById, positionsOf, reconcileFromIndexer, stateOf, tally, VOID_OUTCOME, votesOf } from "@/lib/ledger/markets";
-import { groupNumber } from "@/lib/ledger/scoring";
 import { marketShare } from "@/lib/ledger/share";
-import { closesLabel, firstName } from "@/lib/ui/copy";
+import { closesLabel, dayLabel, firstName, lockedLabel } from "@/lib/ui/copy";
 import { hueFor } from "@/lib/ui/hue";
 import { formatMoney, unitWords } from "@/lib/ui/units";
 import { viewerClock } from "@/lib/ui/zone";
@@ -113,8 +116,6 @@ export default async function MarketPage({ params }: { params: Promise<{ id: str
   const show = numbersVisible(d, mine !== null);
   const others = positions.filter((p) => p.userId !== me.id);
   const pins = positions.map((p) => ({ id: p.userId as string, name: person.get(p.userId as string)?.displayName ?? "Someone", percent: Number(p.value) / 100 }));
-  const avg = groupNumber(others.map((p) => ({ stake: p.stake, value: p.value })));
-  const average = others.length === 0 || d.revealMode === "blind" ? (others.length ? ({ kind: "hidden", names: others.map((p) => nameOf(p.userId as string)) } as const) : null) : ({ kind: "shown", percent: Math.round(Number(avg ?? 0n) / 100), names: others.map((p) => nameOf(p.userId as string)) } as const);
 
   const { chainId, dares } = contracts();
   const signing: Signing = {
@@ -131,6 +132,63 @@ export default async function MarketPage({ params }: { params: Promise<{ id: str
   const unit: StakeUnit = { monetary: denomination.monetary, quantifiable: denomination.quantifiable, singular: denomination.template === "next_time" ? "next time" : denomination.label, plural: denomination.pluralLabel };
   const stakeWords = (s: bigint) => (denomination.monetary ? formatMoney(s) : unitWords(denomination, s));
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://dareful.app";
+  // The picture of where everyone landed, for someone who is in. Weights when numbers may be seen (an open
+  // question once you have picked, or any question once locked); otherwise who is in and nothing about where.
+  const entries = positions.map((p) => ({ id: p.userId as string, stake: p.stake, valueBps: p.value }));
+  const number = groupsNumberBps(entries);
+  const tallest = buckets(entries).reduce((m, b) => (b.stake > m ? b.stake : m), 0n);
+  const total = entries.reduce((a, e) => a + e.stake, 0n);
+  const picture: StagePicture | null = !mine
+    ? null
+    : show
+      ? {
+          kind: "weights",
+          buckets: buckets(entries).map((b) => ({ n: b.n, heightPermille: b.heightPermille, noStake: b.noStake })),
+          mySharePermille: tallest === 0n ? 0 : Number((mine.stake * 1000n) / tallest),
+          groupTenth: showsMarker(entries) && number !== null ? tenthOf(number) : null,
+          groupPercent: showsMarker(entries) && number !== null ? Number(number) / 100 : null,
+          riding: `${stakeWords(total)} riding, ${entries.length === 1 ? "just you so far" : `${countWord(entries.length)} of you`}`,
+          caption: weightCaption({ entries, viewerId: me.id, nameOf: (id) => firstName(person.get(id)?.displayName ?? "Someone"), stakeWords }),
+        }
+      : { kind: "blind", inCount: positions.length, ofCount: Math.max(seats.length, positions.length) };
+  const series = state === "open" || state === "locked" ? await db.select({ at: schema.dareNumberSeries.at, valueBps: schema.dareNumberSeries.valueBps }).from(schema.dareNumberSeries).where(eq(schema.dareNumberSeries.dareId, d.id)).orderBy(asc(schema.dareNumberSeries.at)) : [];
+  // Both conditions, checked here and now: a slow question with three in and a fast one with six both exist.
+  const spark = show && mine && number !== null && sparkEligible({ openedAt: d.createdAt, now: new Date(clock.now), entries: positions.length, points: series.length });
+  const lockedLine = d.lockedAt ? lockedLabel(d.lockedAt, new Date(clock.now), clock.zone) : null;
+  const stage = (
+    <NumberStage
+      dareId={d.id}
+      signing={signing}
+      unit={unit}
+      state={state === "draft" ? "draft" : state === "locked" ? "locked" : "open"}
+      me={{ name: me.displayName, hue: hueFor(me.id) }}
+      mine={mine ? { percent: Number(mine.value) / 100, stake: mine.stake.toString(), stakeWords: stakeWords(mine.stake) } : null}
+      picture={picture}
+      mark={d.markKind === "emoji" ? d.markValue : null}
+      suggestion={d.anchorValue !== null ? { percent: Math.round(Number(d.anchorValue) / 100), rationale: d.anchorRationale } : null}
+      othersIn={others.map((p) => nameOf(p.userId as string))}
+      lockedLine={lockedLine}
+    />
+  );
+  const setup = (
+    <SetupSheet>
+      <p className="text-body-sm-prose text-ink-2">{d.termsText}</p>
+      {d.resolvesBy ? (
+        <p className="text-body-sm text-ink-2">
+          The group calls it together, by <When iso={d.resolvesBy.toISOString()} zone={clock.zone} serverNow={clock.now} style="day" />. {d.stalemate === "void" ? "If you can’t agree by then, it’s called off and nothing changes hands." : "If you can’t agree by then, everyone says their piece and the app calls it. Being in means you’re fine with that."}
+        </p>
+      ) : null}
+      <p className="text-body-sm text-ink-2">{d.revealMode === "blind" ? "Nobody sees where anyone landed until it’s locked." : "Once you’ve picked, you can see where the stake sits."} What’s riding on it is in {denomination.monetary ? "dollars" : unit.plural}, the same for everyone, so it can be weighed.</p>
+      {d.anchorValue !== null ? (
+        <p className="text-body-sm text-ink-2">
+          The app’s starting number was {Math.round(Number(d.anchorValue) / 100)}. {d.anchorRationale ?? ""} It was only ever something to argue with.
+        </p>
+      ) : null}
+      {show && number !== null && showsMarker(entries) ? <p className="text-body-sm text-ink-2">The group’s number, exactly: {(Number(number) / 100).toFixed(1)}%.</p> : null}
+    </SetupSheet>
+  );
+  // One marigold control per screen: getting people in, until everyone is, and then the asker's lock.
+  const everyoneIn = positions.length >= seats.length && positions.length > 1;
   const outcome = word(d.resolvedOutcome);
   const leading = tally(votes)[0];
   // Who a nudge would go to, by first name: while open, group members with no number in; once locked, members
@@ -153,6 +211,7 @@ export default async function MarketPage({ params }: { params: Promise<{ id: str
           <p className="text-caption text-ink-3">
             {nameOf(d.creatorId)} asked · <When iso={d.createdAt.toISOString()} zone={clock.zone} serverNow={clock.now} />
           </p>
+          {mine && (state === "open" || state === "locked") ? null : (
           <details className="rounded-card border border-line bg-surface px-4 py-3" open={state === "draft" || (state === "open" && !mine)}>
             <summary className="cursor-pointer text-body-strong text-ink">How we’ll know</summary>
             <p className="pt-2 text-body-sm-prose text-ink-2">{d.termsText}</p>
@@ -162,6 +221,7 @@ export default async function MarketPage({ params }: { params: Promise<{ id: str
               </p>
             ) : null}
           </details>
+          )}
         </header>
 
         {state === "resolved" && outcome && outcome !== "void" ? (
@@ -193,55 +253,41 @@ export default async function MarketPage({ params }: { params: Promise<{ id: str
         {state === "draft" ? (
           <section className="flex flex-col gap-4">
             <p className="text-body text-ink-2">Only you can see this so far. Put your own number on it and it goes live{group?.name ? ` for ${group.name}` : ""}. Then you send it to whoever should be in.</p>
-            <EntryPanel dareId={d.id} signing={signing} unit={unit} mode="open" mark={d.markKind === "emoji" ? d.markValue : null} suggestion={d.anchorValue !== null ? { percent: Math.round(Number(d.anchorValue) / 100), rationale: d.anchorRationale } : null} average={null} />
+            {stage}
           </section>
         ) : null}
 
         {state === "open" ? (
           <>
+            {stage}
+            {spark ? <Sparkline points={series.map((x) => ({ at: x.at.getTime(), percent: x.valueBps / 100 }))} openedLabel={dayLabel(d.createdAt, clock.zone)} currentTenth={tenthOf(number ?? 0n)} /> : null}
             <section className="flex flex-col gap-3">
-              <SectionLabel>
-                {positions.length} of {seats.length} in
-              </SectionLabel>
-              {show ? <CallLine pins={pins} state="in" size="screen" surface="var(--ground)" /> : <CallLine pins={[]} state="hidden" />}
-              <ul className="flex flex-wrap gap-2">
+              <ul className="flex flex-wrap items-center gap-1.5" aria-label="Who's in">
                 {positions.map((p) => (
-                  <li key={p.userId} className="inline-flex items-center gap-2 rounded-pill border border-line-strong py-1 pr-3 pl-1 text-[13px] text-ink-2">
-                    <Avatar name={person.get(p.userId as string)?.displayName ?? "?"} hue={hueFor(p.userId as string)} size={24} />
-                    {nameOf(p.userId as string)}
-                    {show ? ` · ${Number(p.value) / 100}% · ${stakeWords(p.stake)}` : ""}
+                  <li key={p.userId}>
+                    <Avatar name={person.get(p.userId as string)?.displayName ?? "?"} hue={hueFor(p.userId as string)} size={28} />
                   </li>
                 ))}
               </ul>
-            </section>
-            <section className="flex flex-col gap-4">
-              {mine ? <SectionLabel>Your number</SectionLabel> : null}
-              <EntryPanel
-                dareId={d.id}
-                signing={signing}
-                unit={unit}
-                mode={mine ? "change" : "enter"}
-                mark={d.markKind === "emoji" ? d.markValue : null}
-                suggestion={d.anchorValue !== null ? { percent: Math.round(Number(d.anchorValue) / 100), rationale: d.anchorRationale } : null}
-                average={average}
-                initial={mine ? { percent: Number(mine.value) / 100, stake: mine.stake.toString() } : undefined}
-              />
+              <p className="text-body-sm text-ink-2">
+                {positions.length === 0 ? "Nobody’s in yet." : mine && positions.length === 1 ? "" : positions.length >= seats.length && seats.length > 1 ? "Everyone’s in." : `${positions.length} of ${Math.max(seats.length, positions.length)} in.`}
+                {d.resolvesBy ? ` Closes ${closesLabel(d.resolvesBy, new Date(clock.now), clock.zone)}.` : ""}
+              </p>
+              {mine ? setup : null}
             </section>
             {mine ? (
               <section className="flex flex-col gap-3">
+                {/* Once you are in, the screen's main act is getting other people in (docs/design.md 3.22). */}
+                <InviteShare url={`${appUrl}/m/${d.id}`} text={`${d.title} Put your number on it:`} primary={!everyoneIn} />
+                <RoomCode dareId={d.id} url={`${appUrl}/m/${d.id}`} />
                 <Nudge dareId={d.id} names={waitingNames} url={`${appUrl}/m/${d.id}`} relay={`We’re waiting on you: ${d.title}`} />
                 <AfterVote relay={null} url={`${appUrl}/m/${d.id}`} />
               </section>
             ) : null}
-            <section className="flex flex-col gap-3">
-              <SectionLabel>Get the others in</SectionLabel>
-              <InviteShare url={`${appUrl}/m/${d.id}`} text={`${d.title} Put your number on it:`} />
-              <RoomCode dareId={d.id} url={`${appUrl}/m/${d.id}`} />
-            </section>
             {d.creatorId === me.id ? (
               <section className="flex flex-col gap-3 border-t border-line pt-6">
-                <p className="text-body-sm text-ink-2">When everyone who wants in is in, lock it. After that nobody’s number moves, and everyone sees everyone’s.</p>
-                <LockButton dareId={d.id} count={positions.length} />
+                <p className="text-body-sm text-ink-2">When everyone who wants in is in, lock it. After that nobody’s number moves, and everyone sees where everyone landed.</p>
+                <LockButton dareId={d.id} count={positions.length} primary={everyoneIn || !mine} />
               </section>
             ) : null}
           </>
@@ -249,9 +295,11 @@ export default async function MarketPage({ params }: { params: Promise<{ id: str
 
         {state === "locked" ? (
           <>
+            {mine ? stage : null}
+            {spark ? <Sparkline points={series.map((x) => ({ at: x.at.getTime(), percent: x.valueBps / 100 }))} openedLabel={dayLabel(d.createdAt, clock.zone)} currentTenth={tenthOf(number ?? 0n)} /> : null}
             <section className="flex flex-col gap-3">
               <SectionLabel>Everyone’s in, and numbers are locked</SectionLabel>
-              <CallLine pins={pins} state="in" size="screen" surface="var(--ground)" />
+              {mine ? null : <CallLine pins={pins} state="in" size="screen" surface="var(--ground)" />}
               <ul className="flex flex-col">
                 {positions.map((p) => (
                   <li key={p.userId} className="flex items-center justify-between gap-3 border-b border-line py-2 last:border-b-0">

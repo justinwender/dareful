@@ -12,7 +12,7 @@ export function JoinGroup({ token }: { token: string }) {
     redeemInviteAction(token).then((r) => {
       if (cancelled) return;
       if ("error" in r) setError(r.error);
-      else router.replace(`/g/${r.groupId}`);
+      else router.replace("/");
     });
     return () => {
       cancelled = true;

@@ -24,7 +24,8 @@ import { relayer, submit } from "@/lib/chain/relayer";
 import { daresDomain, daresTypes, Kind, Pace, Stalemate, VOID } from "@/lib/chain/typed-data";
 import { denominationById } from "./denominations";
 import { dareByOnchainId } from "./envio";
-import { isMember, unarchiveForEveryone } from "./groups";
+import { isMember } from "./groups";
+import { groupsNumberBps } from "./weight";
 import { bufferToHex, bytes16ToUuid, dareOnchainId, denomOnchainId, groupOnchainId, hexToBuffer } from "./ids";
 import { ensureDenomOnchain, ensureGroupOnchain } from "./registry";
 
@@ -196,8 +197,6 @@ export async function openMarket(dareId: string, creatorId: string, signature: H
   const ok = await verifyTypedData({ ...createTypedData(d), address: creator.ledgerWallet as Address, signature });
   if (!ok) throw new MarketError("That didn't come from your account.", "bad_signature");
   const [row] = await db.update(schema.dares).set({ creatorSignature: hexToBuffer(signature) }).where(and(eq(schema.dares.id, dareId), isNull(schema.dares.creatorSignature))).returning();
-  // A question is something new in its group, so nobody keeps that group hidden.
-  if (row) await unarchiveForEveryone(d.groupId);
   return row ?? d;
 }
 
@@ -235,6 +234,15 @@ export async function enterMarket(input: { dareId: string; userId: string; stake
     .onConflictDoUpdate({ target: [schema.darePositions.dareId, schema.darePositions.userId], set: { stake: input.stake, value: input.valueBps, enterSignature: hexToBuffer(input.signature) } })
     .returning();
   if (!row) throw new MarketError("Couldn't save that.", "chain");
+  // The group's number at this moment, for the line a slow question gets. The aggregate and a headcount only:
+  // never whose entry moved it (docs/design.md 3.22). Best effort; a missing point is a gap in a sparkline.
+  try {
+    const all = await positionsOf(d.id);
+    const number = groupsNumberBps(all.map((p) => ({ id: p.userId ?? "", stake: p.stake, valueBps: p.value })));
+    if (number !== null) await db.insert(schema.dareNumberSeries).values({ dareId: d.id, valueBps: Number(number), entries: all.length });
+  } catch (err) {
+    console.error("recording the group's number failed", { dareId: d.id, err });
+  }
   return row;
 }
 

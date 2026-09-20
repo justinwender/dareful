@@ -10,7 +10,7 @@ import { db, schema } from "@/db";
 import { bytes16ToUuid } from "./ids";
 import { denominationsByIds, type DenominationRow } from "./denominations";
 import { openTouching } from "./envio";
-import { groupChipsFor, peopleForUser, type GroupChip } from "./groups";
+import { membersOfGroups, peopleForUser, setLabel } from "./groups";
 import { marketCards, type MarketCardData } from "./market-view";
 import { pendingForDebtor, type ProposalRow } from "./proposals";
 
@@ -67,19 +67,26 @@ export function needFromMarket(m: Pick<MarketCardData, "dare" | "state" | "peopl
 export type PersonRow = { user: Person; token: { ownerId: string; denomination: DenominationRow; quantity: bigint } | null };
 
 export type HomeData = {
-  chips: GroupChip[];
-  /** Groups this person hid. Reachable, never in the way. */
-  hidden: GroupChip[];
-  selected: GroupChip | null;
   needs: NeedRow[];
   happened: Array<{ kind: "market"; at: Date; market: MarketCardData } | { kind: "cover"; at: Date; obligation: typeof schema.obligations.$inferSelect; denomination: DenominationRow; from: Person; to: Person; groupLabel: string | null }>;
+  /** People with something open: a row each. */
   people: PersonRow[];
+  /** Everyone who is square: one row, an avatar stack and a sentence, never a column of "nothing open". */
+  square: Person[];
   hasAnything: boolean;
 };
 
-export async function homeFor(me: { id: string; displayName: string; ledgerWallet: string }, opts: { groupId?: string; now: Date; closes: (at: Date) => string }): Promise<HomeData> {
-  const [chips, cards, pending, drafts, myVotes, covers, open, known] = await Promise.all([
-    groupChipsFor(me.id, me.displayName),
+/** "Theo, Maya and John are square with you": one line that names the empty cases, instead of repeating them. */
+export function squareSentence(names: string[]): string {
+  const firsts = names.map((n) => n.trim().split(/\s+/)[0] ?? n);
+  if (firsts.length === 0) return "";
+  if (firsts.length === 1) return `${firsts[0]} is square with you`;
+  if (firsts.length <= 3) return `${firsts.slice(0, -1).join(", ")} and ${firsts[firsts.length - 1]} are square with you`;
+  return `${firsts.slice(0, 2).join(", ")} and ${firsts.length - 2} others are square with you`;
+}
+
+export async function homeFor(me: { id: string; displayName: string; ledgerWallet: string }, opts: { now: Date; closes: (at: Date) => string }): Promise<HomeData> {
+  const [cards, pending, drafts, myVotes, covers, open, known] = await Promise.all([
     marketCards({ viewerId: me.id, limit: 40 }),
     pendingForDebtor(me.id),
     db.select().from(schema.dares).where(and(eq(schema.dares.creatorId, me.id), isNull(schema.dares.creatorSignature))).orderBy(desc(schema.dares.createdAt)).limit(6),
@@ -98,14 +105,15 @@ export async function homeFor(me: { id: string; displayName: string; ledgerWalle
     // Everyone this person shares anything with, one-on-one included: a dyad is a group nobody sees as one.
     peopleForUser(me.id),
   ]);
-  const visible = chips.filter((c) => !c.archived);
-  const selected = opts.groupId ? (chips.find((c) => c.id === opts.groupId) ?? null) : null;
-  const inScope = (groupId: string) => (selected ? groupId === selected.id : !chips.some((c) => c.id === groupId && c.archived));
-  const labelOf = new Map(chips.map((c) => [c.id, c.label]));
+  // The label on an event says which set of people it came out of. It is a label, never a way in.
+  const groupIds = Array.from(new Set([...cards.map((m) => m.dare.groupId), ...covers.map((o) => o.groupId)]));
+  const [groupRows, groupMembers] = await Promise.all([groupIds.length ? db.select().from(schema.groups).where(inArray(schema.groups.id, groupIds)) : Promise.resolve([]), membersOfGroups(groupIds)]);
+  const labelOf = new Map(groupRows.map((g) => [g.id, setLabel({ name: g.name, isDyad: g.isDyad, memberNames: (groupMembers.get(g.id) ?? []).filter((m) => m.userId).map((m) => m.displayName), viewerName: me.displayName })]));
+  const inScope = (_groupId: string) => true;
   const voted = new Set(myVotes.map((v) => v.dareId));
 
   const openRows = open.length ? await db.select().from(schema.obligations).where(inArray(schema.obligations.id, open.map((e) => bytes16ToUuid(e.id)))) : [];
-  const counterparties = Array.from(new Set([...pending.map((p) => p.toUser), ...covers.flatMap((o) => [o.fromUser, o.toUser]), ...openRows.flatMap((o) => [o.fromUser, o.toUser]), ...visible.flatMap((c) => c.members.map((m) => m.userId)), ...known.map((k) => k.user.id)].filter((x): x is string => Boolean(x) && x !== me.id)));
+  const counterparties = Array.from(new Set([...pending.map((p) => p.toUser), ...covers.flatMap((o) => [o.fromUser, o.toUser]), ...openRows.flatMap((o) => [o.fromUser, o.toUser]), ...known.map((k) => k.user.id)].filter((x): x is string => Boolean(x) && x !== me.id)));
   const [users, denoms] = await Promise.all([
     counterparties.length ? db.select({ id: schema.users.id, displayName: schema.users.displayName, ledgerWallet: schema.users.ledgerWallet }).from(schema.users).where(inArray(schema.users.id, counterparties)) : Promise.resolve([]),
     denominationsByIds(Array.from(new Set([...pending.map((p) => p.denomId), ...covers.map((o) => o.denomId), ...openRows.map((o) => o.denomId)]))),
@@ -124,7 +132,7 @@ export async function homeFor(me: { id: string; displayName: string; ledgerWalle
     if (!creditor || !denomination || !inScope(p.groupId)) continue;
     needs.push({ kind: "yep", key: p.id, href: `/o/${p.id}`, verb: "Yep", context: p.memo ? `${creditor.displayName} got ${p.memo}` : `${creditor.displayName} got this one`, subject: `${creditor.displayName}'s got you`, question: false, deadline: null, since: p.createdAt, groupId: p.groupId, proposal: p, creditor, denomination });
   }
-  if (!selected) for (const d of drafts) needs.push({ kind: "finish", key: d.id, href: `/m/${d.id}`, verb: "Finish", context: "You started this and never sent it", subject: d.title, question: true, deadline: null, since: d.createdAt, groupId: d.groupId });
+  for (const d of drafts) needs.push({ kind: "finish", key: d.id, href: `/m/${d.id}`, verb: "Finish", context: "You started this and never sent it", subject: d.title, question: true, deadline: null, since: d.createdAt, groupId: d.groupId });
 
   const happened: HomeData["happened"] = [];
   const needing = new Set(needs.map((n) => n.key));
@@ -153,8 +161,7 @@ export async function homeFor(me: { id: string; displayName: string; ledgerWalle
     net.set(other, units);
   }
   const rank = (d: DenominationRow) => (d.monetary ? 2 : d.template && d.template !== "usd" ? 0 : 1);
-  const scopeIds = new Set((selected ? [selected] : visible).flatMap((c) => c.members.map((m) => m.userId)).filter((x): x is string => Boolean(x) && x !== me.id));
-  if (!selected) for (const id of [...net.keys(), ...known.map((k) => k.user.id)]) scopeIds.add(id);
+  const scopeIds = new Set<string>([...net.keys(), ...known.map((k) => k.user.id)]);
   const people: PersonRow[] = [];
   for (const id of scopeIds) {
     const user = userById.get(id);
@@ -166,7 +173,8 @@ export async function homeFor(me: { id: string; displayName: string; ledgerWalle
     const first = lines[0];
     people.push({ user, token: first ? { ownerId: first.v > 0n ? id : me.id, denomination: first.denomination, quantity: first.v > 0n ? first.v : -first.v } : null });
   }
-  people.sort((a, b) => Number(Boolean(b.token)) - Number(Boolean(a.token)) || a.user.displayName.localeCompare(b.user.displayName));
+  const openPeople = people.filter((p) => p.token !== null).sort((a, b) => a.user.displayName.localeCompare(b.user.displayName));
+  const square = people.filter((p) => p.token === null).map((p) => p.user).sort((a, b) => a.displayName.localeCompare(b.displayName));
 
-  return { chips: visible, hidden: chips.filter((c) => c.archived), selected, needs: orderNeeds(needs), happened: happened.slice(0, 8), people, hasAnything: chips.length > 0 || needs.length > 0 || happened.length > 0 || people.length > 0 };
+  return { needs: orderNeeds(needs), happened: happened.slice(0, 8), people: openPeople, square, hasAnything: needs.length > 0 || happened.length > 0 || people.length > 0 };
 }

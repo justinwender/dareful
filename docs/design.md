@@ -6,8 +6,8 @@ from, so read those before improvising.
 
 Canvas: the Design artifact "Dareful". Board names referenced below match the artboards there:
 `Main`, `Story`, `Entry`, `States`, `Leaderboard`, `Split`, `Memory`, `Claim`, `Home`, `Join`,
-`JoinLink`, `FirstRun`, `Empty`, the three share cards, and the four spec boards (`Tokens`,
-`Language`, `Marks`, `Errors`).
+`JoinLink`, `FirstRun`, `Ask`, `AfterEntry`, `BlindSlow`, `Empty`, the three share cards, and
+the five spec boards (`Tokens`, `Language`, `Marks`, `Errors`, `WeightSpec`).
 
 Target: mobile web, installable as a PWA, 390px reference width. Tailwind plus shadcn/ui.
 Dark is the default and only shipped theme for v1; light values are given so nothing has to be
@@ -595,13 +595,127 @@ obligations as a single token on the right, keeping the anatomy rule so ownershi
 compression (owner's avatar leads for theirs, trails for yours). "Nothing open" in 13px
 `--ink-3` when there is nothing. Long names truncate to one line; the avatar never changes.
 
-### 3.19 Group chip
+### 3.19 Context chip
 
-36px tall, radius 999, 1px `--line-strong`, transparent fill, 15px 500 `--ink-2`. A group that
-came out of a single occasion and has not recurred takes a dashed border, which is the same
-"has not happened yet" meaning applied to a group that may never become one. Tapping filters
-the screen it sits on; it never navigates into a group container. Selected: `--surface-2`
-fill, `--ink-3` border, and a 44px Clear tertiary appears beside the row.
+36px tall, radius 999, 1px `--line-strong`, transparent fill, 15px 500 `--ink-2`, tap area
+padded out to 44px. An optional count sits after the label in 13px `--ink-3`. A set of people
+that has not been named takes a dashed border and shows first names instead
+("Priya, Gabe and you"), which is the same "not a settled thing yet" meaning the system
+already uses for upcoming plans.
+
+A context chip appears in exactly three places: on an event row, where it says which set of
+people an event came out of; in the shared-context band on a person view (3.21); and in the
+same-people picker (3.20). It is never a list on home, and tapping one never navigates into a
+group as a place. On the person view it filters the timeline; on an event row it is a label
+and is not interactive.
+
+States: **unselected**; **selected** (`--surface-2` fill, `--ink-3` border, and a 44px Clear
+tertiary appears beside the row); **unnamed set** (dashed border, first names, three names
+maximum then "and N more"); **just the two of you** (the label is "Just you two", never an
+empty group name).
+
+### 3.20 Same-people picker row
+
+One row per candidate set, in a `role="group"` labelled "Who's in". Grid
+`auto minmax(0,1fr) auto`, 12px gap, 12px by 14px padding, radius 18, 1px `--line`. Left: an
+avatar stack at 32px with `-10px` overlap, three maximum, then a `+N` tile in `--surface-2`.
+Middle: the label in `body-strong` and a caption in 13px `--ink-3`. Right: a 24px selection
+circle, filled `--ink` with a `--ground` check when selected, 1.5px `--line-strong` outline
+when not. Selected rows also take the `--surface` fill and the lilac selection ring.
+
+The label rule is the important part. A named set shows its name; an unnamed set shows first
+names, up to three, then "and you". Both use the same weight, the same size and the same row,
+so an unnamed set reads as a description of some people rather than as a group missing its
+name. The caption carries the difference: "Last time, on Friday" against "Six of you, back in
+August". Nothing anywhere says "unnamed", "untitled" or "no name".
+
+Order: most recent set first, then by how often that set has asked something. The most recent
+set is preselected, because the common case is the same people as last time and it should cost
+one tap in total.
+
+States: **preselected top row**; **named set**; **unnamed set**; **a set that has now asked
+twice** (the naming prompt, below); **someone else** (a dashed row with a plus in a dashed
+circle and a chevron, opening the people picker); **first ever market** (no rows at all: the
+picker is replaced by the people picker itself, with a line about sending the link).
+
+**The naming prompt.** When the selected set is asking its second question, a dashed
+`--surface` block appears directly under that row: one sentence ("Second time with these four.
+Want to call them something?"), a 48px text input whose placeholder is a plausible name, a
+48px Save, and a 44px "Not now". It appears once per set, never blocks the flow, and never
+returns after it is dismissed twice. A name is a convenience for chips and share cards, not a
+requirement, and nothing is created by naming.
+
+### 3.21 Shared-context band
+
+On the person view, directly under the open-obligations header: a 13px `--ink-2` heading
+("Where you two turn up"), a wrapped row of context chips with counts of shared events, and
+one 13px `--ink-3` line telling the reader what tapping does.
+
+It answers one question: why an obligation sits in one context and not another. Ordering is by
+count, descending, with "Just you two" in its natural position, and it holds at most five
+chips before it wraps to "and 3 more" as a final chip. Tapping filters the timeline below;
+nothing here opens a screen of its own, and there is no group header, no member list, no
+group avatar and no way in. If it ever grows a "see all", it has become a group list and the
+rule has been broken.
+
+States: **several shared contexts**; **one** (the band still renders, because one chip still
+explains where things come from); **none, just the two of you** (the band is not rendered at
+all); **filtered** (the selected chip takes the selected styling and a Clear appears beside
+the row).
+
+### 3.22 The weight line
+
+The market screen after you have entered. It is the entry control (3.13) in its second state,
+not a second component: the same ten buckets, re-laid from a 5 by 2 grid of 56px tiles into a
+single row of ten columns, 120px tall, 3px apart, 8px radius, `--surface` track on `--ground`.
+
+- Column fill is `--ink-3`, height normalised so the heaviest bucket fills the column.
+- Your own share of your bucket is drawn in your person hue at the bottom of that column, with
+  your 24px avatar 30px above it and your numeral below it in `--ink` 600.
+- The group's number is a 2px `--ink` vertical marker at the stake-weighted mean, with its
+  value in a 22px chip at the top. It is never marigold: marigold means what happened, and
+  this has not happened.
+- Under the columns, the numerals 1 to 10 at 13px `--ink-3`, then the range ends, then one
+  caption in 13px `--ink-3` explaining the picture in words.
+
+Arithmetic: `bucket(v) = ceil(v / 10)`; `height(b) = stake(b) / max stake in any bucket`;
+`group's number = Σ(vᵢ × sᵢ) / Σsᵢ`, displayed to the nearest whole tenth with the exact figure
+on the details sheet. A market's stake unit is fixed at creation, because dollars and beers
+cannot be weighed against each other. A no-stake entry is a person, not weight: an 8px hollow
+dot on the baseline of its bucket.
+
+States: **one entry** (your column alone at full height, no marker; the marker appears from
+the third entry); **one stake over half the total** (the caption says so in words, because the
+picture alone reads as agreement); **everyone on one number** (one full column, marker on it);
+**blind until lock** (outlined columns with no heights, your own bucket marked with your
+avatar and a 5px cap, a centred lock chip, a count of who is in, and no group's number);
+**locked** (unchanged picture, the Change control gone, a line reading "Locked at 11pm",
+nothing greyed); **resolved** (the weight line is replaced by the call line and the
+leaderboard); **numeric market** (ten slices of the stated range, ends labelled with the
+range); **nine or more entries** (unchanged, because weight does not grow with headcount).
+
+**Entering, as a moment.** Submitting does not navigate and does not raise a toast. The grid
+merges into the row over 200ms, your cumulative fill collapses into your single column over
+240ms, everyone else's weight rises from the baseline over 320ms staggered 30ms apart, and the
+marker draws last. Under 800ms in total, and with `prefers-reduced-motion` the resting state
+renders directly. The confirmation is not the animation but what it leaves behind: a permanent
+line at the top of the screen reading "You're in at 7 in 10", with the stake and "yours to
+change until it closes" under it, which is still there on the next visit.
+
+**What leaves the screen.** The AI anchor is gone once you are in. It existed to be argued
+with while choosing, and three numbers on one screen (the anchor, your number, the group's
+number) is one too many. It reappears only inside the Change flow, and it stays available in
+the details sheet.
+
+**The way back in.** Positions are editable until lock and never after. The route back is a
+44px tertiary Change on the confirmation line, never a primary button, because the screen's
+primary action once you are in is getting other people in.
+
+**A time series, for slow markets only.** A market open more than 24 hours with at least four
+entries gets a 56px sparkline of the group's number over time under the weight line, labelled
+with the day it opened and carrying the current value at its right end. It plots the aggregate
+only, never individual entries, because plotting entries would out people's timing. A market
+that ran for ten minutes has no shape worth drawing and gets no line.
 
 ---
 
@@ -662,13 +776,21 @@ there media? Two yeses make it a story. One makes it a row with a link to the fu
 ### 4.5 Color discipline
 
 - Marigold marks what is real: what happened, today, and the one action to take. At most one
-  marigold element in a viewport. A marigold outcome and a marigold button never appear
+  marigold element in a viewport. An aggregate that has not resolved is not real yet, so the
+  group's number takes an ink marker rather than a marigold one. A marigold outcome and a marigold button never appear
   together; the button wins and the outcome takes `--ink`.
 - Person hues identify people. They never indicate status, quality, or direction of value.
 - Everything else is the three ink levels on the three surfaces. If a new state seems to need
   a new color, it needs a sentence instead.
 
 ### 4.6 Copy rules
+
+The aggregate of everyone's numbers is called the group's number, and the words around it stay
+inside one boundary: nothing here has a price at any moment, nothing is bought or sold, no pot
+is held and nobody makes a market. Say the group's number, where the stake sits, your number,
+what's riding on it, who's in. Never say implied odds, odds, price, "the market says", pot,
+house, buy, sell, shares, position size or liquidity. The picture can look like finance; the
+language has to keep saying it is six friends guessing.
 
 Sentence case everywhere. Contractions. Second person for the viewer, first names for
 everyone else. Numbers never open a sentence in the interface. Times are relative for the last
@@ -681,35 +803,54 @@ Home is the root screen, it has no back control, and every other screen has a 48
 control in its top left. The app is installed to a home screen with no browser chrome, so
 nothing may depend on a browser back button.
 
-The hierarchy is fixed, and the reasoning matters more than the order because you will have to
-place new things into it:
+Home holds three things: markets, people, and what needs this person. Groups are not on it at
+all. The hierarchy is fixed, and the reasoning matters more than the order, because you will
+have to place new things into it:
 
-1. **Ask something.** The only marigold button on the screen. Creating a market is the act the
-   product exists for, and everything else on home is downstream of somebody having done it.
-2. **Join.** A code field and a button, directly under the primary action. It is not marigold,
-   because two marigold controls is none, but it sits above everything else because a person
-   who cannot join from inside the app has to leave the app.
-3. **Needs you.** Only things that will not move without this person: a resolution to vote on,
+1. **Ask something.** The only marigold control on the screen. Creating a market is the act
+   the product exists for, and everything else on home is downstream of somebody having done
+   it.
+2. **Join.** A code field and a button, directly under the primary action, not marigold
+   because two primary buttons is none. It sits this high because a person who cannot join
+   from inside the app has to leave the app to do it, which is how the product loses people
+   who are already signed in.
+3. **I got this one.** A tertiary text button under the join row. Logging a cover creates an
+   event too, so it belongs with the other two, but it records something that already
+   happened while asking starts something, and the screen has to say which of those is the
+   headline. Three tiers, three weights: marigold fill, outlined, text.
+4. **Needs you.** Only things that will not move without this person: a resolution to vote on,
    a market they have not entered, an obligation to confirm, a claim to accept, a draft they
    abandoned. This is the strip that makes the app worth opening, and it is the one place the
    no-nagging rule is under real pressure. The discipline that keeps it honest: every row is
    an action this person can complete now, the section disappears when it is empty, and
    nothing in it counts or ages.
-4. **Just happened.** Resolved markets, closed obligations, covers that landed. Stories keep
-   their story anatomy here (4.4); this is a feed of what the group did, not a notification
-   list.
-5. **People.** The person view is where the product's thesis lives, so home keeps a short path
-   into it.
-6. **Groups.** Last, and as chips. A group is a label on an event and a filter over this
-   screen, never a container you navigate into. Someone should be able to use this app for
-   weeks without thinking about groups as objects, which is also what the data does: a group
-   forms lazily out of whoever was involved, and naming one is what happens when an occasion
-   turns out to recur.
+5. **Just happened.** Resolved markets, closed obligations, covers that landed. Stories keep
+   their story anatomy here (4.4); this is what the group did, not a notification list.
+6. **People.** The person view is where the product's thesis lives, so home keeps a short path
+   into it. People with something open get a row each. Everyone who is square collapses into a
+   single row with an avatar stack and one sentence, because four rows that each say "nothing
+   open" is four repetitions of nothing.
+
+What is deliberately not on home: a group list, and account actions. A group is a namespace,
+not a place. It forms lazily out of whoever was in a market, it earns a name only if the same
+set asks a second question, and it does its work in exactly two screens, the same-people
+picker (3.20) and the shared-context band on a person view (3.21). Listing groups on home was
+what made an occasion group permanent in the interface, and it is what forced leaving and
+archiving to exist as features. Take the list away and a group that is over simply stops being
+mentioned, with nothing to leave and nothing to archive. Account actions, sign out included,
+live behind the avatar in the header, because the primary screen of a social product should
+not end in a way to leave it.
 
 Placing something new on home: if it is an action only this person can take, it goes in Needs
 you. If it is something the group did, it goes in Just happened. If it is a way to reach
-people, it goes in People. If it is organisational, it is a chip or it does not belong on home
-at all.
+someone, it goes in People. If it is organisational, or about the account, or about a group as
+an object, it does not go on home at all.
+
+Two rules generalise out of this and apply everywhere:
+
+- Never repeat an empty phrase down a list. One row saying nothing is information; four rows
+  saying nothing is noise. Collapse the empty cases into a single line that names them.
+- The primary screen carries the two actions the product is for and nothing that leaves it.
 
 ---
 
@@ -781,19 +922,25 @@ someone feel audited for typing a code wrong in a dark room.
 
 ## 6. What we did not design, and how to derive it
 
-Not drawn in this canvas: group management (leaving, archiving, renaming, the group view
-itself), market creation, argument creation, receipt scanning and splitting, capture
-standings, credit-card roulette, plans and RSVPs, profile and settings, notification inbox,
-search, the light theme in situ, and any desktop layout. Group management is deferred
-deliberately, not forgotten: it needs the answer to what happens to an occasion group that is
-over, and that is a product question before it is a design one.
+Not drawn in this canvas: the rest of market creation (the question step and the terms step;
+only the who's-in step exists), argument creation, the people picker behind "Someone else",
+the account sheet behind the avatar, receipt scanning and splitting, capture standings,
+credit-card roulette, plans and RSVPs, notification inbox, search, the light theme in situ,
+and any desktop layout.
+
+Group management has come off this list rather than moving up it. Leaving, archiving, renaming
+and the group view do not exist, because a group is not a navigable object: there is no place
+to leave and nothing to archive, and a set of people that stops asking questions simply stops
+being mentioned. If a future requirement looks like it needs a group screen, check it against
+4.7 first. It is almost always a person view, a filter, or the picker.
 
 To build one of them without waiting for a design pass:
 
-1. **Find its nearest relative in the canvas.** Market creation is the entry screen run
-   backwards: terms as a `dl` with 104px labels, the same stake chips, the same primary
-   button, plus the mark picker from 3.9. A group view, if one is ever needed, is home
-   filtered by that group's chip rather than a screen of its own (4.7).
+1. **Find its nearest relative in the canvas.** The terms step of market creation is the entry
+   screen run backwards: terms as a `dl` with 104px labels, the same stake chips, the same
+   primary button, plus the mark picker from 3.9, and it follows the who's-in step that is
+   already drawn. There is no group view to derive: a group is the picker, the chips, and the
+   person views of the people in it (4.7).
 2. **Classify every event it shows** with 4.4, then use the row or story anatomy as given.
 3. **Encode any obligation** with 2.1: side, hue, grammar, anatomy. If the screen has no
    "you," fall back to sentence order with the owner's avatar leading.

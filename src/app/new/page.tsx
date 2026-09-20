@@ -39,7 +39,7 @@ export default async function NewCoverPage({ searchParams }: { searchParams: Pro
     ...people.map((p) => ({ id: p.user.id, displayName: p.user.displayName, kind: "user" as const })),
     ...ghosts.map((g) => ({ id: g.id, displayName: g.displayName, kind: "claim" as const })),
   ];
-  const back = sp.person ? `/p/${sp.person}` : sp.ghost ? `/p/c/${sp.ghost}` : sp.group ? `/g/${sp.group}` : "/";
+  const back = sp.person ? `/p/${sp.person}` : sp.ghost ? `/p/c/${sp.ghost}` : "/";
   return (
     <Screen>
       <TopBar back={{ href: back, label: "Back" }} title="I got this one" />

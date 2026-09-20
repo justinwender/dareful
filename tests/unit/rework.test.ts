@@ -4,12 +4,13 @@
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { occasionLabel } from "@/lib/ledger/groups";
-import { needFromMarket, orderNeeds } from "@/lib/ledger/home";
+import { setLabel } from "@/lib/ledger/groups";
+import { needFromMarket, orderNeeds, squareSentence } from "@/lib/ledger/home";
+import { filterByContext, sharedContexts, type TimelineEvent } from "@/lib/ledger/person";
 import { CODE_ALPHABET, readCode, readPastedLink } from "@/lib/ledger/room-code";
 import { joinedNotice, nudgeNotice, nudgeSeq, nudgeTargets, NUDGE_WINDOW_MS, openedNotice, recipientsAfterVote, relayText, resultNotice, voteRequest } from "@/lib/notify/messages";
 import { platformOf } from "@/lib/auth/device";
-import { closesLabel } from "@/lib/ui/copy";
+import { closesLabel, lockedLabel, setCaption } from "@/lib/ui/copy";
 
 test("the code alphabet has no O, I, Z, zero or one, and nothing twice", () => {
   assert.equal(CODE_ALPHABET.length, 31);
@@ -38,16 +39,54 @@ test("only this app's own market and group links are read from a paste", () => {
   assert.equal(readPastedLink("https://example.com/o/123"), null);
 });
 
-test("an unnamed group is called by its latest question, cut short, without the question mark", () => {
-  assert.equal(occasionLabel({ latestTitle: "Does Riley finish?", memberNames: ["Alex"] }), "Does Riley finish");
-  const long = occasionLabel({ latestTitle: "Does Riley actually finish the half marathon on Sunday?", memberNames: [] });
-  assert.ok(long.length <= 28 && long.endsWith("…"));
+test("a set of people nobody named is described by first names and you, and never called unnamed", () => {
+  const label = (names: string[], name: string | null = null, isDyad = false) => setLabel({ name, isDyad, memberNames: ["Sam Okafor", ...names], viewerName: "Sam Okafor" });
+  assert.equal(label(["Priya Shah", "Gabe", "John Li"]), "Priya, Gabe, John and you");
+  assert.equal(label(["Maya", "Theo"]), "Maya, Theo and you");
+  assert.equal(label(["A a", "B b", "C c", "D d", "E e"]), "A, B, C and 2 more");
+  assert.equal(label(["Priya"], "Friday crew"), "Friday crew");
+  assert.equal(label(["Gabe"], null, true), "Just you two");
+  for (const l of [label(["Priya"]), label([]), label(["a", "b", "c", "d"])]) assert.equal(/unnamed|untitled|no name/i.test(l), false, l);
 });
 
-test("with no question yet it is first names, the viewer first as You, and a count past three", () => {
-  assert.equal(occasionLabel({ latestTitle: null, memberNames: ["Priya Shah", "Alex Kim", "Theo"], viewerName: "Alex Kim" }), "You, Priya, Theo");
-  assert.equal(occasionLabel({ latestTitle: null, memberNames: ["A a", "B b", "C c", "D d", "E e"] }), "A, B, C +2");
-  assert.equal(occasionLabel({ latestTitle: "  ", memberNames: ["Alex"], viewerName: "Alex" }), "Just you");
+test("the caption under a set carries the difference: last time for the top row, then when, then how many and which month", () => {
+  const now = new Date("2026-09-20T18:00:00Z");
+  const at = (days: number) => new Date(now.getTime() - days * 86_400_000);
+  const cap = (days: number | null, isMostRecent: boolean, size = 4) => setCaption({ size, lastAskedAt: days === null ? null : at(days), isMostRecent, now, timeZone: "UTC" });
+  assert.equal(cap(2, true), "Last time, on Friday");
+  assert.equal(cap(2, false), "On Friday");
+  assert.equal(cap(15, false), "Two weeks ago");
+  assert.equal(cap(40, false, 6), "Six of you, back in August");
+  assert.equal(cap(null, false, 3), "Three of you");
+  assert.equal(/^\d/.test(cap(40, false, 6)), false, "a number never opens the line as a digit");
+});
+
+test("everyone square is one sentence that names them, never a column of nothing", () => {
+  assert.equal(squareSentence(["Theo Park", "Maya", "John"]), "Theo, Maya and John are square with you");
+  assert.equal(squareSentence(["Theo"]), "Theo is square with you");
+  assert.equal(squareSentence(["A", "B", "C", "D", "E"]), "A, B and 3 others are square with you");
+});
+
+test("locked reads as a time on the day and a date after, never as how long ago", () => {
+  const now = new Date("2026-09-20T23:30:00Z");
+  assert.equal(lockedLabel(new Date("2026-09-20T23:00:00Z"), now, "UTC"), "Locked at 11pm");
+  assert.equal(lockedLabel(new Date("2026-09-20T21:20:00Z"), now, "UTC"), "Locked at 9:20pm");
+  assert.equal(lockedLabel(new Date("2026-09-12T23:00:00Z"), now, "UTC"), "Locked Sat, Sep 12");
+});
+
+const ev = (groupId: string): TimelineEvent => ({ kind: "proposal", at: new Date(), proposal: { groupId } as never, denomination: {} as never, groupName: null });
+const labels = new Map([["fri", { label: "Friday crew", unnamed: false, isDyad: false }], ["two", { label: "Just you two", unnamed: false, isDyad: true }], ["run", { label: "Run club", unnamed: false, isDyad: false }], ["adhoc", { label: "Priya, Gabe and you", unnamed: true, isDyad: false }]]);
+test("where two people turn up is counted per set of people, most first, and tapping one narrows the timeline to it", () => {
+  const timeline = [...Array(3).fill("fri"), ...Array(2).fill("two"), "run", "adhoc", "adhoc"].map(ev);
+  assert.deepEqual(sharedContexts(timeline, labels).map((c) => [c.label, c.count, c.unnamed]), [["Friday crew", 3, false], ["Just you two", 2, false], ["Priya, Gabe and you", 2, true], ["Run club", 1, false]]);
+  assert.equal(filterByContext(timeline, "two").length, 2);
+  assert.equal(filterByContext(timeline, undefined).length, 8);
+});
+
+test("with nothing but the two of them there is no band at all", () => {
+  assert.deepEqual(sharedContexts([ev("two"), ev("two")], labels), []);
+  assert.deepEqual(sharedContexts([], labels), []);
+  assert.equal(sharedContexts([ev("fri")], labels).length, 1, "one shared context still explains where things come from");
 });
 
 const day = 86_400_000;

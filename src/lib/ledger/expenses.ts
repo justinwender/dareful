@@ -6,7 +6,6 @@
  */
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { unarchiveForEveryone } from "./groups";
 import { ensureUsd, touchDenomination } from "./denominations";
 import { splitTotal, SplitError } from "./split";
 
@@ -70,6 +69,5 @@ export async function splitCover(input: SplitCoverInput): Promise<{ expenseId: s
     return { expenseId: expense.id, proposalIds: proposals.map((p) => p.id) };
   });
   await touchDenomination(usd.id);
-  await unarchiveForEveryone(input.groupId);
   return result;
 }

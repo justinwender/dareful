@@ -46,7 +46,8 @@ export async function membersOfGroups(groupIds: string[]): Promise<Map<string, G
     .leftJoin(schema.users, eq(schema.groupMembers.userId, schema.users.id))
     .leftJoin(schema.participantClaims, eq(schema.groupMembers.claimId, schema.participantClaims.id))
     .where(and(inArray(schema.groupMembers.groupId, groupIds), isNull(schema.groupMembers.leftAt)))
-    .orderBy(schema.groupMembers.joinedAt);
+    // People picked together join in the same instant; the name breaks the tie so a set always reads the same way.
+    .orderBy(schema.groupMembers.joinedAt, schema.users.displayName);
   for (const r of rows) {
     const list = out.get(r.groupId) ?? [];
     list.push({
@@ -298,65 +299,6 @@ export async function createOccasionGroup(createdBy: string): Promise<GroupRow> 
   });
 }
 
-export const CHIP_TITLE_MAX = 28;
-
-/** What an unnamed group is called, as pure data: its latest question, cut short; first names when it has none. */
-export function occasionLabel(input: { latestTitle: string | null; memberNames: string[]; viewerName?: string }): string {
-  const title = input.latestTitle?.trim().replace(/\?+$/, "");
-  if (title) return title.length > CHIP_TITLE_MAX ? `${title.slice(0, CHIP_TITLE_MAX - 1).trimEnd()}…` : title;
-  const firsts = input.memberNames.map((n) => (n === input.viewerName ? "You" : (n.trim().split(/\s+/)[0] ?? n))).sort((a, b) => (a === "You" ? -1 : b === "You" ? 1 : 0));
-  if (firsts.length === 0) return "Just you";
-  if (firsts.length === 1 && firsts[0] === "You") return "Just you";
-  return firsts.length <= 3 ? firsts.join(", ") : `${firsts.slice(0, 3).join(", ")} +${firsts.length - 3}`;
-}
-
-export type GroupChip = {
-  id: string;
-  label: string;
-  /** Named by a person. An unnamed group's label is derived and changes as things happen in it. */
-  named: boolean;
-  /** Came out of one occasion and has not recurred: drawn dashed, "has not happened yet" applied to a group. */
-  once: boolean;
-  /** Unnamed, and asked in more than once: the moment to offer a name. */
-  worthNaming: boolean;
-  archived: boolean;
-  members: GroupMember[];
-};
-
-/** Every non-dyad group this person is in, as chips: labels, and whether each has recurred. */
-export async function groupChipsFor(userId: string, viewerName: string): Promise<GroupChip[]> {
-  const seats = await db
-    .select({ groupId: schema.groupMembers.groupId, archivedAt: schema.groupMembers.archivedAt })
-    .from(schema.groupMembers)
-    .innerJoin(schema.groups, eq(schema.groups.id, schema.groupMembers.groupId))
-    .where(and(eq(schema.groupMembers.userId, userId), isNull(schema.groupMembers.leftAt), eq(schema.groups.isDyad, false)));
-  const ids = seats.map((s) => s.groupId);
-  if (ids.length === 0) return [];
-  const [groups, members, asked] = await Promise.all([
-    db.select().from(schema.groups).where(inArray(schema.groups.id, ids)).orderBy(desc(schema.groups.createdAt)),
-    membersOfGroups(ids),
-    db
-      .select({ groupId: schema.dares.groupId, title: schema.dares.title, createdAt: schema.dares.createdAt })
-      .from(schema.dares)
-      .where(and(inArray(schema.dares.groupId, ids), sql`${schema.dares.creatorSignature} is not null`))
-      .orderBy(desc(schema.dares.createdAt)),
-  ]);
-  // An unnamed group with nothing asked in it is a draft somebody has not sent. It is not a group to anyone yet.
-  return groups.filter((g) => g.name !== null || asked.some((a) => a.groupId === g.id)).map((g) => {
-    const mine = asked.filter((a) => a.groupId === g.id);
-    const people = members.get(g.id) ?? [];
-    return {
-      id: g.id,
-      label: g.name ?? occasionLabel({ latestTitle: mine[0]?.title ?? null, memberNames: people.map((m) => m.displayName), viewerName }),
-      named: g.name !== null,
-      once: g.name === null && mine.length <= 1,
-      worthNaming: g.name === null && mine.length >= 2,
-      archived: seats.find((s) => s.groupId === g.id)?.archivedAt != null,
-      members: people,
-    };
-  });
-}
-
 /** Naming is any member's to do, once, and again: a name is a label, never an identifier. */
 export async function nameGroup(groupId: string, userId: string, rawName: string): Promise<void> {
   const name = rawName.trim().replace(/\s+/g, " ").slice(0, 40);
@@ -365,18 +307,91 @@ export async function nameGroup(groupId: string, userId: string, rawName: string
   await db.update(schema.groups).set({ name }).where(and(eq(schema.groups.id, groupId), eq(schema.groups.isDyad, false)));
 }
 
+// ---------------------------------------------------------------------------------- a group is a set of people
+
 /**
- * Archiving is this member's view preference and nothing else (PLANNING.md, "Group list and dormancy"): it
- * hides the group for them only, changes nothing for anyone else, and any new event there clears it.
+ * What a set of people is called (docs/design.md 3.19, 3.20). A named set shows its name. One nobody named is a
+ * description of some people, never a field somebody forgot: first names, up to three, then "and you". Nothing
+ * anywhere says unnamed or untitled, because most sets will never be named. (This replaces the 2B rule that an
+ * unnamed group was called by its latest question; docs/decisions.md 2026-09-20.)
  */
-export async function setArchived(groupId: string, userId: string, archived: boolean): Promise<void> {
-  await db
-    .update(schema.groupMembers)
-    .set({ archivedAt: archived ? new Date() : null })
-    .where(and(eq(schema.groupMembers.groupId, groupId), eq(schema.groupMembers.userId, userId), isNull(schema.groupMembers.leftAt)));
+export function setLabel(input: { name: string | null; isDyad: boolean; memberNames: string[]; viewerName: string }): string {
+  if (input.name) return input.name;
+  if (input.isDyad) return "Just you two";
+  const others = input.memberNames.filter((n) => n !== input.viewerName).map((n) => n.trim().split(/\s+/)[0] ?? n);
+  if (others.length === 0) return "Just you";
+  if (others.length <= 3) return `${others.join(", ")} and you`;
+  return `${others.slice(0, 3).join(", ")} and ${others.length - 3} more`;
 }
 
-/** Something new happened in a group, so nobody keeps it hidden. Called by whatever made the event. */
-export async function unarchiveForEveryone(groupId: string): Promise<void> {
-  await db.update(schema.groupMembers).set({ archivedAt: null }).where(and(eq(schema.groupMembers.groupId, groupId), sql`${schema.groupMembers.archivedAt} is not null`));
+export type PeopleSet = {
+  groupId: string;
+  label: string;
+  named: boolean;
+  isDyad: boolean;
+  members: GroupMember[];
+  /** Questions this set has been asked, and when the last one was. */
+  asked: number;
+  lastAskedAt: Date | null;
+  /** This set has been asked something before, has no name, and has not waved the question away twice. */
+  offerName: boolean;
+};
+
+/**
+ * The candidate sets for "Who's in" (docs/design.md 3.20): most recent first, then by how often that set has
+ * asked something. Only sets with somebody else in them; a set of one is not a set.
+ */
+export async function peopleSetsFor(userId: string, viewerName: string): Promise<PeopleSet[]> {
+  const seats = await db.select({ groupId: schema.groupMembers.groupId }).from(schema.groupMembers).where(and(eq(schema.groupMembers.userId, userId), isNull(schema.groupMembers.leftAt)));
+  const ids = seats.map((s) => s.groupId);
+  if (ids.length === 0) return [];
+  const [groups, members, asked] = await Promise.all([
+    db.select().from(schema.groups).where(inArray(schema.groups.id, ids)),
+    membersOfGroups(ids),
+    db.select({ groupId: schema.dares.groupId, createdAt: schema.dares.createdAt }).from(schema.dares).where(and(inArray(schema.dares.groupId, ids), sql`${schema.dares.creatorSignature} is not null`)),
+  ]);
+  return groups
+    .map((g) => {
+      const people = (members.get(g.id) ?? []).filter((m) => m.userId !== null);
+      const mine = asked.filter((a) => a.groupId === g.id);
+      const last = mine.reduce<Date | null>((m, a) => (m === null || a.createdAt > m ? a.createdAt : m), null);
+      return { groupId: g.id, label: setLabel({ name: g.name, isDyad: g.isDyad, memberNames: people.map((m) => m.displayName), viewerName }), named: g.name !== null, isDyad: g.isDyad, members: people, asked: mine.length, lastAskedAt: last, offerName: g.name === null && !g.isDyad && mine.length >= 1 && g.namePromptDismissals < 2, createdAt: g.createdAt };
+    })
+    .filter((s) => s.members.length >= 2)
+    .sort((a, b) => (b.lastAskedAt?.getTime() ?? 0) - (a.lastAskedAt?.getTime() ?? 0) || b.asked - a.asked || b.createdAt.getTime() - a.createdAt.getTime())
+    .map(({ createdAt: _createdAt, ...s }) => s);
+}
+
+/**
+ * The set for exactly these people: the one that already exists, or a new one nobody has named. The asker must
+ * already share something with each of them; an id alone is not a way to put a stranger into a question.
+ */
+export async function setForPeople(creatorId: string, otherIds: string[]): Promise<GroupRow> {
+  const others = Array.from(new Set(otherIds)).filter((id) => id !== creatorId);
+  if (others.length === 0) return createOccasionGroup(creatorId);
+  const known = new Set((await peopleForUser(creatorId)).map((p) => p.user.id));
+  if (!others.every((id) => known.has(id))) throw new Error("not someone you know here");
+  if (others.length === 1 && others[0]) return ensureDyad(creatorId, others[0]);
+  const want = [creatorId, ...others].sort().join(",");
+  const mine = await db.select({ groupId: schema.groupMembers.groupId }).from(schema.groupMembers).innerJoin(schema.groups, eq(schema.groups.id, schema.groupMembers.groupId)).where(and(eq(schema.groupMembers.userId, creatorId), isNull(schema.groupMembers.leftAt), eq(schema.groups.isDyad, false)));
+  const members = await membersOfGroups(mine.map((m) => m.groupId));
+  for (const [groupId, list] of members) {
+    if (list.some((m) => m.userId === null)) continue;
+    if (list.map((m) => m.userId as string).sort().join(",") === want) {
+      const [g] = await db.select().from(schema.groups).where(eq(schema.groups.id, groupId)).limit(1);
+      if (g) return g;
+    }
+  }
+  return db.transaction(async (tx) => {
+    const [group] = await tx.insert(schema.groups).values({ name: null, isDyad: false, createdBy: creatorId }).returning();
+    if (!group) throw new Error("could not create group");
+    await tx.insert(schema.groupMembers).values([creatorId, ...others].map((userId) => ({ groupId: group.id, userId })));
+    return group;
+  });
+}
+
+/** "Not now" on the naming question. Twice, and the set is never asked again. */
+export async function dismissNamePrompt(groupId: string, userId: string): Promise<void> {
+  if (!(await isMember(groupId, userId))) return;
+  await db.update(schema.groups).set({ namePromptDismissals: sql`least(${schema.groups.namePromptDismissals} + 1, 2)` }).where(eq(schema.groups.id, groupId));
 }

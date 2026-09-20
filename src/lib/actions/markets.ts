@@ -10,7 +10,7 @@ import { requireUser } from "@/lib/auth/session";
 import { db, schema } from "@/db";
 import { and, asc, eq } from "drizzle-orm";
 import { denominationById, ensureUnitInGroup, ensureUsd } from "@/lib/ledger/denominations";
-import { createOccasionGroup, isMember } from "@/lib/ledger/groups";
+import { createOccasionGroup, isMember, setForPeople } from "@/lib/ledger/groups";
 import { castVote, draftMarket, enterMarket, lockMarket, MarketError, marketById, openMarket, sayWhatHappened, stateOf, VOID_OUTCOME } from "@/lib/ledger/markets";
 
 const uuid = z.string().uuid();
@@ -42,9 +42,15 @@ const Unit = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("existing"), id: uuid }),
   z.object({ kind: z.literal("new"), template: z.enum(["beer", "coffee", "round", "next_time"]).nullable(), label: z.string().trim().min(1).max(40), markEmoji: z.string().trim().max(16).optional() }),
 ]);
+const Who = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("set"), groupId: uuid }),
+  z.object({ kind: z.literal("people"), userIds: z.array(uuid).min(1).max(11) }),
+  /** Whoever the asker sends it to: a set of one that grows as people join. */
+  z.object({ kind: z.literal("link") }),
+]);
 const Draft = z.object({
-  /** Null is the ordinary case: ask first, and the group is whoever joins. */
-  groupId: uuid.nullable(),
+  who: Who,
+  blind: z.boolean().default(false),
   unit: Unit,
   title: z.string().trim().min(3).max(140),
   terms: z.string().trim().min(3).max(800),
@@ -61,9 +67,9 @@ export async function draftMarketAction(input: z.infer<typeof Draft>): Promise<{
   if (!parsed.success) return { error: "Something in that is off." };
   const d = parsed.data;
   try {
-    if (d.groupId && !(await isMember(d.groupId, user.id))) return { error: "You're not in that group." };
-    if (!d.groupId && d.unit.kind === "existing") return { error: "That unit isn't around any more. Pick another." };
-    const groupId = d.groupId ?? (await createOccasionGroup(user.id)).id;
+    if (d.who.kind === "set" && !(await isMember(d.who.groupId, user.id))) return { error: "You're not one of those people." };
+    if (d.who.kind !== "set" && d.unit.kind === "existing") return { error: "That unit isn't around any more. Pick another." };
+    const groupId = d.who.kind === "set" ? d.who.groupId : d.who.kind === "people" ? (await setForPeople(user.id, d.who.userIds)).id : (await createOccasionGroup(user.id)).id;
     const denom = d.unit.kind === "usd" ? await ensureUsd(groupId, user.id) : d.unit.kind === "existing" ? await denominationById(d.unit.id) : await ensureUnitInGroup(groupId, user.id, d.unit);
     if (!denom) return { error: "That unit isn't around any more. Pick another." };
     const row = await draftMarket({
@@ -76,6 +82,7 @@ export async function draftMarketAction(input: z.infer<typeof Draft>): Promise<{
       anchorBps: d.anchorPercent === null ? null : BigInt(d.anchorPercent * 100),
       anchorRationale: d.anchorRationale,
       markEmoji: d.markEmoji,
+      revealMode: d.blind ? "blind" : "open",
     });
     return { id: row.id };
   } catch (err) {

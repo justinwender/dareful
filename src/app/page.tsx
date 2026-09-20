@@ -1,52 +1,55 @@
 import Link from "next/link";
 import { LinkPending } from "@/components/ui/link-pending";
 import { MarketCardFrom } from "@/components/markets/market-card-from";
-import { z } from "zod";
 import { SignInButton } from "@/components/auth/sign-in-button";
-import { SignOutButton } from "@/components/auth/sign-out-button";
 import { Avatar, AvatarStack } from "@/components/ledger/avatar";
 import { CoveredCard } from "@/components/ledger/covered-card";
 import { Screen, SectionLabel, TopBar } from "@/components/ledger/screen";
 import { ObligationToken } from "@/components/ledger/obligation-token";
 import { CodeJoinCompact } from "@/components/home/code-join";
-import { GroupChips } from "@/components/home/group-chips";
-import { GroupControls } from "@/components/home/group-controls";
+import { AccountMenu } from "@/components/home/account-menu";
 import { NeedsYou } from "@/components/home/needs-you";
-import { homeFor } from "@/lib/ledger/home";
+import { homeFor, squareSentence } from "@/lib/ledger/home";
 import { closesLabel } from "@/lib/ui/copy";
 import { ButtonLink } from "@/components/ui/button";
 import { SuggestedGhost } from "@/components/ledger/suggested-ghost";
 import { currentUser } from "@/lib/auth/session";
 import { boundPendingForDebtor, ghostsForCreator, suggestedGhostsFor } from "@/lib/ledger/claims";
-import type { GroupChip } from "@/lib/ledger/groups";
 import { hueFor } from "@/lib/ui/hue";
 import { viewerClock } from "@/lib/ui/zone";
 
 export const dynamic = "force-dynamic";
 
-export default async function Home({ searchParams }: { searchParams: Promise<{ g?: string; all?: string }> }) {
+export default async function Home({ searchParams }: { searchParams: Promise<{ all?: string }> }) {
   const clock = await viewerClock();
   const user = await currentUser();
   if (!user) return <SignedOut />;
   const sp = await searchParams;
-  const groupId = z.string().uuid().safeParse(sp.g).success ? sp.g : undefined;
   const now = new Date(clock.now);
 
   const [home, ghosts, waiting, suggested] = await Promise.all([
-    homeFor(user, { groupId, now, closes: (at) => closesLabel(at, now, clock.zone) }),
+    homeFor(user, { now, closes: (at) => closesLabel(at, now, clock.zone) }),
     ghostsForCreator(user.id),
     boundPendingForDebtor(user.id),
     suggestedGhostsFor(user.id, user.displayName),
   ]);
   const empty = !home.hasAnything && ghosts.length === 0 && suggested.length === 0 && waiting.length === 0;
-  const me = (
-    <Link prefetch={false} href={`/p/${user.id}`} aria-label="You" className="inline-flex h-12 w-12 items-center justify-center rounded-pill">
-      <Avatar name={user.displayName} hue={hueFor(user.id)} size={28} />
-    </Link>
+  const me = <AccountMenu name={user.displayName} hue={hueFor(user.id)} href={`/p/${user.id}`} />;
+
+  // docs/design.md 4.7. Three tiers in three weights, and nothing that leaves: asking is the one marigold
+  // control, joining is a field and an outlined button directly under it, and logging a cover is text.
+  const acts = (
+    <div className="flex flex-col gap-3">
+      <ButtonLink prefetch href="/m/new" variant="primary">
+        Ask something
+      </ButtonLink>
+      <CodeJoinCompact />
+      <ButtonLink href="/new" variant="tertiary" className="self-start">
+        I got this one
+      </ButtonLink>
+    </div>
   );
 
-  // docs/design.md 3.14 and the "First run, nothing yet" board. Nothing happens here until somebody else is in
-  // it, so the screen says that, and offers the two ways somebody else gets in.
   if (empty) {
     return (
       <Screen>
@@ -56,13 +59,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ g
             <h1 className="text-display text-ink">Nothing happens here until somebody else is in it.</h1>
             <p className="text-body text-ink-2">Ask your group chat something, or join something one of them already asked.</p>
           </div>
-          <div className="flex flex-col gap-3">
-            <ButtonLink prefetch href="/m/new" variant="primary">
-              Ask something
-            </ButtonLink>
-            <p className="text-body-sm text-ink-2">Everyone who joins puts a number in. Whoever lands closest comes out best. You send the link to the chat and it starts.</p>
-          </div>
-          <CodeJoinCompact label="Someone sent you a code?" />
+          {acts}
           <section className="flex flex-col gap-[10px]">
             <h2 className="text-label text-ink-2">Or start from one of these</h2>
             <ul className="flex flex-col gap-1.5">
@@ -76,12 +73,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ g
               ))}
             </ul>
           </section>
-          <ButtonLink href="/new" variant="tertiary">
-            Or log one you just got
-          </ButtonLink>
-          <div className="mt-auto pt-6">
-            <SignOutButton />
-          </div>
         </div>
       </Screen>
     );
@@ -91,17 +82,9 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ g
     <Screen>
       <TopBar title="dareful" right={me} />
       <div className="flex flex-col gap-7 py-2">
-        {/* 4.7: ask, then join. One marigold control on the screen, and joining directly under it. */}
-        <div className="flex flex-col gap-4">
-          <ButtonLink prefetch href={home.selected ? `/m/new?group=${home.selected.id}` : "/m/new"} variant="primary">
-            Ask something
-          </ButtonLink>
-          <CodeJoinCompact />
-        </div>
+        {acts}
 
-        {home.selected ? <GroupStrip chip={home.selected} /> : null}
-
-        {waiting.length > 0 && !home.selected ? (
+        {waiting.length > 0 ? (
           <Link prefetch={false} href="/welcome" className="relative flex items-center justify-between gap-3 rounded-card border border-dashed border-line-strong px-4 py-3.5">
             <LinkPending />
             <span className="text-body-strong text-ink">{waiting.length === 1 ? "One thing was waiting for you" : "A few things were waiting for you"}</span>
@@ -109,9 +92,9 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ g
           </Link>
         ) : null}
 
-        <NeedsYou rows={home.needs} viewer={user} showAll={sp.all === "1"} allHref={groupId ? `/?g=${groupId}&all=1` : "/?all=1"} />
+        <NeedsYou rows={home.needs} viewer={user} showAll={sp.all === "1"} allHref="/?all=1" />
 
-        {suggested.length > 0 && !home.selected ? (
+        {suggested.length > 0 ? (
           <section className="flex flex-col gap-3">
             <SectionLabel>Is this you?</SectionLabel>
             {suggested.map((g) => (
@@ -149,7 +132,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ g
           </section>
         ) : null}
 
-        {home.people.length > 0 || ghosts.length > 0 ? (
+        {home.people.length > 0 || home.square.length > 0 || ghosts.length > 0 ? (
           <section className="flex flex-col gap-[10px]">
             <h2 className="text-label text-ink-2">People</h2>
             <ul className="flex flex-col gap-1.5">
@@ -167,55 +150,54 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ g
                         denomination={token.denomination}
                         quantity={token.quantity}
                       />
-                    ) : (
-                      <span className="text-caption text-ink-3">Nothing open</span>
-                    )}
+                    ) : null}
                   </Link>
                 </li>
               ))}
-              {home.selected
-                ? null
-                : ghosts.map((g) => (
-                    <li key={g.id}>
-                      <Link prefetch={false} href={`/p/c/${g.id}`} className="relative flex min-h-14 items-center gap-3 rounded-button bg-surface px-3">
-                        <LinkPending />
-                        <Avatar name={g.displayName} hue="stone" size={36} ghost />
-                        <span className="min-w-0 flex-1 truncate text-body-strong text-ink">{g.displayName}</span>
-                        <span className="text-caption text-ink-3">not here yet</span>
-                      </Link>
-                    </li>
-                  ))}
+              {/* Never repeat an empty phrase down a list: everyone square is one row that names them. */}
+              {home.square.length > 0 ? (
+                <li>
+                  <details className="group rounded-button bg-surface">
+                    <summary className="flex min-h-14 cursor-pointer list-none items-center gap-3 px-3">
+                      <AvatarStack people={home.square.map((p) => ({ name: p.displayName, hue: hueFor(p.id) }))} size={26} />
+                      <span className="min-w-0 flex-1 text-body-sm text-ink-2">{squareSentence(home.square.map((p) => p.displayName))}</span>
+                      <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-ink-3 transition-transform group-open:rotate-90">
+                        <path d="M9 5l7 7-7 7" />
+                      </svg>
+                    </summary>
+                    <ul className="flex flex-col border-t border-line">
+                      {home.square.map((p) => (
+                        <li key={p.id}>
+                          <Link prefetch={false} href={`/p/${p.id}`} className="relative flex min-h-12 items-center gap-3 px-3">
+                            <LinkPending />
+                            <Avatar name={p.displayName} hue={hueFor(p.id)} size={28} />
+                            <span className="min-w-0 flex-1 truncate text-body-sm text-ink">{p.displayName}</span>
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                </li>
+              ) : null}
+              {ghosts.map((g) => (
+                <li key={g.id}>
+                  <Link prefetch={false} href={`/p/c/${g.id}`} className="relative flex min-h-14 items-center gap-3 rounded-button bg-surface px-3">
+                    <LinkPending />
+                    <Avatar name={g.displayName} hue="stone" size={36} ghost />
+                    <span className="min-w-0 flex-1 truncate text-body-strong text-ink">{g.displayName}</span>
+                    <span className="text-caption text-ink-3">not here yet</span>
+                  </Link>
+                </li>
+              ))}
             </ul>
           </section>
         ) : null}
-
-        <GroupChips chips={home.chips} hidden={home.hidden} selectedId={home.selected?.id ?? null} />
-
-        <div className="flex flex-col gap-1 pt-2">
-          <ButtonLink href={home.selected ? `/new?group=${home.selected.id}` : "/new"} variant="secondary">
-            I got this one
-          </ButtonLink>
-          <SignOutButton />
-        </div>
       </div>
     </Screen>
   );
 }
 
 const STARTERS = ["Does John fall asleep during the movie?", "Does anyone actually show up on time Friday?", "Who gets to the bar first?"];
-
-/** A chip is selected: who is in it, and the few things a group can have done to it. Never a screen of its own. */
-function GroupStrip({ chip }: { chip: GroupChip }) {
-  return (
-    <section className="flex flex-col gap-3 rounded-card border border-line bg-surface px-4 py-[14px]">
-      <div className="flex items-center justify-between gap-3">
-        <span className="min-w-0 truncate text-body-strong text-ink">{chip.label}</span>
-        <AvatarStack people={chip.members.map((m) => ({ name: m.displayName, hue: m.userId ? hueFor(m.userId) : "stone", ghost: !m.userId }))} size={26} />
-      </div>
-      <GroupControls groupId={chip.id} named={chip.named} worthNaming={chip.worthNaming} archived={chip.archived} />
-    </section>
-  );
-}
 
 function SignedOut() {
   return (

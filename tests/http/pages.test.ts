@@ -274,9 +274,12 @@ test("a draft is a 404 to everyone but the person who asked it, and its preview 
 test("someone in the group who has not picked sees who is in and no number; someone outside sees neither", async () => {
   const mine = await get(`/m/${marketId}`, cFriend);
   assert.equal(mine.status, 200);
-  assert.ok(mine.text.includes("Priya Raman") && mine.text.includes("1 of 2 in") && mine.text.includes("Numbers show when everyone’s in."));
-  assert.ok(!mine.text.includes("83%"));
-  assert.ok((await get(`/m/${marketId}`, cAsker)).text.includes("83%"));
+  assert.ok(mine.text.includes("One friend is in.") && mine.text.includes("Where the stake sits shows once you pick.") && mine.text.includes("1 of 2 in"));
+  // Sent, not merely shown: the page's data travels in the HTML, so a number hidden by a component is still leaked.
+  for (const s of ["83%", "about 8 in 10", "riding,", "8300", "heightPermille"]) assert.ok(!mine.html.includes(s), `someone who has not picked is sent "${s}"`);
+  // The asker is in: the receipt is on the screen every time it opens, not for a second after the tap.
+  const asked = await get(`/m/${marketId}`, cAsker);
+  assert.ok(asked.text.includes("You’re in at about 8 in 10") && asked.text.includes("yours to change until it closes") && asked.text.includes("Where the stake sits"));
   const outside = await get(`/m/${marketId}`, cStranger);
   assert.equal(outside.status, 200);
   // The invitation (docs/design.md 3.17): what it is and who asked, by first name, and nothing it could cost.
@@ -341,6 +344,21 @@ test("a device that cannot approve is only ever reported by the person it belong
   assert.equal((await send("/api/device-state", "POST", { state: "signed-out", standalone: true }, cFriend)).status, 200);
 });
 
+test("nothing on a question borrows a word from finance, and home has no groups and no way to leave on it", async () => {
+  const FINANCE = /\b(odds|implied|price|pot|house|buy|sell|shares|liquidity|position size)\b|the market says/i;
+  for (const who of [cFriend, cAsker]) {
+    const r = await get(`/m/${marketId}`, who);
+    const m = FINANCE.exec(r.text);
+    assert.equal(m, null, m ? `found "${m[0]}" in: ...${r.text.slice(Math.max(0, m.index - 40), m.index + 40)}...` : "");
+  }
+  const home = await get("/", cA);
+  const order = ["Ask something", "Someone read you a code?", "I got this one", "People"].map((t) => home.text.indexOf(t));
+  assert.ok(order.every((x, i) => x >= 0 && (i === 0 || x > (order[i - 1] ?? 0))), `ask, join, I got this one, then people: ${order.join(",")}`);
+  assert.ok(!/Sign out/.test(home.text) && !/\bGroups\b/.test(home.text) && !/Nothing open/.test(home.text));
+  const gone = await get(`/g/${groupId}`, cA);
+  assert.ok((gone.status === 307 || gone.status === 302) && gone.loc === "/", "there is no group screen; an old address goes home");
+});
+
 // ------------------------------------------------------------------------------------------------ dates
 
 test("a timestamp is painted in the zone the browser reported, not the server's", async () => {
@@ -368,7 +386,8 @@ for (const [name, path, who] of [
   ["the first screen", () => "/welcome", () => cU],
   ["the ghost page", () => `/p/c/${gabe}`, () => cA],
   ["the cover form", () => "/new", () => cA],
-  ["the group page", () => `/g/${groupId}`, () => cA],
+  ["home", () => "/", () => cA],
+  ["the joining screen", () => "/join", () => cA],
   ["the signed-out cover page", () => `/o/${boundId}`, () => undefined],
   ["the cover page", () => `/o/${boundId}`, () => cU],
   ["a question, before picking", () => `/m/${marketId}`, () => cFriend],

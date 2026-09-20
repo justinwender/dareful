@@ -85,3 +85,28 @@ export function firstInitial(name: string): string {
   const ch = name.trim().charAt(0);
   return ch ? ch.toUpperCase() : "";
 }
+
+const SIZE_WORDS = ["", "", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve"];
+
+/**
+ * The caption under a set of people in "Who's in" (docs/design.md 3.20). It carries the difference between sets,
+ * so the label never has to: "Last time, on Friday" against "Six of you, back in August". A number never opens
+ * the line as a digit, and nothing here says how long it has been in a way that reads as neglect.
+ */
+export function setCaption(input: { size: number; lastAskedAt: Date | null; isMostRecent: boolean; now: Date; timeZone: string }): string {
+  const size = `${SIZE_WORDS[input.size] ?? "A lot"} of you`;
+  if (!input.lastAskedAt) return input.size === 2 ? "Just the two of you" : size;
+  const days = dayNumber(input.now, input.timeZone) - dayNumber(input.lastAskedAt, input.timeZone);
+  const when = days <= 0 ? "today" : days === 1 ? "yesterday" : days < 7 ? `on ${input.lastAskedAt.toLocaleDateString("en-US", { timeZone: input.timeZone, weekday: "long" })}` : days < 14 ? "last week" : days < 21 ? "two weeks ago" : null;
+  if (when) return input.isMostRecent ? `Last time, ${when}` : when.charAt(0).toUpperCase() + when.slice(1);
+  return `${size}, back in ${input.lastAskedAt.toLocaleDateString("en-US", { timeZone: input.timeZone, month: "long" })}`;
+}
+
+/** "Locked at 11pm" on the day, "Locked Sat, Sep 12" after it. In the viewer's zone, and never how long ago. */
+export function lockedLabel(at: Date, now: Date, timeZone: string): string {
+  if (dayNumber(now, timeZone) === dayNumber(at, timeZone)) {
+    const t = at.toLocaleTimeString("en-US", { timeZone, hour: "numeric", minute: "2-digit" }).replace(":00", "").replace(" ", "").toLowerCase();
+    return `Locked at ${t}`;
+  }
+  return `Locked ${at.toLocaleDateString("en-US", { timeZone, weekday: "short", month: "short", day: "numeric" })}`;
+}

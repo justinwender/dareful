@@ -7,13 +7,14 @@ import { ActionArea, Screen, TopBar } from "@/components/ledger/screen";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { ButtonLink } from "@/components/ui/button";
 import { currentUser } from "@/lib/auth/session";
-import { personView, userById } from "@/lib/ledger/person";
+import { filterByContext, personView, userById } from "@/lib/ledger/person";
+import { SharedContextBand } from "@/components/ledger/shared-context-band";
 import { hueFor } from "@/lib/ui/hue";
 import { viewerClock } from "@/lib/ui/zone";
 
 export const dynamic = "force-dynamic";
 
-export default async function PersonPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function PersonPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ c?: string }> }) {
   const clock = await viewerClock();
   const me = await currentUser();
   if (!me) redirect("/");
@@ -23,6 +24,9 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
   if (!them) notFound();
 
   const view = await personView(me, them);
+  const wanted = (await searchParams).c;
+  const chosen = view.contexts.find((c) => c.groupId === wanted);
+  const timeline = filterByContext(view.timeline, chosen?.groupId);
   const byId = new Map<string, { id: string; displayName: string }>([
     [me.id, me],
     [them.id, them],
@@ -37,11 +41,12 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
           <h1 className="text-display text-ink">{them.displayName}</h1>
         </div>
         <PersonHeader me={me} them={them} theirs={view.header.theirs} yours={view.header.yours} />
-        {view.timeline.length === 0 ? (
+        <SharedContextBand personId={them.id} contexts={view.contexts} selectedId={chosen?.groupId ?? null} />
+        {timeline.length === 0 ? (
           <p className="text-body text-ink-2">Nothing between you two yet.</p>
         ) : (
           <div className="flex flex-col gap-3">
-            {view.timeline.map((e) => {
+            {timeline.map((e) => {
               if (e.kind === "market") return <MarketCardFrom key={`m-${e.market.dare.id}`} m={e.market} viewerId={me.id} clock={clock} />;
               if (e.kind === "proposal") {
                 const debtor = byId.get(e.proposal.fromUser ?? "");

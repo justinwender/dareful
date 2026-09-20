@@ -7,6 +7,7 @@ import { monadEvmNetworks } from "@/lib/dynamic/networks";
 import { WalletBootstrap } from "@/components/auth/wallet-bootstrap";
 import { DeviceNotice, MeProvider } from "@/components/auth/device";
 import type { Me } from "@/lib/auth/device";
+import { OpenFromNotification } from "@/components/notify/open-from-notification";
 
 const environmentId = process.env.NEXT_PUBLIC_DYNAMIC_ENVIRONMENT_ID ?? "";
 
@@ -38,6 +39,7 @@ export function Providers({ children, settled, me }: { children: ReactNode; sett
       <MeProvider me={me}>
         <WalletBootstrap settled={settled} sessionDynamicUserId={me?.dynamicUserId ?? null} />
         <DeviceNotice />
+        <OpenFromNotification />
         {children}
       </MeProvider>
     </DynamicContextProvider>

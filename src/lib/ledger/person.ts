@@ -5,6 +5,7 @@
  */
 import { and, desc, eq, inArray, or } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { membersOfGroups, setLabel } from "./groups";
 import type { DenominationRow } from "./denominations";
 import { denominationsByIds } from "./denominations";
 import { obligationsById, openBetween, type EnvioObligation } from "./envio";
@@ -73,7 +74,30 @@ export type PersonView = {
   header: PersonHeader;
   rally: { pickups: Array<{ userId: string; at: Date }>; sentence: string | null };
   timeline: TimelineEvent[];
+  /** Where these two turn up: the sets of people their shared events came out of, by how many. */
+  contexts: SharedContext[];
 };
+
+export type SharedContext = { groupId: string; label: string; count: number; unnamed: boolean };
+const contextOf = (e: TimelineEvent): string => (e.kind === "market" ? e.market.dare.groupId : e.kind === "proposal" ? e.proposal.groupId : e.obligation.groupId);
+
+/**
+ * docs/design.md 3.21. Counts of shared events per set of people, most first, so the band can answer the one
+ * question it exists for: why something sits in one context and not another. Nothing when the only context is
+ * the two of them, since a band with one obvious chip explains nothing.
+ */
+export function sharedContexts(timeline: TimelineEvent[], labels: Map<string, { label: string; unnamed: boolean; isDyad: boolean }>): SharedContext[] {
+  const counts = new Map<string, number>();
+  for (const e of timeline) counts.set(contextOf(e), (counts.get(contextOf(e)) ?? 0) + 1);
+  const out = Array.from(counts, ([groupId, count]) => ({ groupId, count, label: labels.get(groupId)?.label ?? "Somewhere else", unnamed: labels.get(groupId)?.unnamed ?? false }));
+  if (out.length === 0 || out.every((c) => labels.get(c.groupId)?.isDyad)) return [];
+  return out.sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+}
+
+/** The timeline narrowed to one context, for a tapped chip. An id that is not one of theirs narrows to nothing new. */
+export function filterByContext(timeline: TimelineEvent[], groupId: string | undefined): TimelineEvent[] {
+  return groupId ? timeline.filter((e) => contextOf(e) === groupId) : timeline;
+}
 
 export async function personView(me: UserRow, them: UserRow): Promise<PersonView> {
   const [open, obligations, pending, markets] = await Promise.all([
@@ -148,7 +172,16 @@ export async function personView(me: UserRow, them: UserRow): Promise<PersonView
   // The offchain timestamp, never the chain timestamp.
   timeline.sort((x, y) => y.at.getTime() - x.at.getTime());
 
-  return { me, them, header, rally: { pickups, sentence }, timeline };
+  const contextIds = Array.from(new Set(timeline.map(contextOf)));
+  const [contextGroups, contextMembers] = await Promise.all([contextIds.length ? db.select().from(schema.groups).where(inArray(schema.groups.id, contextIds)) : Promise.resolve([]), membersOfGroups(contextIds)]);
+  const labels = new Map(contextGroups.map((g) => [g.id, { label: setLabel({ name: g.name, isDyad: g.isDyad, memberNames: (contextMembers.get(g.id) ?? []).filter((m) => m.userId).map((m) => m.displayName), viewerName: me.displayName }), unnamed: g.name === null && !g.isDyad, isDyad: g.isDyad }]));
+  for (const e of timeline) {
+    const label = labels.get(contextOf(e))?.label ?? null;
+    if (e.kind === "market") e.market = { ...e.market, groupName: label };
+    else e.groupName = label;
+  }
+
+  return { me, them, header, rally: { pickups, sentence }, timeline, contexts: sharedContexts(timeline, labels) };
 }
 
 export async function userById(id: string): Promise<UserRow | null> {

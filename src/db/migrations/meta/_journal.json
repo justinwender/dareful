@@ -85,6 +85,13 @@
       "when": 1789920425874,
       "tag": "0011_device_states",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1789926830630,
+      "tag": "0012_number_series_and_name_prompt",
+      "breakpoints": true
     }
   ]
 }

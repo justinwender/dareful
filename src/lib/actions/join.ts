@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth/session";
-import { nameGroup, redeemInvite, setArchived } from "@/lib/ledger/groups";
+import { dismissNamePrompt, nameGroup, redeemInvite } from "@/lib/ledger/groups";
 import { MarketError } from "@/lib/ledger/markets";
 import { readPastedLink } from "@/lib/ledger/room-code";
 import { joinByCode, joinByMarketLink, roomCodeFor } from "@/lib/ledger/rooms";
@@ -45,7 +45,7 @@ export async function joinByLinkAction(raw: string): Promise<Refusal> {
     else {
       const group = await redeemInvite(link.inviteToken, user.id);
       if (!group) return { error: "That link has been turned off or has run out. Ask for a new one.", at: "form" };
-      to = `/?g=${group.id}`;
+      to = "/";
     }
   } catch (err) {
     if (err instanceof MarketError) return { error: err.message, at: "form" };
@@ -96,12 +96,9 @@ export async function nameGroupAction(rawId: string, rawName: string): Promise<{
   return { ok: true };
 }
 
-/** Hides a group from this person's home, for them only. Anything new happening there brings it back. */
-export async function archiveGroupAction(rawId: string, archived: boolean): Promise<{ ok: true } | { error: string }> {
+/** "Not now" on the naming question under the picker. */
+export async function dismissNamePromptAction(rawId: string): Promise<void> {
   const user = await requireUser();
   const id = uuid.safeParse(rawId);
-  if (!id.success) return { error: "That group doesn't exist." };
-  await setArchived(id.data, user.id, archived);
-  revalidatePath("/");
-  return { ok: true };
+  if (id.success) await dismissNamePrompt(id.data, user.id);
 }

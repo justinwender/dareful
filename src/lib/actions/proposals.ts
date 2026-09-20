@@ -174,5 +174,5 @@ export async function splitCoverAction(input: SplitInput): Promise<{ error: stri
   } catch (err) {
     return { error: err instanceof SplitError ? err.message : "Couldn't save that. Nothing was logged." };
   }
-  redirect(`/g/${d.groupId}`);
+  redirect("/");
 }
