@@ -10,6 +10,7 @@ export function MarketCardFrom({ m, viewerId, clock }: { m: MarketCardData; view
       mark={m.dare.markKind === "emoji" ? m.dare.markValue : null}
       groupName={m.groupName}
       state={m.state}
+      argument={m.dare.pace === "argument"}
       at={m.at}
       clock={clock}
       viewerId={viewerId}

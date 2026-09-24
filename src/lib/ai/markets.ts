@@ -23,14 +23,17 @@ export const Scope = z.object({
   /** The question as it appears on a card: short, in the group's own words, ending in a question mark. */
   title: z.string().trim().min(3).max(120),
   /** How the group will know the answer. One to three plain sentences, including the chosen criterion. */
-  terms: z.string().trim().min(10).max(600),
+  // No em dashes in anything the app says, including what a model wrote; and these words are what gets hashed.
+  terms: z.string().trim().min(10).transform((t) => t.replace(/\s*\u2014\s*|\s+\u2013\s+/g, ", ")).pipe(z.string().max(700)),
   /** True only when the line cannot be resolved as written because what would count is genuinely unclear. */
   ambiguous: z.boolean(),
   /** When ambiguous: up to three measurable ways to decide it, each a short phrase. Otherwise empty. */
   criteria: z.preprocess(listOfStrings, z.array(z.string().trim().min(3).max(90)).max(3)),
   /** A starting number, in percent, for people to argue with. Not a price and never anyone's position. */
   anchorPercent: z.number().int().min(1).max(99),
-  anchorRationale: z.string().trim().min(3).max(140),
+  // Display only, and argued with rather than relied on. A long one is clipped, never a reason to throw away
+  // the terms that came with it: that discarded whole write-ups in testing (docs/decisions.md 2026-09-21).
+  anchorRationale: z.string().trim().min(3).transform((r) => (r.length > 140 ? `${r.slice(0, 139).trimEnd()}…` : r)),
   /** How long until the group could know, in hours from now. */
   resolvesInHours: z.number().int().min(1).max(24 * 120),
 });
@@ -50,8 +53,9 @@ Write:
 
 Never mention odds, prices, markets, wagers, or money. These are friends.`;
 
-export async function scopeMarket(input: { line: string; criterion?: string; now: Date }): Promise<MarketScope> {
-  const user = `<line>${input.line.slice(0, 280)}</line>\n${input.criterion ? `The group chose to decide it by: <criterion>${input.criterion.slice(0, 120)}</criterion>. Write the terms around that and set ambiguous to false.\n` : ""}Right now it is ${input.now.toISOString()}.`;
+export async function scopeMarket(input: { line: string; criterion?: string; answers?: Array<{ question: string; yes: boolean }>; now: Date }): Promise<MarketScope> {
+  const answered = (input.answers ?? []).slice(0, 3).map((a) => `<answered question="${a.question.replace(/["<>]/g, "").slice(0, 140)}">${a.yes ? "yes" : "no"}</answered>`).join("\n");
+  const user = `<line>${input.line.slice(0, 280)}</line>\n${answered ? `The person asking answered these about edge cases. Write the terms so each answer is settled in them, in plain words, and set ambiguous to false.\n${answered}\n` : ""}${input.criterion ? `The group chose to decide it by: <criterion>${input.criterion.slice(0, 120)}</criterion>. Write the terms around that and set ambiguous to false.\n` : ""}Right now it is ${input.now.toISOString()}.`;
   return structured({
     label: "scope market",
     model: MODELS.drafting,
@@ -78,7 +82,7 @@ export async function scopeMarket(input: { line: string; criterion?: string; now
 
 /** What the scope is when the model is slow, down, or wrong-shaped: the line as typed, and no number. */
 export function plainScope(line: string): { title: string; terms: string } {
-  const title = line.trim().replace(/\s+/g, " ").slice(0, 120);
+  const title = line.trim().replace(/\s+/g, " ").replace(/[.!\s]+$/, "").slice(0, 120);
   return { title: /[?]$/.test(title) ? title : `${title}?`, terms: `Yes or no: ${title}${/[.?!]$/.test(title) ? "" : "."} The group decides together what happened.` };
 }
 

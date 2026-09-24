@@ -28,7 +28,7 @@ export function Sheet({ open, onClose, labelledBy, children }: { open: boolean; 
 
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-40 flex flex-col justify-end">
+    <div className="fixed inset-0 z-50 flex flex-col justify-end">
       <button type="button" aria-label="Never mind" tabIndex={-1} onClick={onClose} className="absolute inset-0 touch-none bg-[rgba(23,20,15,0.78)]" />
       <div
         ref={panel}

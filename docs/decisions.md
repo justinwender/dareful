@@ -858,3 +858,63 @@ The specification draws a no-stake entry as an 8px hollow dot on the baseline of
 ## 2026-09-20: What the real session found that a forged one could not
 
 Dynamic's SDK caches the project's settings in the browser, so after the signing sheet was switched off in the dashboard (and confirmed off through both the environment API and the public settings endpoint browsers load), the development browser kept showing it across reloads. Phones had picked up the change. Worth knowing the next time a dashboard change "did not take".
+
+# Phase 2C: the settler (2026-09-21)
+
+## 2026-09-21: Navigation: a way home, what is time-bound first, and the ballot as the screen
+
+Three findings from the three-person session, one problem. Taking the group list and sign-out off home removed most of the incidental ways back without putting a deliberate one in their place, and an installed app has no browser chrome. Now: a bar at the bottom of every screen but home holds one control, Home, under the thumb (the top-left back control is the hardest place on a phone to reach one-handed). Sticky action areas sit above it. It is deliberately the smallest structure that fixes it: a navigation architecture for the whole feature set is being designed in parallel, and a bar with one destination can be replaced without anything depending on it. Rejected: a tab bar with invented destinations (it would pre-empt that work); relying on the back control (unreachable, and it is "back", not "home").
+
+"Needs you" ranks what is time-bound above what can sit: a question in voting first (a quorum is waiting on this person), then anything else with a deadline, soonest first, then covers to confirm and unsent drafts. As priority and never as pressure: the order is the whole signal, with no countdown, no day count and no ageing, and a two-month-old cover does not climb over tonight's vote by being old.
+
+On a question in voting where this person has not voted, the ballot is the screen: it comes first, its heading is in the question face, and the agree button is the one marigold control. Once they have voted the picture leads again.
+
+## 2026-09-21: Two paces, one object, and what an argument signs
+
+An argument is the same market with `pace = 'argument'`: same contract, same scoring, same resolution path, no waiting. Its two numbers default to all the way on opposite sides, so the loser is out the whole stake and "the loser owes a beer" is literally what happens (Brier gives 10000 and 0, and the pairwise transfer is the full smaller stake); either person can soften theirs before they are in, and then it is scored like anything else. It is between two people: a third number is refused, though everyone else in the set can watch and is in the quorum. The moment the second person is in, it locks (the one chain write), and the app proposes, off the critical path: the ballot is open before the proposal arrives.
+
+What an argument signs: PLANNING.md's schema says an argument's `resolves_by` is "the moment the second position is entered", but the asker signs `Create`, which includes `resolvesBy`, before that moment exists. So an argument signs `resolvesBy = 0`: due at once, which the contract accepts (`create` does not validate it) and which is exactly what lets `arbitrate()` be called the second both are in. The moment the second person got in is kept offchain as `resolves_by`, as the schema says. Rejected: signing the time of asking (arbitrary, and not what the field means); re-signing at the second entry (the asker is not there to sign).
+
+The other side is not a secret in an argument. 2A's rule is that nobody sees a number before they have picked; here the person invited is told which side is taken ("Sam says yes. You're taking the other side."), never the number, because taking the other side is the whole act.
+
+## 2026-09-21: Three tiers, and the refusal is enforced twice
+
+Triage comes before anything is written, and it matters more than the ruling. Checkable: straight through. Contestable: up to three measurable criteria, one picked by the asker (quick mode), and the pick is written into `terms_text`, so into the hash; `draftMarket` refuses a criterion that is not inside the terms. Interpersonal and matters of taste: declined, always, with an offer to make it a dare.
+
+The decline is not left to a prompt. `declined()` refuses, whatever the model called the tier, anything with no claim about the world and any contestable claim with no criterion; a dispute about a person phrased as a claim is still refused by tier. And with no triage there is no settler: if the model is down the screen says the app cannot weigh it and rules on nothing, because a failed triage is not permission to rule. This is the one place a model is on the path, deliberately: the alternative to "the model must answer" is "the app rules on something nobody classified". The reason given never comments on either person; a mutant that makes it do so is killed.
+
+The criterion and the tiebreaker are on the share card and on the invitation before anyone is in. Entering is accepting both, which is what lets the fast path work with no negotiation step.
+
+A ruling states its confidence: firm where the criterion decides it, soft ("the app leans yes, 82 to 18") where the criterion is fixed and the evidence still splits. It is a proposal; the quorum overrules it by the same signatures that would ratify it. Careful mode for both parties agreeing on a criterion is not built: careful mode here is the asker's three questions (below); two-party criterion agreement needs a second person in the creation flow and belongs with accountless entry.
+
+## 2026-09-21: Careful mode
+
+The other half of 2A's toggle. Three yes-or-no questions about edge cases that could actually happen, answered by the asker alone in about fifteen seconds, then terms written so each answer is settled in them; everyone else just sees the terms. If the questions do not come through, the flow falls back to the quick write-up and says so.
+
+## 2026-09-21: Arbitration
+
+The stalemate rule is chosen when asking (arbitrate by default), shown on the card and the invitation, and consented to in every entry signature (`stalemate` is a field of `Enter`, checked by the contract at lock). Under arbitrate, everyone who is in may state their case in one line (`dare_statements.kind = 'statement'`, never mixed with `update`); someone who can see and vote but put nothing on it has no side to argue and is refused. The arbitrator reads the terms, where each person put their number, what people said happened, and each case, and writes a ruling: an answer, or a finding that the terms do not decide it, which voids with the toll. The relayer submits `arbitrate()` with the outcome and `keccak256` of the ruling's exact bytes; the text is stored as hashed (em dashes removed and length clipped before hashing, never after), so anyone can re-hash it against `rulingHashOf`. Verified on the real chain: stored text, recomputed hash, the contract's hash and the indexer's all match.
+
+Who reaches the arbitrator, ruled: a person presses, the timer is the backstop. Once it is due (an argument: at once), anyone who is in sees "Can't agree?" and may ask; it is a sheet, because it ends the vote for everyone. If nobody presses, the scheduler hears it 24 hours after it was due or locked, whichever is later, and never if the votes already there would decide it. Rejected: opening it only on a mathematical deadlock (in a two-person argument both would have to vote against each other before the app could be asked); timer only (the deadlock case would wait on a clock).
+
+The first real arbitration voided: the written terms named two incompatible tennis measures, and the arbitrator declined to pick one. That is the mechanism working, and a note about the terms-writer.
+
+Under the void rule `expire()` fires silently: `resolved_by = 'expired'`, no outcome, nothing minted, no toll, and the question reads "Never settled" in the timeline. It is a new ending, not a void.
+
+## 2026-09-21: The scheduler: pg_cron, once a minute, one door
+
+One decision for all four needs (the deadline notice, auto-lock at close, `expire()`, and the arbitration backstop). Supabase's `pg_cron` and `pg_net`, already in the stack and free, POST to `/api/tick` once a minute with a shared secret that lives in Supabase Vault and in Vercel as `TICK_SECRET`. The route answers 404 to anything without the secret, in constant time, so a scanner learns nothing, including that it exists. `src/db/ops/scheduler.sql` is the setup, without the secret. Cost: nothing in money; one new moving part (two extensions, one secret to rotate in two places, and cron run history to look at when something seems late).
+
+Every job is idempotent and also reachable by a person (the asker's lock button, the "needs you" row, "let the app call it", opening an unsettled question), so a missed tick delays and never breaks. One question's failure never stops the rest, and no two resolutions share a transaction. Rejected: Vercel Cron on Pro ($20 a month; also lifts log retention, which has cost us twice, so it may still be worth it on its own); read-time only (a question nobody opens never moves, and the asker's deadline push never sends).
+
+An incident worth recording: the first local call to the tick, while testing the route, ran against the shared database and locked two real questions that were a day past the time their askers set. That is what the tick is for and would have happened at deploy, but it was an onchain write on real people's questions, triggered from a development machine before review. The tick now takes `onlyIds`, tests always pass it, and a mutant that opens the door is written so that even open it touches nothing.
+
+## 2026-09-21: The void toll is recorded; its screen is out of scope
+
+A quorum vote to void and an arbitrator's finding that the terms could not decide it both count against whoever wrote the terms; expiry counts against nobody. `cleanResolution()` computes it from `resolved_by` and the outcome, so there is nothing new to store and nothing to backfill. The profile that shows it, beside calibration, is not built in this phase, deliberately rather than thinly: both numbers need a designed home, and the navigation and system audit in progress will say where that is.
+
+## 2026-09-21: What real sessions found in the model calls
+
+A display-only field was discarding whole write-ups: the one-line reason beside the starting number sometimes ran over 140 characters, the parse failed, and the terms that came with it were thrown away (which is why testers sometimes saw their line "as typed"). Display-only prose is now clipped, never a reason to reject; a ruling's lean is clamped, not rejected; a tool call cut off by the token limit is reported as that; and the ruling calls have room. Generated text has its em dashes removed before it is stored or hashed, leaving the en dash in a score alone.
+
+`arbitrate` gas, measured on Monad against real locked questions without sending: 1,318,098 for five people and ten edges, 289,963 for three, 65,107 for a void at any size. The existing limit holds; the void limit is 90,000. `expire` is still derived.

@@ -44,6 +44,17 @@ test("criteria sent as one string are read as a list", () => {
   assert.deepEqual(scope.criteria, ["by chip time", "by gun time"]);
 });
 
+test("a long reason for the starting number is clipped, and never costs the terms that came with it", () => {
+  const long = "x".repeat(300);
+  const scope = answerFrom(withInput(load("scope-market"), { anchorRationale: long }), "write_terms", Scope, "t");
+  assert.ok(scope.anchorRationale.length <= 140 && scope.anchorRationale.endsWith("…"));
+  assert.ok(scope.terms.length > 10);
+});
+
+test("with no model, a line that ends in a full stop still reads as a question", () => {
+  assert.equal(plainScope("The Holland Tunnel is longer than the Lincoln.").title, "The Holland Tunnel is longer than the Lincoln?");
+});
+
 test("with no model, the question is the line as typed and claims no number", () => {
   const plain = plainScope("  does riley   finish ");
   assert.equal(plain.title, "does riley finish?");

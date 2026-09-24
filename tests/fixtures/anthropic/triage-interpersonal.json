@@ -1,0 +1,42 @@
+{
+  "model": "claude-fable-5-1",
+  "id": "msg_011CfFTtbRaWs6KDJTzGPaxr",
+  "type": "message",
+  "role": "assistant",
+  "content": [
+    {
+      "type": "tool_use",
+      "id": "toolu_01G4otU3E9LXhxL2fTvKT8Ej",
+      "name": "triage",
+      "input": {
+        "tier": "interpersonal",
+        "claim": "",
+        "criteria": [],
+        "declineReason": "This one is about the two of you and someone you know, so the app stays out of it and doesn't rule on who was right or wrong.",
+        "dareInstead": ""
+      },
+      "caller": {
+        "type": "direct"
+      }
+    }
+  ],
+  "container": null,
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "stop_details": null,
+  "usage": {
+    "input_tokens": 1152,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "cache_creation": {
+      "ephemeral_5m_input_tokens": 0,
+      "ephemeral_1h_input_tokens": 0
+    },
+    "output_tokens": 181,
+    "output_tokens_details": {
+      "thinking_tokens": 0
+    },
+    "service_tier": "standard",
+    "inference_geo": "global"
+  }
+}

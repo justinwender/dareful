@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { after } from "next/server";
 import { asc, and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { SignInButton } from "@/components/auth/sign-in-button";
@@ -13,7 +14,10 @@ import { CallLine } from "@/components/markets/call-line";
 import { Leaderboard, Transfers } from "@/components/markets/leaderboard";
 import { InvitePreview } from "@/components/markets/invite-preview";
 import { RoomCode } from "@/components/markets/room-code";
+import { Arbitration } from "@/components/markets/arbitration";
+import { RefreshWhile } from "@/components/ui/refresh-while";
 import { AfterVote } from "@/components/notify/after-vote";
+import { arbitrationOpen, expireMarket, proposeForArgument } from "@/lib/ledger/settle";
 import { Nudge } from "@/components/notify/nudge";
 import { relayText } from "@/lib/notify/messages";
 import { Ballot, LockButton, WhatHappened, type Signing, type StakeUnit } from "@/components/markets/market-actions";
@@ -45,7 +49,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 
 const word = (o: bigint | null) => (o === null ? null : o === VOID_OUTCOME ? ("void" as const) : o === 1n ? ("yes" as const) : ("no" as const));
 
-export default async function MarketPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function MarketPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ side?: string }> }) {
   const clock = await viewerClock();
   const { id } = await params;
   const me = await currentUser();
@@ -68,6 +72,13 @@ export default async function MarketPage({ params }: { params: Promise<{ id: str
   const member = await isMember(d.groupId, me.id);
   // A locked market the chain has already decided, whose result never got written here: take the chain's word.
   if (d.lockedAt && !d.resolvedAt && member && (await reconcileFromIndexer(d.id))) d = (await marketById(id)) ?? d;
+  // The scheduler's jobs are all reachable without it: opening a question that was set to go unsettled, after
+  // its time, settles that here and now.
+  if (d.lockedAt && !d.resolvedAt && d.stalemate === "void" && d.resolvesBy && d.resolvesBy.getTime() < clock.now && member) {
+    if (await expireMarket(d.id).catch(() => false)) d = (await marketById(id)) ?? d;
+  }
+  // An argument whose proposal never arrived (the model was down when it locked) asks again, off the critical path.
+  if (d.pace === "argument" && d.lockedAt && !d.resolvedAt && !d.aiProposedAt && clock.now - d.lockedAt.getTime() > 20_000) after(() => proposeForArgument(id).catch(() => undefined));
   const state = stateOf(d);
   if (state === "draft" && d.creatorId !== me.id) notFound();
 
@@ -91,6 +102,9 @@ export default async function MarketPage({ params }: { params: Promise<{ id: str
               mark: d.markKind === "emoji" ? d.markValue : null,
               countLine: inCount === 0 ? null : (COUNT[inCount] ?? "A lot of friends are in"),
               decidesLine: d.resolvesBy ? `Decided ${closesLabel(d.resolvesBy, new Date(clock.now), clock.zone)}, by the people in it.` : null,
+              criterionLine: d.criterion ? `Decided ${d.criterion}, and by nothing else.` : null,
+              stalemateLine: d.stalemate === "void" ? "If nobody can agree how it came out, it goes unsettled." : "If nobody can agree how it came out, the app hears both sides and calls it. Being in means you’re fine with that.",
+              argument: d.pace === "argument",
               finished: state !== "open",
             }}
           />
@@ -155,6 +169,11 @@ export default async function MarketPage({ params }: { params: Promise<{ id: str
   // Both conditions, checked here and now: a slow question with three in and a fast one with six both exist.
   const spark = show && mine && number !== null && sparkEligible({ openedAt: d.createdAt, now: new Date(clock.now), entries: positions.length, points: series.length });
   const lockedLine = d.lockedAt ? lockedLabel(d.lockedAt, new Date(clock.now), clock.zone) : null;
+  // An argument's two numbers default to all the way on opposite sides, so whoever is wrong is out the whole
+  // thing; either of them can soften theirs before they're in. The other side is not a secret in an argument:
+  // taking the opposite one is the whole act, so the opponent is told which side is taken, never the number.
+  const firstIn = d.pace === "argument" ? (others[0] ?? null) : null;
+  const argument = d.pace === "argument" ? { defaultPercent: firstIn ? (firstIn.value >= 5000n ? 0 : 100) : (await searchParams).side === "no" ? 0 : 100, otherSays: firstIn ? { name: firstName(person.get(firstIn.userId as string)?.displayName ?? "They"), side: firstIn.value >= 5000n ? ("yes" as const) : ("no" as const) } : null } : null;
   const stage = (
     <NumberStage
       dareId={d.id}
@@ -167,6 +186,7 @@ export default async function MarketPage({ params }: { params: Promise<{ id: str
       mark={d.markKind === "emoji" ? d.markValue : null}
       suggestion={d.anchorValue !== null ? { percent: Math.round(Number(d.anchorValue) / 100), rationale: d.anchorRationale } : null}
       othersIn={others.map((p) => nameOf(p.userId as string))}
+      argument={argument}
       lockedLine={lockedLine}
     />
   );
@@ -198,6 +218,56 @@ export default async function MarketPage({ params }: { params: Promise<{ id: str
   const waitingUsers = waitingIds.length ? await db.select({ id: schema.users.id, displayName: schema.users.displayName }).from(schema.users).where(inArray(schema.users.id, waitingIds)) : [];
   const waitingNames = waitingUsers.map((u) => firstName(u.displayName));
   const edges = state === "resolved" ? await db.select().from(schema.obligations).where(and(eq(schema.obligations.origin, "dare"), eq(schema.obligations.originId, d.id))) : [];
+
+  const now = new Date(clock.now);
+  const canArbitrate = arbitrationOpen(d, now);
+  const cases = state === "locked" && d.stalemate === "arbitrate" ? await db.select({ userId: schema.dareStatements.userId, statement: schema.dareStatements.statement }).from(schema.dareStatements).where(and(eq(schema.dareStatements.dareId, d.id), eq(schema.dareStatements.kind, "statement"))).orderBy(asc(schema.dareStatements.statedAt)) : [];
+  const myVote = word(votes.find((v) => v.userId === me.id)?.outcome ?? null);
+  const soft = d.aiConfidenceBps !== null && d.aiConfidenceBps < 9000 && d.aiOutcome !== null && d.aiOutcome !== VOID_OUTCOME;
+  const ballot = (
+    <section id="ballot" className="flex scroll-mt-4 flex-col gap-4">
+      <h2 className={myVote === null ? "text-question text-ink" : "text-label text-ink-3"}>How did it come out?</h2>
+      {d.pace === "dare" ? (
+        <div className="flex flex-col gap-3">
+          {statements.length > 0 ? (
+            <ul className="flex flex-col gap-2">
+              {statements.map((s) => (
+                <li key={s.userId} className="rounded-card border border-line bg-surface px-4 py-3 text-body-sm text-ink-2">
+                  <span className="text-body-strong text-ink">{nameOf(s.userId)}:</span> {s.statement}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <WhatHappened dareId={d.id} mine={statements.find((s) => s.userId === me.id)?.statement ?? null} />
+        </div>
+      ) : null}
+      {d.aiRationale ? (
+        <div className="rounded-card border border-dashed border-line-strong px-4 py-3">
+          <p className="text-body-strong text-ink">
+            {d.aiOutcome === null ? "The app can’t tell yet." : word(d.aiOutcome) === "void" ? "The app thinks the terms don’t settle it." : soft ? `The app leans ${word(d.aiOutcome)}, ${Math.round((d.aiConfidenceBps ?? 0) / 100)} to ${100 - Math.round((d.aiConfidenceBps ?? 0) / 100)}.` : `The app thinks: ${word(d.aiOutcome)}.`}
+          </p>
+          <p className="pt-1 text-body-sm-prose text-ink-2">{d.aiRationale}</p>
+          {d.criterion ? <p className="pt-2 text-caption text-ink-3">Decided {d.criterion}, as the terms say, and by nothing else.</p> : null}
+          <p className="pt-2 text-caption text-ink-3">It’s a suggestion. The group decides, and can say otherwise.</p>
+        </div>
+      ) : d.pace === "argument" ? (
+        <p className="text-body-sm text-ink-2">
+          The app is weighing it up. It’ll say what it thinks in a moment; you don’t have to wait for it.
+          <RefreshWhile />
+        </p>
+      ) : null}
+      <Ballot
+        dareId={d.id}
+        signing={signing}
+        suggested={word(d.aiOutcome)}
+        myVote={myVote}
+        threshold={d.threshold}
+        tallyLine={votes.length === 0 ? `It takes ${d.threshold} of you agreeing to decide it.` : `${votes.length} ${votes.length === 1 ? "has" : "have"} said so far${leading ? `, ${leading.votes} for ${word(leading.outcome) === "void" ? "nobody can tell" : word(leading.outcome)}` : ""}. It takes ${d.threshold} agreeing.`}
+      />
+      {mine ? <Nudge dareId={d.id} names={waitingNames} url={`${appUrl}/m/${d.id}#ballot`} relay={`We’re waiting on your call: ${d.title}`} /> : null}
+      {myVote !== null ? <AfterVote relay={relayText({ title: d.title, cast: votes.length, quorum: seats.length })} url={`${appUrl}/m/${d.id}#ballot`} /> : null}
+    </section>
+  );
 
   return (
     <Screen>
@@ -295,10 +365,13 @@ export default async function MarketPage({ params }: { params: Promise<{ id: str
 
         {state === "locked" ? (
           <>
+            {/* When it is yours to call and you have not, that is what this screen is for, so it comes first
+                and reads as the one thing to do (docs/decisions.md 2026-09-21). Once you have, the picture leads. */}
+            {myVote === null ? ballot : null}
             {mine ? stage : null}
             {spark ? <Sparkline points={series.map((x) => ({ at: x.at.getTime(), percent: x.valueBps / 100 }))} openedLabel={dayLabel(d.createdAt, clock.zone)} currentTenth={tenthOf(number ?? 0n)} /> : null}
             <section className="flex flex-col gap-3">
-              <SectionLabel>Everyone’s in, and numbers are locked</SectionLabel>
+              <SectionLabel>{d.pace === "argument" ? "Where each of you stands" : "Everyone’s in, and numbers are locked"}</SectionLabel>
               {mine ? null : <CallLine pins={pins} state="in" size="screen" surface="var(--ground)" />}
               <ul className="flex flex-col">
                 {positions.map((p) => (
@@ -314,41 +387,26 @@ export default async function MarketPage({ params }: { params: Promise<{ id: str
                 ))}
               </ul>
             </section>
-
-            <section className="flex flex-col gap-3">
-              <SectionLabel>How did it come out?</SectionLabel>
-              {statements.length > 0 ? (
-                <ul className="flex flex-col gap-2">
-                  {statements.map((s) => (
-                    <li key={s.userId} className="rounded-card border border-line bg-surface px-4 py-3 text-body-sm text-ink-2">
-                      <span className="text-body-strong text-ink">{nameOf(s.userId)}:</span> {s.statement}
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-              <WhatHappened dareId={d.id} mine={statements.find((s) => s.userId === me.id)?.statement ?? null} />
-            </section>
-
-            <section id="ballot" className="flex scroll-mt-4 flex-col gap-3">
-              {d.aiRationale ? (
-                <div className="rounded-card border border-dashed border-line-strong px-4 py-3">
-                  <p className="text-body-strong text-ink">{d.aiOutcome === null ? "The app can’t tell yet." : `The app thinks: ${word(d.aiOutcome) === "void" ? "nobody can tell" : word(d.aiOutcome)}.`}</p>
-                  <p className="pt-1 text-body-sm-prose text-ink-2">{d.aiRationale}</p>
-                  <p className="pt-2 text-caption text-ink-3">It’s a suggestion. The group decides, and can say otherwise.</p>
-                </div>
-              ) : null}
-              <Ballot
-                dareId={d.id}
-                signing={signing}
-                suggested={word(d.aiOutcome)}
-                myVote={word(votes.find((v) => v.userId === me.id)?.outcome ?? null)}
-                threshold={d.threshold}
-                tallyLine={votes.length === 0 ? `It takes ${d.threshold} of you agreeing to decide it.` : `${votes.length} ${votes.length === 1 ? "has" : "have"} said so far${leading ? `, ${leading.votes} for ${word(leading.outcome) === "void" ? "nobody can tell" : word(leading.outcome)}` : ""}. It takes ${d.threshold} agreeing.`}
-              />
-              {mine ? <Nudge dareId={d.id} names={waitingNames} url={`${appUrl}/m/${d.id}#ballot`} relay={`We’re waiting on your call: ${d.title}`} /> : null}
-              {votes.some((v) => v.userId === me.id) ? <AfterVote relay={relayText({ title: d.title, cast: votes.length, quorum: seats.length })} url={`${appUrl}/m/${d.id}#ballot`} /> : null}
-            </section>
+            {myVote !== null ? ballot : null}
+            {d.stalemate === "arbitrate" && mine && canArbitrate ? <Arbitration dareId={d.id} cases={cases.map((c) => ({ name: nameOf(c.userId), said: c.statement }))} mine={cases.find((c) => c.userId === me.id)?.statement ?? null} mayAsk /> : null}
+            {setup}
           </>
+        ) : null}
+
+        {state === "expired" ? (
+          <section className="flex flex-col gap-3">
+            <p className="text-outcome text-ink">Never settled.</p>
+            <p className="text-body text-ink-2">Nobody called it in time, and it was set up to go unsettled if that happened. Nothing changes hands, and it counts against nobody.</p>
+            <CallLine pins={pins} state="in" size="screen" surface="var(--ground)" />
+          </section>
+        ) : null}
+
+        {d.rulingText && (state === "resolved" || state === "voided") ? (
+          <section className="flex flex-col gap-2 rounded-card border border-line bg-surface px-4 py-[14px]">
+            <h2 className="text-body-strong text-ink">The app was asked to call it</h2>
+            <p className="text-body-sm-prose text-ink-2">{d.rulingText}</p>
+            <p className="text-caption text-ink-3">Everyone in it agreed to this going in, before anyone knew which way it would go. The ruling is on the permanent record, word for word.</p>
+          </section>
         ) : null}
       </div>
     </Screen>

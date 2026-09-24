@@ -7,7 +7,7 @@ import { Chip } from "@/components/ledger/chip";
 import { FIELD_PROBLEM_CLASS, Problem, ProblemSummary } from "@/components/ledger/problem";
 import { Button } from "@/components/ui/button";
 import { dismissNamePromptAction, nameGroupAction } from "@/lib/actions/join";
-import { draftMarketAction, scopeMarketAction, type ScopeResult } from "@/lib/actions/markets";
+import { carefulQuestionsAction, draftMarketAction, scopeMarketAction, triageAction, type ScopeResult, type TriageResult } from "@/lib/actions/markets";
 import type { Hue } from "@/lib/ui/hue";
 import { cn } from "@/lib/utils";
 
@@ -37,7 +37,17 @@ const COUNT = ["", "", "two", "three", "four", "five", "six", "seven", "eight", 
  */
 export function AskForm({ sets, people, initialLine = "" }: { sets: SetOption[]; people: Person[]; initialLine?: string }) {
   const router = useRouter();
-  const [step, setStep] = useState<"question" | "who" | "terms">("question");
+  const [step, setStep] = useState<"question" | "declined" | "criterion" | "careful" | "who" | "terms">("question");
+  // Two paces, one object (PLANNING.md 8a): something that will happen, or a claim to settle now.
+  const [pace, setPace] = useState<"dare" | "argument">("dare");
+  const [mode, setMode] = useState<"quick" | "careful">("quick");
+  const [verdict, setVerdict] = useState<TriageResult | null>(null);
+  const [criterion, setCriterion] = useState<string | null>(null);
+  const [side, setSide] = useState<"yes" | "no">("yes");
+  const [questions, setQuestions] = useState<string[]>([]);
+  const [answers, setAnswers] = useState<Record<number, boolean>>({});
+  const [stalemate, setStalemate] = useState<"arbitrate" | "void">("arbitrate");
+  const [thinking, startThinking] = useTransition();
   const [line, setLine] = useState(initialLine.slice(0, 280));
   const [who, setWho] = useState<Who>(sets[0] ? { kind: "set", groupId: sets[0].groupId } : { kind: "link" });
   const [picking, setPicking] = useState(sets.length === 0 && people.length > 0);
@@ -58,9 +68,10 @@ export function AskForm({ sets, people, initialLine = "" }: { sets: SetOption[];
   const [namingBusy, startNaming] = useTransition();
   const selectedSet = who.kind === "set" ? sets.find((s) => s.groupId === who.groupId) : undefined;
 
-  function writeUp(criterion?: string) {
+  function writeUp(chosen?: string, source?: string) {
     scoping.current = (async () => {
-      const r = await scopeMarketAction(line, criterion);
+      const asked = questions.map((question, i) => ({ question, yes: answers[i] ?? false })).filter((_, i) => i in answers);
+      const r = await scopeMarketAction(source ?? line, chosen, mode === "careful" && pace === "dare" ? asked : undefined);
       if ("error" in r) return setProblem(r.error);
       setScope(r);
       setTitle(r.title);
@@ -71,8 +82,36 @@ export function AskForm({ sets, people, initialLine = "" }: { sets: SetOption[];
 
   function toWho() {
     setFieldProblem(null);
-    if (line.trim().length < 3) return setFieldProblem("Ask it in a line, like “John falls asleep during the movie.”");
+    setProblem(null);
+    if (line.trim().length < 3) return setFieldProblem(pace === "argument" ? "Say what you two disagree about, in a line." : "Ask it in a line, like “John falls asleep during the movie.”");
     setScope(null);
+    if (pace === "argument") {
+      // The triage comes before anything else, and it matters more than the ruling: some things are not the app's to call.
+      return startThinking(async () => {
+        const t = await triageAction(line);
+        if ("error" in t) return setFieldProblem(t.error);
+        setVerdict(t);
+        if (t.kind === "unavailable") return setProblem("The app can’t weigh this one right now, and it won’t guess. Try again in a minute.");
+        if (t.kind === "declined") return setStep("declined");
+        if (t.tier === "contestable") return setStep("criterion");
+        setCriterion(null);
+        writeUp(undefined, t.claim);
+        setStep("who");
+      });
+    }
+    if (mode === "careful") {
+      return startThinking(async () => {
+        const q = await carefulQuestionsAction(line);
+        if ("error" in q) {
+          setProblem(q.error);
+          writeUp();
+          return setStep("who");
+        }
+        setQuestions(q.questions);
+        setAnswers({});
+        setStep("careful");
+      });
+    }
     writeUp();
     setStep("who");
   }
@@ -93,9 +132,24 @@ export function AskForm({ sets, people, initialLine = "" }: { sets: SetOption[];
     if (title.trim().length < 3) return setProblem("The question needs a few words.");
     if (terms.trim().length < 3) return setProblem("Say how you’ll know, in a sentence.");
     startSave(async () => {
-      const r = await draftMarketAction({ who, unit, title, terms, resolvesBy: new Date(Date.now() + hours * 3_600_000).toISOString(), anchorPercent: scope.anchorPercent, anchorRationale: scope.anchorRationale, blind });
+      const arguing = pace === "argument" && verdict?.kind === "ok";
+      // The criterion has to be inside the terms: the terms are what is hashed, and what entering accepts.
+      const finalTerms = arguing && criterion && !terms.includes(criterion) ? `${terms.trim()} Decided ${criterion}.` : terms;
+      const r = await draftMarketAction({
+        who,
+        unit,
+        title,
+        terms: finalTerms,
+        resolvesBy: arguing ? null : new Date(Date.now() + hours * 3_600_000).toISOString(),
+        anchorPercent: arguing ? null : scope.anchorPercent,
+        anchorRationale: arguing ? null : scope.anchorRationale,
+        blind: arguing ? false : blind,
+        stalemate,
+        mode,
+        argument: arguing && verdict?.kind === "ok" ? { tier: verdict.tier, criterion } : undefined,
+      });
       if ("error" in r) return setProblem(r.error);
-      router.push(`/m/${r.id}`);
+      router.push(arguing ? `/m/${r.id}?side=${side}` : `/m/${r.id}`);
     });
   }
 
@@ -109,18 +163,155 @@ export function AskForm({ sets, people, initialLine = "" }: { sets: SetOption[];
           toWho();
         }}
       >
+        <div role="group" aria-label="What kind of thing" className="flex flex-wrap gap-2">
+          <button type="button" aria-pressed={pace === "dare"} onClick={() => setPace("dare")} className="rounded-pill">
+            <Chip size={36} selected={pace === "dare"}>
+              Something that’ll happen
+            </Chip>
+          </button>
+          <button type="button" aria-pressed={pace === "argument"} onClick={() => setPace("argument")} className="rounded-pill">
+            <Chip size={36} selected={pace === "argument"}>
+              Settle an argument
+            </Chip>
+          </button>
+        </div>
         <div className="flex flex-col gap-3">
           <label htmlFor="ask-line" className="text-question text-ink">
-            What are you wondering?
+            {pace === "argument" ? "What do you two disagree about?" : "What are you wondering?"}
           </label>
-          <textarea id="ask-line" rows={2} value={line} onChange={(e) => setLine(e.target.value)} maxLength={280} placeholder="John falls asleep during the movie" aria-invalid={fieldProblem ? true : undefined} aria-describedby={fieldProblem ? "ask-line-problem" : undefined} className={cn("rounded-tile border border-line bg-surface px-3 py-3 text-body text-ink placeholder:text-ink-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-marigold", fieldProblem && FIELD_PROBLEM_CLASS)} />
+          <textarea id="ask-line" rows={2} value={line} onChange={(e) => setLine(e.target.value)} maxLength={280} placeholder={pace === "argument" ? "The Holland Tunnel is longer than the Lincoln" : "John falls asleep during the movie"} aria-invalid={fieldProblem ? true : undefined} aria-describedby={fieldProblem ? "ask-line-problem" : undefined} className={cn("rounded-tile border border-line bg-surface px-3 py-3 text-body text-ink placeholder:text-ink-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-marigold", fieldProblem && FIELD_PROBLEM_CLASS)} />
           <Problem id="ask-line-problem" message={fieldProblem} />
         </div>
-        <ProblemSummary messages={[fieldProblem]} />
-        <Button type="submit" variant="primary">
-          Who’s in?
+        {pace === "dare" ? (
+          <div className="flex flex-col gap-2">
+            <div role="group" aria-label="How the terms get written" className="flex flex-wrap gap-2">
+              <button type="button" aria-pressed={mode === "quick"} onClick={() => setMode("quick")} className="rounded-pill">
+                <Chip size={36} selected={mode === "quick"}>
+                  Just write it up
+                </Chip>
+              </button>
+              <button type="button" aria-pressed={mode === "careful"} onClick={() => setMode("careful")} className="rounded-pill">
+                <Chip size={36} selected={mode === "careful"}>
+                  Ask me three things first
+                </Chip>
+              </button>
+            </div>
+            <p className="text-caption text-ink-3">{mode === "careful" ? "Three yes-or-no questions, about fifteen seconds. For when a lot is riding on it, or it runs for weeks." : "One line in, terms out. Right for anything you’ll know tonight."}</p>
+          </div>
+        ) : (
+          <p className="text-caption text-ink-3">The app says what kind of disagreement it is before anyone puts anything on it. If it’s about one of you rather than about the world, it won’t call it.</p>
+        )}
+        <ProblemSummary messages={[fieldProblem, problem]} />
+        <Button type="submit" variant="primary" loading={thinking}>
+          {pace === "argument" ? "Weigh it up" : mode === "careful" ? "Ask me" : "Who’s in?"}
         </Button>
       </form>
+    );
+  }
+
+  if (step === "declined" && verdict?.kind === "declined") {
+    const instead = verdict.dareInstead;
+    return (
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-3">
+          <h1 className="text-question text-ink">That one isn’t the app’s to call.</h1>
+          <p className="text-body text-ink-2">{verdict.reason}</p>
+          <p className="text-body-sm text-ink-2">The app settles claims about the world: what happened, which is longer, who holds the record. It doesn’t rule on people.</p>
+        </div>
+        {instead ? (
+          <div className="flex flex-col gap-3 rounded-card border border-dashed border-line-strong px-4 py-3">
+            <p className="text-caption text-ink-3">It could be a dare instead</p>
+            <p className="font-serif text-[20px] leading-[26px] text-ink">{instead}</p>
+          </div>
+        ) : null}
+        <div className="flex flex-col gap-1">
+          <Button
+            variant="primary"
+            onClick={() => {
+              setPace("dare");
+              setLine(instead ?? "");
+              setVerdict(null);
+              setStep("question");
+            }}
+          >
+            Make it a dare instead
+          </Button>
+          <Button variant="tertiary" onClick={() => setStep("question")}>
+            Say it another way
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (step === "criterion" && verdict?.kind === "ok") {
+    return (
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-3">
+          <p className="text-caption text-ink-3">Your claim</p>
+          <h1 className="text-question text-ink">{verdict.claim}</h1>
+          <p className="text-body-sm text-ink-2">That’s a few different questions wearing one sentence, and each has a different answer. Pick what it means here. Whoever takes the other side sees this before they’re in.</p>
+        </div>
+        <div role="group" aria-label="How it's decided" className="flex flex-col gap-2">
+          {verdict.criteria.map((c) => (
+            <Button
+              key={c}
+              variant="secondary"
+              className="h-auto min-h-12 whitespace-normal py-3 text-left"
+              onClick={() => {
+                setCriterion(c);
+                writeUp(c, verdict.claim);
+                setStep("who");
+              }}
+            >
+              {c}
+            </Button>
+          ))}
+        </div>
+        <Button variant="tertiary" onClick={() => setStep("question")}>
+          Say it another way
+        </Button>
+      </div>
+    );
+  }
+
+  if (step === "careful") {
+    const done = questions.every((_, i) => i in answers);
+    return (
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-2">
+          <h1 className="text-question text-ink">Three quick ones</h1>
+          <p className="text-body-sm text-ink-2">Only you see these. Everyone else just sees the terms they turn into.</p>
+        </div>
+        <ol className="flex flex-col gap-4">
+          {questions.map((q, i) => (
+            <li key={i} className="flex flex-col gap-2 rounded-card border border-line bg-surface px-4 py-3">
+              <p id={`careful-${i}`} className="text-body-sm text-ink">
+                {q}
+              </p>
+              <div role="group" aria-labelledby={`careful-${i}`} className="flex gap-2">
+                {([true, false] as const).map((v) => (
+                  <button key={String(v)} type="button" aria-pressed={answers[i] === v} onClick={() => setAnswers((a) => ({ ...a, [i]: v }))} className="rounded-pill">
+                    <Chip size={36} selected={answers[i] === v}>
+                      {v ? "Yes" : "No"}
+                    </Chip>
+                  </button>
+                ))}
+              </div>
+            </li>
+          ))}
+        </ol>
+        <Button
+          variant="primary"
+          disabled={!done}
+          onClick={() => {
+            writeUp();
+            setStep("who");
+          }}
+        >
+          Who’s in?
+        </Button>
+      </div>
     );
   }
 
@@ -128,7 +319,8 @@ export function AskForm({ sets, people, initialLine = "" }: { sets: SetOption[];
     <div className="flex items-start justify-between gap-3 rounded-card border border-line bg-surface px-4 py-3">
       <div className="flex min-w-0 flex-col gap-1">
         <span className="text-caption text-ink-3">Your question</span>
-        <span className="font-serif text-[17px] leading-[22px] text-ink">{step === "terms" && title ? title : line}</span>
+        <span className="font-serif text-[17px] leading-[22px] text-ink">{step === "terms" && title ? title : verdict?.kind === "ok" && pace === "argument" ? verdict.claim : line}</span>
+        {criterion && pace === "argument" ? <span className="text-caption text-ink-3">Decided {criterion}</span> : null}
       </div>
       <Button variant="tertiary" onClick={() => setStep("question")}>
         Edit
@@ -150,8 +342,8 @@ export function AskForm({ sets, people, initialLine = "" }: { sets: SetOption[];
       <div className="flex flex-col gap-6">
         {question}
         <div className="flex flex-col gap-2">
-          <h1 className="text-question text-ink">Who’s in?</h1>
-          <p className="text-body-sm text-ink-2">Everyone you pick hears about it. Anyone with the link can look.</p>
+          <h1 className="text-question text-ink">{pace === "argument" ? "Who’s on the other side?" : "Who’s in?"}</h1>
+          <p className="text-body-sm text-ink-2">{pace === "argument" ? "An argument is between two of you. Anyone else in the set can watch, and helps call it." : "Everyone you pick hears about it. Anyone with the link can look."}</p>
         </div>
         <div role="group" aria-label="Who's in" className="flex flex-col gap-2">
           {sets.map((s) => {
@@ -318,6 +510,21 @@ export function AskForm({ sets, people, initialLine = "" }: { sets: SetOption[];
         <textarea id="ask-terms" rows={4} value={terms} onChange={(e) => setTerms(e.target.value)} maxLength={800} className="rounded-tile border border-line bg-surface px-3 py-3 text-body-sm text-ink" />
         <p className="text-caption text-ink-3">{scope.plain ? "The write-up didn’t come through, so this is your line as you typed it. Change it however you like." : "Written up from your line. Change anything; everyone sees exactly this before they’re in."}</p>
       </div>
+      {pace === "argument" ? (
+        <div className="flex flex-col gap-3">
+          <h2 className="text-label text-ink-3">Your side</h2>
+          <div role="group" aria-label="Your side" className="flex flex-wrap gap-2">
+            {(["yes", "no"] as const).map((v) => (
+              <button key={v} type="button" aria-pressed={side === v} onClick={() => setSide(v)} className="rounded-pill">
+                <Chip size={36} selected={side === v}>
+                  {v === "yes" ? "I say yes" : "I say no"}
+                </Chip>
+              </button>
+            ))}
+          </div>
+          <p className="text-caption text-ink-3">All the way, by default, so whoever’s wrong is out the whole thing. You can soften your number on the next screen.</p>
+        </div>
+      ) : (
       <div className="flex flex-col gap-3">
         <h2 className="text-label text-ink-3">You’ll know by</h2>
         <div className="flex flex-wrap gap-2">
@@ -330,6 +537,7 @@ export function AskForm({ sets, people, initialLine = "" }: { sets: SetOption[];
           ))}
         </div>
       </div>
+      )}
       <div className="flex flex-col gap-3">
         <h2 className="text-label text-ink-3">What’s riding on it</h2>
         <div className="flex flex-wrap gap-2">
@@ -339,6 +547,7 @@ export function AskForm({ sets, people, initialLine = "" }: { sets: SetOption[];
         </div>
         <p className="text-caption text-ink-3">One kind of thing for everyone, fixed now. Dollars and beers can’t be weighed against each other.</p>
       </div>
+      {pace === "dare" ? (
       <div className="flex flex-col gap-3">
         <h2 className="text-label text-ink-3">Where everyone landed</h2>
         <div className="flex flex-wrap gap-2">
@@ -353,6 +562,23 @@ export function AskForm({ sets, people, initialLine = "" }: { sets: SetOption[];
             </Chip>
           </button>
         </div>
+      </div>
+      ) : null}
+      <div className="flex flex-col gap-3">
+        <h2 className="text-label text-ink-3">If you can’t agree how it came out</h2>
+        <div role="group" aria-label="If you can't agree" className="flex flex-wrap gap-2">
+          <button type="button" aria-pressed={stalemate === "arbitrate"} onClick={() => setStalemate("arbitrate")} className="rounded-pill">
+            <Chip size={36} selected={stalemate === "arbitrate"}>
+              The app hears both sides and calls it
+            </Chip>
+          </button>
+          <button type="button" aria-pressed={stalemate === "void"} onClick={() => setStalemate("void")} className="rounded-pill">
+            <Chip size={36} selected={stalemate === "void"}>
+              It just goes unsettled
+            </Chip>
+          </button>
+        </div>
+        <p className="text-caption text-ink-3">Everyone sees this before they’re in, and being in means they’re fine with it.</p>
       </div>
       <ProblemSummary messages={[problem]} />
       <Button variant="primary" onClick={save} loading={saving}>

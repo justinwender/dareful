@@ -13,10 +13,10 @@ import { marketById, quorumOf, tally, VOID_OUTCOME, votesOf } from "@/lib/ledger
 import { firstName } from "@/lib/ui/copy";
 import { sendEmail, sendPush } from "./channels";
 import { positionsOf } from "@/lib/ledger/markets";
-import { joinedNotice, nudgeNotice, nudgeSeq, nudgeTargets, openedNotice, recipientsAfterVote, resultNotice, voteRequest, type Notice } from "./messages";
+import { deadlineNotice, rulingNotice, joinedNotice, nudgeNotice, nudgeSeq, nudgeTargets, openedNotice, recipientsAfterVote, resultNotice, voteRequest, type Notice } from "./messages";
 
 /** Claims the (person, market, kind, count) slot; false if it was already told. This is what makes a retry silent. */
-export async function claimNotice(userId: string, dareId: string, kind: "vote_request" | "result" | "opened" | "joined" | "nudge", seq: number, causedBy: string): Promise<string | null> {
+export async function claimNotice(userId: string, dareId: string, kind: "vote_request" | "result" | "opened" | "joined" | "nudge" | "deadline" | "ruling", seq: number, causedBy: string): Promise<string | null> {
   const [row] = await db.insert(schema.notificationLog).values({ userId, dareId, kind, seq, causedBy }).onConflictDoNothing().returning({ id: schema.notificationLog.id });
   return row?.id ?? null;
 }
@@ -146,4 +146,35 @@ export async function sendNudge(dareId: string, nudgerId: string, now: Date): Pr
     }),
   );
   return { waitingOn: targets.length, told, reached };
+}
+
+/** The scheduler's one notice: the asker hears that the time they set has come. Caused by their own act of setting it. */
+export async function notifyDeadline(dareId: string, creatorId: string): Promise<void> {
+  try {
+    const d = await marketById(dareId);
+    if (!d || d.resolvedAt) return;
+    const id = await claimNotice(creatorId, dareId, "deadline", 0, creatorId);
+    if (id) await deliver(creatorId, id, deadlineNotice({ title: d.title, marketId: d.id, appUrl: APP_URL() }));
+  } catch (err) {
+    console.error("the deadline notice failed", { dareId, err });
+  }
+}
+
+/** After an arbitration: everyone in it hears how it was called. `askedBy` is whoever pressed, or null for the backstop. */
+export async function notifyRuling(dareId: string, askedBy: string | null): Promise<void> {
+  try {
+    const d = await marketById(dareId);
+    if (!d || !d.resolvedAt || d.resolvedBy !== "arbitration") return;
+    const positions = await positionsOf(dareId);
+    const outcome = d.resolvedOutcome === VOID_OUTCOME ? "void" : d.resolvedOutcome === 1n ? "yes" : "no";
+    const askerName = askedBy ? await nameOf(askedBy) : null;
+    await Promise.all(
+      positions.map((p) => p.userId).filter((x): x is string => x !== null && x !== askedBy).map(async (userId) => {
+        const id = await claimNotice(userId, dareId, "ruling", 0, askedBy ?? d.creatorId);
+        if (id) await deliver(userId, id, rulingNotice({ askerName, title: d.title, outcome, marketId: d.id, appUrl: APP_URL() }));
+      }),
+    );
+  } catch (err) {
+    console.error("the ruling notice failed", { dareId, err });
+  }
 }

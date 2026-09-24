@@ -359,6 +359,32 @@ test("nothing on a question borrows a word from finance, and home has no groups 
   assert.ok((gone.status === 307 || gone.status === 302) && gone.loc === "/", "there is no group screen; an old address goes home");
 });
 
+// --------------------------------------------------------------------------------------- 2C: the settler
+
+test("the scheduler's door answers only to its secret, and tells a stranger nothing, not even that it exists", async () => {
+  const post = (headers: Record<string, string>) => fetch(`${BASE}/api/tick`, { method: "POST", headers });
+  assert.equal((await post({})).status, 404);
+  assert.equal((await post({ authorization: "Bearer not-the-secret" })).status, 404);
+  assert.equal((await post({ authorization: `Bearer ${"x".repeat((process.env.TICK_SECRET ?? "").length)}` })).status, 404, "same length, wrong value");
+  assert.equal((await fetch(`${BASE}/api/tick`)).status, 405, "there is nothing to GET");
+});
+
+test("every screen but home carries a way home under the thumb, and home does not", async () => {
+  for (const path of ["/m/new", "/join", `/m/${marketId}`, "/new"]) assert.ok(/<nav aria-label="Home"/.test((await get(path, cAsker)).html), `${path} has no way home`);
+  assert.ok(!/<nav aria-label="Home"/.test((await get("/", cAsker)).html));
+  assert.ok(!/<nav aria-label="Home"/.test((await get(`/m/${marketId}`)).html), "someone signed out has no home to go to");
+});
+
+test("asking offers both paces and both ways of writing the terms, and the settler says up front what it will not call", async () => {
+  const r = await get("/m/new", cAsker);
+  for (const t of ["Something that’ll happen", "Settle an argument", "Just write it up", "Ask me three things first"]) assert.ok(r.text.includes(t), t);
+});
+
+test("someone not yet in is shown the tiebreaker they would be agreeing to", async () => {
+  const r = await get(`/m/${marketId}`, cStranger);
+  assert.ok(r.text.includes("If nobody can agree how it came out, the app hears both sides and calls it. Being in means you’re fine with that."));
+});
+
 // ------------------------------------------------------------------------------------------------ dates
 
 test("a timestamp is painted in the zone the browser reported, not the server's", async () => {

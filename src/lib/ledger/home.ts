@@ -25,14 +25,19 @@ export type NeedRow =
 const EFFORT: Record<NeedRow["kind"], number> = { yep: 0, vote: 1, enter: 2, lock: 3, finish: 4 };
 
 /**
- * docs/design.md 3.15: soonest deadline first, then longest waiting, then whatever is fastest to finish. A
- * deadline that has passed still sorts as a deadline; nothing here is ever labelled with how long it has waited.
+ * Time-bound before open-ended, as priority and never as pressure. A question in voting has a quorum waiting on
+ * this person and ranks first; then whatever else has a deadline (a question to get into, the asker's lock),
+ * soonest first; then the things that can sit harmlessly (a cover to say yep to, a draft), longest waiting first,
+ * then fastest to finish. The order is the whole signal: no countdown, no day count, no ageing, and a deadline
+ * that has passed still only sorts (docs/design.md 3.15; docs/decisions.md 2026-09-21).
  */
+const TIER: Record<NeedRow["kind"], number> = { vote: 0, lock: 1, enter: 1, yep: 2, finish: 2 };
 export function orderNeeds<T extends Pick<NeedRow, "deadline" | "since" | "kind">>(rows: T[]): T[] {
   return [...rows].sort((a, b) => {
-    if (a.deadline && b.deadline && a.deadline.getTime() !== b.deadline.getTime()) return a.deadline.getTime() - b.deadline.getTime();
-    if (a.deadline && !b.deadline) return -1;
-    if (!a.deadline && b.deadline) return 1;
+    if (TIER[a.kind] !== TIER[b.kind]) return TIER[a.kind] - TIER[b.kind];
+    const ad = a.deadline?.getTime() ?? Number.POSITIVE_INFINITY;
+    const bd = b.deadline?.getTime() ?? Number.POSITIVE_INFINITY;
+    if (ad !== bd) return ad - bd;
     if (a.since.getTime() !== b.since.getTime()) return a.since.getTime() - b.since.getTime();
     return EFFORT[a.kind] - EFFORT[b.kind];
   });

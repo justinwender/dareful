@@ -50,13 +50,15 @@ export function NumberStage(props: {
   /** Who is in, before this person has picked: names only, and the group's number stays hidden until they pick. */
   othersIn: string[];
   lockedLine: string | null;
+  /** An argument: which side this person starts on, all the way, and which side is already taken. */
+  argument?: { defaultPercent: number; otherSays: { name: string; side: "yes" | "no" } | null } | null;
 }) {
   const { dareId, signing, unit, state, me, mine, picture, mark, suggestion } = props;
   const router = useRouter();
   const sign = useSigner();
   const [changing, setChanging] = useState(false);
-  const [value, setValue] = useState(mine?.percent ?? 50);
-  const [touched, setTouched] = useState(Boolean(mine));
+  const [value, setValue] = useState(mine?.percent ?? props.argument?.defaultPercent ?? 50);
+  const [touched, setTouched] = useState(Boolean(mine) || Boolean(props.argument));
   const [stake, setStake] = useState<string>(mine?.stake ?? (unit.quantifiable ? String(unit.monetary ? 1000 : 1) : "1"));
   const [custom, setCustom] = useState("");
   const [step, setStep] = useState<"idle" | "approving" | "sending">("idle");
@@ -174,6 +176,22 @@ export function NumberStage(props: {
           </div>
         </div>
       )}
+
+      {!reading && props.argument ? (
+        <div className="flex flex-col gap-3">
+          {props.argument.otherSays ? <p className="text-body text-ink">{props.argument.otherSays.name} says {props.argument.otherSays.side}. You’re taking the other side.</p> : null}
+          <div role="group" aria-label="Your side" className="flex gap-2">
+            {([100, 0] as const).map((v) => (
+              <button key={v} type="button" aria-pressed={value === v} onClick={() => setValue(v)} className="rounded-pill">
+                <Chip size={36} selected={value === v}>
+                  {v === 100 ? "Yes, all the way" : "No, all the way"}
+                </Chip>
+              </button>
+            ))}
+          </div>
+          <p className="text-caption text-ink-3">All the way means whoever’s wrong is out the whole thing. Less sure? Soften it below, and it’s scored by how close you were.</p>
+        </div>
+      ) : null}
 
       {reading ? (
         <div className="flex items-baseline justify-between gap-3">

@@ -2,7 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
-import { notifyAfterVote, notifyJoined, notifyOpened, sendNudge, voteCounts, type NudgeResult, type VoteCounts } from "@/lib/notify";
+import { notifyAfterVote, notifyJoined, notifyOpened, notifyRuling, sendNudge, voteCounts, type NudgeResult, type VoteCounts } from "@/lib/notify";
+import { carefulQuestions, declined, triage } from "@/lib/ai/settler";
+import { afterEntry, arbitrateMarket, proposeForArgument, stateCase } from "@/lib/ledger/settle";
 import { isHex, type Hex } from "viem";
 import { z } from "zod";
 import { plainScope, proposeOutcome, scopeMarket } from "@/lib/ai/markets";
@@ -22,13 +24,14 @@ export type ScopeResult = { title: string; terms: string; ambiguous: boolean; cr
  * Quick mode: one line in, terms out. The model drafts; if it is slow, down, or answers in the wrong shape, the
  * line is used as typed and the screen says so, because a market must never wait on a model.
  */
-export async function scopeMarketAction(rawLine: string, rawCriterion?: string): Promise<ScopeResult | { error: string }> {
+export async function scopeMarketAction(rawLine: string, rawCriterion?: string, rawAnswers?: Array<{ question: string; yes: boolean }>): Promise<ScopeResult | { error: string }> {
   await requireUser();
   const line = z.string().trim().min(3).max(280).safeParse(rawLine);
   if (!line.success) return { error: "Ask it in a line." };
   const criterion = rawCriterion ? z.string().trim().min(3).max(120).safeParse(rawCriterion) : null;
   try {
-    const s = await scopeMarket({ line: line.data, criterion: criterion?.success ? criterion.data : undefined, now: new Date() });
+    const answers = z.array(z.object({ question: z.string().trim().min(3).max(160), yes: z.boolean() })).max(3).safeParse(rawAnswers ?? []);
+    const s = await scopeMarket({ line: line.data, criterion: criterion?.success ? criterion.data : undefined, answers: answers.success ? answers.data : undefined, now: new Date() });
     return { title: s.title, terms: s.terms, ambiguous: s.ambiguous && s.criteria.length > 0, criteria: s.criteria, anchorPercent: s.anchorPercent, anchorRationale: s.anchorRationale, resolvesInHours: s.resolvesInHours, plain: false };
   } catch (err) {
     console.error("scoping failed; using the line as typed", err);
@@ -51,10 +54,15 @@ const Who = z.discriminatedUnion("kind", [
 const Draft = z.object({
   who: Who,
   blind: z.boolean().default(false),
+  /** What happens if nobody can agree. Shown before anyone is in, and consented to in every entry. */
+  stalemate: z.enum(["arbitrate", "void"]).default("arbitrate"),
+  mode: z.enum(["quick", "careful"]).default("quick"),
+  /** Present for an argument: what the triage made of it, and the criterion a contestable claim is ruled against. */
+  argument: z.object({ tier: z.enum(["checkable", "contestable"]), criterion: z.string().trim().min(3).max(110).nullable() }).optional(),
   unit: Unit,
   title: z.string().trim().min(3).max(140),
   terms: z.string().trim().min(3).max(800),
-  resolvesBy: z.string().datetime(),
+  resolvesBy: z.string().datetime().nullable(),
   anchorPercent: z.number().int().min(0).max(100).nullable(),
   anchorRationale: z.string().trim().max(140).nullable(),
   markEmoji: z.string().trim().max(16).optional(),
@@ -67,6 +75,7 @@ export async function draftMarketAction(input: z.infer<typeof Draft>): Promise<{
   if (!parsed.success) return { error: "Something in that is off." };
   const d = parsed.data;
   try {
+    if (d.argument?.tier === "contestable" && !d.argument.criterion) return { error: "Pick how it's being decided first." };
     if (d.who.kind === "set" && !(await isMember(d.who.groupId, user.id))) return { error: "You're not one of those people." };
     if (d.who.kind !== "set" && d.unit.kind === "existing") return { error: "That unit isn't around any more. Pick another." };
     const groupId = d.who.kind === "set" ? d.who.groupId : d.who.kind === "people" ? (await setForPeople(user.id, d.who.userIds)).id : (await createOccasionGroup(user.id)).id;
@@ -78,7 +87,12 @@ export async function draftMarketAction(input: z.infer<typeof Draft>): Promise<{
       denomId: denom.id,
       title: d.title,
       termsText: d.terms,
-      resolvesBy: new Date(d.resolvesBy),
+      resolvesBy: d.argument ? null : d.resolvesBy ? new Date(d.resolvesBy) : null,
+      pace: d.argument ? "argument" : "dare",
+      tier: d.argument?.tier ?? null,
+      criterion: d.argument?.criterion ?? null,
+      mode: d.mode,
+      stalemate: d.stalemate,
       anchorBps: d.anchorPercent === null ? null : BigInt(d.anchorPercent * 100),
       anchorRationale: d.anchorRationale,
       markEmoji: d.markEmoji,
@@ -121,9 +135,19 @@ export async function enterMarketAction(rawId: string, rawPosition: z.infer<type
   } catch (err) {
     return { error: say(err, "That didn't go through. Try again.") };
   }
+  // An argument has no waiting in it: the moment the second person is in it locks, it is due, and the app proposes.
+  let lockedNow = false;
+  try {
+    lockedNow = (await afterEntry(id.data)).locked;
+  } catch (err) {
+    console.error("an argument did not lock when its second person got in", { dareId: id.data, err });
+    return { error: say(err, "You're in, but it didn't lock. Open it again to retry.") };
+  }
   revalidatePath(`/m/${id.data}`);
   revalidatePath("/");
   after(() => notifyJoined(id.data, user.id));
+  // A model is never on the critical path: the ballot is open already, and the proposal arrives when it arrives.
+  if (lockedNow) after(() => proposeForArgument(id.data).catch((err: unknown) => console.error("the ruling on an argument did not come through", err)));
   return { ok: true };
 }
 
@@ -213,5 +237,73 @@ export async function castVoteAction(rawId: string, rawOutcome: "yes" | "no" | "
     return { ok: true, resolved: r.resolved, counts: r.resolved ? null : await voteCounts(id.data) };
   } catch (err) {
     return { error: say(err, "That didn't go through. Try again.") };
+  }
+}
+
+
+// ------------------------------------------------------------------------------------------------ the settler
+
+export type TriageResult = { kind: "declined"; reason: string; dareInstead: string | null } | { kind: "ok"; tier: "checkable" | "contestable"; claim: string; criteria: string[] } | { kind: "unavailable" };
+
+/**
+ * What kind of disagreement this is. The refusal is not a soft guideline: no claim about the world, no ruling,
+ * ever, and the offer is to make it a dare. And with no triage there is no settler: if the model is down the app
+ * says so and rules on nothing, because a failed triage is not permission to rule.
+ */
+export async function triageAction(rawLine: string): Promise<TriageResult | { error: string }> {
+  await requireUser();
+  const line = z.string().trim().min(3).max(280).safeParse(rawLine);
+  if (!line.success) return { error: "Say what you two disagree about, in a line." };
+  try {
+    const t = await triage({ line: line.data });
+    const no = declined(t);
+    if (no) return { kind: "declined", reason: no.reason, dareInstead: no.dareInstead };
+    return { kind: "ok", tier: t.tier === "contestable" ? "contestable" : "checkable", claim: t.claim, criteria: t.tier === "contestable" ? t.criteria : [] };
+  } catch (err) {
+    console.error("triage failed; the settler is not available", err);
+    return { kind: "unavailable" };
+  }
+}
+
+/** Careful mode: the three yes-or-no questions whose answers most change how it would be decided. */
+export async function carefulQuestionsAction(rawLine: string): Promise<{ questions: string[] } | { error: string }> {
+  await requireUser();
+  const line = z.string().trim().min(3).max(280).safeParse(rawLine);
+  if (!line.success) return { error: "Ask it in a line." };
+  try {
+    return { questions: await carefulQuestions({ line: line.data }) };
+  } catch (err) {
+    console.error("careful questions failed", err);
+    return { error: "The questions didn’t come through. You can write the terms yourself on the next screen." };
+  }
+}
+
+/** One line of someone's case, for the arbitrator. Kept apart from "what happened". */
+export async function stateCaseAction(rawId: string, rawText: string): Promise<{ ok: true } | { error: string }> {
+  const user = await requireUser();
+  const id = uuid.safeParse(rawId);
+  if (!id.success) return { error: "That one doesn't exist." };
+  try {
+    await stateCase(id.data, user.id, rawText);
+  } catch (err) {
+    return { error: say(err, "That didn't save. Try again.") };
+  }
+  revalidatePath(`/m/${id.data}`);
+  return { ok: true };
+}
+
+/** "Let the app call it": someone who is in it asks for the arbitration everyone agreed to going in. */
+export async function arbitrateAction(rawId: string): Promise<{ ok: true; outcome: "yes" | "no" | "void" } | { error: string }> {
+  const user = await requireUser();
+  const id = uuid.safeParse(rawId);
+  if (!id.success) return { error: "That one doesn't exist." };
+  try {
+    const r = await arbitrateMarket(id.data, user.id);
+    revalidatePath(`/m/${id.data}`);
+    revalidatePath("/");
+    after(() => notifyRuling(id.data, user.id));
+    return { ok: true, outcome: r.outcome };
+  } catch (err) {
+    return { error: say(err, "That didn't go through. Nothing changed.") };
   }
 }

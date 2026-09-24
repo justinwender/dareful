@@ -88,3 +88,17 @@ export function nudgeTargets(input: { stage: "enter" | "vote"; nudgerId: string;
 export function nudgeSeq(at: Date): number {
   return Math.floor(at.getTime() / NUDGE_WINDOW_MS);
 }
+
+/** To the asker, once, when the time they set has come: the consequence of their own act, never a reminder. */
+export function deadlineNotice(input: { title: string; marketId: string; appUrl: string }): Notice {
+  return { title: "Time’s up on yours", body: `“${short(input.title)}?” How did it come out?`, url: `${input.appUrl}/m/${input.marketId}#ballot` };
+}
+
+/** To everyone in it, when the app has been asked to call it and has. Says the answer and that the reasoning is there to read. */
+export function rulingNotice(input: { askerName: string | null; title: string; outcome: OutcomeWord; marketId: string; appUrl: string }): Notice {
+  return {
+    title: `“${short(input.title)}” has been called`,
+    body: `${LABEL[input.outcome]}. ${input.askerName ? `${input.askerName} asked the app to hear it` : "Nobody could agree, so the app heard it"}, the way everyone agreed going in. The reasoning is there to read.`,
+    url: `${input.appUrl}/m/${input.marketId}`,
+  };
+}

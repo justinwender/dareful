@@ -406,8 +406,25 @@ export const dares = pgTable(
     aiProposedAt: ts("ai_proposed_at"),
     /** Mirror of DareResolved or DareArbitrated for onchain markets; the provisional call otherwise. */
     resolvedOutcome: money("resolved_outcome"),
-    /** 'quorum' | 'arbitration' | 'provisional' | null. */
+    /**
+     * How it ended: 'quorum' | 'arbitration' | 'provisional' | 'expired' | null. 'expired' is the void rule's
+     * silent end: no outcome, nothing minted, no toll, and the question stays in the timeline as unresolved.
+     */
     resolvedBy: text("resolved_by"),
+    /**
+     * What the triage made of the line (PLANNING.md 8b): 'checkable' | 'contestable', or null for a dare. There is
+     * no 'interpersonal' row: that tier is declined before anything is written.
+     */
+    tier: text("tier"),
+    /** The measurable criterion a contestable claim is ruled against. It is also inside `terms_text`, and so inside the hash. */
+    criterion: text("criterion"),
+    /** 'quick' | 'careful': how the terms were written. */
+    mode: text("mode").notNull().default("quick"),
+    /** The arbitrator's written ruling, exactly as hashed. `keccak256` of these bytes is `rulingHashOf` onchain. */
+    rulingText: text("ruling_text"),
+    rulingHash: bytea("ruling_hash"),
+    /** Set once when the asker has been told the time they set has come. What makes the scheduler's tick idempotent. */
+    deadlineNotifiedAt: ts("deadline_notified_at"),
     resolvedAt: ts("resolved_at"),
     createdAt: ts("created_at").notNull().defaultNow(),
     /** 'emoji' | 'image' | null for no mark. Blank is the default and stays blank. */
@@ -420,11 +437,14 @@ export const dares = pgTable(
     check("dares_mark_both_or_neither", sql`(${t.markKind} is null) = (${t.markValue} is null)`),
     check("dares_kind_known", sql`${t.kind} in ('binary', 'numeric', 'categorical')`),
     check("dares_pace_known", sql`${t.pace} in ('dare', 'argument')`),
+    check("dares_tier_known", sql`${t.tier} is null or ${t.tier} in ('checkable', 'contestable')`),
+    check("dares_mode_known", sql`${t.mode} in ('quick', 'careful')`),
+    check("dares_ruling_both_or_neither", sql`(${t.rulingText} is null) = (${t.rulingHash} is null)`),
     check("dares_stalemate_known", sql`${t.stalemate} in ('arbitrate', 'void')`),
     check("dares_reveal_mode_known", sql`${t.revealMode} in ('open', 'blind')`),
     check(
       "dares_resolved_by_known",
-      sql`${t.resolvedBy} is null or ${t.resolvedBy} in ('quorum', 'arbitration', 'provisional')`,
+      sql`${t.resolvedBy} is null or ${t.resolvedBy} in ('quorum', 'arbitration', 'provisional', 'expired')`,
     ),
     check("dares_threshold_positive", sql`${t.threshold} > 0`),
     check(
@@ -501,10 +521,6 @@ export const dareStatements = pgTable(
   (t) => [
     primaryKey({ columns: [t.dareId, t.userId, t.kind] }),
     check("dare_statements_kind", sql`${t.kind} in ('update', 'statement')`),
-    // The app and the database are deployed at different moments, and the 2A build upserts on (dare, person).
-    // This keeps that build working after the key widened. 2C drops it in the migration that first writes a
-    // `statement`, by which time no running build targets it.
-    uniqueIndex("dare_statements_one_per_person_until_2c").on(t.dareId, t.userId),
   ],
 ).enableRLS();
 
@@ -783,7 +799,7 @@ export const notificationLog = pgTable(
     dareId: uuid("dare_id")
       .notNull()
       .references(() => dares.id),
-    kind: text("kind", { enum: ["vote_request", "result", "opened", "joined", "nudge"] }).notNull(),
+    kind: text("kind", { enum: ["vote_request", "result", "opened", "joined", "nudge", "deadline", "ruling"] }).notNull(),
     /**
      * What makes "the same thing" the same, per kind: how many had voted (vote_request), how many were in
      * (joined), a six-hour window (nudge), 0 otherwise.

@@ -56,7 +56,7 @@ export async function marketShare(rawId: string): Promise<ProposalShare & { ques
   const id = z.string().uuid().safeParse(rawId);
   if (!id.success) return { ...PLAIN, question: null };
   const rows = await db
-    .select({ title: schema.dares.title, opened: schema.dares.creatorSignature, resolvedAt: schema.dares.resolvedAt })
+    .select({ title: schema.dares.title, opened: schema.dares.creatorSignature, resolvedAt: schema.dares.resolvedAt, criterion: schema.dares.criterion, stalemate: schema.dares.stalemate, pace: schema.dares.pace })
     .from(schema.dares)
     .where(eq(schema.dares.id, id.data))
     .limit(1)
@@ -64,6 +64,16 @@ export async function marketShare(rawId: string): Promise<ProposalShare & { ques
   const row = rows[0];
   if (!row || !row.opened) return { ...PLAIN, question: null };
   const question = clip(row.title, 110);
-  const description = row.resolvedAt ? "See how everyone did." : "Put your number on it.";
+  // The criterion and the tiebreaker are on the card before anyone is in (PLANNING.md 8b, 8d): entering is
+  // accepting both, which is what lets the fast path work with no negotiation step. Still never a number, what
+  // is riding, or a name.
+  const description = row.resolvedAt ? "See how everyone did." : shareTermsLine({ criterion: row.criterion, stalemate: row.stalemate, argument: row.pace === "argument" });
   return { card: { kicker: "Dareful", headline: question, footer: description }, title: question, description, sender: null, question };
+}
+
+/** What someone is told, before they are in, about how it gets decided. Pure, so the card's promise has a test. */
+export function shareTermsLine(input: { criterion: string | null; stalemate: string; argument: boolean }): string {
+  const decided = input.criterion ? `Decided ${clip(input.criterion, 70)}. ` : "";
+  const tiebreak = input.stalemate === "void" ? "If nobody can agree, it goes unsettled." : "If nobody can agree, the app hears both sides and calls it.";
+  return `${decided}${input.argument ? "Take the other side." : "Put your number on it."} ${tiebreak}`;
 }

@@ -53,6 +53,8 @@ export async function structured<T>(req: { label: string; model: string; system:
     }
   });
   if (process.env.AI_RECORD_TO) (await import("node:fs")).writeFileSync(`${process.env.AI_RECORD_TO}/${req.label.replace(/\s+/g, "-")}.json`, JSON.stringify(res, null, 2));
+  // An answer cut off by the token limit is a tool call with fields missing. Say that, rather than a parse error.
+  if (res.stop_reason === "max_tokens") throw new Error(`the model ran out of room before finishing (${req.label})`);
   return answerFrom(res, req.toolName, req.shape, req.label);
 }
 

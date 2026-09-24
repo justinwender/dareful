@@ -1,0 +1,45 @@
+{
+  "model": "claude-fable-5-1",
+  "id": "msg_011CfFTtuqqw2WbrVwRy7KjJ",
+  "type": "message",
+  "role": "assistant",
+  "content": [
+    {
+      "type": "thinking",
+      "thinking": "",
+      "signature": "CAQS9QQKEAgSGAI4AUIIdGhpbmtpbmcSDGSnGU8SR4q3pASH+BoM8/REjwAL48fY2YGWIjBeootjr0kS/rMvnuPTAGSWh1KZe7q7V783S4jrxe1vz2V5QDhvQ3WBdGl6ao3gz/IqkgTyFl33qMEzTKgaJgFs5jKGI9fdNlPcMYvzbclmJFiFxrxMM3FG75Q9BoJe/t+FCfjTe3Jk1PWKcv3j/YM5AmamLOEclulgohnK1Wxvd96IQwSqyiN+T1Xy9MbN0bR54F8Mf8VFSSxgxYEZDkWMwRAbgMjDh8XEquzs+K01XhudblXzBsdB9UUZgLuYiIVzZcBtbIRS0xD+UqmDxWHVHC1R7r030//IcCa54p89vXodpsoV+zS9dFxVoMTM4I2U5mgB5hMJro4m4aNCDH1srYSmJmJoDZBavXoE1BNjLfnlsoKuXXqs7hwDBNX2DlAJ07mHfSI93aSuI1+DUAeaojw9yfrqgq47qp1KfGbcjKE+9axSr1c2lD2JhQMRsC8Rx8pZy29uGuUTkNmMUpF8DlpdOrbRKTZj5tK4Nwx174USvU+2Hdq3n5mfTNQqymghjXdxKQynFmkoNK/WqaPCdY7Z8fssbkEUaIhLeJ7yvFLJdm4jyZJakh2kYhCHOzTdGlq98g6E1vqcFUMlgLnX5fCtKpUvh+h2zFCwBuPH7SaK106hgI5tDhs9rqFimMFAZMOPzm2vf7DCSN80PPt4ET+45fnNR9/2gWmZpVzrnrxPSN2NuSi7rHqFgIpMUjKC4WjEBsNBTY/SEZCACXVezpYWkc+xBAwNVbmBqU0BLuI52g1lLi8AywjrzVdsa6wx/DB3XBgB"
+    },
+    {
+      "type": "tool_use",
+      "id": "toolu_01QVL773GiFkzxz6vwbe4ZZP",
+      "name": "rule",
+      "input": {
+        "outcome": "no",
+        "confidencePercent": 99,
+        "rationale": "The 2011 NBA Finals ended in six games, with the Dallas Mavericks defeating the Miami Heat 4–2, clinching in Game 6 in Miami on June 12, 2011. This is the widely recorded series result in NBA records and contemporaneous coverage. Under the terms, a series ending in fewer than seven games means the answer is no."
+      },
+      "caller": {
+        "type": "direct"
+      }
+    }
+  ],
+  "container": null,
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "stop_details": null,
+  "usage": {
+    "input_tokens": 902,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "cache_creation": {
+      "ephemeral_5m_input_tokens": 0,
+      "ephemeral_1h_input_tokens": 0
+    },
+    "output_tokens": 257,
+    "output_tokens_details": {
+      "thinking_tokens": 44
+    },
+    "service_tier": "standard",
+    "inference_geo": "global"
+  }
+}

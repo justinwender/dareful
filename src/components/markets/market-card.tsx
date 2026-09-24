@@ -15,7 +15,9 @@ export type MarketCardProps = {
   title: string;
   mark: string | null;
   groupName: string | null;
-  state: "open" | "locked" | "resolved" | "voided";
+  state: "open" | "locked" | "resolved" | "voided" | "expired";
+  /** An argument reads "Argument" in its kicker; a dare does not say what it is. */
+  argument?: boolean;
   at: Date;
   clock: { zone: string; now: number };
   viewerId: string;
@@ -36,7 +38,7 @@ export type MarketCardProps = {
  */
 export function MarketCard(p: MarketCardProps) {
   const pins: Pin[] = p.people.filter((x): x is { id: string; name: string; percent: number } => x.percent !== null).map((x) => ({ id: x.id, name: x.name, percent: x.percent }));
-  const kicker = p.state === "open" ? "Open" : p.state === "locked" ? "Waiting on an answer" : p.state === "voided" ? "No answer" : "Settled";
+  const kicker = `${p.argument ? "Argument · " : ""}${p.state === "open" ? "Open" : p.state === "locked" ? "Waiting on an answer" : p.state === "voided" ? "No answer" : p.state === "expired" ? "Never settled" : "Settled"}`.replace(/^Argument · Open$/, "Argument · waiting on the other side");
   return (
     <Link prefetch={false} href={`/m/${p.id}`} className="relative block rounded-card">
       <LinkPending />
@@ -60,6 +62,8 @@ export function MarketCard(p: MarketCardProps) {
               {p.people.length} of {p.groupSize} in
             </span>
           </div>
+        ) : p.state === "expired" ? (
+          <p className="text-body-sm text-ink-2">Nobody called it in time, so it stays unsettled. Nothing changes hands.</p>
         ) : p.state === "voided" ? (
           <p className="text-body-sm text-ink-2">Nobody could tell, so it’s void.</p>
         ) : (

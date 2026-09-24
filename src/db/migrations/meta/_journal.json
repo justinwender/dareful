@@ -92,6 +92,13 @@
       "when": 1789926830630,
       "tag": "0012_number_series_and_name_prompt",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1789941051274,
+      "tag": "0013_settler",
+      "breakpoints": true
     }
   ]
 }

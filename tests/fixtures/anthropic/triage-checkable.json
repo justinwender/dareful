@@ -1,0 +1,42 @@
+{
+  "model": "claude-fable-5-1",
+  "id": "msg_011CfFTsvcDKmR7b6xrgo5Gy",
+  "type": "message",
+  "role": "assistant",
+  "content": [
+    {
+      "type": "tool_use",
+      "id": "toolu_01LHHZDc6G3eXdnwszB7NtLX",
+      "name": "triage",
+      "input": {
+        "tier": "checkable",
+        "claim": "The 2011 NBA Finals went seven games.",
+        "criteria": [],
+        "declineReason": "",
+        "dareInstead": ""
+      },
+      "caller": {
+        "type": "direct"
+      }
+    }
+  ],
+  "container": null,
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "stop_details": null,
+  "usage": {
+    "input_tokens": 1153,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "cache_creation": {
+      "ephemeral_5m_input_tokens": 0,
+      "ephemeral_1h_input_tokens": 0
+    },
+    "output_tokens": 157,
+    "output_tokens_details": {
+      "thinking_tokens": 0
+    },
+    "service_tier": "standard",
+    "inference_geo": "global"
+  }
+}

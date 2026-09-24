@@ -31,7 +31,7 @@ export function SectionLabel({ children }: { children: ReactNode }) {
   return <h2 className="text-label text-ink-3">{children}</h2>;
 }
 
-/** Bottom action area: 16px top, 20px sides, 24px bottom or the home indicator's inset, whichever is more. At most one primary button per viewport. */
+/** Bottom action area: 16px top, 20px sides, 24px bottom or the home indicator's inset, whichever is more. It sits above the home bar, which owns the very bottom of every screen but home. At most one primary button per viewport. */
 export function ActionArea({ children }: { children: ReactNode }) {
-  return <div className="sticky bottom-0 -mx-5 mt-auto bg-ground px-5 pt-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">{children}</div>;
+  return <div className="sticky bottom-[calc(52px+env(safe-area-inset-bottom))] -mx-5 mt-auto bg-ground px-5 pt-4 pb-4">{children}</div>;
 }

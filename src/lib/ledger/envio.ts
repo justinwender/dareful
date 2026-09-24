@@ -100,6 +100,8 @@ const EnvioDare = z.object({
   votes: z.number().nullable(),
   voided: z.boolean(),
   resolveTx: z.string().nullable(),
+  /** Present only when the arbitrator decided it; the hash of the written ruling. */
+  rulingHash: z.string().nullable(),
   positions: z.array(z.object({ participant: z.string(), stake: z.string(), value: z.string(), score: z.number().nullable() })),
   edges: z.array(z.object({ id: z.string(), tokenId: z.string(), debtor: z.string(), creditor: z.string(), qty: z.string(), unique: z.boolean(), confirmTx: z.string() })),
 });
@@ -110,7 +112,7 @@ export async function dareByOnchainId(dareId: string): Promise<EnvioDare | null>
   const data = await query(
     `query DareById($id: String!) {
       Dare(where: { id: { _eq: $id } }) {
-        id status outcome votes voided resolveTx
+        id status outcome votes voided resolveTx rulingHash
         positions { participant stake value score }
         edges { id tokenId debtor creditor qty unique confirmTx }
       }

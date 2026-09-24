@@ -48,8 +48,10 @@ export class MarketError extends Error {
   }
 }
 
-export type MarketState = "draft" | "open" | "locked" | "resolved" | "voided";
+export type MarketState = "draft" | "open" | "locked" | "resolved" | "voided" | "expired";
 export function stateOf(d: DareRow): MarketState {
+  // Expired is the void rule's silent end: no outcome, nothing minted, no toll. It is not a void.
+  if (d.resolvedAt && d.resolvedBy === "expired") return "expired";
   if (d.resolvedAt) return d.resolvedOutcome === VOID_OUTCOME ? "voided" : "resolved";
   if (d.lockedAt) return "locked";
   return d.creatorSignature ? "open" : "draft";
@@ -81,7 +83,14 @@ export function termsHash(termsText: string): Hex {
   return keccak256(stringToHex(termsText));
 }
 
+/**
+ * An argument resolves now, so what its asker signs is a deadline of zero: due at once, which is what lets the
+ * contract hear an arbitration the moment both people are in. The moment the second person got in is kept
+ * offchain as `resolves_by` (PLANNING.md 5b), but it cannot be what is signed, because the asker signs before
+ * that moment exists (docs/decisions.md 2026-09-21).
+ */
 function requireResolvesBy(d: DareRow): bigint {
+  if (d.pace === "argument") return 0n;
   if (!d.resolvesBy) throw new MarketError("this one has no deadline yet", "wrong_state");
   return BigInt(Math.floor(d.resolvesBy.getTime() / 1000));
 }
@@ -97,7 +106,7 @@ export function createTypedData(d: DareRow) {
       dareId: dareOnchainId(d.id),
       groupId: groupOnchainId(d.groupId),
       kind: Kind.Binary,
-      pace: Pace.Dare,
+      pace: d.pace === "argument" ? Pace.Argument : Pace.Dare,
       termsHash: termsHash(d.termsText),
       denomId: denomOnchainId(d.denomId),
       range: 0n,
@@ -133,7 +142,12 @@ export type DraftInput = {
   denomId: string;
   title: string;
   termsText: string;
-  resolvesBy: Date;
+  /** Null for an argument: it is due the moment the second person is in. */
+  resolvesBy: Date | null;
+  pace?: "dare" | "argument";
+  tier?: "checkable" | "contestable" | null;
+  criterion?: string | null;
+  mode?: "quick" | "careful";
   stalemate?: "arbitrate" | "void";
   revealMode?: "open" | "blind";
   anchorBps?: bigint | null;
@@ -147,7 +161,10 @@ export async function draftMarket(input: DraftInput): Promise<DareRow> {
   const termsText = input.termsText.trim();
   if (title.length < 3 || title.length > 140) throw new MarketError("Ask it in a line.", "bad_input");
   if (termsText.length < 3 || termsText.length > 800) throw new MarketError("The terms need a sentence.", "bad_input");
-  if (input.resolvesBy.getTime() <= Date.now()) throw new MarketError("Pick a time that hasn't passed.", "bad_input");
+  const pace = input.pace ?? "dare";
+  if (pace === "dare" && (!input.resolvesBy || input.resolvesBy.getTime() <= Date.now())) throw new MarketError("Pick a time that hasn't passed.", "bad_input");
+  // The criterion a contestable claim is ruled against has to be inside the terms, because the terms are what is hashed and what entering accepts.
+  if (input.criterion && !termsText.includes(input.criterion.trim())) throw new MarketError("The terms have to say how it's being decided.", "bad_input");
   if (!(await isMember(input.groupId, input.creatorId))) throw new MarketError("You're not in that group.", "not_member");
   const denom = await denominationById(input.denomId);
   if (!denom || denom.groupId !== input.groupId) throw new MarketError("That unit belongs to another group.", "bad_input");
@@ -165,7 +182,10 @@ export async function draftMarket(input: DraftInput): Promise<DareRow> {
     .values({
       groupId: input.groupId,
       kind: "binary",
-      pace: "dare",
+      pace,
+      tier: input.tier ?? null,
+      criterion: input.criterion?.trim() || null,
+      mode: input.mode ?? "quick",
       creatorId: input.creatorId,
       title,
       termsText,
@@ -176,7 +196,7 @@ export async function draftMarket(input: DraftInput): Promise<DareRow> {
       anchorValue: input.anchorBps ?? null,
       anchorRationale: input.anchorRationale?.trim() || null,
       anchorAt: input.anchorBps != null ? new Date() : null,
-      resolvesBy: input.resolvesBy,
+      resolvesBy: pace === "argument" ? null : input.resolvesBy,
       threshold: Math.floor(n / 2) + 1,
       markKind: mark ? "emoji" : null,
       markValue: mark,
@@ -225,6 +245,8 @@ export async function enterMarket(input: { dareId: string; userId: string; stake
   if (!ok) throw new MarketError("That didn't come from your account.", "bad_signature");
 
   const existing = await positionsOf(d.id);
+  // An argument is between two people. A third number would make it a different kind of question.
+  if (d.pace === "argument" && existing.length >= 2 && !existing.some((p) => p.userId === input.userId)) throw new MarketError("This one's between the two of them. You can watch how it comes out.", "wrong_state");
   if (!existing.some((p) => p.userId === input.userId) && existing.length >= MAX_POSITIONS) throw new MarketError(`This one is full at ${MAX_POSITIONS}.`, "wrong_state");
 
   const now = new Date();
@@ -253,10 +275,11 @@ export async function enterMarket(input: { dareId: string; userId: string; stake
  * nothing lands at all. The quorum is whatever the ledger says the group is at that moment, never anything sent
  * from here, and the threshold the contract computed is mirrored back.
  */
-export async function lockMarket(dareId: string, byUserId: string): Promise<{ txHash: Hex; threshold: number; quorum: Address[] }> {
+/** `byUserId` null is the app itself: an argument locks the moment its second person is in, and the scheduler locks a question whose time has come. */
+export async function lockMarket(dareId: string, byUserId: string | null): Promise<{ txHash: Hex; threshold: number; quorum: Address[] }> {
   const d = await marketById(dareId);
   if (!d) throw new MarketError("That one doesn't exist.", "not_found");
-  if (d.creatorId !== byUserId) throw new MarketError("Only the person who asked it can lock it.", "not_yours");
+  if (byUserId !== null && d.creatorId !== byUserId) throw new MarketError("Only the person who asked it can lock it.", "not_yours");
   if (stateOf(d) !== "open" || !d.creatorSignature) throw new MarketError("It can't be locked right now.", "wrong_state");
   const positions = await positionsOf(d.id);
   if (positions.length < 2) throw new MarketError("It takes two to lock it in.", "wrong_state");
@@ -394,7 +417,7 @@ export async function castVote(input: { dareId: string; userId: string; outcome:
   return { resolved: true, txHash };
 }
 
-type Settlement = { outcome: bigint; txHash: Hex; scores: Map<string, number>; edges: Array<{ tokenId: bigint; debtor: string; creditor: string; qty: bigint; obligationId: Hex; unique: boolean }> };
+export type Settlement = { outcome: bigint; txHash: Hex; scores: Map<string, number>; edges: Array<{ tokenId: bigint; debtor: string; creditor: string; qty: bigint; obligationId: Hex; unique: boolean }> };
 
 /** One resolution, one transaction. Then the chain's answer is mirrored: scores, nets, and one shadow row per edge. */
 async function resolveMarket(d: DareRow, outcome: bigint, agreeing: VoteRow[]): Promise<Hex> {
@@ -418,7 +441,13 @@ async function resolveMarket(d: DareRow, outcome: bigint, agreeing: VoteRow[]): 
     throw new MarketError(`The votes are in, but recording it didn't go through. Tap again to retry. (${err instanceof Error ? (err.message.split("\n")[0] ?? "") : "unknown"})`, "chain");
   }
 
-  // Read the settlement out of the receipt: who scored what, and which edges were minted.
+  await mirrorSettlement(d, settlementFromReceipt(result, outcome), { by: "quorum" });
+  return result.hash;
+}
+
+/** Reads a settlement out of its receipt: who scored what, and which edges were minted. One resolution per transaction, so every edge in it is this market's. */
+export function settlementFromReceipt(result: { hash: Hex; receipt: { logs: ReadonlyArray<{ address: string; data: Hex; topics: [] | [signature: Hex, ...args: Hex[]] }> } }, outcome: bigint): Settlement {
+  const { dares, ledger } = contracts();
   const settlement: Settlement = { outcome, txHash: result.hash, scores: new Map(), edges: [] };
   for (const log of result.receipt.logs) {
     const addr = log.address.toLowerCase();
@@ -437,8 +466,7 @@ async function resolveMarket(d: DareRow, outcome: bigint, agreeing: VoteRow[]): 
       // A log with another event signature; not ours to read.
     }
   }
-  await mirrorSettlement(d, settlement);
-  return result.hash;
+  return settlement;
 }
 
 /**
@@ -446,7 +474,7 @@ async function resolveMarket(d: DareRow, outcome: bigint, agreeing: VoteRow[]): 
  * and one shadow `obligations` row per minted edge (the edge's onchain id is its uuid, so the two sides join the
  * way every other obligation does). A partial result is refused rather than recorded.
  */
-async function mirrorSettlement(d: DareRow, s: Settlement): Promise<void> {
+export async function mirrorSettlement(d: DareRow, s: Settlement, how: { by: "quorum" | "arbitration"; rulingText?: string; rulingHash?: Hex }): Promise<void> {
   const positions = await positionsOf(d.id);
   const users = await db.select().from(schema.users).where(inArray(schema.users.id, positions.map((p) => p.userId as string)));
   const byLedger = new Map(users.map((u) => [u.ledgerWallet.toLowerCase(), u]));
@@ -457,7 +485,7 @@ async function mirrorSettlement(d: DareRow, s: Settlement): Promise<void> {
 
   const now = new Date();
   await db.transaction(async (tx) => {
-    await tx.update(schema.dares).set({ resolvedOutcome: s.outcome, resolvedBy: "quorum", resolvedAt: now }).where(and(eq(schema.dares.id, d.id), isNull(schema.dares.resolvedAt)));
+    await tx.update(schema.dares).set({ resolvedOutcome: s.outcome, resolvedBy: how.by, resolvedAt: now, ...(how.rulingText && how.rulingHash ? { rulingText: how.rulingText, rulingHash: hexToBuffer(how.rulingHash) } : {}) }).where(and(eq(schema.dares.id, d.id), isNull(schema.dares.resolvedAt)));
     for (const p of positions) {
       const wallet = users.find((x) => x.id === p.userId)?.ledgerWallet.toLowerCase() ?? "";
       const net = s.edges.reduce((a, e) => a + (e.creditor === wallet ? e.qty : 0n) - (e.debtor === wallet ? e.qty : 0n), 0n);
@@ -510,6 +538,6 @@ export async function reconcileFromIndexer(dareId: string): Promise<boolean> {
     txHash: indexed.resolveTx as Hex,
     scores: new Map(indexed.positions.filter((p) => p.score !== null).map((p) => [p.participant.toLowerCase(), p.score as number])),
     edges: indexed.edges.map((e) => ({ tokenId: BigInt(e.tokenId), debtor: e.debtor.toLowerCase(), creditor: e.creditor.toLowerCase(), qty: BigInt(e.qty), obligationId: e.id as Hex, unique: e.unique })),
-  });
+  }, { by: indexed.rulingHash ? "arbitration" : "quorum" });
   return true;
 }

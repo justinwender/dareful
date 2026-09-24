@@ -91,15 +91,18 @@ test("with nothing but the two of them there is no band at all", () => {
 
 const day = 86_400_000;
 const t0 = new Date("2026-09-19T18:00:00Z");
-test("needs you: soonest deadline first, then longest waiting, then fastest to finish", () => {
+test("needs you: a question in voting first, then what else has a deadline, then what can sit, and never by how old it is", () => {
   const rows = [
     { id: "draft", kind: "finish" as const, deadline: null, since: new Date(t0.getTime() - 5 * day) },
     { id: "yep-new", kind: "yep" as const, deadline: null, since: new Date(t0.getTime() - 1 * day) },
     { id: "vote-late", kind: "vote" as const, deadline: new Date(t0.getTime() + 3 * day), since: t0 },
     { id: "enter-soon", kind: "enter" as const, deadline: new Date(t0.getTime() + 1 * day), since: t0 },
-    { id: "yep-tie", kind: "yep" as const, deadline: null, since: new Date(t0.getTime() - 5 * day) },
+    { id: "yep-old", kind: "yep" as const, deadline: null, since: new Date(t0.getTime() - 60 * day) },
+    { id: "vote-argument", kind: "vote" as const, deadline: null, since: t0 },
   ];
-  assert.deepEqual(orderNeeds(rows).map((r) => r.id), ["enter-soon", "vote-late", "yep-tie", "draft", "yep-new"]);
+  // A cover from two months ago does not climb over tonight's vote by being old; an argument's vote, which has no
+  // date at all, still ranks with the votes.
+  assert.deepEqual(orderNeeds(rows).map((r) => r.id), ["vote-late", "vote-argument", "enter-soon", "yep-old", "draft", "yep-new"]);
 });
 
 const dare = { id: "d1", title: "Does John fall asleep?", creatorId: "creator", resolvesBy: new Date(t0.getTime() + day), createdAt: t0, lockedAt: null as Date | null };
