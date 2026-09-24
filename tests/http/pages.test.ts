@@ -398,6 +398,10 @@ test("the bar is on the three roots and nowhere else, every other screen has a b
   }
   const out = await get(`/m/${marketId}`);
   assert.ok(!/aria-label="Back"/.test(out.html) && !/<nav aria-label="Main"/.test(out.html) && out.text.includes("dareful"), "someone signed out has nowhere in the app to go back to");
+  // An empty Now (3.14): "Ask something" is the one chalk control, so Start stays hidden, and the bar is still there.
+  const empty = await get("/", cA);
+  assert.ok(empty.text.includes("Nothing happens here until somebody else is in it.") && empty.text.includes("Ask something"), "the first-run state");
+  assert.ok(/<nav aria-label="Main"/.test(empty.html) && !/aria-label="Start something"/.test(empty.html), "Start is hidden where Ask something already is the chalk");
 });
 
 test("asking offers both paces and both ways of writing the terms, and the settler says up front what it will not call", async () => {

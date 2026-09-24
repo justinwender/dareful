@@ -16,6 +16,9 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 export function Sheet({ open, onClose, labelledBy, children }: { open: boolean; onClose: () => void; labelledBy: string; children: ReactNode }) {
   const panel = useRef<HTMLDivElement>(null);
   const startY = useRef<number | null>(null);
+  // The distance so far lives in a ref as well as in state: a flick can end before the last move has rendered,
+  // and the decision to close must read what the finger did, not what the screen has caught up to.
+  const pulled = useRef(0);
   const [dy, setDy] = useState(0);
   useEffect(() => {
     if (!open) return;
@@ -47,19 +50,27 @@ export function Sheet({ open, onClose, labelledBy, children }: { open: boolean; 
           className="relative -mb-2 flex h-10 shrink-0 touch-none select-none items-center justify-center"
           onPointerDown={(e) => {
             startY.current = e.clientY;
-            e.currentTarget.setPointerCapture(e.pointerId);
+            try {
+              e.currentTarget.setPointerCapture(e.pointerId);
+            } catch {
+              // No active pointer to capture (a synthetic event): the drag still reads from this row.
+            }
           }}
           onPointerMove={(e) => {
-            if (startY.current !== null) setDy(Math.max(0, e.clientY - startY.current));
+            if (startY.current === null) return;
+            pulled.current = Math.max(0, e.clientY - startY.current);
+            setDy(pulled.current);
           }}
           onPointerUp={() => {
-            const far = dy > 80;
+            const far = pulled.current > 80;
             startY.current = null;
+            pulled.current = 0;
             setDy(0);
             if (far) onClose();
           }}
           onPointerCancel={() => {
             startY.current = null;
+            pulled.current = 0;
             setDy(0);
           }}
         >
