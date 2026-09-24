@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import { Hanken_Grotesk, Young_Serif } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
-import { HomeBar } from "@/components/ui/home-bar";
 import { PLACEHOLDER_NAME } from "@/lib/auth/login";
 import { currentUser } from "@/lib/auth/session";
 
@@ -52,7 +51,6 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       <body className="flex min-h-full flex-col pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)]">
         <Providers settled={settled} me={me ? { dynamicUserId: me.dynamicUserId, ledgerWallet: me.ledgerWallet, governanceWallet: me.governanceWallet } : null}>
           {children}
-          <HomeBar signedIn={me !== null} />
         </Providers>
       </body>
     </html>

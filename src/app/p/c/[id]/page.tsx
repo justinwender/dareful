@@ -48,7 +48,7 @@ export default async function GhostPage({ params }: { params: Promise<{ id: stri
 
   return (
     <Screen>
-      <TopBar back={{ href: "/", label: "Back" }} />
+      <TopBar back />
       <div className="flex flex-col gap-6 py-2">
         <div className="flex items-center gap-4">
           <Avatar name={ghost.displayName} hue="stone" size={56} ghost />

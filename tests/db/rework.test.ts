@@ -202,3 +202,16 @@ test("a nudge reaches whoever is not in, once per window however many times it i
   assert.deepEqual(await sendNudge(d.id, ana.user.id, now), { waitingOn: 2, told: 0, reached: 0 }, "the second tap tells nobody again");
   assert.deepEqual((await told(d.id)).filter((x) => x.startsWith("nudge")), ["nudge:ben<-ana", "nudge:cy<-ana"]);
 });
+
+test("a question this person has acted on is running, and once it is over it just happened", async () => {
+  const { d } = await open("Does the running row know where it stands?");
+  const enter = async (who: Signer, stake: bigint, bps: bigint) => markets.enterMarket({ dareId: d.id, userId: who.user.id, stake, valueBps: bps, signature: await who.ledger.signTypedData(markets.enterTypedData(d, stake, bps)) });
+  assert.equal((await home(ana)).needs.some((n) => n.key === d.id), true, "not in yet: it needs a number");
+  await enter(ana, 1000n, 7000n);
+  const h = await home(ana);
+  assert.deepEqual([h.running.some((r) => r.id === d.id), h.needs.some((n) => n.key === d.id), h.happened.some((e) => e.kind === "market" && e.market.dare.id === d.id)], [true, false, false], "in: running, and nowhere else");
+  assert.match(h.running.find((r) => r.id === d.id)?.caption ?? "", /^You’re in · 1 of 1 in/);
+  await db.update(schema.dares).set({ lockedAt: new Date(), resolvedAt: new Date(), resolvedOutcome: 1n, resolvedBy: "quorum" }).where(eq(schema.dares.id, d.id));
+  const over = await home(ana);
+  assert.deepEqual([over.running.some((r) => r.id === d.id), over.happened.some((e) => e.kind === "market" && e.market.dare.id === d.id)], [false, true], "over: just happened, and no longer running");
+});

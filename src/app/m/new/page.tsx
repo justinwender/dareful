@@ -10,11 +10,13 @@ import { viewerClock } from "@/lib/ui/zone";
 
 export const dynamic = "force-dynamic";
 
-/** Asking: the question, who's in, then the terms (docs/design.md 3.20, section 6). */
-export default async function AskPage({ searchParams }: { searchParams: Promise<{ line?: string }> }) {
+/** Asking: the question, who's in, then the terms (docs/design.md 3.20, section 7). */
+export default async function AskPage({ searchParams }: { searchParams: Promise<{ line?: string; pace?: string }> }) {
   const me = await currentUser();
   if (!me) redirect("/");
   const sp = await searchParams;
+  // Start offers asking and settling an argument as two rows; both land here, on the right pace.
+  const pace = sp.pace === "argument" ? ("argument" as const) : ("dare" as const);
   const clock = await viewerClock();
   const [sets, people] = await Promise.all([peopleSetsFor(me.id, me.displayName), peopleForUser(me.id)]);
   const now = new Date(clock.now);
@@ -31,9 +33,9 @@ export default async function AskPage({ searchParams }: { searchParams: Promise<
   );
   return (
     <Screen>
-      <TopBar back={{ href: "/", label: "Back" }} title="Ask something" />
+      <TopBar back title={pace === "argument" ? "Settle an argument" : "Ask something"} />
       <div className="py-2">
-        <AskForm sets={options} people={people.map((p) => ({ id: p.user.id, name: p.user.displayName, hue: hueFor(p.user.id) }))} initialLine={sp.line} />
+        <AskForm sets={options} people={people.map((p) => ({ id: p.user.id, name: p.user.displayName, hue: hueFor(p.user.id) }))} initialLine={sp.line} initialPace={pace} />
       </div>
     </Screen>
   );

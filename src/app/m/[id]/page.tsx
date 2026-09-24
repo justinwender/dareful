@@ -58,6 +58,7 @@ export default async function MarketPage({ params, searchParams }: { params: Pro
     const share = await marketShare(id);
     return (
       <Screen>
+        <TopBar title="dareful" />
         <div className="flex flex-col gap-6 py-10">
           <h1 className="text-question text-ink">{share.question ?? "Nothing to see here yet."}</h1>
           <p className="text-body text-ink-2">{share.question ? "Sign in to put your number on it." : "If a friend sent you this, sign in and it will be there."}</p>
@@ -90,7 +91,7 @@ export default async function MarketPage({ params, searchParams }: { params: Pro
     const COUNT = ["", "One friend is in", "Two friends are in", "Three friends are in", "Four friends are in", "Five friends are in", "Six friends are in"];
     return (
       <Screen>
-        <TopBar back={{ href: "/", label: "Back" }} title="dareful" />
+        <TopBar back title="dareful" />
         <div className="py-2">
           <InvitePreview
             viewerName={firstName(me.displayName)}
@@ -271,7 +272,7 @@ export default async function MarketPage({ params, searchParams }: { params: Pro
 
   return (
     <Screen>
-      <TopBar back={{ href: group?.name ? `/?g=${d.groupId}` : "/", label: "Back" }} right={group?.name ? <Chip>{group.name}</Chip> : null} />
+      <TopBar back right={group?.name ? <Chip>{group.name}</Chip> : null} />
       <div className="flex flex-col gap-7 py-2">
         <header className="flex flex-col gap-3">
           <h1 className="flex items-start gap-3 text-question text-ink">

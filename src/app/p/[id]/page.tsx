@@ -4,7 +4,6 @@ import { Avatar } from "@/components/ledger/avatar";
 import { CoveredCard } from "@/components/ledger/covered-card";
 import { PersonHeader } from "@/components/ledger/person-header";
 import { ActionArea, Screen, TopBar } from "@/components/ledger/screen";
-import { SignOutButton } from "@/components/auth/sign-out-button";
 import { ButtonLink } from "@/components/ui/button";
 import { currentUser } from "@/lib/auth/session";
 import { filterByContext, personView, userById } from "@/lib/ledger/person";
@@ -19,7 +18,8 @@ export default async function PersonPage({ params, searchParams }: { params: Pro
   const me = await currentUser();
   if (!me) redirect("/");
   const { id } = await params;
-  if (id === me.id) return <Self me={me} />;
+  // You are not a person you have something between you with: your own account lives on the You tab.
+  if (id === me.id) redirect("/you");
   const them = await userById(id);
   if (!them) notFound();
 
@@ -34,7 +34,7 @@ export default async function PersonPage({ params, searchParams }: { params: Pro
 
   return (
     <Screen>
-      <TopBar back={{ href: "/", label: "Back" }} />
+      <TopBar back />
       <div className="flex flex-col gap-6 py-2">
         <div className="flex items-center gap-4">
           <Avatar name={them.displayName} hue={hueFor(them.id)} size={56} />
@@ -105,18 +105,3 @@ export default async function PersonPage({ params, searchParams }: { params: Pro
   );
 }
 
-function Self({ me }: { me: { id: string; displayName: string; ledgerWallet: string; governanceWallet: string } }) {
-  return (
-    <Screen>
-      <TopBar back={{ href: "/", label: "Back" }} />
-      <div className="flex flex-col gap-6 py-2">
-        <div className="flex items-center gap-4">
-          <Avatar name={me.displayName} hue={hueFor(me.id)} size={56} />
-          <h1 className="text-display text-ink">{me.displayName}</h1>
-        </div>
-        <p className="text-body text-ink-2">This is you.</p>
-        <SignOutButton />
-      </div>
-    </Screen>
-  );
-}

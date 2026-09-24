@@ -12,7 +12,7 @@ export default async function JoinPage({ searchParams }: { searchParams: Promise
   const sp = await searchParams;
   return (
     <Screen>
-      <TopBar back={{ href: "/", label: "Back" }} />
+      <TopBar back />
       <div className="flex flex-col gap-7 py-2">
         <div className="flex flex-col gap-2">
           <h1 className="text-question text-ink">Join something</h1>

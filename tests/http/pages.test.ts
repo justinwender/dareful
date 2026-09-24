@@ -220,9 +220,10 @@ test("a signed-in friend gets one explicit tap, not a silent bind", async () => 
   assert.equal((await claims.claimById(gabe))?.claimedBy, null);
 });
 
-test("home lists the ghost among people, and the cover form offers the ghost and someone new", async () => {
-  const home = await get("/", cA);
-  assert.ok(home.text.includes("Gabe") && home.text.includes("not here yet"));
+test("the people tab lists the ghost among people, and the cover form offers the ghost and someone new", async () => {
+  const people = await get("/people", cA);
+  assert.ok(people.text.includes("Gabe") && people.text.includes("not here yet"));
+  assert.ok(!(await get("/", cA)).text.includes("not here yet"), "people are a root of their own, not a section of Now (design 4.7)");
   const form = await get("/new", cA);
   assert.ok(form.text.includes("Gabe") && form.text.includes("+ someone new"));
 });
@@ -240,9 +241,9 @@ test("the first screen groups what was waiting by who it is with, and offers one
 
 test("home carries a strip back to it, and someone with nothing waiting is sent home instead of an empty inbox", async () => {
   assert.ok((await get("/", cU)).text.includes("A few things were waiting for you"));
-  // Alex has people on their home screen and nothing that arrived by binding: no strip.
-  const quiet = await get("/", cA);
-  assert.ok(quiet.text.includes("not here yet") && !quiet.text.includes("waiting for you"));
+  // The asker has things on Now and nothing that arrived by binding: no strip.
+  const quiet = await get("/", cAsker);
+  assert.ok(quiet.text.includes("Needs you") && !quiet.text.includes("waiting for you"));
   const r = await get("/welcome", cB);
   assert.ok(r.status === 307 || r.status === 302);
   assert.equal(r.loc, "/");
@@ -300,16 +301,26 @@ async function send(path: string, method: string, body: unknown, cookie?: string
   return { status: r.status };
 }
 
-test("home asks first and joins second, and a question someone is not in is a row with its verb", async () => {
+test("Now holds what needs this person, then what is running, then what just happened, and nothing that starts something", async () => {
   const r = await get("/", cFriend);
   assert.equal(r.status, 200);
-  const ask = r.text.indexOf("Ask something");
-  const join = r.text.indexOf("Someone read you a code?");
-  const needs = r.text.indexOf("Needs you");
-  assert.ok(ask >= 0 && join > ask && needs > join, "ask, then join, then needs you (docs/design.md 4.7)");
-  assert.ok(r.text.includes("Does the kettle get descaled by Friday?") && /1 of 2 in/.test(r.text) && r.text.includes("Enter"));
-  // Nothing on home counts or ages (3.15): no badge on the heading, no days waiting.
+  assert.ok(r.text.includes("Needs you") && r.text.includes("Does the kettle get descaled by Friday?") && /1 of 2 in/.test(r.text) && r.text.includes("Enter"));
+  // Creating things lives behind Start (design 6.1): nothing on Now asks, joins or logs, and the one chalk control is the button.
+  assert.ok(!r.text.includes("Ask something") && !r.text.includes("I got this one"), "Now starts nothing itself");
+  assert.ok(/aria-label="Start something"/.test(r.html), "the Start button");
+  // Nothing on Now counts or ages (3.15): no badge on the heading, no days waiting.
   assert.ok(!/Needs you\s*\(?\d/.test(r.text) && !/waiting \d|\d+ days/.test(r.text));
+  // The dot on Now means something with a clock is waiting (6.4): a question to get into has one; a draft to finish does not.
+  assert.ok(/something with a clock is waiting on you/.test(r.html), "the friend has a question closing on them");
+  // The asker has a draft to finish and a question they are in: needs first, then running, and the running row has no verb.
+  const a = await get("/", cAsker);
+  const needs = a.text.indexOf("Needs you");
+  const running = a.text.indexOf("Running");
+  assert.ok(needs >= 0 && running > needs, `needs you, then running: ${needs}, ${running}`);
+  assert.ok(/Running.*Does the kettle get descaled by Friday\?.*You’re in · 1 of 2 in/.test(a.text), "where it stands, on the row");
+  // The action lives on the question's screen, never on a running row (design 4.7): no verb anywhere under Running.
+  assert.equal(/\b(Enter|Vote|Yep|Finish|Lock)\b/.exec(a.text.slice(running))?.[0], undefined, "a verb on a running row");
+  assert.ok(!/something with a clock is waiting on you/.test(a.html), "a draft can sit: no dot");
 });
 
 test("the joining screen is for someone signed in; signed out it sends them home", async () => {
@@ -344,17 +355,22 @@ test("a device that cannot approve is only ever reported by the person it belong
   assert.equal((await send("/api/device-state", "POST", { state: "signed-out", standalone: true }, cFriend)).status, 200);
 });
 
-test("nothing on a question borrows a word from finance, and home has no groups and no way to leave on it", async () => {
+test("nothing on a question borrows a word from finance", async () => {
   const FINANCE = /\b(odds|implied|price|pot|house|buy|sell|shares|liquidity|position size)\b|the market says/i;
   for (const who of [cFriend, cAsker]) {
     const r = await get(`/m/${marketId}`, who);
     const m = FINANCE.exec(r.text);
     assert.equal(m, null, m ? `found "${m[0]}" in: ...${r.text.slice(Math.max(0, m.index - 40), m.index + 40)}...` : "");
   }
-  const home = await get("/", cA);
-  const order = ["Ask something", "Someone read you a code?", "I got this one", "People"].map((t) => home.text.indexOf(t));
-  assert.ok(order.every((x, i) => x >= 0 && (i === 0 || x > (order[i - 1] ?? 0))), `ask, join, I got this one, then people: ${order.join(",")}`);
-  assert.ok(!/Sign out/.test(home.text) && !/\bGroups\b/.test(home.text) && !/Nothing open/.test(home.text));
+});
+
+test("Now has no groups and no way to leave; people and the account have their own roots", async () => {
+  const now = await get("/", cAsker);
+  assert.ok(!/Sign out/.test(now.text) && !/\bGroups\b/.test(now.text) && !/Nothing open/.test(now.text));
+  const you = await get("/you", cAsker);
+  assert.ok(you.text.includes("Sign out") && you.text.includes(asker.user.displayName), "the account lives behind You");
+  const self = await get(`/p/${asker.user.id}`, cAsker);
+  assert.ok((self.status === 307 || self.status === 302) && self.loc === "/you", "your own person view is the You root");
   const gone = await get(`/g/${groupId}`, cA);
   assert.ok((gone.status === 307 || gone.status === 302) && gone.loc === "/", "there is no group screen; an old address goes home");
 });
@@ -369,15 +385,27 @@ test("the scheduler's door answers only to its secret, and tells a stranger noth
   assert.equal((await fetch(`${BASE}/api/tick`)).status, 405, "there is nothing to GET");
 });
 
-test("every screen but home carries a way home under the thumb, and home does not", async () => {
-  for (const path of ["/m/new", "/join", `/m/${marketId}`, "/new"]) assert.ok(/<nav aria-label="Home"/.test((await get(path, cAsker)).html), `${path} has no way home`);
-  assert.ok(!/<nav aria-label="Home"/.test((await get("/", cAsker)).html));
-  assert.ok(!/<nav aria-label="Home"/.test((await get(`/m/${marketId}`)).html), "someone signed out has no home to go to");
+test("the bar is on the three roots and nowhere else, every other screen has a back control, and signed out there is only the wordmark", async () => {
+  for (const path of ["/", "/people", "/you"]) {
+    const r = await get(path, cAsker);
+    assert.ok(/<nav aria-label="Main"/.test(r.html) && /aria-label="Start something"/.test(r.html) && !/aria-label="Back"/.test(r.html), `${path} is a root`);
+    assert.equal((r.html.match(/aria-current="page"/g) ?? []).length, 1, `${path} marks one tab as where you are`);
+  }
+  for (const path of ["/m/new", "/join", `/m/${marketId}`, "/new", `/p/${friend.user.id}`, "/welcome"]) {
+    const r = await get(path, cAsker);
+    assert.ok(r.status === 200 || r.loc === "/", `${path}: ${r.status}`);
+    if (r.status === 200) assert.ok(/aria-label="Back"/.test(r.html) && !/<nav aria-label="Main"/.test(r.html) && !/aria-label="Start something"/.test(r.html), `${path} is a task screen`);
+  }
+  const out = await get(`/m/${marketId}`);
+  assert.ok(!/aria-label="Back"/.test(out.html) && !/<nav aria-label="Main"/.test(out.html) && out.text.includes("dareful"), "someone signed out has nowhere in the app to go back to");
 });
 
 test("asking offers both paces and both ways of writing the terms, and the settler says up front what it will not call", async () => {
   const r = await get("/m/new", cAsker);
   for (const t of ["Something that’ll happen", "Settle an argument", "Just write it up", "Ask me three things first"]) assert.ok(r.text.includes(t), t);
+  // Start's "Settle an argument" row lands on the same screen, on the settler's pace.
+  const arg = await get("/m/new?pace=argument", cAsker);
+  assert.ok(/aria-pressed="true"[^>]*>\s*<span[^>]*>\s*Settle an argument/.test(arg.html) && arg.text.includes("What do you two disagree about?"), "the settler preselected");
 });
 
 test("someone not yet in is shown the tiebreaker they would be agreeing to", async () => {
@@ -413,6 +441,8 @@ for (const [name, path, who] of [
   ["the ghost page", () => `/p/c/${gabe}`, () => cA],
   ["the cover form", () => "/new", () => cA],
   ["home", () => "/", () => cA],
+  ["the people tab", () => "/people", () => cA],
+  ["the you tab", () => "/you", () => cA],
   ["the joining screen", () => "/join", () => cA],
   ["the signed-out cover page", () => `/o/${boundId}`, () => undefined],
   ["the cover page", () => `/o/${boundId}`, () => cU],

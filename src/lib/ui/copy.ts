@@ -71,6 +71,11 @@ export function closesLabel(at: Date, now: Date, timeZone: string): string {
   return at.toLocaleDateString("en-US", { timeZone, month: "short", day: "numeric" });
 }
 
+/** The day, as the label at the top of a root: "Thursday, Sep 24", in the viewer's zone. */
+export function todayLabel(now: Date, timeZone: string): string {
+  return now.toLocaleDateString("en-US", { timeZone, weekday: "long", month: "short", day: "numeric" });
+}
+
 /** "Good until Oct 2", in the viewer's zone. */
 export function dayLabel(at: Date, timeZone: string): string {
   return at.toLocaleDateString("en-US", { timeZone, month: "short", day: "numeric" });

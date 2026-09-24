@@ -1,7 +1,7 @@
 /**
- * Home, event-first (docs/design.md 4.7). Asking and joining come first; "Needs you" is only what will not move
- * without this person; "Just happened" is what the group did; people and groups are ways to reach things, and a
- * group is a chip that filters this screen, never a place to go.
+ * Now, event-first (docs/design.md 4.7, 6.1). "Needs you" is only what will not move without this person;
+ * "Running" is what they have already acted on and is still in flight; "Just happened" is what the group did.
+ * People are their own root, and a group is a label on an event, never a place to go.
  *
  * The rows are assembled here as data so the ordering rule and the "nothing counts, nothing ages" rule have tests.
  */
@@ -71,8 +71,12 @@ export function needFromMarket(m: Pick<MarketCardData, "dare" | "state" | "peopl
 
 export type PersonRow = { user: Person; token: { ownerId: string; denomination: DenominationRow; quantity: bigint } | null };
 
+/** A question in flight this person has already acted on: where it stands, and no action (docs/design.md 4.7). */
+export type RunningRow = { id: string; title: string; mark: string | null; caption: string };
+
 export type HomeData = {
   needs: NeedRow[];
+  running: RunningRow[];
   happened: Array<{ kind: "market"; at: Date; market: MarketCardData } | { kind: "cover"; at: Date; obligation: typeof schema.obligations.$inferSelect; denomination: DenominationRow; from: Person; to: Person; groupLabel: string | null }>;
   /** People with something open: a row each. */
   people: PersonRow[];
@@ -90,66 +94,111 @@ export function squareSentence(names: string[]): string {
   return `${firsts.slice(0, 2).join(", ")} and ${firsts.length - 2} others are square with you`;
 }
 
-export async function homeFor(me: { id: string; displayName: string; ledgerWallet: string }, opts: { now: Date; closes: (at: Date) => string }): Promise<HomeData> {
-  const [cards, pending, drafts, myVotes, covers, open, known] = await Promise.all([
-    marketCards({ viewerId: me.id, limit: 40 }),
+/** The line under a running question: where it stands, never how long it has stood there. */
+export function runningCaption(m: Pick<MarketCardData, "dare" | "state" | "people" | "groupSize" | "votesCast">, closes: (at: Date) => string): string {
+  const d = m.dare;
+  if (m.state === "locked") return m.votesCast === 0 ? "Locked, waiting on how it came out" : `Locked · ${m.votesCast} of ${m.groupSize} have called it`;
+  if (d.pace === "argument") return "You’re in, waiting on the other side";
+  return `You’re in · ${m.people.length} of ${m.groupSize} in${d.resolvesBy ? ` · closes ${closes(d.resolvesBy)}` : ""}`;
+}
+
+/**
+ * The dot on the Now tab (docs/design.md 6.4): something with a clock is waiting on this person. Waiting alone is
+ * not enough; a cover to confirm can sit for a week and never lights it.
+ */
+export function timeBound(rows: Array<Pick<NeedRow, "deadline">>): boolean {
+  return rows.some((r) => r.deadline !== null);
+}
+
+export type NowData = Pick<HomeData, "needs" | "running" | "happened" | "hasAnything">;
+export type PeopleData = Pick<HomeData, "people" | "square">;
+
+/** Every question this person can see, sorted into what needs them, what is running, and what is over. */
+async function questionsFor(me: { id: string }, opts: { now: Date; closes: (at: Date) => string }): Promise<{ needs: NeedRow[]; running: RunningRow[]; over: MarketCardData[] }> {
+  const [cards, myVotes] = await Promise.all([marketCards({ viewerId: me.id, limit: 40 }), db.select({ dareId: schema.dareVotes.dareId }).from(schema.dareVotes).where(eq(schema.dareVotes.userId, me.id))]);
+  const voted = new Set(myVotes.map((v) => v.dareId));
+  const needs: NeedRow[] = [];
+  const running: RunningRow[] = [];
+  const over: MarketCardData[] = [];
+  for (const m of cards) {
+    const n = needFromMarket(m, me.id, voted.has(m.dare.id), opts.now, opts.closes);
+    if (n) needs.push({ ...n, groupId: m.dare.groupId } as NeedRow);
+    else if (m.state === "open" || m.state === "locked") running.push({ id: m.dare.id, title: m.dare.title, mark: m.dare.markKind === "emoji" ? m.dare.markValue : null, caption: runningCaption(m, opts.closes) });
+    else over.push(m);
+  }
+  return { needs, running, over };
+}
+
+/** Whether the dot shows on Now. Worked out the same way on every root, from the questions alone. */
+export async function liveFor(me: { id: string }, now: Date): Promise<boolean> {
+  return timeBound((await questionsFor(me, { now, closes: () => "" })).needs);
+}
+
+/** Now: no indexer query at all. What needs this person, what is running, and what just happened are all in the database. */
+export async function nowFor(me: { id: string; displayName: string }, opts: { now: Date; closes: (at: Date) => string }): Promise<NowData> {
+  const [{ needs, running, over }, pending, drafts, covers] = await Promise.all([
+    questionsFor(me, opts),
     pendingForDebtor(me.id),
     db.select().from(schema.dares).where(and(eq(schema.dares.creatorId, me.id), isNull(schema.dares.creatorSignature))).orderBy(desc(schema.dares.createdAt)).limit(6),
-    db.select({ dareId: schema.dareVotes.dareId }).from(schema.dareVotes).where(eq(schema.dareVotes.userId, me.id)),
     db
       .select()
       .from(schema.obligations)
       .where(and(or(eq(schema.obligations.fromUser, me.id), eq(schema.obligations.toUser, me.id)), ne(schema.obligations.origin, "dare")))
       .orderBy(desc(schema.obligations.createdAt))
       .limit(8),
-    // One indexer query for the whole screen: the hosted endpoint allows a hundred a minute across everyone.
-    openTouching(me.ledgerWallet).catch((err: unknown) => {
-      console.error("home: open edges unavailable", err);
-      return [];
-    }),
-    // Everyone this person shares anything with, one-on-one included: a dyad is a group nobody sees as one.
-    peopleForUser(me.id),
   ]);
   // The label on an event says which set of people it came out of. It is a label, never a way in.
-  const groupIds = Array.from(new Set([...cards.map((m) => m.dare.groupId), ...covers.map((o) => o.groupId)]));
+  const groupIds = Array.from(new Set([...over.map((m) => m.dare.groupId), ...covers.map((o) => o.groupId)]));
   const [groupRows, groupMembers] = await Promise.all([groupIds.length ? db.select().from(schema.groups).where(inArray(schema.groups.id, groupIds)) : Promise.resolve([]), membersOfGroups(groupIds)]);
   const labelOf = new Map(groupRows.map((g) => [g.id, setLabel({ name: g.name, isDyad: g.isDyad, memberNames: (groupMembers.get(g.id) ?? []).filter((m) => m.userId).map((m) => m.displayName), viewerName: me.displayName })]));
-  const inScope = (_groupId: string) => true;
-  const voted = new Set(myVotes.map((v) => v.dareId));
 
-  const openRows = open.length ? await db.select().from(schema.obligations).where(inArray(schema.obligations.id, open.map((e) => bytes16ToUuid(e.id)))) : [];
-  const counterparties = Array.from(new Set([...pending.map((p) => p.toUser), ...covers.flatMap((o) => [o.fromUser, o.toUser]), ...openRows.flatMap((o) => [o.fromUser, o.toUser]), ...known.map((k) => k.user.id)].filter((x): x is string => Boolean(x) && x !== me.id)));
+  const counterparties = Array.from(new Set([...pending.map((p) => p.toUser), ...covers.flatMap((o) => [o.fromUser, o.toUser])].filter((x): x is string => Boolean(x) && x !== me.id)));
   const [users, denoms] = await Promise.all([
-    counterparties.length ? db.select({ id: schema.users.id, displayName: schema.users.displayName, ledgerWallet: schema.users.ledgerWallet }).from(schema.users).where(inArray(schema.users.id, counterparties)) : Promise.resolve([]),
-    denominationsByIds(Array.from(new Set([...pending.map((p) => p.denomId), ...covers.map((o) => o.denomId), ...openRows.map((o) => o.denomId)]))),
+    counterparties.length ? db.select({ id: schema.users.id, displayName: schema.users.displayName }).from(schema.users).where(inArray(schema.users.id, counterparties)) : Promise.resolve([]),
+    denominationsByIds(Array.from(new Set([...pending.map((p) => p.denomId), ...covers.map((o) => o.denomId)]))),
   ]);
   const userById = new Map<string, Person>([[me.id, { id: me.id, displayName: me.displayName }], ...users.map((u) => [u.id, { id: u.id, displayName: u.displayName }] as const)]);
 
-  const needs: NeedRow[] = [];
-  for (const m of cards) {
-    if (!inScope(m.dare.groupId)) continue;
-    const n = needFromMarket(m, me.id, voted.has(m.dare.id), opts.now, opts.closes);
-    if (n) needs.push({ ...n, groupId: m.dare.groupId } as NeedRow);
-  }
   for (const p of pending) {
     const creditor = p.toUser ? userById.get(p.toUser) : undefined;
     const denomination = denoms.get(p.denomId);
-    if (!creditor || !denomination || !inScope(p.groupId)) continue;
+    if (!creditor || !denomination) continue;
     needs.push({ kind: "yep", key: p.id, href: `/o/${p.id}`, verb: "Yep", context: p.memo ? `${creditor.displayName} got ${p.memo}` : `${creditor.displayName} got this one`, subject: `${creditor.displayName}'s got you`, question: false, deadline: null, since: p.createdAt, groupId: p.groupId, proposal: p, creditor, denomination });
   }
   for (const d of drafts) needs.push({ kind: "finish", key: d.id, href: `/m/${d.id}`, verb: "Finish", context: "You started this and never sent it", subject: d.title, question: true, deadline: null, since: d.createdAt, groupId: d.groupId });
 
   const happened: HomeData["happened"] = [];
-  const needing = new Set(needs.map((n) => n.key));
-  for (const m of cards) if (inScope(m.dare.groupId) && !needing.has(m.dare.id)) happened.push({ kind: "market", at: m.at, market: { ...m, groupName: labelOf.get(m.dare.groupId) ?? m.groupName } });
+  for (const m of over) happened.push({ kind: "market", at: m.at, market: { ...m, groupName: labelOf.get(m.dare.groupId) ?? m.groupName } });
   for (const o of covers) {
     const denomination = denoms.get(o.denomId);
     const from = userById.get(o.fromUser);
     const to = userById.get(o.toUser);
-    if (denomination && from && to && inScope(o.groupId)) happened.push({ kind: "cover", at: o.createdAt, obligation: o, denomination, from, to, groupLabel: labelOf.get(o.groupId) ?? null });
+    if (denomination && from && to) happened.push({ kind: "cover", at: o.createdAt, obligation: o, denomination, from, to, groupLabel: labelOf.get(o.groupId) ?? null });
   }
   // The offchain timestamp, never the chain's.
   happened.sort((a, b) => b.at.getTime() - a.at.getTime());
+
+  return { needs: orderNeeds(needs), running, happened: happened.slice(0, 8), hasAnything: needs.length > 0 || running.length > 0 || happened.length > 0 };
+}
+
+/** People: the one indexer query, for the open edges that give each person their token. */
+export async function peopleFor(me: { id: string; displayName: string; ledgerWallet: string }): Promise<PeopleData> {
+  const [open, known] = await Promise.all([
+    // One indexer query for the whole screen: the hosted endpoint allows a hundred a minute across everyone.
+    openTouching(me.ledgerWallet).catch((err: unknown) => {
+      console.error("people: open edges unavailable", err);
+      return [];
+    }),
+    // Everyone this person shares anything with, one-on-one included: a dyad is a group nobody sees as one.
+    peopleForUser(me.id),
+  ]);
+  const openRows = open.length ? await db.select().from(schema.obligations).where(inArray(schema.obligations.id, open.map((e) => bytes16ToUuid(e.id)))) : [];
+  const counterparties = Array.from(new Set([...openRows.flatMap((o) => [o.fromUser, o.toUser]), ...known.map((k) => k.user.id)].filter((x): x is string => Boolean(x) && x !== me.id)));
+  const [users, denoms] = await Promise.all([
+    counterparties.length ? db.select({ id: schema.users.id, displayName: schema.users.displayName, ledgerWallet: schema.users.ledgerWallet }).from(schema.users).where(inArray(schema.users.id, counterparties)) : Promise.resolve([]),
+    denominationsByIds(Array.from(new Set(openRows.map((o) => o.denomId)))),
+  ]);
+  const userById = new Map<string, Person>(users.map((u) => [u.id, { id: u.id, displayName: u.displayName }] as const));
 
   // One token per person: the same unit between two people nets before display, and the first unit in display
   // order stands for the rest (docs/design.md 3.18). The person view has all of it.
@@ -180,6 +229,11 @@ export async function homeFor(me: { id: string; displayName: string; ledgerWalle
   }
   const openPeople = people.filter((p) => p.token !== null).sort((a, b) => a.user.displayName.localeCompare(b.user.displayName));
   const square = people.filter((p) => p.token === null).map((p) => p.user).sort((a, b) => a.displayName.localeCompare(b.displayName));
+  return { people: openPeople, square };
+}
 
-  return { needs: orderNeeds(needs), happened: happened.slice(0, 8), people: openPeople, square, hasAnything: needs.length > 0 || happened.length > 0 || people.length > 0 };
+/** Everything, for the checks: Now and People together, as one data shape. */
+export async function homeFor(me: { id: string; displayName: string; ledgerWallet: string }, opts: { now: Date; closes: (at: Date) => string }): Promise<HomeData> {
+  const [now, people] = await Promise.all([nowFor(me, opts), peopleFor(me)]);
+  return { ...now, ...people, hasAnything: now.hasAnything || people.people.length > 0 || people.square.length > 0 };
 }

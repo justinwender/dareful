@@ -25,6 +25,8 @@
   --scrim-play: rgba(23, 20, 15, 0.7);
   --marigold-wash: rgba(244, 183, 62, 0.24);
   --marigold-wash-card: rgba(244, 183, 62, 0.26);
+  /* Citron (docs/design.md 1.1, 6.4): only a 6px dot or a 2px rule, only for "needs you, with a clock". */
+  --live: #e4e34a;
   --avatar-ink: #17140f;
 
   /* Person hues, assigned per person at account creation, stable across every group. */
@@ -106,6 +108,7 @@
   --ink-2: #564b3d;
   --ink-3: #6e6254;
   --marigold: #f0ad2e;
+  --live: #8a7a00;
   --person-lilac: #6a55b5;
   --person-aqua: #2f7f88;
   --person-orchid: #a24f8b;
@@ -127,6 +130,7 @@
   --color-ink-3: var(--ink-3);
   --color-marigold: var(--marigold);
   --color-on-marigold: var(--on-marigold);
+  --color-live: var(--live);
   --color-scrim: var(--scrim);
   --color-scrim-play: var(--scrim-play);
   --color-avatar-ink: var(--avatar-ink);

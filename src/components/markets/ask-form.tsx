@@ -29,17 +29,17 @@ const WHEN = [
 const COUNT = ["", "", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"];
 
 /**
- * Asking, in three steps: the question, who's in, the terms (PLANNING.md 8a; docs/design.md 3.20 and section 6).
+ * Asking, in three steps: the question, who's in, the terms (PLANNING.md 8a; docs/design.md 3.20 and section 7).
  * The terms are written up while the person is choosing who's in, so the wait for the write-up is spent on the
  * one decision that needs them anyway. If the write-up is slow or unavailable the line is used as typed, and the
  * screen says so. The last set of people is preselected: the common case is the same people as last time, and
  * it should cost one tap in total.
  */
-export function AskForm({ sets, people, initialLine = "" }: { sets: SetOption[]; people: Person[]; initialLine?: string }) {
+export function AskForm({ sets, people, initialLine = "", initialPace = "dare" }: { sets: SetOption[]; people: Person[]; initialLine?: string; initialPace?: "dare" | "argument" }) {
   const router = useRouter();
   const [step, setStep] = useState<"question" | "declined" | "criterion" | "careful" | "who" | "terms">("question");
   // Two paces, one object (PLANNING.md 8a): something that will happen, or a claim to settle now.
-  const [pace, setPace] = useState<"dare" | "argument">("dare");
+  const [pace, setPace] = useState<"dare" | "argument">(initialPace);
   const [mode, setMode] = useState<"quick" | "careful">("quick");
   const [verdict, setVerdict] = useState<TriageResult | null>(null);
   const [criterion, setCriterion] = useState<string | null>(null);

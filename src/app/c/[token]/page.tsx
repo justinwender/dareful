@@ -46,7 +46,7 @@ export default async function ClaimLinkPage({ params }: { params: Promise<{ toke
   if (!link) {
     return (
       <Screen>
-        <TopBar title="Dareful" />
+        <TopBar title="Dareful" back={Boolean(me)} />
         <div className="flex flex-1 flex-col justify-center gap-6 py-10">
           <h1 className="text-display text-ink">That link has expired.</h1>
           <p className="text-body text-ink-2">Ask whoever sent it for a fresh one.</p>
@@ -60,7 +60,7 @@ export default async function ClaimLinkPage({ params }: { params: Promise<{ toke
   if (me && claim.createdBy === me.id) {
     return (
       <Screen>
-        <TopBar title="Dareful" back={{ href: `/p/c/${claim.id}`, label: "Back" }} />
+        <TopBar title="Dareful" back />
         <div className="flex flex-1 flex-col justify-center gap-6 py-10">
           <h1 className="text-display text-ink">This is the link you made for {claim.displayName}.</h1>
           <p className="text-body text-ink-2">Send it to them from your own messages. It does nothing for you.</p>
@@ -74,7 +74,7 @@ export default async function ClaimLinkPage({ params }: { params: Promise<{ toke
   if (claim.claimedBy) {
     return (
       <Screen>
-        <TopBar title="Dareful" />
+        <TopBar title="Dareful" back={Boolean(me)} />
         <div className="flex flex-1 flex-col justify-center gap-6 py-10">
           <h1 className="text-display text-ink">Someone already said this was them.</h1>
           <p className="text-body text-ink-2">If that was you, sign in and it’s all there. If it wasn’t, tell {creatorName}.</p>
@@ -99,7 +99,7 @@ export default async function ClaimLinkPage({ params }: { params: Promise<{ toke
 
   return (
     <Screen>
-      <TopBar title="Dareful" />
+      <TopBar title="Dareful" back={Boolean(me)} />
       <div className="flex flex-col gap-6 py-6">
         <div className="flex items-center gap-4">
           <Avatar name={claim.displayName} hue="stone" size={56} ghost />

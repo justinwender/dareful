@@ -24,7 +24,7 @@ export default async function JoinPage({ params }: { params: Promise<{ token: st
   const me = await currentUser();
   return (
     <Screen>
-      <TopBar title="Dareful" />
+      <TopBar title="Dareful" back={Boolean(me)} />
       <div className="flex flex-1 flex-col justify-center gap-6 py-10">
         {!invite || !group ? (
           <>

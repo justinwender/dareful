@@ -25,40 +25,75 @@ next time). It covers the app's own furniture and nothing else, because no hand-
 keeps up with a group inventing bets every weekend. Anything a group invents can carry a
 **mark** instead.
 
-- A mark is an emoji or a picture the creator picks. Nothing is generated, suggested from
-  the words, or defaulted.
+- A mark is an emoji, a picture, or a sticker (a cutout with transparency) the creator picks.
+  Nothing is generated, suggested from the words, or defaulted.
 - Two things can carry one: a **market** (Priya's sleep market gets a moon) and a
   **denomination** (the dumpling run gets a dumpling).
 - Blank is the default and stays blank. An empty stamp never gets a placeholder.
 - A mark never carries meaning alone. The question, the unit's words and the alt text say
   everything; switch every mark off and the app still reads.
 - Marks stay out of nav, buttons, status and the eight structural icons.
+- A market's mark decides its ink, one of eight muted colour families (design.md 1.8). The
+  creator can override it from the market screen; otherwise the mark's dominant hue snaps to
+  the nearest ink, hueless marks fall back to a hash of the market id, and markets open between
+  the same people avoid sharing an ink while fewer than eight are open.
 
 ### Where a market's mark appears
 
-Entry tiles (the ten nights fill with it, and fall back to numerals when there is no mark),
-the timeline kicker, the story header, the leaderboard, the share card, and the push that
-says the market resolved.
+The odds line (it rides the thumb, small and grey at 0%, full size and full colour at 100%),
+the stamp on every list row (on the market's ink), the question band on the market's own
+screen, the timeline kicker, both link tiles (the asking tile and the result tile), and the
+push that says the market resolved.
 
 ### Schema
 
 ```sql
 -- on markets and on denominations
-mark_kind   text check (mark_kind in ('emoji','image')) ,  -- null = no mark
-mark_value  text                                            -- the emoji, or a media_id
+mark_kind   text check (mark_kind in ('emoji','image','sticker')),  -- null = no mark
+mark_value  text,                                                    -- the emoji, or a media_id
+-- on markets only
+ink         text not null check (ink in ('clay','ochre','olive','sea','slate','iris','plum','rose')),
+ink_source  text not null check (ink_source in ('pick','mark','hash'))
 ```
 
-Sizes are fixed by the container, not by the asset: 20px in a token, 28px in a row, 44px in
-a header, 64px on an entry tile. Radii 6 / 8 / 12 / 16.
+Store the derived ink on the row when the market is created (and when the creator overrides
+it), so balance can be checked across open markets without re-reading any pixels.
+
+Sizes are fixed by the container, not by the asset: 20px in a token or kicker, 28px in a
+compact row, 40px in a list row, 44px in the question band, 64px in the picker. Radii 6 / 8 /
+10 / 12 / 16.
 
 ### Pipeline notes
 
 - A picture mark is cropped square and stored at 256px. Same object store and signed-URL
   path as story media.
-- Share images render server-side. Emoji will not render unless the renderer has an emoji
+- A sticker keeps a 512px source with alpha plus a 256px derivative with the cream die-cut
+  edge baked in (2px at 40px stamps and up, 1.5px at 28px, none at 20px). Bake it in, rather
+  than drawing it with CSS, so the app and the tile renderer agree.
+- Link tiles render server-side. Emoji will not render unless the renderer has an emoji
   font loaded (Noto Color Emoji with Satori, or the equivalent), and a picture mark needs the
   256px derivative fetchable by the renderer. Both are easy to forget and both fail silently
   as a blank box in a group chat, which is the worst place to find out.
+
+## Stickers: a memory that becomes a mark
+
+When a market settles with a photo, the settled screen offers "Make a sticker": tap the
+subject, the cutout lifts, one tap keeps it. John asleep on the couch becomes the mark on the
+next market about John. Only people who could see the photo can see a sticker made from it.
+
+Three ways to build it, cheapest first:
+
+1. **Paste a cutout.** iOS 16 and later let people lift a subject out of a photo and copy it.
+   The mark picker accepts a paste (the clipboard `paste` event), keeps the alpha, trims the
+   transparent edges, pads to square and scales. No model; realistic for the hackathon.
+2. **Tap-to-cut in the app.** MediaPipe's Interactive Segmenter runs in the browser: an image
+   plus the tapped point returns a per-pixel confidence mask. Threshold near 0.5, feather 1 to
+   2px, apply as alpha, crop to the bounding box, pad square.
+3. **Automatic background removal.** IMG.LY's in-browser remover is AGPL-3.0, which is a problem
+   for a closed-source app unless their commercial licence is bought.
+
+For the ink, count only pixels with alpha over 0.5 and chroma over 0.04. A sticker usually
+picks a truer ink than the photo it came from, because the background no longer votes.
 
 ## Memories: media on events
 
@@ -84,7 +119,7 @@ degraded state.
 ### Adding later is the point
 
 Anyone who was in the market can add to it, weeks later included. The affordance sits on the
-resolved market, the memory screen and the leaderboard ("Add yours from that night"). This is
+resolved market, the memory screen and the settled screen ("Add yours from that night"). This is
 what pulls a second visit out of a settled bet.
 
 ### Coming back
@@ -122,11 +157,11 @@ obligation rather than putting bytes anywhere near the chain.
 ## Phasing
 
 **In the hackathon build.** Marks on markets and denominations (emoji first, picture if time
-allows). Photos on resolved markets with the full-width frame, credit and counter. "Add yours"
-on a resolved market. Marks and the frame in the share card, with the emoji font loaded in the
-server renderer.
+allows, stickers by paste). The derived ink on every market. Photos on resolved markets with
+the full-width frame, credit and counter. "Add yours" on a resolved market. The asking tile and
+the result tile, with the emoji font loaded in the server renderer.
 
-**After.** Video with inline playback, the "a year ago tonight" card, night-level grouping
+**After.** Tap-to-cut stickers, video with inline playback, the "a year ago tonight" card, night-level grouping
 ("the rest of that night" on the memory screen), and per-group memory browsing.
 
 **Not building.** Camera roll sync, auto-albums, face grouping, any notification that counts
@@ -136,8 +171,10 @@ photos, and any surface that shows media outside the story it belongs to.
 
 1. A market with no mark and no media renders correctly and looks deliberate, not empty.
 2. Turning every mark off leaves every screen readable, including screen readers.
-3. A share card for a market with an emoji mark and a video renders server-side with the
-   emoji visible and the poster frame in place.
-4. A photo added three weeks after resolution appears in the story, in the strip and in the
+3. An asking tile for a market with an emoji mark renders server-side with the emoji visible
+   at both ends of the empty line, and a result tile with a video shows its poster frame.
+4. A pasted sticker keeps its transparency, gets its die-cut edge, and picks an ink from its
+   opaque pixels only.
+5. A photo added three weeks after resolution appears in the story, in the strip and in the
    counter, credited to whoever added it.
-5. Nothing anywhere counts how many photos a person has or has not added.
+6. Nothing anywhere counts how many photos a person has or has not added.

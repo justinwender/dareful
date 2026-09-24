@@ -5,7 +5,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { setLabel } from "@/lib/ledger/groups";
-import { needFromMarket, orderNeeds, squareSentence } from "@/lib/ledger/home";
+import { needFromMarket, orderNeeds, runningCaption, squareSentence, timeBound } from "@/lib/ledger/home";
+import { rootFor } from "@/lib/ui/root";
 import { filterByContext, sharedContexts, type TimelineEvent } from "@/lib/ledger/person";
 import { CODE_ALPHABET, readCode, readPastedLink } from "@/lib/ledger/room-code";
 import { joinedNotice, nudgeNotice, nudgeSeq, nudgeTargets, NUDGE_WINDOW_MS, openedNotice, recipientsAfterVote, relayText, resultNotice, voteRequest } from "@/lib/notify/messages";
@@ -214,4 +215,30 @@ test("a user agent is kept as one of four words and nothing finer", () => {
   assert.equal(platformOf("Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36"), "android");
   assert.equal(platformOf("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15"), "desktop");
   assert.equal(platformOf(null), "other");
+});
+
+// ------------------------------------------------------------------------------------- the shell (design 6)
+
+test("the dot on Now means something with a clock is waiting, not merely something waiting", () => {
+  assert.equal(timeBound([{ deadline: null }, { deadline: null }]), false, "a cover to confirm and a draft can sit");
+  assert.equal(timeBound([{ deadline: null }, { deadline: t0 }]), true);
+  assert.equal(timeBound([]), false);
+});
+
+test("back lands on the root it came from, and on Now when what is remembered is not a root", () => {
+  assert.equal(rootFor("/people"), "/people");
+  assert.equal(rootFor("/you"), "/you");
+  assert.equal(rootFor("/"), "/");
+  assert.equal(rootFor(null), "/");
+  assert.equal(rootFor(undefined), "/");
+  for (const stored of ["/m/abc", "/people/", "https://evil.example/", "javascript:alert(1)", ""]) assert.equal(rootFor(stored), "/", stored);
+});
+
+test("a running row says where a question stands and never how long it has run", () => {
+  const open = market({ people: [{ id: "viewer", name: "V", percent: null }, { id: "creator", name: "C", percent: null }] });
+  assert.equal(runningCaption(open, closes), "You’re in · 2 of 4 in · closes tonight");
+  assert.equal(runningCaption(market({ state: "locked", votesCast: 2 }), closes), "Locked · 2 of 4 have called it");
+  assert.equal(runningCaption(market({ state: "locked" }), closes), "Locked, waiting on how it came out");
+  assert.equal(runningCaption(market({ dare: { pace: "argument" } }), closes), "You’re in, waiting on the other side");
+  for (const m of [open, market({ state: "locked" }), market({ dare: { pace: "argument" } })]) assert.equal(/\d+\s*(day|week|month|hour)|ago|overdue|late/i.test(runningCaption(m, closes)), false);
 });
