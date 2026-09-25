@@ -28,8 +28,8 @@ export function Leaderboard({ standings, outcome, viewerId }: { standings: Stand
         const hi = Math.max(s.percent, truth);
         const you = s.userId === viewerId;
         return (
-          <li key={s.userId} className={`grid grid-cols-[22px_minmax(0,1fr)] gap-x-3 rounded-[16px] px-3 ${dense ? "py-2" : "py-2.5"} ${you ? "bg-surface" : ""}`} style={you ? { boxShadow: hueRing(hue) } : undefined}>
-            <span className="row-span-2 self-center font-serif text-[22px] leading-9 text-ink-3">
+          <li key={s.userId} className={`grid grid-cols-[22px_minmax(0,1fr)] gap-x-3 rounded-button px-3 ${dense ? "py-2" : "py-2.5"} ${you ? "bg-surface" : ""}`} style={you ? { boxShadow: hueRing(hue) } : undefined}>
+            <span className="row-span-2 self-center text-numeral text-ink-3">
               {tied ? "=" : ""}
               {rank}
             </span>
@@ -44,7 +44,7 @@ export function Leaderboard({ standings, outcome, viewerId }: { standings: Stand
             <div className="relative mt-2 h-1 rounded-pill bg-surface-2" aria-hidden="true">
               <span className="absolute inset-y-0 rounded-pill" style={{ left: `${lo}%`, width: `${hi - lo}%`, background: hueBar(hue) }} />
               <span className="absolute top-1/2 h-2 w-px -translate-y-1/2 bg-line-strong" style={{ left: "50%" }} />
-              <span className="absolute top-1/2 h-3 w-[3px] -translate-x-1/2 -translate-y-1/2 rounded-pill bg-marigold" style={{ left: `${truth}%` }} />
+              <span className="absolute top-1/2 h-3 w-[3px] -translate-x-1/2 -translate-y-1/2 rounded-pill bg-chalk" style={{ left: `${truth}%` }} />
               <span className="absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-pill" style={{ left: `${s.percent}%`, background: hueVar(hue) }} />
             </div>
           </li>

@@ -4,18 +4,25 @@ import { AvatarStack } from "@/components/ledger/avatar";
 import { Chip } from "@/components/ledger/chip";
 import { MarkStamp } from "@/components/ledger/mark-stamp";
 import { ObligationToken } from "@/components/ledger/obligation-token";
+import { StateMark, type MarketMark } from "@/components/ledger/state-mark";
 import { When } from "@/components/ledger/when";
 import type { DenominationRow } from "@/lib/ledger/denominations";
 import { gotSentence } from "@/lib/ui/copy";
 import { hueFor } from "@/lib/ui/hue";
+import type { InkName } from "@/lib/ui/ink";
 import { CallLine, type Pin } from "./call-line";
 
 export type MarketCardProps = {
   id: string;
   title: string;
   mark: string | null;
+  ink: InkName;
   groupName: string | null;
   state: "open" | "locked" | "resolved" | "voided" | "expired";
+  viewerIn: boolean;
+  votesCast: number;
+  /** The only words beside the state mark: a clock, when the state has one (3.23). */
+  clockLine: string | null;
   /** An argument reads "Argument" in its kicker; a dare does not say what it is. */
   argument?: boolean;
   at: Date;
@@ -28,32 +35,38 @@ export type MarketCardProps = {
   denomination: DenominationRow;
   /** What this market left between the people in view: the whole market on a group page, one pair on a person page. */
   consequences: Array<{ from: { id: string; displayName: string }; to: { id: string; displayName: string }; quantity: bigint }>;
-  needsYou?: string | null;
 };
 
+/** The market's state as its mark (3.23): the sentence the kicker used to spend on it is gone. */
+function markOf(p: Pick<MarketCardProps, "state" | "viewerIn" | "votesCast">): MarketMark {
+  if (p.state === "open") return p.viewerIn ? "in" : "open";
+  if (p.state === "locked") return p.votesCast > 0 ? "voting" : "locked";
+  return p.state;
+}
+
 /**
- * A market in a timeline (docs/design.md 3.4): a story, never ledger rows. The question in the serif, the call
- * line, what happened, and beneath a divider only the consequences between the people in view, however many
- * obligations the market minted. The full table is one tap away.
+ * A market in a timeline (docs/design.md 3.4): a story, never ledger rows. The kicker is the state mark, the mark's
+ * stamp on the market's field, and at most a clock; then the question in the serif, the call line, what happened,
+ * and beneath a divider only the consequences between the people in view, however many obligations the market
+ * minted. The action lives on the market's own screen, never on the card.
  */
 export function MarketCard(p: MarketCardProps) {
   const pins: Pin[] = p.people.filter((x): x is { id: string; name: string; percent: number } => x.percent !== null).map((x) => ({ id: x.id, name: x.name, percent: x.percent }));
-  const kicker = `${p.argument ? "Argument · " : ""}${p.state === "open" ? "Open" : p.state === "locked" ? "Waiting on an answer" : p.state === "voided" ? "No answer" : p.state === "expired" ? "Never settled" : "Settled"}`.replace(/^Argument · Open$/, "Argument · waiting on the other side");
+  const mark = markOf(p);
   return (
     <Link prefetch={false} href={`/m/${p.id}`} className="relative block rounded-card">
       <LinkPending />
       <article className="flex flex-col gap-3 rounded-card border border-line bg-surface px-4 py-3.5">
         <div className="flex items-center justify-between gap-2">
-          <span className="inline-flex items-center gap-1.5 text-label text-ink-2">
-            <AskGlyph />
-            {kicker}
+          <span className="inline-flex min-w-0 items-center gap-2 text-label text-ink-2">
+            <StateMark state={mark} hue={mark === "in" ? hueFor(p.viewerId) : undefined} />
+            {p.mark ? <MarkStamp kind="emoji" value={p.mark} size={20} ink={p.ink} /> : <AskGlyph />}
+            {p.argument ? <span>Argument</span> : null}
+            {p.clockLine ? <span className="truncate">{p.clockLine}</span> : null}
           </span>
           {p.groupName ? <Chip>{p.groupName}</Chip> : null}
         </div>
-        <h3 className="flex items-start gap-2 text-card-question text-ink">
-          {p.mark ? <MarkStamp kind="emoji" value={p.mark} size={28} /> : null}
-          <span>{p.title}</span>
-        </h3>
+        <h3 className="text-serif-l text-ink">{p.title}</h3>
 
         {p.state === "open" ? (
           <div className="flex items-center gap-3">
@@ -63,19 +76,18 @@ export function MarketCard(p: MarketCardProps) {
             </span>
           </div>
         ) : p.state === "expired" ? (
-          <p className="text-body-sm text-ink-2">Nobody called it in time, so it stays unsettled. Nothing changes hands.</p>
+          <p className="text-body-sm text-ink-2">Nobody called it in time. Nothing changes hands.</p>
         ) : p.state === "voided" ? (
           <p className="text-body-sm text-ink-2">Nobody could tell, so it’s void.</p>
         ) : (
           <>
-            {p.state === "resolved" && p.outcome !== null ? <p className="text-outcome-sm text-ink">{p.outcome === 1 ? "Yes." : "No."}</p> : null}
+            {p.state === "resolved" && p.outcome !== null ? <p className="text-serif-l text-ink">{p.outcome === 1 ? "Yes." : "No."}</p> : null}
             <CallLine pins={pins} state={p.state === "resolved" ? "resolved" : pins.length > 0 ? "in" : "hidden"} outcome={p.outcome ?? undefined} />
           </>
         )}
 
         <p className="text-body-sm text-ink-2">
           <When iso={p.at.toISOString()} zone={p.clock.zone} serverNow={p.clock.now} />
-          {p.needsYou ? <span className="text-ink"> · {p.needsYou}</span> : null}
         </p>
 
         {p.state === "resolved" ? (
@@ -90,7 +102,7 @@ export function MarketCard(p: MarketCardProps) {
                 </div>
               ))
             )}
-            <span className="pt-1 text-[15px] font-semibold text-ink-2">See how everyone did</span>
+            <span className="pt-1 link-tertiary">See how everyone did</span>
           </div>
         ) : null}
       </article>
@@ -98,7 +110,7 @@ export function MarketCard(p: MarketCardProps) {
   );
 }
 
-/** The structural icon for a question, at 16px, where a row has no mark. */
+/** The structural icon for a question, at 16px, where a market has no mark. */
 export function AskGlyph() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

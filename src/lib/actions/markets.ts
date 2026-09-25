@@ -7,18 +7,19 @@ import { carefulQuestions, declined, triage } from "@/lib/ai/settler";
 import { afterEntry, arbitrateMarket, proposeForArgument, stateCase } from "@/lib/ledger/settle";
 import { isHex, type Hex } from "viem";
 import { z } from "zod";
+import { isInkName } from "@/lib/ui/ink";
 import { plainScope, proposeOutcome, scopeMarket } from "@/lib/ai/markets";
 import { requireUser } from "@/lib/auth/session";
 import { db, schema } from "@/db";
 import { and, asc, eq } from "drizzle-orm";
 import { denominationById, ensureUnitInGroup, ensureUsd } from "@/lib/ledger/denominations";
 import { createOccasionGroup, isMember, setForPeople } from "@/lib/ledger/groups";
-import { castVote, draftMarket, enterMarket, lockMarket, MarketError, marketById, openMarket, sayWhatHappened, stateOf, VOID_OUTCOME } from "@/lib/ledger/markets";
+import { castVote, draftMarket, enterMarket, lockMarket, MarketError, marketById, openMarket, sayWhatHappened, stateOf, VOID_OUTCOME, pickInk } from "@/lib/ledger/markets";
 
 const uuid = z.string().uuid();
 const say = (err: unknown, fallback: string) => (err instanceof MarketError ? err.message : fallback);
 
-export type ScopeResult = { title: string; terms: string; ambiguous: boolean; criteria: string[]; anchorPercent: number | null; anchorRationale: string | null; resolvesInHours: number; plain: boolean };
+export type ScopeResult = { title: string; terms: string; ambiguous: boolean; criteria: string[]; resolvesInHours: number; plain: boolean };
 
 /**
  * Quick mode: one line in, terms out. The model drafts; if it is slow, down, or answers in the wrong shape, the
@@ -32,11 +33,11 @@ export async function scopeMarketAction(rawLine: string, rawCriterion?: string, 
   try {
     const answers = z.array(z.object({ question: z.string().trim().min(3).max(160), yes: z.boolean() })).max(3).safeParse(rawAnswers ?? []);
     const s = await scopeMarket({ line: line.data, criterion: criterion?.success ? criterion.data : undefined, answers: answers.success ? answers.data : undefined, now: new Date() });
-    return { title: s.title, terms: s.terms, ambiguous: s.ambiguous && s.criteria.length > 0, criteria: s.criteria, anchorPercent: s.anchorPercent, anchorRationale: s.anchorRationale, resolvesInHours: s.resolvesInHours, plain: false };
+    return { title: s.title, terms: s.terms, ambiguous: s.ambiguous && s.criteria.length > 0, criteria: s.criteria, resolvesInHours: s.resolvesInHours, plain: false };
   } catch (err) {
     console.error("scoping failed; using the line as typed", err);
     const p = plainScope(line.data);
-    return { ...p, ambiguous: false, criteria: [], anchorPercent: null, anchorRationale: null, resolvesInHours: 24, plain: true };
+    return { ...p, ambiguous: false, criteria: [], resolvesInHours: 24, plain: true };
   }
 }
 
@@ -63,8 +64,6 @@ const Draft = z.object({
   title: z.string().trim().min(3).max(140),
   terms: z.string().trim().min(3).max(800),
   resolvesBy: z.string().datetime().nullable(),
-  anchorPercent: z.number().int().min(0).max(100).nullable(),
-  anchorRationale: z.string().trim().max(140).nullable(),
   markEmoji: z.string().trim().max(16).optional(),
 });
 
@@ -93,8 +92,6 @@ export async function draftMarketAction(input: z.infer<typeof Draft>): Promise<{
       criterion: d.argument?.criterion ?? null,
       mode: d.mode,
       stalemate: d.stalemate,
-      anchorBps: d.anchorPercent === null ? null : BigInt(d.anchorPercent * 100),
-      anchorRationale: d.anchorRationale,
       markEmoji: d.markEmoji,
       revealMode: d.blind ? "blind" : "open",
     });
@@ -305,5 +302,18 @@ export async function arbitrateAction(rawId: string): Promise<{ ok: true; outcom
     return { ok: true, outcome: r.outcome };
   } catch (err) {
     return { error: say(err, "That didn't go through. Nothing changed.") };
+  }
+}
+
+/** The creator's ink pick (docs/design.md 1.8, rule 1): one tap from the market's screen, honoured as picked. */
+export async function pickInkAction(rawId: string, rawInk: string): Promise<{ ok: true } | { error: string }> {
+  const user = await requireUser();
+  const id = uuid.safeParse(rawId);
+  if (!id.success || !isInkName(rawInk)) return { error: "Something in that is off." };
+  try {
+    await pickInk(id.data, user.id, rawInk);
+    return { ok: true };
+  } catch (err) {
+    return { error: say(err, "Couldn’t change that.") };
   }
 }

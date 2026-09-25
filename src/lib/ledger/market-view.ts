@@ -9,12 +9,17 @@
 import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { denominationsByIds, type DenominationRow } from "./denominations";
+import { inkOf, type InkName } from "@/lib/ui/ink";
 import { stateOf, VOID_OUTCOME, type DareRow, type MarketState, type PositionRow } from "./markets";
 
 export type MarketPerson = { id: string; displayName: string };
 export type MarketCardData = {
   dare: DareRow;
   state: Exclude<MarketState, "draft">;
+  /** The market's ink (docs/design.md 1.8): the stamp behind its mark everywhere, its whole screen on its own. */
+  ink: InkName;
+  /** Whether the viewer has a number on it: the "you're in" mark (3.23) is theirs alone. */
+  viewerIn: boolean;
   at: Date;
   groupName: string | null;
   groupSize: number;
@@ -79,6 +84,8 @@ export async function marketCards(input: { viewerId: string; groupId?: string; w
     out.push({
       dare: d,
       state,
+      ink: inkOf(d),
+      viewerIn: iAmIn,
       at: d.resolvedAt ?? d.lockedAt ?? d.createdAt,
       groupName: groups.find((g) => g.id === d.groupId)?.name ?? null,
       groupSize: seats.filter((s) => s.groupId === d.groupId).length,

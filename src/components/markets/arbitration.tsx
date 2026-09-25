@@ -60,7 +60,7 @@ export function Arbitration({ dareId, cases, mine, mayAsk }: { dareId: string; c
           Your side
         </label>
         <div className="flex gap-2">
-          <input id="my-case" value={text} onChange={(e) => (setText(e.target.value), setSaved(false))} maxLength={280} placeholder="The sign said 8,558 feet" aria-invalid={field ? true : undefined} aria-describedby={field ? "my-case-problem" : undefined} className={cn("h-12 min-w-0 flex-1 rounded-[14px] border border-line bg-ground px-4 text-[15px] text-ink placeholder:text-ink-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-marigold", field && FIELD_PROBLEM_CLASS)} />
+          <input id="my-case" value={text} onChange={(e) => (setText(e.target.value), setSaved(false))} maxLength={280} placeholder="The sign said 8,558 feet" aria-invalid={field ? true : undefined} aria-describedby={field ? "my-case-problem" : undefined} className={cn("h-12 min-w-0 flex-1 rounded-button border border-line bg-ground px-4 text-body-sm text-ink placeholder:text-ink-3", field && FIELD_PROBLEM_CLASS)} />
           <Button type="submit" variant="secondary" loading={saving} disabled={saved}>
             {saved ? "Saved" : "Save"}
           </Button>
@@ -75,11 +75,11 @@ export function Arbitration({ dareId, cases, mine, mayAsk }: { dareId: string; c
       <Sheet open={asking} labelledBy="hear-it-title" onClose={() => (hearing ? undefined : setAsking(false))}>
         <div className="flex flex-col gap-2">
           <p className="text-label text-ink-3">You’re asking the app to call it</p>
-          <h2 id="hear-it-title" className="text-question text-ink">
+          <h2 id="hear-it-title" className="text-serif-l text-ink">
             That ends the vote.
           </h2>
         </div>
-        <p className="text-body-sm-prose text-ink-2">It reads the terms, what everyone put in, what people said happened, and each side’s case, and writes down how it came out and why. That counts for everyone in it, and it can’t be undone. If the terms turn out not to settle it, it’s called off and nothing changes hands.</p>
+        <p className="text-body-sm text-ink-2">It reads the terms, what everyone put in, what people said happened, and each side’s case, and writes down how it came out and why. That counts for everyone in it, and it can’t be undone. If the terms turn out not to settle it, it’s called off and nothing changes hands.</p>
         <ProblemSummary messages={[problem]} />
         <div className="flex flex-col gap-1">
           <Button

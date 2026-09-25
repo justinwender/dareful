@@ -71,7 +71,7 @@ export function DeviceNotice() {
   if (!me || state === "checking" || state === "ready" || state === "other-account") return null;
   return (
     <div role="status" className="mx-auto w-full max-w-[430px] px-5 pt-3">
-      <div className="flex flex-col gap-3 rounded-[14px] border border-line-strong bg-surface-2 px-[14px] py-3">
+      <div className="flex flex-col gap-3 rounded-button border border-line-strong bg-surface-2 px-[14px] py-3">
         <p className="flex gap-2 text-body-sm text-ink">
           <AlertGlyph />
           <span>

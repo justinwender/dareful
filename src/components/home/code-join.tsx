@@ -51,7 +51,7 @@ export function CodeJoinCompact({ label = "Someone read you a code?" }: { label?
         <label htmlFor={id} className="text-caption text-ink-3">
           {label}
         </label>
-        <Link prefetch href="/join" className="relative -my-3 inline-flex h-11 items-center text-[13px] font-semibold text-ink-2">
+        <Link prefetch href="/join" className="relative -my-3 inline-flex h-11 items-center text-label text-ink-2">
           <LinkPending />
           Got a link?
         </Link>
@@ -74,7 +74,7 @@ export function CodeJoinCompact({ label = "Someone read you a code?" }: { label?
           placeholder="K7QMD3"
           aria-invalid={field ? true : undefined}
           aria-describedby={field ? `${id}-problem` : undefined}
-          className={cn("h-12 min-w-0 flex-1 rounded-[14px] border border-line bg-surface px-4 text-[17px] uppercase tracking-[0.08em] text-ink placeholder:text-ink-3 placeholder:normal-case focus:outline-none focus-visible:ring-2 focus-visible:ring-marigold", field && FIELD_PROBLEM_CLASS)}
+          className={cn("h-12 min-w-0 flex-1 rounded-button border border-line bg-surface px-4 text-body uppercase tracking-[0.08em] text-ink placeholder:text-ink-3 placeholder:normal-case", field && FIELD_PROBLEM_CLASS)}
         />
         <Button type="submit" variant="secondary" loading={pending}>
           Join
@@ -87,7 +87,7 @@ export function CodeJoinCompact({ label = "Someone read you a code?" }: { label?
 }
 
 /**
- * The focused form, on the joining screen: six boxes, the active one ringed in marigold. It is one real input
+ * The focused form, on the joining screen: six boxes, the active one carrying the focus outline (5.1). It is one real input
  * underneath, so typing advances, backspace retreats, paste fills all six, and a screen reader hears one field.
  */
 export function CodeJoinFocused({ initial = "" }: { initial?: string }) {
@@ -150,7 +150,7 @@ export function CodeJoinFocused({ initial = "" }: { initial?: string }) {
           {Array.from({ length: CODE_LENGTH }, (_, i) => {
             const active = focused && i === Math.min(value.length, CODE_LENGTH - 1);
             return (
-              <span key={i} className={cn("flex h-[60px] w-12 items-center justify-center rounded-tile border border-line bg-surface text-[24px] font-semibold tabular-nums text-ink", field && FIELD_PROBLEM_CLASS, active && "border-2 border-marigold")}>
+              <span key={i} className={cn("flex h-[60px] w-12 items-center justify-center rounded-button border border-line bg-surface text-numeral text-ink", field && FIELD_PROBLEM_CLASS, active && "outline outline-2 outline-ink outline-offset-2")}>
                 {value[i] ?? (active ? <span className="h-6 w-px animate-pulse bg-ink-2" /> : null)}
               </span>
             );
@@ -208,7 +208,7 @@ export function LinkJoin() {
           placeholder="dareful.app/m/…"
           aria-invalid={field ? true : undefined}
           aria-describedby={field ? `${id}-problem` : undefined}
-          className={cn("h-12 min-w-0 flex-1 rounded-[14px] border border-line bg-surface px-4 text-[15px] text-ink placeholder:text-ink-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-marigold", field && FIELD_PROBLEM_CLASS)}
+          className={cn("h-12 min-w-0 flex-1 rounded-button border border-line bg-surface px-4 text-body-sm text-ink placeholder:text-ink-3", field && FIELD_PROBLEM_CLASS)}
         />
         <Button type="submit" variant="secondary" loading={pending}>
           Go

@@ -15,6 +15,9 @@
  * server does not hold, verified here and again by the contract. Nothing goes onchain for a position nobody
  * signed: every position in `create` carries its owner's own signature. And one resolution per transaction.
  */
+import { randomUUID } from "node:crypto";
+import { emojiHue } from "@/lib/ui/emoji-hue";
+import { inkFor, inkOf, type InkName } from "@/lib/ui/ink";
 import { and, asc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { decodeEventLog, keccak256, stringToHex, verifyTypedData, type Address, type Hex } from "viem";
 import { db, schema } from "@/db";
@@ -150,8 +153,6 @@ export type DraftInput = {
   mode?: "quick" | "careful";
   stalemate?: "arbitrate" | "void";
   revealMode?: "open" | "blind";
-  anchorBps?: bigint | null;
-  anchorRationale?: string | null;
   markEmoji?: string | null;
 };
 
@@ -168,7 +169,6 @@ export async function draftMarket(input: DraftInput): Promise<DareRow> {
   if (!(await isMember(input.groupId, input.creatorId))) throw new MarketError("You're not in that group.", "not_member");
   const denom = await denominationById(input.denomId);
   if (!denom || denom.groupId !== input.groupId) throw new MarketError("That unit belongs to another group.", "bad_input");
-  if (input.anchorBps != null && (input.anchorBps < 0n || input.anchorBps > 10_000n)) throw new MarketError("bad anchor", "bad_input");
 
   // The offchain mirror of the quorum: the group's account-holders now. The chain takes its own snapshot at lock
   // and that one governs; this is what the ballot shows until then.
@@ -177,9 +177,20 @@ export async function draftMarket(input: DraftInput): Promise<DareRow> {
     .from(schema.groupMembers)
     .where(and(eq(schema.groupMembers.groupId, input.groupId), isNotNull(schema.groupMembers.userId), isNull(schema.groupMembers.leftAt)));
   const mark = input.markEmoji?.trim() || null;
+  // The market's ink (docs/design.md 1.8): the mark's hue, or a hash of the id, balanced against the inks of the
+  // questions still open between these people. Decided once, here, and stored, so balance never re-reads pixels.
+  const id = randomUUID();
+  const openHere = await db
+    .select({ id: schema.dares.id, ink: schema.dares.ink })
+    .from(schema.dares)
+    .where(and(eq(schema.dares.groupId, input.groupId), isNotNull(schema.dares.creatorSignature), isNull(schema.dares.resolvedAt)));
+  const chosen = inkFor({ markHue: mark ? emojiHue(mark) : null, id, takenInGroup: openHere.map((o) => inkOf(o)) });
   const [row] = await db
     .insert(schema.dares)
     .values({
+      id,
+      ink: chosen.ink,
+      inkSource: chosen.source,
       groupId: input.groupId,
       kind: "binary",
       pace,
@@ -193,9 +204,6 @@ export async function draftMarket(input: DraftInput): Promise<DareRow> {
       denomId: denom.id,
       stalemate: input.stalemate ?? "arbitrate",
       revealMode: input.revealMode ?? "open",
-      anchorValue: input.anchorBps ?? null,
-      anchorRationale: input.anchorRationale?.trim() || null,
-      anchorAt: input.anchorBps != null ? new Date() : null,
       resolvesBy: pace === "argument" ? null : input.resolvesBy,
       threshold: Math.floor(n / 2) + 1,
       markKind: mark ? "emoji" : null,
@@ -540,4 +548,12 @@ export async function reconcileFromIndexer(dareId: string): Promise<boolean> {
     edges: indexed.edges.map((e) => ({ tokenId: BigInt(e.tokenId), debtor: e.debtor.toLowerCase(), creditor: e.creditor.toLowerCase(), qty: BigInt(e.qty), obligationId: e.id as Hex, unique: e.unique })),
   }, { by: indexed.rulingHash ? "arbitration" : "quorum" });
   return true;
+}
+
+/** The creator's ink pick (docs/design.md 1.8, rule 1): one tap from the market's own screen, never a step in creating it. */
+export async function pickInk(dareId: string, userId: string, ink: InkName): Promise<void> {
+  const d = await marketById(dareId);
+  if (!d) throw new MarketError("That one doesn’t exist.", "not_found");
+  if (d.creatorId !== userId) throw new MarketError("Only the person who asked it can colour it.", "not_yours");
+  await db.update(schema.dares).set({ ink, inkSource: "pick" }).where(eq(schema.dares.id, dareId));
 }

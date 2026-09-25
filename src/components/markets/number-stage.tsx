@@ -46,14 +46,13 @@ export function NumberStage(props: {
   mine: { percent: number; stake: string; stakeWords: string } | null;
   picture: StagePicture | null;
   mark: string | null;
-  suggestion: { percent: number; rationale: string | null } | null;
   /** Who is in, before this person has picked: names only, and the group's number stays hidden until they pick. */
   othersIn: string[];
   lockedLine: string | null;
   /** An argument: which side this person starts on, all the way, and which side is already taken. */
   argument?: { defaultPercent: number; otherSays: { name: string; side: "yes" | "no" } | null } | null;
 }) {
-  const { dareId, signing, unit, state, me, mine, picture, mark, suggestion } = props;
+  const { dareId, signing, unit, state, me, mine, picture, mark } = props;
   const router = useRouter();
   const sign = useSigner();
   const [changing, setChanging] = useState(false);
@@ -168,7 +167,7 @@ export function NumberStage(props: {
           <div className="flex items-baseline gap-2">
             {value % 10 !== 0 ? <span className="text-body-sm text-ink-2">about</span> : null}
             <span className="text-numeral-hero text-ink">{tenthOfPercent(value)}</span>
-            <span className="font-serif text-[26px] leading-none text-ink-2">in 10</span>
+            <span className="text-serif-l text-ink-2">in 10</span>
           </div>
           <div className="text-right">
             <p className="text-body-strong text-ink">{band(value)}</p>
@@ -203,11 +202,11 @@ export function NumberStage(props: {
       <div className="relative">
         {weights && weights.groupPercent !== null && weights.groupTenth !== null ? (
           <div aria-hidden="true" className="pointer-events-none absolute top-0 z-10 flex h-[146px] -translate-x-1/2 flex-col items-center transition-opacity duration-200" style={{ left: `${Math.min(98, Math.max(2, weights.groupPercent))}%`, opacity: risen ? 1 : 0, transitionDelay: risen ? "420ms" : "0ms" }}>
-            <span className="flex h-[22px] items-center whitespace-nowrap rounded-pill bg-ink px-2 text-[13px] font-semibold text-ground">{weights.groupTenth} in 10</span>
+            <span className="flex h-[22px] items-center whitespace-nowrap rounded-pill bg-ink px-2 text-label text-ground">{weights.groupTenth} in 10</span>
             <span className="w-[2px] flex-1 bg-ink" />
           </div>
         ) : null}
-        <div className={cn(reading ? "grid grid-cols-10 gap-[3px] pt-[26px]" : "grid grid-cols-5 gap-2")} role={reading ? "img" : "group"} aria-label={reading ? (weights ? weights.caption : blind ? `${blind.inCount} of ${blind.ofCount} in. Weights show when everyone's in.` : `You're in at ${inTen(myPercent)}`) : "Pick a number from 1 to 10"}>
+        <div className={cn(reading ? "grid grid-cols-10 gap-[3px] pt-[26px]" : "grid grid-cols-5 gap-2")} role={reading ? "img" : "group"} aria-label={reading ? (weights ? weights.caption : blind ? `${blind.inCount} of ${blind.ofCount} in. Numbers show when everyone's in.` : `You're in at ${inTen(myPercent)}`) : "Pick a number from 1 to 10"}>
           {Array.from({ length: 10 }, (_, i) => {
             const n = i + 1;
             const isMine = reading && n === myBucket;
@@ -224,10 +223,10 @@ export function NumberStage(props: {
                     setValue(n * 10);
                     setTouched(true);
                   }}
-                  className="relative h-14 overflow-hidden rounded-tile border border-line-strong bg-surface"
+                  className="relative h-14 overflow-hidden rounded-button border border-line-strong bg-surface"
                 >
                   <span aria-hidden="true" className="absolute inset-y-0 left-0 bg-person-lilac" style={{ width: `${fill * 100}%` }} />
-                  <span className="relative z-[1] flex h-full items-center justify-center">{mark ? <span style={{ fontSize: 22, opacity: fill > 0 ? 1 : 0.4 }}>{mark}</span> : <span className="text-numeral-sm" style={{ color: fill >= 0.5 ? "#1D1608" : "var(--ink-3)" }}>{n}</span>}</span>
+                  <span className="relative z-[1] flex h-full items-center justify-center">{mark ? <span style={{ fontSize: 22, opacity: fill > 0 ? 1 : 0.4 }}>{mark}</span> : <span className="text-numeral-sm" style={{ color: fill >= 0.5 ? "var(--avatar-ink)" : "var(--ink-3)" }}>{n}</span>}</span>
                 </button>
               );
             }
@@ -235,7 +234,7 @@ export function NumberStage(props: {
             const height = weights ? (b?.heightPermille ?? 0) / 10 : justIn && isMine && !blind ? 100 : 0;
             const share = weights && isMine ? weights.mySharePermille / 10 : !weights && isMine && !blind ? 100 : 0;
             return (
-              <div key={n} ref={(el) => void (cells.current[i] = el)} className={cn("relative h-[120px] rounded-[8px]", blind ? "border border-line-strong" : "bg-surface")}>
+              <div key={n} ref={(el) => void (cells.current[i] = el)} className={cn("relative h-[120px] rounded-column", blind ? "border border-line-strong" : "bg-surface")}>
                 {isMine ? (
                   <span className="absolute left-1/2 z-[2] -translate-x-1/2 transition-[bottom] duration-[240ms] ease-out" style={{ bottom: `calc(${risen ? Math.max(height, blind ? 0 : 4) : 0}% + ${blind ? 11 : 6}px)` }}>
                     <Avatar name={me.name} hue={me.hue} size={24} ring="var(--ground)" />
@@ -243,14 +242,14 @@ export function NumberStage(props: {
                 ) : null}
                 {!blind ? (
                   <>
-                    <span aria-hidden="true" className="absolute inset-x-0 bottom-0 rounded-[8px] bg-ink-3 transition-[height] ease-out" style={{ height: `${risen ? height : 0}%`, transitionDuration: "320ms", transitionDelay: risen && !isMine ? `${240 + i * 30}ms` : "0ms" }} />
-                    {isMine ? <span aria-hidden="true" className="absolute inset-x-0 bottom-0 rounded-[8px] transition-[height] duration-[240ms] ease-out" style={{ height: `${risen ? share : 0}%`, background: HUE_VAR[me.hue] }} /> : null}
+                    <span aria-hidden="true" className="absolute inset-x-0 bottom-0 rounded-column bg-market-ink transition-[height] ease-out" style={{ height: `${risen ? height : 0}%`, transitionDuration: "320ms", transitionDelay: risen && !isMine ? `${240 + i * 30}ms` : "0ms" }} />
+                    {isMine ? <span aria-hidden="true" className="absolute inset-x-0 bottom-0 rounded-column transition-[height] duration-[240ms] ease-out" style={{ height: `${risen ? share : 0}%`, background: HUE_VAR[me.hue] }} /> : null}
                     {Array.from({ length: Math.min(b?.noStake ?? 0, 3) }, (_, k) => (
                       <span key={k} aria-hidden="true" className="absolute left-1/2 h-2 w-2 -translate-x-1/2 rounded-pill border border-ink-2 bg-ground" style={{ bottom: 2 + k * 10 }} />
                     ))}
                   </>
                 ) : isMine ? (
-                  <span aria-hidden="true" className="absolute inset-x-0 bottom-0 h-[5px] rounded-b-[8px]" style={{ background: HUE_VAR[me.hue] }} />
+                  <span aria-hidden="true" className="absolute inset-x-0 bottom-0 h-[5px] rounded-b-column" style={{ background: HUE_VAR[me.hue] }} />
                 ) : null}
               </div>
             );
@@ -258,17 +257,17 @@ export function NumberStage(props: {
         </div>
         {blind ? (
           <span className="pointer-events-none absolute inset-x-0 top-[26px] flex h-[120px] items-center justify-center">
-            <span className="inline-flex h-7 items-center gap-1.5 rounded-pill border border-line-strong bg-ground px-3 text-[13px] text-ink-2">
+            <span className="inline-flex h-7 items-center gap-1.5 rounded-pill border border-line-strong bg-ground px-3 text-caption text-ink-2">
               <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="5" y="11" width="14" height="9" rx="2" />
                 <path d="M8 11V8a4 4 0 0 1 8 0v3" />
               </svg>
-              Weights show when everyone’s in
+              Numbers show when everyone’s in
             </span>
           </span>
         ) : null}
         {reading ? (
-          <div aria-hidden="true" className="mt-2 grid grid-cols-10 gap-[3px] text-center text-[13px] leading-4 tabular-nums">
+          <div aria-hidden="true" className="mt-2 grid grid-cols-10 gap-[3px] text-center text-caption tabular-nums">
             {Array.from({ length: 10 }, (_, i) => (
               <span key={i} className={i + 1 === myBucket ? "font-semibold text-ink" : "text-ink-3"}>
                 {i + 1}
@@ -284,7 +283,7 @@ export function NumberStage(props: {
             <span>Not once</span>
             <span>Every time</span>
           </p>
-          <p className="text-caption text-ink-3">{weights ? weights.caption : blind ? `${blind.inCount} of ${blind.ofCount} in. Your own number always shows. Everyone else’s, and the group’s number, appear once everyone’s in and it’s locked.` : "One moment."}</p>
+          <p className="text-caption text-ink-3">{weights ? weights.caption : blind ? `${blind.inCount} of ${blind.ofCount} in.` : "One moment."}</p>
         </div>
       ) : (
         <>
@@ -301,7 +300,7 @@ export function NumberStage(props: {
                 setTouched(true);
               }}
               className="h-11 w-full"
-              style={{ accentColor: "#B9A5F3" }}
+              style={{ accentColor: "var(--person-lilac)" }}
             />
             <span className="flex justify-between text-caption text-ink-3">
               <span>Not once</span>
@@ -309,27 +308,8 @@ export function NumberStage(props: {
             </span>
           </label>
 
-          {/* The anchor exists to be argued with while choosing, so it is here and in Change, and nowhere once you are in. */}
-          {suggestion && !touched ? (
-            <div className="flex items-center justify-between gap-3 rounded-card border border-dashed border-line-strong px-4 py-3">
-              <p className="text-body-sm text-ink-2">
-                <span className="text-body-strong text-ink">The app says {suggestion.percent}.</span> {suggestion.rationale ?? ""} Argue with it.
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  setValue(suggestion.percent);
-                  setTouched(true);
-                }}
-                className="h-11 shrink-0 px-2 text-[15px] font-semibold text-ink-2"
-              >
-                Start at {suggestion.percent}
-              </button>
-            </div>
-          ) : null}
-
           {props.othersIn.length > 0 && !changing ? (
-            <p className="text-body-sm text-ink-2">{props.othersIn.length === 1 ? "One friend is in." : "A few friends are in."} Where the stake sits shows once you pick.</p>
+            <p className="text-body-sm text-ink-2">{props.othersIn.length === 1 ? "One friend is in." : "A few friends are in."}</p>
           ) : null}
 
           <div className="flex flex-col gap-3">
@@ -343,12 +323,13 @@ export function NumberStage(props: {
                     </Chip>
                   </button>
                 ))}
-                <input inputMode={unit.monetary ? "decimal" : "numeric"} value={custom} onChange={(e) => setCustom(e.target.value)} placeholder={unit.monetary ? "other $" : "other"} aria-label="Another amount" className="h-9 w-24 rounded-pill border border-line-strong bg-transparent px-3 text-[13px] text-ink placeholder:text-ink-3" />
+                <input inputMode={unit.monetary ? "decimal" : "numeric"} value={custom} onChange={(e) => setCustom(e.target.value)} placeholder={unit.monetary ? "other $" : "other"} aria-label="Another amount" className="h-9 w-24 rounded-pill border border-line-strong bg-transparent px-3 text-caption text-ink placeholder:text-ink-3" />
               </div>
             ) : (
               <p className="text-body-sm text-ink-2">One {unit.singular}, the same for everyone. Whoever was furthest off has got whoever was closest.</p>
             )}
-            <p className="text-caption text-ink-3">The most you can be out is what you put on it, and only if you were the furthest off.</p>
+            <p className="text-caption text-ink-3">The most you can be out is what you put on it.</p>
+            <p className="text-caption text-ink-3">You only settle with people who land closer than you, and only by the gap between your numbers.</p>
           </div>
           <ProblemSummary messages={[problem]} />
           <div className="flex flex-col gap-1">

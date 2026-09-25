@@ -1,6 +1,6 @@
 /**
  * The two things a model does for a binary market (PLANNING.md 8a, 8c, 8d): scope the one line someone typed
- * into terms a group can resolve, with a suggested number to argue with; and, when someone says what happened,
+ * into terms a group can resolve; and, when someone says what happened,
  * propose an outcome with a short rationale. Both are proposals. The creator approves the terms; a quorum
  * decides the outcome and can overrule the proposal with the same signatures that would have ratified it.
  */
@@ -29,11 +29,6 @@ export const Scope = z.object({
   ambiguous: z.boolean(),
   /** When ambiguous: up to three measurable ways to decide it, each a short phrase. Otherwise empty. */
   criteria: z.preprocess(listOfStrings, z.array(z.string().trim().min(3).max(90)).max(3)),
-  /** A starting number, in percent, for people to argue with. Not a price and never anyone's position. */
-  anchorPercent: z.number().int().min(1).max(99),
-  // Display only, and argued with rather than relied on. A long one is clipped, never a reason to throw away
-  // the terms that came with it: that discarded whole write-ups in testing (docs/decisions.md 2026-09-21).
-  anchorRationale: z.string().trim().min(3).transform((r) => (r.length > 140 ? `${r.slice(0, 139).trimEnd()}…` : r)),
   /** How long until the group could know, in hours from now. */
   resolvesInHours: z.number().int().min(1).max(24 * 120),
 });
@@ -48,7 +43,6 @@ Write:
 - terms: how the group will know the answer, in one to three plain sentences. Say what counts as yes, what counts as no, and by when. Friends will read this once; write it the way one of them would say it. No legal language.
 - ambiguous: true only if reasonable friends would disagree about what counts, so that the question cannot be settled as written. Most lines about a future event are not ambiguous: pick the obvious reading and state it in the terms. Set it sparingly.
 - criteria: only when ambiguous, up to three different measurable ways to decide it, each a short phrase. Otherwise an empty list.
-- anchorPercent and anchorRationale: a starting number for how likely yes is, with a one-line reason. It exists to be argued with. Never 0, 50 by reflex, or 100; give your actual estimate. You know nothing about these particular people, so reason from how such things usually go and never claim to know anyone's habits or history.
 - resolvesInHours: how long until they could know.
 
 Never mention odds, prices, markets, wagers, or money. These are friends.`;
@@ -62,25 +56,23 @@ export async function scopeMarket(input: { line: string; criterion?: string; ans
     system: SCOPE_SYSTEM,
     user,
     toolName: "write_terms",
-    toolDescription: "Record the question, its terms, and a starting number.",
+    toolDescription: "Record the question and its terms.",
     inputSchema: {
       properties: {
         title: { type: "string" },
         terms: { type: "string" },
         ambiguous: { type: "boolean" },
         criteria: { type: "array", items: { type: "string" }, maxItems: 3 },
-        anchorPercent: { type: "integer", minimum: 1, maximum: 99 },
-        anchorRationale: { type: "string" },
         resolvesInHours: { type: "integer", minimum: 1 },
       },
-      required: ["title", "terms", "ambiguous", "criteria", "anchorPercent", "anchorRationale", "resolvesInHours"],
+      required: ["title", "terms", "ambiguous", "criteria", "resolvesInHours"],
     },
     shape: Scope,
     timeoutMs: 12_000,
   });
 }
 
-/** What the scope is when the model is slow, down, or wrong-shaped: the line as typed, and no number. */
+/** What the scope is when the model is slow, down, or wrong-shaped: the line as typed. */
 export function plainScope(line: string): { title: string; terms: string } {
   const title = line.trim().replace(/\s+/g, " ").replace(/[.!\s]+$/, "").slice(0, 120);
   return { title: /[?]$/.test(title) ? title : `${title}?`, terms: `Yes or no: ${title}${/[.?!]$/.test(title) ? "" : "."} The group decides together what happened.` };

@@ -8,6 +8,7 @@ import { formatMoney } from "@/lib/ui/units";
 import { Chip } from "./chip";
 import { CoveredGlyph } from "./glyphs";
 import { ObligationToken } from "./obligation-token";
+import { StateMark } from "./state-mark";
 
 /** `ghost`: someone who has not joined yet. Stone hue and a dashed ring, per docs/design.md 3.1. */
 type Person = { id: string; displayName: string; ghost?: boolean };
@@ -44,13 +45,14 @@ export function CoveredCard(p: CoveredCardProps) {
     </>
   );
   const consequence = gotSentence(p.debtor, p.creditor, p.viewerId);
-  const stateLine =
-    p.state === "settled" ? "Squared up" : p.state === "forgiven" ? "Called it even" : p.state === "partly" ? "Partly squared" : p.state === "pending" ? (p.debtor.id === p.viewerId ? "Waiting on you" : `Waiting for ${p.debtor.displayName}`) : null;
+  // The obligation's state is its mark (docs/design.md 3.23): proposed, open in the owner's hue, settled, forgiven.
+  const mark = p.state === "pending" ? ("proposed" as const) : p.state === "settled" ? ("settled" as const) : p.state === "forgiven" ? ("forgiven" as const) : ("owed" as const);
 
   const body = (
     <article className="flex flex-col gap-2 rounded-card border border-line bg-surface px-4 py-3.5">
       <div className="flex items-center justify-between gap-2">
-        <span className="inline-flex items-center gap-1.5 text-label text-ink-2">
+        <span className="inline-flex items-center gap-2 text-label text-ink-2">
+          <StateMark state={mark} hue={mark === "owed" ? (p.debtor.ghost ? "stone" : hueFor(p.debtor.id)) : undefined} />
           <CoveredGlyph size={16} />
           Covered
         </span>
@@ -69,7 +71,6 @@ export function CoveredCard(p: CoveredCardProps) {
           pending={p.state === "pending"}
         />
       </div>
-      {stateLine ? <p className="text-caption text-ink-3">{stateLine}</p> : null}
     </article>
   );
   return p.href ? (

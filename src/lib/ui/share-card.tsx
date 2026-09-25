@@ -15,7 +15,7 @@ import { ImageResponse } from "next/og";
 export const shareCardSize = { width: 1200, height: 630 };
 export const shareCardContentType = "image/png";
 
-const T = { ground: "#17140f", surface: "#211d17", lineStrong: "#4a4236", ink: "#f5ede0", ink2: "#c7bba8", ink3: "#9d9181", marigold: "#f4b73e" };
+const T = { ground: "#121110", surface: "#1C1A17", lineStrong: "#4A453F", ink: "#F2EDE3", ink2: "#C4BCAE", ink3: "#9A9385", chalk: "#F2EDE3" };
 
 export type ShareCard = { kicker: string; headline: string; footer: string };
 
@@ -32,7 +32,7 @@ export function renderShareCard(card: ShareCard): ImageResponse {
     (
       <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between", background: T.ground, padding: 72 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-          <div style={{ width: 22, height: 22, borderRadius: 11, background: T.marigold }} />
+          <div style={{ width: 22, height: 22, borderRadius: 11, background: T.chalk }} />
           <div style={{ fontSize: 30, color: T.ink2, letterSpacing: 1 }}>{card.kicker}</div>
         </div>
         <div style={{ display: "flex", fontSize: card.headline.length > 34 ? 72 : 88, lineHeight: 1.08, color: T.ink, fontWeight: 700, letterSpacing: -1.5 }}>{card.headline}</div>

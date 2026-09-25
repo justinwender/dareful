@@ -74,7 +74,7 @@ export function WhatHappened({ dareId, mine }: { dareId: string; mine: string | 
       <label htmlFor="what-happened" className="text-label text-ink-3">
         What happened?
       </label>
-      <input id="what-happened" value={text} onChange={(e) => setText(e.target.value)} maxLength={280} placeholder="Out cold by the second act" className="h-12 rounded-tile border border-line bg-surface px-3 text-body text-ink placeholder:text-ink-3" />
+      <input id="what-happened" value={text} onChange={(e) => setText(e.target.value)} maxLength={280} placeholder="Out cold by the second act" className="h-12 rounded-button border border-line bg-surface px-3 text-body text-ink placeholder:text-ink-3" />
       <ProblemSummary messages={[problem]} />
       <Button type="submit" variant="secondary" loading={pending}>
         {mine ? "Update what I said" : "Say it"}
@@ -154,11 +154,11 @@ export function Ballot({ dareId, signing, suggested, myVote, tallyLine, threshol
           <>
             <div className="flex flex-col gap-2">
               <p className="text-label text-ink-3">You’re calling it</p>
-              <h2 id="call-it-title" className="text-question text-ink">
+              <h2 id="call-it-title" className="text-serif-l text-ink">
                 {LABEL[choice]}.
               </h2>
             </div>
-            <p className="text-body-sm-prose text-ink-2">
+            <p className="text-body-sm text-ink-2">
               This one counts for everyone in it, not just you. It’s decided once {threshold} of you say the same thing, and you can change yours until then. Nobody can say it for you, and the app can’t either.
             </p>
             <ProblemSummary messages={[problem]} />

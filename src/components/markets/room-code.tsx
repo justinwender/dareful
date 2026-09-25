@@ -23,7 +23,7 @@ export function RoomCode({ dareId, url }: { dareId: string; url: string }) {
       const r = await roomCodeAction(dareId);
       if ("error" in r) return setProblem(r.error);
       setCode(r.code);
-      setQr(await QRCode.toString(url, { type: "svg", margin: 0, color: { dark: "#17140F", light: "#F5EDE0" } }).catch(() => null));
+      setQr(await QRCode.toString(url, { type: "svg", margin: 0, color: { dark: "#121110", light: "#F2EDE3" } }).catch(() => null));
     });
   }
 
@@ -39,10 +39,10 @@ export function RoomCode({ dareId, url }: { dareId: string; url: string }) {
   }
   return (
     <div className="flex flex-col items-center gap-4 rounded-card border border-line bg-surface px-4 py-5">
-      {qr ? <div role="img" aria-label="A code to scan that opens this question" className="h-44 w-44 overflow-hidden rounded-tile bg-ink p-3 [&>svg]:h-full [&>svg]:w-full" dangerouslySetInnerHTML={{ __html: qr }} /> : null}
+      {qr ? <div role="img" aria-label="A code to scan that opens this question" className="h-44 w-44 overflow-hidden rounded-button bg-ink p-3 [&>svg]:h-full [&>svg]:w-full" dangerouslySetInnerHTML={{ __html: qr }} /> : null}
       <p aria-label={`The code is ${code.split("").join(" ")}`} className="flex gap-2">
         {code.split("").map((c, i) => (
-          <span key={i} aria-hidden="true" className="flex h-[52px] w-10 items-center justify-center rounded-tile border border-line bg-ground text-[24px] font-semibold tabular-nums text-ink">
+          <span key={i} aria-hidden="true" className="flex h-[52px] w-10 items-center justify-center rounded-button border border-line bg-ground text-numeral text-ink">
             {c}
           </span>
         ))}

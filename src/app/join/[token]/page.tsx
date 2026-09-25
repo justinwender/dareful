@@ -28,17 +28,17 @@ export default async function JoinPage({ params }: { params: Promise<{ token: st
       <div className="flex flex-1 flex-col justify-center gap-6 py-10">
         {!invite || !group ? (
           <>
-            <h1 className="text-display text-ink">That link has expired.</h1>
+            <h1 className="text-serif-l text-ink">That link has expired.</h1>
             <p className="text-body text-ink-2">Ask whoever sent it for a fresh one.</p>
           </>
         ) : me ? (
           <>
-            <h1 className="text-display text-ink">{group.name}</h1>
+            <h1 className="text-serif-l text-ink">{group.name}</h1>
             <JoinGroup token={token} />
           </>
         ) : (
           <>
-            <h1 className="text-display text-ink">You’re invited to {group.name}.</h1>
+            <h1 className="text-serif-l text-ink">You’re invited to {group.name}.</h1>
             <p className="text-body text-ink-2">An email or a phone number is all it takes, and the group is waiting on the other side.</p>
             <SignInButton label="Join" />
           </>

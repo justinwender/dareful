@@ -385,11 +385,6 @@ export const dares = pgTable(
     stalemate: text("stalemate").notNull().default("arbitrate"),
     /** 'open' | 'blind'; default 'open'. */
     revealMode: text("reveal_mode").notNull().default("open"),
-    /** AI suggestion shown while entering; no onchain effect. */
-    anchorValue: money("anchor_value"),
-    anchorAt: ts("anchor_at"),
-    /** The one-line reason shown beside the anchor. Displayed, argued with, discarded; no onchain effect. */
-    anchorRationale: text("anchor_rationale"),
     /**
      * The creator's EIP-712 `Create` signature, held here until lock, as every `Enter` signature is held on its
      * position. Null while the market is a draft only its creator can see: signing is what opens it.
@@ -427,6 +422,14 @@ export const dares = pgTable(
     deadlineNotifiedAt: ts("deadline_notified_at"),
     resolvedAt: ts("resolved_at"),
     createdAt: ts("created_at").notNull().defaultNow(),
+    /**
+     * The market's ink (docs/design.md 1.8): one of eight colour families, decided when it is asked (the mark's
+     * hue, or a hash of the id) or picked by the creator from its screen, and stored so balance can be checked
+     * without pixels. Null on rows written before inks existed; those read as the hash they would have got.
+     */
+    ink: text("ink"),
+    /** 'pick' | 'mark' | 'hash'. */
+    inkSource: text("ink_source"),
     /** 'emoji' | 'image' | null for no mark. Blank is the default and stays blank. */
     markKind: text("mark_kind"),
     /** The emoji, or a media id as text for a picture mark. */

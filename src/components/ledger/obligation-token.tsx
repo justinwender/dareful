@@ -33,7 +33,7 @@ export function ObligationToken({ owner, other, viewerId, denomination, quantity
   const label = `${possessiveSentence(owner, other, viewerId)} ${words}`;
   const avatarSize = height === 40 ? 28 : 22;
   const glyphSize = height === 40 ? 18 : 16;
-  const mark = denomination.markKind && denomination.markValue ? <MarkStamp kind={denomination.markKind === "image" ? "image" : "emoji"} value={denomination.markValue} size={20} inToken /> : null;
+  const mark = denomination.markKind && denomination.markValue ? <MarkStamp kind={denomination.markKind === "image" ? "image" : "emoji"} value={denomination.markValue} size={20} /> : null;
 
   let body: React.ReactNode;
   if (denomination.monetary) {
@@ -58,7 +58,7 @@ export function ObligationToken({ owner, other, viewerId, denomination, quantity
     body = (
       <span className="inline-flex items-center gap-1.5 text-ink" aria-hidden="true">
         {mark}
-        <span className="font-serif text-[15px] leading-5">
+        <span className="text-serif-m">
           {n > 1 ? `${n} × ` : ""}
           {quotedUnit(denomination.label)}
         </span>

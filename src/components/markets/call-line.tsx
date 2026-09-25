@@ -6,7 +6,7 @@ export type Pin = { id: string; name: string; percent: number };
 /**
  * docs/design.md 3.5. The axis from No to Yes with everyone's avatar on it. Hidden while people are still
  * entering a blind market; full pins once everyone is in; and when it has resolved, the true half takes the
- * marigold wash and the true end a solid cap. Pins closer than 6 points cluster once there are more than six.
+ * wash and the true end a solid cream cap. Pins closer than 6 points cluster once there are more than six.
  */
 export function CallLine({ pins, state, outcome, size = "card", surface = "var(--surface)" }: { pins: Pin[]; state: "hidden" | "in" | "resolved"; outcome?: 0 | 1; size?: "card" | "screen"; surface?: string }) {
   const pin = size === "card" ? 24 : 32;
@@ -14,7 +14,7 @@ export function CallLine({ pins, state, outcome, size = "card", surface = "var(-
   if (state === "hidden") {
     return (
       <div className="flex flex-col gap-2">
-        <div className="flex h-[10px] items-center justify-center rounded-pill" style={{ background: "repeating-linear-gradient(90deg, #2B261F 0 10px, #241F19 10px 20px)" }} />
+        <div className="flex h-[10px] items-center justify-center rounded-pill" style={{ background: "repeating-linear-gradient(90deg, var(--surface-2) 0 10px, var(--surface) 10px 20px)" }} />
         <p className="self-center rounded-pill border border-line-strong px-3 py-1 text-caption text-ink-2">Numbers show when everyone’s in.</p>
       </div>
     );
@@ -24,11 +24,11 @@ export function CallLine({ pins, state, outcome, size = "card", surface = "var(-
     <div className="flex flex-col gap-2">
       <div className="relative mx-3" style={{ height: pin + 8 }}>
         <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 overflow-hidden rounded-pill bg-surface-2" style={{ height: track }}>
-          {state === "resolved" ? <span className="absolute inset-y-0" style={{ background: "rgba(244,183,62,0.24)", left: outcome === 1 ? "50%" : 0, right: outcome === 1 ? 0 : "50%" }} /> : null}
+          {state === "resolved" ? <span className="absolute inset-y-0" style={{ background: "var(--market-wash)", left: outcome === 1 ? "50%" : 0, right: outcome === 1 ? 0 : "50%" }} /> : null}
         </div>
         <span aria-hidden="true" className="absolute top-1/2 left-1/2 w-px -translate-y-1/2 bg-line-strong" style={{ height: size === "card" ? 16 : 24 }} />
         {state === "resolved" ? (
-          <span aria-hidden="true" className="absolute top-1/2 -translate-y-1/2 rounded-pill bg-marigold" style={{ width: size === "card" ? 4 : 6, height: pin, [outcome === 1 ? "right" : "left"]: -2 }} />
+          <span aria-hidden="true" className="absolute top-1/2 -translate-y-1/2 rounded-pill bg-chalk" style={{ width: size === "card" ? 4 : 6, height: pin, [outcome === 1 ? "right" : "left"]: -2 }} />
         ) : (
           <>
             <span aria-hidden="true" className="absolute top-1/2 left-0 h-3 w-0.5 -translate-y-1/2 bg-line-strong" />
@@ -40,7 +40,7 @@ export function CallLine({ pins, state, outcome, size = "card", surface = "var(-
             {c.members.length === 1 || pins.length <= 6 ? (
               <Avatar name={(c.members[0] as Pin).name} hue={hueFor((c.members[0] as Pin).id)} size={pin} ring={surface} />
             ) : (
-              <span className="inline-flex items-center justify-center rounded-pill bg-ink text-[11px] font-bold text-ground" style={{ width: pin, height: pin, boxShadow: `0 0 0 2px ${surface}` }}>
+              <span className="inline-flex items-center justify-center rounded-pill bg-ink text-label text-ground" style={{ width: pin, height: pin, boxShadow: `0 0 0 2px ${surface}` }}>
                 {c.members.length}
               </span>
             )}
@@ -48,9 +48,9 @@ export function CallLine({ pins, state, outcome, size = "card", surface = "var(-
         ))}
       </div>
       <div className="flex justify-between text-caption text-ink-3">
-        <span>{state === "resolved" && outcome === 0 ? <b className="font-semibold text-marigold">No</b> : state === "resolved" ? "Said no" : "No"}</span>
+        <span>{state === "resolved" && outcome === 0 ? <b className="font-semibold text-ink">No</b> : state === "resolved" ? "Said no" : "No"}</span>
         <span>even</span>
-        <span>{state === "resolved" && outcome === 1 ? <b className="font-semibold text-marigold">Yes</b> : state === "resolved" ? "Said yes" : "Yes"}</span>
+        <span>{state === "resolved" && outcome === 1 ? <b className="font-semibold text-ink">Yes</b> : state === "resolved" ? "Said yes" : "Yes"}</span>
       </div>
     </div>
   );

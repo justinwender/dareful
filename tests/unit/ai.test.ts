@@ -13,11 +13,13 @@ type Recorded = { content: Array<{ type: string; name?: string; input?: Record<s
 const load = (name: string): Recorded => JSON.parse(readFileSync(new URL(`../fixtures/anthropic/${name}.json`, import.meta.url), "utf8")) as Recorded;
 const withInput = (r: Recorded, patch: Record<string, unknown>): Recorded => ({ content: r.content.map((b) => (b.type === "tool_use" ? { ...b, input: { ...b.input, ...patch } } : b)) });
 
-test("a recorded scoping response reads as terms and a starting number", () => {
+test("a recorded scoping response reads as a question and its terms", () => {
   const scope = answerFrom(load("scope-market"), "write_terms", Scope, "t");
   assert.match(scope.title, /\?$/);
-  assert.ok(scope.anchorPercent >= 1 && scope.anchorPercent <= 99);
+  assert.ok(scope.terms.length > 10);
   assert.deepEqual(scope.criteria, []);
+  // The anchor is gone (docs/decisions.md 2026-09-24): nothing generates a number for anyone to cluster around.
+  assert.equal("anchorPercent" in scope, false);
 });
 
 test("a recorded outcome proposal reads as an outcome and a reason", () => {
@@ -34,29 +36,17 @@ test("an answer given through some other tool is refused", () => {
   assert.throws(() => answerFrom(load("propose-outcome"), "write_terms", Scope, "t"), /did not answer/);
 });
 
-// The two below vary one field of a recorded response. The string form of a list was seen from the API in 2A.
-test("a starting number outside 1 to 99 is refused", () => {
-  assert.throws(() => answerFrom(withInput(load("scope-market"), { anchorPercent: 100 }), "write_terms", Scope, "t"));
-});
-
+// The one below varies one field of a recorded response. The string form of a list was seen from the API in 2A.
 test("criteria sent as one string are read as a list", () => {
   const scope = answerFrom(withInput(load("scope-market"), { criteria: '["by chip time", "by gun time"]' }), "write_terms", Scope, "t");
   assert.deepEqual(scope.criteria, ["by chip time", "by gun time"]);
-});
-
-test("a long reason for the starting number is clipped, and never costs the terms that came with it", () => {
-  const long = "x".repeat(300);
-  const scope = answerFrom(withInput(load("scope-market"), { anchorRationale: long }), "write_terms", Scope, "t");
-  assert.ok(scope.anchorRationale.length <= 140 && scope.anchorRationale.endsWith("…"));
-  assert.ok(scope.terms.length > 10);
 });
 
 test("with no model, a line that ends in a full stop still reads as a question", () => {
   assert.equal(plainScope("The Holland Tunnel is longer than the Lincoln.").title, "The Holland Tunnel is longer than the Lincoln?");
 });
 
-test("with no model, the question is the line as typed and claims no number", () => {
+test("with no model, the question is the line as typed, tidied", () => {
   const plain = plainScope("  does riley   finish ");
   assert.equal(plain.title, "does riley finish?");
-  assert.equal("anchorPercent" in plain, false);
 });

@@ -128,10 +128,10 @@ export function WalletBootstrap({ settled, sessionDynamicUserId }: { settled: bo
     <div role="dialog" aria-modal="true" aria-live="polite" className="fixed inset-0 z-50 flex flex-col justify-center bg-ground px-5 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
       <div className="mx-auto flex w-full max-w-[420px] flex-col gap-6">
         {phase.at === "working" ? (
-          <p className="text-question text-ink">{phase.line}</p>
+          <p className="text-serif-l text-ink">{phase.line}</p>
         ) : phase.at === "error" ? (
           <>
-            <p className="text-question text-ink">That didn’t work.</p>
+            <p className="text-serif-l text-ink">That didn’t work.</p>
             <ProblemSummary messages={[phase.message]} />
             <Button variant="secondary" onClick={() => window.location.reload()}>
               Try again
@@ -145,7 +145,7 @@ export function WalletBootstrap({ settled, sessionDynamicUserId }: { settled: bo
               void submitName();
             }}
           >
-            <label htmlFor="display-name" className="text-question text-ink">
+            <label htmlFor="display-name" className="text-serif-l text-ink">
               What do your friends call you?
             </label>
             <input
@@ -157,7 +157,7 @@ export function WalletBootstrap({ settled, sessionDynamicUserId }: { settled: bo
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="First name"
-              className="h-14 rounded-button border border-line bg-surface px-4 text-[17px] text-ink placeholder:text-ink-3 focus:border-line-strong focus:outline-none"
+              className="h-14 rounded-button border border-line bg-surface px-4 text-body text-ink placeholder:text-ink-3 focus:border-line-strong"
             />
             <p className="text-body-sm text-ink-2">It goes on anything you send a friend. A first name is plenty.</p>
             <Button type="submit" variant="primary" disabled={!name.trim()}>

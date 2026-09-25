@@ -141,8 +141,6 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare" }
         title,
         terms: finalTerms,
         resolvesBy: arguing ? null : new Date(Date.now() + hours * 3_600_000).toISOString(),
-        anchorPercent: arguing ? null : scope.anchorPercent,
-        anchorRationale: arguing ? null : scope.anchorRationale,
         blind: arguing ? false : blind,
         stalemate,
         mode,
@@ -176,10 +174,10 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare" }
           </button>
         </div>
         <div className="flex flex-col gap-3">
-          <label htmlFor="ask-line" className="text-question text-ink">
+          <label htmlFor="ask-line" className="text-serif-l text-ink">
             {pace === "argument" ? "What do you two disagree about?" : "What are you wondering?"}
           </label>
-          <textarea id="ask-line" rows={2} value={line} onChange={(e) => setLine(e.target.value)} maxLength={280} placeholder={pace === "argument" ? "The Holland Tunnel is longer than the Lincoln" : "John falls asleep during the movie"} aria-invalid={fieldProblem ? true : undefined} aria-describedby={fieldProblem ? "ask-line-problem" : undefined} className={cn("rounded-tile border border-line bg-surface px-3 py-3 text-body text-ink placeholder:text-ink-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-marigold", fieldProblem && FIELD_PROBLEM_CLASS)} />
+          <textarea id="ask-line" rows={2} value={line} onChange={(e) => setLine(e.target.value)} maxLength={280} placeholder={pace === "argument" ? "The Holland Tunnel is longer than the Lincoln" : "John falls asleep during the movie"} aria-invalid={fieldProblem ? true : undefined} aria-describedby={fieldProblem ? "ask-line-problem" : undefined} className={cn("rounded-button border border-line bg-surface px-3 py-3 text-body text-ink placeholder:text-ink-3", fieldProblem && FIELD_PROBLEM_CLASS)} />
           <Problem id="ask-line-problem" message={fieldProblem} />
         </div>
         {pace === "dare" ? (
@@ -214,14 +212,14 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare" }
     return (
       <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-3">
-          <h1 className="text-question text-ink">That one isn’t the app’s to call.</h1>
+          <h1 className="text-serif-l text-ink">That one isn’t the app’s to call.</h1>
           <p className="text-body text-ink-2">{verdict.reason}</p>
           <p className="text-body-sm text-ink-2">The app settles claims about the world: what happened, which is longer, who holds the record. It doesn’t rule on people.</p>
         </div>
         {instead ? (
           <div className="flex flex-col gap-3 rounded-card border border-dashed border-line-strong px-4 py-3">
             <p className="text-caption text-ink-3">It could be a dare instead</p>
-            <p className="font-serif text-[20px] leading-[26px] text-ink">{instead}</p>
+            <p className="text-serif-m text-ink">{instead}</p>
           </div>
         ) : null}
         <div className="flex flex-col gap-1">
@@ -249,7 +247,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare" }
       <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-3">
           <p className="text-caption text-ink-3">Your claim</p>
-          <h1 className="text-question text-ink">{verdict.claim}</h1>
+          <h1 className="text-serif-l text-ink">{verdict.claim}</h1>
           <p className="text-body-sm text-ink-2">That’s a few different questions wearing one sentence, and each has a different answer. Pick what it means here. Whoever takes the other side sees this before they’re in.</p>
         </div>
         <div role="group" aria-label="How it's decided" className="flex flex-col gap-2">
@@ -280,7 +278,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare" }
     return (
       <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-2">
-          <h1 className="text-question text-ink">Three quick ones</h1>
+          <h1 className="text-serif-l text-ink">Three quick ones</h1>
           <p className="text-body-sm text-ink-2">Only you see these. Everyone else just sees the terms they turn into.</p>
         </div>
         <ol className="flex flex-col gap-4">
@@ -319,7 +317,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare" }
     <div className="flex items-start justify-between gap-3 rounded-card border border-line bg-surface px-4 py-3">
       <div className="flex min-w-0 flex-col gap-1">
         <span className="text-caption text-ink-3">Your question</span>
-        <span className="font-serif text-[17px] leading-[22px] text-ink">{step === "terms" && title ? title : verdict?.kind === "ok" && pace === "argument" ? verdict.claim : line}</span>
+        <span className="text-serif-m text-ink">{step === "terms" && title ? title : verdict?.kind === "ok" && pace === "argument" ? verdict.claim : line}</span>
         {criterion && pace === "argument" ? <span className="text-caption text-ink-3">Decided {criterion}</span> : null}
       </div>
       <Button variant="tertiary" onClick={() => setStep("question")}>
@@ -342,8 +340,8 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare" }
       <div className="flex flex-col gap-6">
         {question}
         <div className="flex flex-col gap-2">
-          <h1 className="text-question text-ink">{pace === "argument" ? "Who’s on the other side?" : "Who’s in?"}</h1>
-          <p className="text-body-sm text-ink-2">{pace === "argument" ? "An argument is between two of you. Anyone else in the set can watch, and helps call it." : "Everyone you pick hears about it. Anyone with the link can look."}</p>
+          <h1 className="text-serif-l text-ink">{pace === "argument" ? "Who’s on the other side?" : "Who’s in?"}</h1>
+          <p className="text-body-sm text-ink-2">{pace === "argument" ? "An argument is between two of you. Anyone else in the set can watch, and helps call it." : "Everyone you pick hears about it. Nobody needs an account to look."}</p>
         </div>
         <div role="group" aria-label="Who's in" className="flex flex-col gap-2">
           {sets.map((s) => {
@@ -358,11 +356,11 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare" }
                         <Avatar name={a.name} hue={a.hue} size={32} ring={on ? "var(--surface)" : "var(--ground)"} />
                       </span>
                     ))}
-                    {s.avatars.length > 3 ? <span className="-ml-[10px] flex h-8 w-8 items-center justify-center rounded-pill bg-surface-2 text-[13px] font-semibold text-ink-2">+{s.avatars.length - 3}</span> : null}
+                    {s.avatars.length > 3 ? <span className="-ml-[10px] flex h-8 w-8 items-center justify-center rounded-pill bg-surface-2 text-label text-ink-2">+{s.avatars.length - 3}</span> : null}
                   </span>
                   <span className="flex min-w-0 flex-col">
                     <span className="truncate text-body-strong text-ink">{label}</span>
-                    <span className="truncate text-[13px] leading-[18px] text-ink-3">{s.caption}</span>
+                    <span className="truncate text-caption text-ink-3">{s.caption}</span>
                   </span>
                   {circle(on)}
                 </button>
@@ -385,7 +383,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare" }
                       Second time with these {COUNT[s.size] ?? "few"}. Want to call them something?
                     </label>
                     <div className="flex gap-2">
-                      <input id={`name-${s.groupId}`} value={newName} onChange={(e) => setNewName(e.target.value)} maxLength={40} placeholder="Friday crew" className="h-12 min-w-0 flex-1 rounded-[14px] border border-line bg-ground px-4 text-[17px] text-ink placeholder:text-ink-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-marigold" />
+                      <input id={`name-${s.groupId}`} value={newName} onChange={(e) => setNewName(e.target.value)} maxLength={40} placeholder="Friday crew" className="h-12 min-w-0 flex-1 rounded-button border border-line bg-ground px-4 text-body text-ink placeholder:text-ink-3" />
                       <Button type="submit" variant="secondary" loading={namingBusy}>
                         Save
                       </Button>
@@ -414,7 +412,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare" }
                 </span>
                 <span className="flex min-w-0 flex-col">
                   <span className="text-body-strong text-ink">Someone else</span>
-                  <span className="text-[13px] leading-[18px] text-ink-3">Pick people, or just send the link around</span>
+                  <span className="text-caption text-ink-3">Pick people, or just send the link around</span>
                 </span>
                 {circle(who.kind === "people")}
               </button>
@@ -440,7 +438,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare" }
           <button type="button" aria-pressed={who.kind === "link"} onClick={() => (setWho({ kind: "link" }), setPicking(false))} className={cn("grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-card border border-dashed border-line-strong px-[14px] py-3 text-left", who.kind === "link" && "bg-surface")}>
             <span className="flex min-w-0 flex-col">
               <span className="text-body-strong text-ink">Whoever I send it to</span>
-              <span className="text-[13px] leading-[18px] text-ink-3">You get a link and a code. Whoever joins is in.</span>
+              <span className="text-caption text-ink-3">You get a link and a code. Whoever joins is in.</span>
             </span>
             {circle(who.kind === "link")}
           </button>
@@ -501,13 +499,13 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare" }
         <label htmlFor="ask-title" className="text-label text-ink-3">
           The question
         </label>
-        <textarea id="ask-title" rows={2} value={title} onChange={(e) => setTitle(e.target.value)} maxLength={140} className="rounded-tile border border-line bg-surface px-3 py-3 font-serif text-[22px] leading-7 text-ink" />
+        <textarea id="ask-title" rows={2} value={title} onChange={(e) => setTitle(e.target.value)} maxLength={140} className="rounded-button border border-line bg-surface px-3 py-3 text-serif-l text-ink" />
       </div>
       <div className="flex flex-col gap-2">
         <label htmlFor="ask-terms" className="text-label text-ink-3">
           How you’ll know
         </label>
-        <textarea id="ask-terms" rows={4} value={terms} onChange={(e) => setTerms(e.target.value)} maxLength={800} className="rounded-tile border border-line bg-surface px-3 py-3 text-body-sm text-ink" />
+        <textarea id="ask-terms" rows={4} value={terms} onChange={(e) => setTerms(e.target.value)} maxLength={800} className="rounded-button border border-line bg-surface px-3 py-3 text-body-sm text-ink" />
         <p className="text-caption text-ink-3">{scope.plain ? "The write-up didn’t come through, so this is your line as you typed it. Change it however you like." : "Written up from your line. Change anything; everyone sees exactly this before they’re in."}</p>
       </div>
       {pace === "argument" ? (

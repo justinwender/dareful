@@ -48,7 +48,7 @@ export default async function ClaimLinkPage({ params }: { params: Promise<{ toke
       <Screen>
         <TopBar title="Dareful" back={Boolean(me)} />
         <div className="flex flex-1 flex-col justify-center gap-6 py-10">
-          <h1 className="text-display text-ink">That link has expired.</h1>
+          <h1 className="text-serif-l text-ink">That link has expired.</h1>
           <p className="text-body text-ink-2">Ask whoever sent it for a fresh one.</p>
         </div>
       </Screen>
@@ -62,9 +62,9 @@ export default async function ClaimLinkPage({ params }: { params: Promise<{ toke
       <Screen>
         <TopBar title="Dareful" back />
         <div className="flex flex-1 flex-col justify-center gap-6 py-10">
-          <h1 className="text-display text-ink">This is the link you made for {claim.displayName}.</h1>
+          <h1 className="text-serif-l text-ink">This is the link you made for {claim.displayName}.</h1>
           <p className="text-body text-ink-2">Send it to them from your own messages. It does nothing for you.</p>
-          <Link prefetch={false} href={`/p/c/${claim.id}`} className="text-[15px] font-semibold text-ink-2">
+          <Link prefetch={false} href={`/p/c/${claim.id}`} className="link-tertiary">
             Back to {claim.displayName}
           </Link>
         </div>
@@ -76,10 +76,10 @@ export default async function ClaimLinkPage({ params }: { params: Promise<{ toke
       <Screen>
         <TopBar title="Dareful" back={Boolean(me)} />
         <div className="flex flex-1 flex-col justify-center gap-6 py-10">
-          <h1 className="text-display text-ink">Someone already said this was them.</h1>
+          <h1 className="text-serif-l text-ink">Someone already said this was them.</h1>
           <p className="text-body text-ink-2">If that was you, sign in and it’s all there. If it wasn’t, tell {creatorName}.</p>
           {me ? (
-            <Link prefetch={false} href="/" className="text-[15px] font-semibold text-ink-2">
+            <Link prefetch={false} href="/" className="link-tertiary">
               Go home
             </Link>
           ) : null}
@@ -107,7 +107,7 @@ export default async function ClaimLinkPage({ params }: { params: Promise<{ toke
             {creatorName} thinks you’re <span className="text-body-strong text-ink">{claim.displayName}</span>.
           </p>
         </div>
-        <h1 className="text-display-xl text-ink">{rows.length === 1 ? `${creatorName} got this one.` : rows.length === 0 ? `${creatorName} added you.` : `${creatorName} got these.`}</h1>
+        <h1 className="text-serif-xl text-ink">{rows.length === 1 ? `${creatorName} got this one.` : rows.length === 0 ? `${creatorName} added you.` : `${creatorName} got these.`}</h1>
         {rows.length > 0 ? (
           <div className="flex flex-col gap-3">
             {rows.map((r) => {

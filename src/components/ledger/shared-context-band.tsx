@@ -19,7 +19,7 @@ export function SharedContextBand({ personId, contexts, selectedId }: { personId
   const more = contexts.length - shown.length;
   return (
     <section className="flex flex-col gap-2" aria-label="Where you two turn up">
-      <h2 className="text-[13px] font-semibold leading-4 text-ink-2">Where you two turn up</h2>
+      <h2 className="text-label text-ink-2">Where you two turn up</h2>
       <div className="flex flex-wrap items-center gap-2">
         {shown.map((c) => {
           const selected = c.groupId === selectedId;
@@ -33,22 +33,22 @@ export function SharedContextBand({ personId, contexts, selectedId }: { personId
               className={cn("relative -my-1 inline-flex h-11 max-w-full items-center")}
             >
               <LinkPending />
-              <span className={cn("inline-flex h-9 max-w-full items-center gap-1.5 rounded-pill border px-[14px] text-[15px] font-medium text-ink-2", selected ? "border-ink-3 bg-surface-2" : "border-line-strong", c.unnamed && !selected && "border-dashed")}>
+              <span className={cn("inline-flex h-9 max-w-full items-center gap-1.5 rounded-pill border px-[14px] chip-context text-ink-2", selected ? "border-ink-3 bg-surface-2" : "border-line-strong", c.unnamed && !selected && "border-dashed")}>
                 <span className="truncate">{c.label}</span>
-                <span className="text-[13px] text-ink-3">{c.count}</span>
+                <span className="text-caption text-ink-3">{c.count}</span>
               </span>
             </Link>
           );
         })}
-        {more > 0 ? <span className="inline-flex h-9 items-center rounded-pill border border-line px-[14px] text-[15px] font-medium text-ink-3">and {more} more</span> : null}
+        {more > 0 ? <span className="inline-flex h-9 items-center rounded-pill border border-line px-[14px] chip-context text-ink-3">and {more} more</span> : null}
         {selectedId ? (
-          <Link prefetch={false} scroll={false} href={`/p/${personId}`} className="relative inline-flex h-11 items-center px-2 text-[15px] font-semibold text-ink-2">
+          <Link prefetch={false} scroll={false} href={`/p/${personId}`} className="relative inline-flex h-11 items-center px-2 link-tertiary">
             <LinkPending />
             Clear
           </Link>
         ) : null}
       </div>
-      <p className="text-[13px] leading-[18px] text-ink-3">{selectedId ? "Showing only those. Clear to see everything between you." : "Tap one to see only those."}</p>
+      <p className="text-caption text-ink-3">{selectedId ? "Showing only those. Clear to see everything between you." : "Tap one to see only those."}</p>
     </section>
   );
 }

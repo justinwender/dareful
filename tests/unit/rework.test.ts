@@ -236,9 +236,10 @@ test("back lands on the root it came from, and on Now when what is remembered is
 
 test("a running row says where a question stands and never how long it has run", () => {
   const open = market({ people: [{ id: "viewer", name: "V", percent: null }, { id: "creator", name: "C", percent: null }] });
-  assert.equal(runningCaption(open, closes), "You’re in · 2 of 4 in · closes tonight");
-  assert.equal(runningCaption(market({ state: "locked", votesCast: 2 }), closes), "Locked · 2 of 4 have called it");
-  assert.equal(runningCaption(market({ state: "locked" }), closes), "Locked, waiting on how it came out");
-  assert.equal(runningCaption(market({ dare: { pace: "argument" } }), closes), "You’re in, waiting on the other side");
+  // The state mark beside the row says in, locked or voting (3.23); the words say where it stands and the clock.
+  assert.equal(runningCaption(open, closes), "2 of 4 in · closes tonight");
+  assert.equal(runningCaption(market({ state: "locked", votesCast: 2 }), closes), "2 of 4 have called it");
+  assert.equal(runningCaption(market({ state: "locked" }), closes), "Resolving tonight");
+  assert.equal(runningCaption(market({ dare: { pace: "argument" } }), closes), "Waiting on the other side");
   for (const m of [open, market({ state: "locked" }), market({ dare: { pace: "argument" } })]) assert.equal(/\d+\s*(day|week|month|hour)|ago|overdue|late/i.test(runningCaption(m, closes)), false);
 });

@@ -37,14 +37,14 @@ export function Sheet({ open, onClose, labelledBy, children }: { open: boolean; 
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end">
-      <button type="button" aria-label="Never mind" tabIndex={-1} onClick={onClose} className="absolute inset-0 touch-none bg-[rgba(23,20,15,0.78)]" />
+      <button type="button" aria-label="Never mind" tabIndex={-1} onClick={onClose} className="absolute inset-0 touch-none bg-[var(--scrim)]" />
       <div
         ref={panel}
         role="dialog"
         aria-modal="true"
         aria-labelledby={labelledBy}
         style={dy > 0 ? { transform: `translateY(${dy}px)` } : undefined}
-        className="relative mx-auto flex max-h-[85%] w-full max-w-[430px] flex-col gap-5 overflow-y-auto overscroll-contain rounded-t-[18px] border border-b-0 border-line bg-surface px-5 pt-2 pb-[max(1.5rem,env(safe-area-inset-bottom))] motion-safe:animate-[sheet-up_200ms_ease-out]"
+        className="relative mx-auto flex max-h-[85%] w-full max-w-[430px] flex-col gap-5 overflow-y-auto overscroll-contain rounded-t-card border border-b-0 border-line bg-surface px-4 pt-2 pb-[max(1.5rem,env(safe-area-inset-bottom))] motion-safe:animate-[sheet-up_200ms_ease-out]"
       >
         <div
           className="relative -mb-2 flex h-10 shrink-0 touch-none select-none items-center justify-center"

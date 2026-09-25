@@ -118,7 +118,7 @@ test("a draft nobody sent is not a set to anyone, and is a row only its asker is
   const { g, d0 } = await ask("Never sent this one?");
   assert.equal((await setsOf(ana)).some((x) => x.groupId === g.id), false);
   const row = (await home(ana)).needs.find((n) => n.key === d0.id);
-  assert.deepEqual([row?.kind, row?.verb, row?.context], ["finish", "Finish", "You started this and never sent it"]);
+  assert.deepEqual([row?.kind, row?.verb, row?.context, row?.question ? row.state : null], ["finish", "Finish", "You never sent this one", "draft"]);
   assert.equal((await home(ben)).needs.some((n) => n.key === d0.id), false);
 });
 
@@ -210,7 +210,8 @@ test("a question this person has acted on is running, and once it is over it jus
   await enter(ana, 1000n, 7000n);
   const h = await home(ana);
   assert.deepEqual([h.running.some((r) => r.id === d.id), h.needs.some((n) => n.key === d.id), h.happened.some((e) => e.kind === "market" && e.market.dare.id === d.id)], [true, false, false], "in: running, and nowhere else");
-  assert.match(h.running.find((r) => r.id === d.id)?.caption ?? "", /^You’re in · 1 of 1 in/);
+  const running = h.running.find((r) => r.id === d.id);
+  assert.deepEqual([running?.state, running?.caption.startsWith("1 of 1 in")], ["in", true], "the mark says in; the words say where it stands");
   await db.update(schema.dares).set({ lockedAt: new Date(), resolvedAt: new Date(), resolvedOutcome: 1n, resolvedBy: "quorum" }).where(eq(schema.dares.id, d.id));
   const over = await home(ana);
   assert.deepEqual([over.running.some((r) => r.id === d.id), over.happened.some((e) => e.kind === "market" && e.market.dare.id === d.id)], [false, true], "over: just happened, and no longer running");

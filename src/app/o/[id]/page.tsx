@@ -40,7 +40,7 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
       <Screen>
         <TopBar title="dareful" />
         <div className="flex flex-col gap-6 py-10">
-          <h1 className="text-question text-ink">{share.sender ? `${share.sender} got this one.` : "Nothing to see here yet."}</h1>
+          <h1 className="text-serif-l text-ink">{share.sender ? `${share.sender} got this one.` : "Nothing to see here yet."}</h1>
           <p className="text-body text-ink-2">{share.sender ? "Sign in to have a look. Nothing counts until you say so." : "If a friend sent you this, sign in and it will be there."}</p>
           <SignInButton label="Sign in" />
         </div>
@@ -61,7 +61,7 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
       <Screen>
         <TopBar back />
         <div className="flex flex-col gap-6 py-2">
-          <h1 className="text-question text-ink">You got this one.</h1>
+          <h1 className="text-serif-l text-ink">You got this one.</h1>
           <CoveredCard
             clock={clock}
             viewerId={me.id}
@@ -111,7 +111,7 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
     <Screen>
       <TopBar back />
       <div className="flex flex-col gap-6 py-2">
-        <h1 className="text-question text-ink">{iAmDebtor ? `${creditor.displayName} got this one.` : `You got this one.`}</h1>
+        <h1 className="text-serif-l text-ink">{iAmDebtor ? `${creditor.displayName} got this one.` : `You got this one.`}</h1>
         <CoveredCard
           clock={clock}
           viewerId={me.id}

@@ -8,6 +8,10 @@ import { Avatar } from "@/components/ledger/avatar";
 import { Chip } from "@/components/ledger/chip";
 import { InviteShare } from "@/components/ledger/invite-share";
 import { MarkStamp } from "@/components/ledger/mark-stamp";
+import { LiveDot, StateMark, type MarketMark } from "@/components/ledger/state-mark";
+import { InkPicker } from "@/components/markets/ink-picker";
+import { INKS, inkOf, inkVars } from "@/lib/ui/ink";
+import type { CSSProperties } from "react";
 import { Screen, SectionLabel, TopBar } from "@/components/ledger/screen";
 import { When } from "@/components/ledger/when";
 import { CallLine } from "@/components/markets/call-line";
@@ -60,7 +64,7 @@ export default async function MarketPage({ params, searchParams }: { params: Pro
       <Screen>
         <TopBar title="dareful" />
         <div className="flex flex-col gap-6 py-10">
-          <h1 className="text-question text-ink">{share.question ?? "Nothing to see here yet."}</h1>
+          <h1 className="text-serif-l text-ink">{share.question ?? "Nothing to see here yet."}</h1>
           <p className="text-body text-ink-2">{share.question ? "Sign in to put your number on it." : "If a friend sent you this, sign in and it will be there."}</p>
           <SignInButton label="Sign in" />
         </div>
@@ -82,6 +86,7 @@ export default async function MarketPage({ params, searchParams }: { params: Pro
   if (d.pace === "argument" && d.lockedAt && !d.resolvedAt && !d.aiProposedAt && clock.now - d.lockedAt.getTime() > 20_000) after(() => proposeForArgument(id).catch(() => undefined));
   const state = stateOf(d);
   if (state === "draft" && d.creatorId !== me.id) notFound();
+  const ink = inkOf(d);
 
   const [group] = await db.select().from(schema.groups).where(eq(schema.groups.id, d.groupId)).limit(1);
   if (!member) {
@@ -185,30 +190,42 @@ export default async function MarketPage({ params, searchParams }: { params: Pro
       mine={mine ? { percent: Number(mine.value) / 100, stake: mine.stake.toString(), stakeWords: stakeWords(mine.stake) } : null}
       picture={picture}
       mark={d.markKind === "emoji" ? d.markValue : null}
-      suggestion={d.anchorValue !== null ? { percent: Math.round(Number(d.anchorValue) / 100), rationale: d.anchorRationale } : null}
       othersIn={others.map((p) => nameOf(p.userId as string))}
       argument={argument}
       lockedLine={lockedLine}
     />
   );
-  const setup = (
+  const more = (
     <SetupSheet>
-      <p className="text-body-sm-prose text-ink-2">{d.termsText}</p>
-      {d.resolvesBy ? (
-        <p className="text-body-sm text-ink-2">
-          The group calls it together, by <When iso={d.resolvesBy.toISOString()} zone={clock.zone} serverNow={clock.now} style="day" />. {d.stalemate === "void" ? "If you can’t agree by then, it’s called off and nothing changes hands." : "If you can’t agree by then, everyone says their piece and the app calls it. Being in means you’re fine with that."}
-        </p>
-      ) : null}
       <p className="text-body-sm text-ink-2">{d.revealMode === "blind" ? "Nobody sees where anyone landed until it’s locked." : "Once you’ve picked, you can see where the stake sits."} What’s riding on it is in {denomination.monetary ? "dollars" : unit.plural}, the same for everyone, so it can be weighed.</p>
-      {d.anchorValue !== null ? (
-        <p className="text-body-sm text-ink-2">
-          The app’s starting number was {Math.round(Number(d.anchorValue) / 100)}. {d.anchorRationale ?? ""} It was only ever something to argue with.
-        </p>
-      ) : null}
       {show && number !== null && showsMarker(entries) ? <p className="text-body-sm text-ink-2">The group’s number, exactly: {(Number(number) / 100).toFixed(1)}%.</p> : null}
+      {d.creatorId === me.id && state !== "resolved" && state !== "voided" && state !== "expired" ? <InkPicker dareId={d.id} current={ink} /> : null}
     </SetupSheet>
   );
-  // One marigold control per screen: getting people in, until everyone is, and then the asker's lock.
+  // The details (3.25): four facts with 96px labels, on the market's surface. Everything else about how it
+  // works is behind More, where someone can go looking for it (4.9).
+  const details = (
+    <dl className="grid grid-cols-[96px_minmax(0,1fr)] gap-x-3 gap-y-2 rounded-card border border-line bg-surface px-4 py-[14px]">
+      <dt className="text-label text-ink-3">Counts if</dt>
+      <dd className="text-body text-ink">{d.termsText}</dd>
+      <dt className="text-label text-ink-3">Decided</dt>
+      <dd className="text-body text-ink">
+        {d.resolvesBy ? (
+          <>
+            by <When iso={d.resolvesBy.toISOString()} zone={clock.zone} serverNow={clock.now} style="day" />, by the people in it
+          </>
+        ) : (
+          "the moment both of you are in"
+        )}
+        {d.criterion ? `, ${d.criterion}` : ""}
+      </dd>
+      <dt className="text-label text-ink-3">Stakes</dt>
+      <dd className="text-body text-ink">{denomination.monetary ? "Dollars" : unit.plural.charAt(0).toUpperCase() + unit.plural.slice(1)}, the same for everyone</dd>
+      <dt className="text-label text-ink-3">If it’s unclear</dt>
+      <dd className="text-body text-ink">{d.stalemate === "void" ? "It’s called off and nothing changes hands." : "Everyone says their piece and the app calls it."}</dd>
+    </dl>
+  );
+  // One chalk control per screen: getting people in, until everyone is, and then the asker's lock.
   const everyoneIn = positions.length >= seats.length && positions.length > 1;
   const outcome = word(d.resolvedOutcome);
   const leading = tally(votes)[0];
@@ -225,9 +242,33 @@ export default async function MarketPage({ params, searchParams }: { params: Pro
   const cases = state === "locked" && d.stalemate === "arbitrate" ? await db.select({ userId: schema.dareStatements.userId, statement: schema.dareStatements.statement }).from(schema.dareStatements).where(and(eq(schema.dareStatements.dareId, d.id), eq(schema.dareStatements.kind, "statement"))).orderBy(asc(schema.dareStatements.statedAt)) : [];
   const myVote = word(votes.find((v) => v.userId === me.id)?.outcome ?? null);
   const soft = d.aiConfidenceBps !== null && d.aiConfidenceBps < 9000 && d.aiOutcome !== null && d.aiOutcome !== VOID_OUTCOME;
+  // The question band (3.25): the stamp on the market's ground, the citron dot when it is waiting on this person
+  // with a clock, the state mark, and a clock, over the question and who asked.
+  const bandState: MarketMark = state === "draft" ? "draft" : state === "open" ? (mine ? "in" : "open") : state === "locked" ? (canArbitrate && tally(votes).length > 1 ? "deadlocked" : votes.length > 0 ? "voting" : "locked") : state;
+  const bandClock = state === "open" && d.resolvesBy ? `Closes ${closesLabel(d.resolvesBy, new Date(clock.now), clock.zone)}` : state === "locked" && d.resolvesBy && votes.length === 0 ? `Resolving ${closesLabel(d.resolvesBy, new Date(clock.now), clock.zone)}` : state === "locked" && d.resolvesBy ? `Voting ends ${closesLabel(d.resolvesBy, new Date(clock.now), clock.zone)}` : null;
+  const bandLive = d.resolvesBy !== null && ((state === "open" && !mine) || (state === "locked" && myVote === null));
+  const band = (
+    <section className="-mx-2 flex flex-col gap-3 rounded-card bg-field p-4 pb-[18px]">
+      <div className="flex items-center justify-between gap-3">
+        {d.markKind === "emoji" && d.markValue ? <MarkStamp kind="emoji" value={d.markValue} size={44} onGround /> : <span />}
+        <span className="flex items-center gap-2 text-label text-ink-2">
+          {bandLive ? <LiveDot /> : null}
+          <StateMark state={bandState} hue={bandState === "in" ? hueFor(me.id) : undefined} ink={INKS[ink].ink} />
+          {bandClock ? <span>{bandClock}</span> : null}
+        </span>
+      </div>
+      <h1 className="text-serif-l text-ink">{d.title}</h1>
+      <p className="flex items-center gap-2 text-caption text-ink-2">
+        <Avatar name={person.get(d.creatorId)?.displayName ?? "?"} hue={hueFor(d.creatorId)} size={22} />
+        <span>
+          {nameOf(d.creatorId) === "You" ? "You" : firstName(person.get(d.creatorId)?.displayName ?? "Someone")} asked{group?.name ? ` ${group.name}` : ""}
+        </span>
+      </p>
+    </section>
+  );
   const ballot = (
     <section id="ballot" className="flex scroll-mt-4 flex-col gap-4">
-      <h2 className={myVote === null ? "text-question text-ink" : "text-label text-ink-3"}>How did it come out?</h2>
+      <h2 className={myVote === null ? "text-serif-l text-ink" : "text-label text-ink-3"}>How did it come out?</h2>
       {d.pace === "dare" ? (
         <div className="flex flex-col gap-3">
           {statements.length > 0 ? (
@@ -247,7 +288,7 @@ export default async function MarketPage({ params, searchParams }: { params: Pro
           <p className="text-body-strong text-ink">
             {d.aiOutcome === null ? "The app can’t tell yet." : word(d.aiOutcome) === "void" ? "The app thinks the terms don’t settle it." : soft ? `The app leans ${word(d.aiOutcome)}, ${Math.round((d.aiConfidenceBps ?? 0) / 100)} to ${100 - Math.round((d.aiConfidenceBps ?? 0) / 100)}.` : `The app thinks: ${word(d.aiOutcome)}.`}
           </p>
-          <p className="pt-1 text-body-sm-prose text-ink-2">{d.aiRationale}</p>
+          <p className="pt-1 text-body-sm text-ink-2">{d.aiRationale}</p>
           {d.criterion ? <p className="pt-2 text-caption text-ink-3">Decided {d.criterion}, as the terms say, and by nothing else.</p> : null}
           <p className="pt-2 text-caption text-ink-3">It’s a suggestion. The group decides, and can say otherwise.</p>
         </div>
@@ -271,34 +312,16 @@ export default async function MarketPage({ params, searchParams }: { params: Pro
   );
 
   return (
+    <div className="grain flex flex-1 flex-col" style={inkVars(ink) as CSSProperties}>
     <Screen>
       <TopBar back right={group?.name ? <Chip>{group.name}</Chip> : null} />
       <div className="flex flex-col gap-7 py-2">
-        <header className="flex flex-col gap-3">
-          <h1 className="flex items-start gap-3 text-question text-ink">
-            {d.markKind === "emoji" && d.markValue ? <MarkStamp kind="emoji" value={d.markValue} size={28} /> : null}
-            <span>{d.title}</span>
-          </h1>
-          <p className="text-caption text-ink-3">
-            {nameOf(d.creatorId)} asked · <When iso={d.createdAt.toISOString()} zone={clock.zone} serverNow={clock.now} />
-          </p>
-          {mine && (state === "open" || state === "locked") ? null : (
-          <details className="rounded-card border border-line bg-surface px-4 py-3" open={state === "draft" || (state === "open" && !mine)}>
-            <summary className="cursor-pointer text-body-strong text-ink">How we’ll know</summary>
-            <p className="pt-2 text-body-sm-prose text-ink-2">{d.termsText}</p>
-            {d.resolvesBy ? (
-              <p className="pt-2 text-body-sm text-ink-2">
-                The group calls it together, by <When iso={d.resolvesBy.toISOString()} zone={clock.zone} serverNow={clock.now} style="day" />. {d.stalemate === "void" ? "If you can’t agree by then, it’s called off and nothing changes hands." : "If you can’t agree by then, everyone says their piece and the app calls it. Being in means you’re fine with that."}
-              </p>
-            ) : null}
-          </details>
-          )}
-        </header>
+        {band}
 
         {state === "resolved" && outcome && outcome !== "void" ? (
           <>
             <section className="flex flex-col gap-4">
-              <p className="text-outcome text-ink">{outcome === "yes" ? "Yes." : "No."}</p>
+              <p className="text-serif-l text-ink">{outcome === "yes" ? "Yes." : "No."}</p>
               <CallLine pins={pins} state="resolved" outcome={outcome === "yes" ? 1 : 0} size="screen" surface="var(--ground)" />
             </section>
             <section className="flex flex-col gap-3">
@@ -308,14 +331,13 @@ export default async function MarketPage({ params, searchParams }: { params: Pro
             <section className="flex flex-col gap-2">
               <SectionLabel>What changes hands</SectionLabel>
               <Transfers viewerId={me.id} denomination={denomination} people={new Map(users.map((u) => [u.id, u]))} transfers={edges.map((e) => ({ fromId: e.fromUser, toId: e.toUser, quantity: e.quantity ?? 1n }))} />
-              <p className="text-caption text-ink-3">Every pair squares on how much closer one was than the other, never for more than the smaller of what the two put on it.</p>
             </section>
           </>
         ) : null}
 
         {state === "voided" ? (
           <section className="flex flex-col gap-3">
-            <p className="text-outcome text-ink">No answer.</p>
+            <p className="text-serif-l text-ink">No answer.</p>
             <p className="text-body text-ink-2">Nobody could tell, so it’s void. Nothing changes hands.</p>
             <CallLine pins={pins} state="in" size="screen" surface="var(--ground)" />
           </section>
@@ -324,6 +346,7 @@ export default async function MarketPage({ params, searchParams }: { params: Pro
         {state === "draft" ? (
           <section className="flex flex-col gap-4">
             <p className="text-body text-ink-2">Only you can see this so far. Put your own number on it and it goes live{group?.name ? ` for ${group.name}` : ""}. Then you send it to whoever should be in.</p>
+            {details}
             {stage}
           </section>
         ) : null}
@@ -340,11 +363,7 @@ export default async function MarketPage({ params, searchParams }: { params: Pro
                   </li>
                 ))}
               </ul>
-              <p className="text-body-sm text-ink-2">
-                {positions.length === 0 ? "Nobody’s in yet." : mine && positions.length === 1 ? "" : positions.length >= seats.length && seats.length > 1 ? "Everyone’s in." : `${positions.length} of ${Math.max(seats.length, positions.length)} in.`}
-                {d.resolvesBy ? ` Closes ${closesLabel(d.resolvesBy, new Date(clock.now), clock.zone)}.` : ""}
-              </p>
-              {mine ? setup : null}
+              <p className="text-body-sm text-ink-2">{positions.length} of {Math.max(seats.length, positions.length)} in</p>
             </section>
             {mine ? (
               <section className="flex flex-col gap-3">
@@ -357,7 +376,6 @@ export default async function MarketPage({ params, searchParams }: { params: Pro
             ) : null}
             {d.creatorId === me.id ? (
               <section className="flex flex-col gap-3 border-t border-line pt-6">
-                <p className="text-body-sm text-ink-2">When everyone who wants in is in, lock it. After that nobody’s number moves, and everyone sees where everyone landed.</p>
                 <LockButton dareId={d.id} count={positions.length} primary={everyoneIn || !mine} />
               </section>
             ) : null}
@@ -390,26 +408,29 @@ export default async function MarketPage({ params, searchParams }: { params: Pro
             </section>
             {myVote !== null ? ballot : null}
             {d.stalemate === "arbitrate" && mine && canArbitrate ? <Arbitration dareId={d.id} cases={cases.map((c) => ({ name: nameOf(c.userId), said: c.statement }))} mine={cases.find((c) => c.userId === me.id)?.statement ?? null} mayAsk /> : null}
-            {setup}
           </>
         ) : null}
 
         {state === "expired" ? (
           <section className="flex flex-col gap-3">
-            <p className="text-outcome text-ink">Never settled.</p>
+            <p className="text-serif-l text-ink">Never settled.</p>
             <p className="text-body text-ink-2">Nobody called it in time, and it was set up to go unsettled if that happened. Nothing changes hands, and it counts against nobody.</p>
             <CallLine pins={pins} state="in" size="screen" surface="var(--ground)" />
           </section>
         ) : null}
 
+        {state !== "draft" ? details : null}
+        {mine || state !== "open" ? more : null}
+
         {d.rulingText && (state === "resolved" || state === "voided") ? (
           <section className="flex flex-col gap-2 rounded-card border border-line bg-surface px-4 py-[14px]">
             <h2 className="text-body-strong text-ink">The app was asked to call it</h2>
-            <p className="text-body-sm-prose text-ink-2">{d.rulingText}</p>
-            <p className="text-caption text-ink-3">Everyone in it agreed to this going in, before anyone knew which way it would go. The ruling is on the permanent record, word for word.</p>
+            <p className="text-body-sm text-ink-2">{d.rulingText}</p>
+            <p className="text-caption text-ink-3">On the permanent record, word for word.</p>
           </section>
         ) : null}
       </div>
     </Screen>
+    </div>
   );
 }

@@ -31,7 +31,7 @@ async function groupOf(people: Signer[]): Promise<string> {
 }
 async function draft(creator: Signer, groupId: string, unit: "usd" | "next_time" = "usd") {
   const denom = unit === "usd" ? await ensureUsd(groupId, creator.user.id) : await ensureUnitInGroup(groupId, creator.user.id, { template: "next_time", label: "next_time" });
-  return markets.draftMarket({ creatorId: creator.user.id, groupId, denomId: denom.id, title: "Does John fall asleep during the movie?", termsText: "Yes if John is asleep at any point before the credits. No if he makes it.", resolvesBy: new Date(Date.now() + 3_600_000), anchorBps: 5600n, anchorRationale: "Long movie, late start." });
+  return markets.draftMarket({ creatorId: creator.user.id, groupId, denomId: denom.id, title: "Does John fall asleep during the movie?", termsText: "Yes if John is asleep at any point before the credits. No if he makes it.", resolvesBy: new Date(Date.now() + 3_600_000) });
 }
 const open = async (d: markets.DareRow, creator: Signer) => markets.openMarket(d.id, creator.user.id, await creator.ledger.signTypedData(markets.createTypedData(d)));
 const enter = async (d: markets.DareRow, who: Signer, stake: bigint, valueBps: bigint, signWith = who.ledger) =>

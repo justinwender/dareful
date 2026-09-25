@@ -276,7 +276,7 @@ export function NewCoverForm({ people, groups, recent, initialPerson, initialGro
               placeholder="Gabe"
               autoComplete="off"
               aria-invalid={Boolean(errors.who)}
-              className={`h-12 rounded-tile border bg-ground px-3 text-body text-ink ${errors.who ? invalid : "border-line"}`}
+              className={`h-12 rounded-button border bg-ground px-3 text-body text-ink ${errors.who ? invalid : "border-line"}`}
             />
             <p className="text-caption text-ink-3">
               They don’t need the app. It waits here until they say it’s right.{someoneNew.phone ? " Their number is only used to recognize them if they join; it isn’t kept." : ""}
@@ -301,7 +301,7 @@ export function NewCoverForm({ people, groups, recent, initialPerson, initialGro
               {existingUnits.map((u) => (
                 <button key={u.id} type="button" onClick={() => setUnit({ kind: "existing", id: u.id })} className="rounded-pill">
                   <Chip size={36} selected={unit.kind === "existing" && unit.id === u.id}>
-                    {u.markKind && u.markValue ? <MarkStamp kind="emoji" value={u.markValue} size={20} inToken /> : null}
+                    {u.markKind && u.markValue ? <MarkStamp kind="emoji" value={u.markValue} size={20} /> : null}
                     {glyphFor(u.template) ? <UnitGlyph unit={glyphFor(u.template) as GlyphKey} size={16} /> : null}
                     {unitLabel(u.template, u.label)}
                   </Chip>
@@ -310,7 +310,7 @@ export function NewCoverForm({ people, groups, recent, initialPerson, initialGro
               {namedUnits.map((u) => (
                 <button key={`${u.template ?? ""}:${u.label}`} type="button" onClick={() => setUnit(u)} className="rounded-pill">
                   <Chip size={36} selected={unit.kind === "new" && unit.template === u.template && unit.label === u.label}>
-                    {u.markEmoji ? <MarkStamp kind="emoji" value={u.markEmoji} size={20} inToken /> : null}
+                    {u.markEmoji ? <MarkStamp kind="emoji" value={u.markEmoji} size={20} /> : null}
                     {glyphFor(u.template) ? <UnitGlyph unit={glyphFor(u.template) as GlyphKey} size={16} /> : null}
                     {unitLabel(u.template, u.label)}
                   </Chip>
@@ -342,7 +342,7 @@ export function NewCoverForm({ people, groups, recent, initialPerson, initialGro
             <label className="text-label text-ink-3" htmlFor="custom-label">
               Call it
             </label>
-            <input id="custom-label" value={customLabel} onChange={(e) => setCustomLabel(e.target.value)} maxLength={40} placeholder="dumpling run" className="h-12 rounded-tile border border-line bg-ground px-3 text-body text-ink" />
+            <input id="custom-label" value={customLabel} onChange={(e) => setCustomLabel(e.target.value)} maxLength={40} placeholder="dumpling run" className="h-12 rounded-button border border-line bg-ground px-3 text-body text-ink" />
             <label className="text-label text-ink-3" htmlFor="custom-emoji">
               Mark (optional)
             </label>
@@ -351,7 +351,7 @@ export function NewCoverForm({ people, groups, recent, initialPerson, initialGro
               value={customEmoji}
               onChange={(e) => setCustomEmoji(e.target.value.slice(0, 8))}
               placeholder="🥟"
-              className="h-12 w-24 rounded-tile border border-dashed border-line-strong bg-ground px-3 text-center text-[22px] text-ink"
+              className="h-12 w-24 rounded-button border border-dashed border-line-strong bg-ground px-3 text-center text-numeral text-ink"
             />
             <Button variant="primary" size="inline" onClick={addCustom} disabled={!customLabel.trim()}>
               Add it
@@ -396,7 +396,7 @@ export function NewCoverForm({ people, groups, recent, initialPerson, initialGro
             placeholder={isMoney ? "47.20" : "skip it"}
             aria-invalid={Boolean(errors.amount)}
             aria-describedby={errors.amount ? "amount-problem" : undefined}
-            className={`h-12 w-40 rounded-tile border bg-surface px-3 text-numeral text-ink ${errors.amount ? invalid : "border-line"}`}
+            className={`h-12 w-40 rounded-button border bg-surface px-3 text-numeral text-ink ${errors.amount ? invalid : "border-line"}`}
           />
         </div>
         <Problem id="amount-problem" message={errors.amount} />
@@ -432,7 +432,7 @@ export function NewCoverForm({ people, groups, recent, initialPerson, initialGro
                         value={fixed[s.personId] ?? ""}
                         placeholder={formatMoney(asCents(s.cents), { cents: true }).replace("$", "")}
                         onChange={(e) => setFixed((f) => ({ ...f, [s.personId]: e.target.value }))}
-                        className="h-11 w-24 rounded-tile border border-line bg-ground px-2 text-right text-body text-ink"
+                        className="h-11 w-24 rounded-button border border-line bg-ground px-2 text-right text-body text-ink"
                       />
                     </span>
                   ) : (
@@ -451,7 +451,7 @@ export function NewCoverForm({ people, groups, recent, initialPerson, initialGro
             <p className="text-body-sm text-ink-2">{preview && !preview.ok ? preview.error : "Add the total and it splits evenly."}</p>
           )}
           {preview?.ok ? (
-            <button type="button" onClick={() => setAdjusting((a) => !a)} className="h-11 self-start text-[15px] font-semibold text-ink-2">
+            <button type="button" onClick={() => setAdjusting((a) => !a)} className="h-11 self-start link-tertiary">
               {adjusting ? "Done adjusting" : "Someone had more or less?"}
             </button>
           ) : null}
@@ -479,7 +479,7 @@ export function NewCoverForm({ people, groups, recent, initialPerson, initialGro
         <label className="text-label text-ink-3" htmlFor="memo">
           What was it (optional)
         </label>
-        <input id="memo" value={memo} onChange={(e) => setMemo(e.target.value)} maxLength={140} placeholder="Dinner at Sal's" className="h-12 rounded-tile border border-line bg-surface px-3 text-body text-ink" />
+        <input id="memo" value={memo} onChange={(e) => setMemo(e.target.value)} maxLength={140} placeholder="Dinner at Sal's" className="h-12 rounded-button border border-line bg-surface px-3 text-body text-ink" />
       </section>
 
       <div className="flex flex-col gap-3">

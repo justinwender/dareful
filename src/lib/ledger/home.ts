@@ -7,6 +7,7 @@
  */
 import { and, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { inkOf, type InkName } from "@/lib/ui/ink";
 import { bytes16ToUuid } from "./ids";
 import { denominationsByIds, type DenominationRow } from "./denominations";
 import { openTouching } from "./envio";
@@ -16,10 +17,15 @@ import { pendingForDebtor, type ProposalRow } from "./proposals";
 
 type Person = { id: string; displayName: string };
 
+/** What the row's state mark says (docs/design.md 3.23), and the market's mark and ink for its 40px stamp (3.15). */
+type QuestionLook = { mark: string | null; ink: InkName; state: "open" | "locked" | "voting" | "draft" };
+
 export type NeedRow =
-  | { kind: "vote" | "enter" | "lock"; key: string; href: string; verb: string; context: string; subject: string; question: true; deadline: Date | null; since: Date; groupId: string }
-  | { kind: "finish"; key: string; href: string; verb: string; context: string; subject: string; question: true; deadline: null; since: Date; groupId: string }
+  | ({ kind: "vote" | "enter" | "lock"; key: string; href: string; verb: string; context: string; subject: string; question: true; deadline: Date | null; since: Date; groupId: string } & QuestionLook)
+  | ({ kind: "finish"; key: string; href: string; verb: string; context: string; subject: string; question: true; deadline: null; since: Date; groupId: string } & QuestionLook)
   | { kind: "yep"; key: string; href: string; verb: string; context: string; subject: string; question: false; deadline: null; since: Date; groupId: string; proposal: ProposalRow; creditor: Person; denomination: DenominationRow };
+
+const lookOf = (d: { id: string; ink?: string | null; markKind?: string | null; markValue?: string | null }, state: QuestionLook["state"]): QuestionLook => ({ mark: d.markKind === "emoji" && d.markValue ? d.markValue : null, ink: inkOf({ id: d.id, ink: d.ink ?? null }), state });
 
 /** Fastest to finish first, when nothing else separates two rows: a yep is one tap, a draft is a screen. */
 const EFFORT: Record<NeedRow["kind"], number> = { yep: 0, vote: 1, enter: 2, lock: 3, finish: 4 };
@@ -53,7 +59,7 @@ const word = (n: number) => WORDS[n] ?? String(n);
  */
 export function needFromMarket(m: Pick<MarketCardData, "dare" | "state" | "people" | "groupSize" | "votesCast" | "saidBy">, viewerId: string, voted: boolean, now: Date, closes: (at: Date) => string): Omit<Extract<NeedRow, { question: true }>, "groupId"> | null {
   const d = m.dare;
-  const base = { key: d.id, subject: d.title, question: true as const };
+  const base = { key: d.id, subject: d.title, question: true as const, ...lookOf(d, m.state === "locked" ? (m.votesCast > 0 ? "voting" : "locked") : "open") };
   const iAmIn = m.people.some((p) => p.id === viewerId);
   if (m.state === "open") {
     const everyone = m.people.length >= m.groupSize && m.groupSize > 1;
@@ -63,7 +69,8 @@ export function needFromMarket(m: Pick<MarketCardData, "dare" | "state" | "peopl
     return null;
   }
   if (m.state === "locked" && !voted) {
-    const context = m.saidBy ? `${m.saidBy} says what happened · ${m.votesCast} of ${m.groupSize} have called it` : m.votesCast > 0 ? `${word(m.votesCast)} of ${m.groupSize} have called it` : "Waiting on how it came out";
+    // The mark says it is in voting (3.23); the words beside it are who spoke and the count, never the state again.
+    const context = m.saidBy ? `${m.saidBy} says what happened · ${m.votesCast} of ${m.groupSize} have called it` : m.votesCast > 0 ? `${word(m.votesCast)} of ${m.groupSize} have called it` : `${d.resolvesBy ? `Voting ends ${closes(d.resolvesBy)}` : "Nobody has called it yet"}`;
     return { ...base, kind: "vote", href: `/m/${d.id}#ballot`, verb: "Vote", context, deadline: d.resolvesBy, since: d.lockedAt ?? d.createdAt };
   }
   return null;
@@ -72,7 +79,7 @@ export function needFromMarket(m: Pick<MarketCardData, "dare" | "state" | "peopl
 export type PersonRow = { user: Person; token: { ownerId: string; denomination: DenominationRow; quantity: bigint } | null };
 
 /** A question in flight this person has already acted on: where it stands, and no action (docs/design.md 4.7). */
-export type RunningRow = { id: string; title: string; mark: string | null; caption: string };
+export type RunningRow = { id: string; title: string; mark: string | null; ink: InkName; state: "in" | "locked" | "voting"; caption: string };
 
 export type HomeData = {
   needs: NeedRow[];
@@ -97,9 +104,10 @@ export function squareSentence(names: string[]): string {
 /** The line under a running question: where it stands, never how long it has stood there. */
 export function runningCaption(m: Pick<MarketCardData, "dare" | "state" | "people" | "groupSize" | "votesCast">, closes: (at: Date) => string): string {
   const d = m.dare;
-  if (m.state === "locked") return m.votesCast === 0 ? "Locked, waiting on how it came out" : `Locked · ${m.votesCast} of ${m.groupSize} have called it`;
-  if (d.pace === "argument") return "You’re in, waiting on the other side";
-  return `You’re in · ${m.people.length} of ${m.groupSize} in${d.resolvesBy ? ` · closes ${closes(d.resolvesBy)}` : ""}`;
+  // The state mark beside it says in, locked or voting (3.23); the words say where it stands and the clock.
+  if (m.state === "locked") return m.votesCast === 0 ? (d.resolvesBy ? `Resolving ${closes(d.resolvesBy)}` : "Waiting on how it came out") : `${m.votesCast} of ${m.groupSize} have called it`;
+  if (d.pace === "argument") return "Waiting on the other side";
+  return `${m.people.length} of ${m.groupSize} in${d.resolvesBy ? ` · closes ${closes(d.resolvesBy)}` : ""}`;
 }
 
 /**
@@ -123,7 +131,7 @@ async function questionsFor(me: { id: string }, opts: { now: Date; closes: (at: 
   for (const m of cards) {
     const n = needFromMarket(m, me.id, voted.has(m.dare.id), opts.now, opts.closes);
     if (n) needs.push({ ...n, groupId: m.dare.groupId } as NeedRow);
-    else if (m.state === "open" || m.state === "locked") running.push({ id: m.dare.id, title: m.dare.title, mark: m.dare.markKind === "emoji" ? m.dare.markValue : null, caption: runningCaption(m, opts.closes) });
+    else if (m.state === "open" || m.state === "locked") running.push({ id: m.dare.id, title: m.dare.title, mark: m.dare.markKind === "emoji" ? m.dare.markValue : null, ink: m.ink, state: m.state === "locked" ? (m.votesCast > 0 ? "voting" : "locked") : "in", caption: runningCaption(m, opts.closes) });
     else over.push(m);
   }
   return { needs, running, over };
@@ -165,7 +173,7 @@ export async function nowFor(me: { id: string; displayName: string }, opts: { no
     if (!creditor || !denomination) continue;
     needs.push({ kind: "yep", key: p.id, href: `/o/${p.id}`, verb: "Yep", context: p.memo ? `${creditor.displayName} got ${p.memo}` : `${creditor.displayName} got this one`, subject: `${creditor.displayName}'s got you`, question: false, deadline: null, since: p.createdAt, groupId: p.groupId, proposal: p, creditor, denomination });
   }
-  for (const d of drafts) needs.push({ kind: "finish", key: d.id, href: `/m/${d.id}`, verb: "Finish", context: "You started this and never sent it", subject: d.title, question: true, deadline: null, since: d.createdAt, groupId: d.groupId });
+  for (const d of drafts) needs.push({ kind: "finish", key: d.id, href: `/m/${d.id}`, verb: "Finish", context: "You never sent this one", subject: d.title, question: true, deadline: null, since: d.createdAt, groupId: d.groupId, ...lookOf(d, "draft") });
 
   const happened: HomeData["happened"] = [];
   for (const m of over) happened.push({ kind: "market", at: m.at, market: { ...m, groupName: labelOf.get(m.dare.groupId) ?? m.groupName } });

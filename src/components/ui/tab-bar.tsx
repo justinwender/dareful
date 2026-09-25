@@ -42,7 +42,7 @@ export function TabBar({ active, live, start }: { active: RootPath; live: boolea
             const on = t.href === active;
             const dot = t.href === "/" && live;
             return (
-              <Link key={t.href} prefetch={false} href={t.href} aria-current={on ? "page" : undefined} className={cn("relative flex flex-col items-center justify-center gap-1 text-[13px] leading-none", on ? "font-semibold text-ink" : "font-medium text-ink-3")}>
+              <Link key={t.href} prefetch={false} href={t.href} aria-current={on ? "page" : undefined} className={cn("relative flex flex-col items-center justify-center gap-1 tab-text", on ? "font-semibold text-ink" : "font-medium text-ink-3")}>
                 <LinkPending />
                 <span className="relative">
                   <TabGlyph tab={t.href} />

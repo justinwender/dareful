@@ -53,7 +53,7 @@ export default async function GhostPage({ params }: { params: Promise<{ id: stri
         <div className="flex items-center gap-4">
           <Avatar name={ghost.displayName} hue="stone" size={56} ghost />
           <div className="flex flex-col">
-            <h1 className="text-display text-ink">{ghost.displayName}</h1>
+            <h1 className="text-body-strong text-ink">{ghost.displayName}</h1>
             <span className="text-caption text-ink-3">not here yet</span>
           </div>
         </div>

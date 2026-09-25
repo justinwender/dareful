@@ -7,7 +7,7 @@ export function Chip({ children, selected = false, disabled = false, size = 24, 
     <span
       aria-disabled={disabled || undefined}
       className={cn(
-        "inline-flex items-center gap-1 rounded-pill border px-2.5 text-[13px] font-medium leading-none",
+        "inline-flex items-center gap-1 rounded-pill border px-2.5 chip-text",
         size === 24 ? "h-6" : size === 28 ? "h-7" : "h-9 px-3",
         selected ? "border-ink bg-ink text-ground" : disabled ? "border-line text-ink-3" : "border-line-strong text-ink-2",
         className,

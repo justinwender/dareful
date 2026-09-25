@@ -40,7 +40,7 @@ export default async function Now({ searchParams }: { searchParams: Promise<{ al
         {today}
         <div className="flex flex-1 flex-col gap-7 py-6">
           <div className="flex flex-col gap-3">
-            <h1 className="text-display-xl text-ink">Nothing happens here until somebody else is in it.</h1>
+            <h1 className="text-serif-xl text-ink">Nothing happens here until somebody else is in it.</h1>
             <p className="text-body text-ink-2">Ask your group chat something, or join something one of them already asked.</p>
           </div>
           {/* Before anything (3.14): asking is the one chalk control, so Start stays hidden, and the code field sits under it. */}
@@ -77,7 +77,7 @@ export default async function Now({ searchParams }: { searchParams: Promise<{ al
           <Link prefetch={false} href="/welcome" className="relative flex items-center justify-between gap-3 rounded-card border border-dashed border-line-strong px-4 py-3.5">
             <LinkPending />
             <span className="text-body-strong text-ink">{waiting.length === 1 ? "One thing was waiting for you" : "A few things were waiting for you"}</span>
-            <span className="text-[15px] font-semibold text-ink-2">Have a look</span>
+            <span className="link-tertiary">Have a look</span>
           </Link>
         ) : null}
 
@@ -92,7 +92,7 @@ export default async function Now({ searchParams }: { searchParams: Promise<{ al
           </section>
         ) : null}
 
-        <Running rows={home.running} />
+        <Running rows={home.running} viewerId={user.id} />
 
         {home.happened.length > 0 ? (
           <section className="flex flex-col gap-[10px]">
@@ -135,7 +135,7 @@ function SignedOut() {
     <Screen>
       <TopBar title="Dareful" />
       <div className="flex flex-1 flex-col justify-center gap-6 py-10">
-        <h1 className="text-display-xl text-ink">Who’s got the next one?</h1>
+        <h1 className="text-serif-xl text-ink">Who’s got the next one?</h1>
         <p className="text-body text-ink-2">The bets, the rounds, and the “I got this one” between friends, kept where you can find them. No spreadsheet, no nagging.</p>
         <SignInButton />
         <p className="text-caption text-ink-3">An email or a phone number is all it takes.</p>

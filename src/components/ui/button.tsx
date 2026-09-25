@@ -7,26 +7,31 @@ import { cn } from "@/lib/utils";
 import { LinkPending } from "./link-pending";
 
 /**
- * docs/design.md 3.12. Five kinds, fixed heights, no shadows, no red. Pressed is opacity 0.88 over 120ms;
- * disabled is ink-3 text with a line border and no fill. Pending is 5.2: past 300ms the label stays exactly
- * where it was, the control holds its size at 0.88, and a 2px line runs along its bottom edge; at three seconds
- * a line under it says "Still going." A tap is never silently dropped, and nothing else on the screen locks.
- * At most one primary button per viewport.
+ * docs/design.md 3.12. Six kinds, fixed heights, radius 10, no shadows, no red. Pressed is opacity 0.88 over
+ * 120ms; disabled is ink-3 text with a line border and no fill. Pending is 5.2: past 300ms the label stays
+ * exactly where it was, the control holds its size at 0.88, and a 2px line runs along its bottom edge; at three
+ * seconds a line under it says "Still going." A tap is never silently dropped, and nothing else on the screen
+ * locks. Focus is the global 2px ink outline (5.1). At most one chalk-filled control per viewport.
+ *
+ * Button labels belong to this component and do not count toward a screen's type budget (1.2), which is why
+ * their sizes are literal here and nowhere else.
  */
 const buttonVariants = cva(
-  "relative overflow-hidden inline-flex items-center justify-center gap-2 whitespace-nowrap select-none transition-[opacity,background-color] duration-[120ms] ease-out active:opacity-[0.88] disabled:pointer-events-none disabled:text-ink-3 disabled:border disabled:border-line disabled:bg-transparent aria-busy:pointer-events-none aria-busy:opacity-[0.88] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-marigold/60",
+  "relative overflow-hidden inline-flex items-center justify-center gap-2 whitespace-nowrap select-none transition-[opacity,background-color] duration-[120ms] ease-out active:opacity-[0.88] disabled:pointer-events-none disabled:text-ink-3 disabled:border disabled:border-line disabled:bg-transparent aria-busy:pointer-events-none aria-busy:opacity-[0.88]",
   {
     variants: {
       variant: {
-        primary: "bg-marigold text-on-marigold font-bold",
-        secondary: "bg-transparent border border-line text-ink-2 font-semibold",
+        primary: "bg-chalk text-on-chalk font-bold",
+        secondary: "bg-transparent border border-line-strong text-ink-2 font-semibold",
+        row: "bg-surface-2 border border-line-strong text-ink font-semibold",
         tertiary: "bg-transparent text-ink-2 font-semibold",
         icon: "bg-transparent text-ink",
       },
       size: {
         primary: "h-14 rounded-button px-6 text-[17px] leading-[22px]",
-        inline: "h-11 rounded-chip-button px-4 text-[15px] leading-[20px]",
-        secondary: "h-12 rounded-button px-5 text-[15px] leading-[20px]",
+        inline: "h-11 rounded-button px-4 text-[15px] leading-[20px]",
+        secondary: "h-12 rounded-button px-5 text-[17px] leading-[22px]",
+        row: "h-11 rounded-button px-4 text-[15px] leading-[20px]",
         tertiary: "h-11 rounded-none px-2 text-[15px] leading-[20px]",
         icon: "h-12 w-12 rounded-pill",
       },
@@ -44,6 +49,7 @@ export type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> &
 function sizeFor(variant: Variants["variant"], size: Variants["size"]): Variants["size"] {
   if (size) return size;
   if (variant === "primary") return "primary";
+  if (variant === "row") return "row";
   if (variant === "tertiary") return "tertiary";
   if (variant === "icon") return "icon";
   return "secondary";
@@ -71,8 +77,8 @@ export function Button({ className, variant = "secondary", size, loading, disabl
       <button className={cn(buttonVariants({ variant, size: sizeFor(variant, size) }), className)} disabled={disabled} aria-busy={loading || undefined} onClick={loading ? undefined : onClick} type={loading && type === "submit" ? "button" : type} {...props}>
         {children}
         {pending ? (
-          <span aria-hidden="true" className={cn("pointer-events-none absolute inset-x-0 bottom-0 h-[2px] overflow-hidden", variant === "primary" ? "bg-[rgba(29,22,8,0.25)]" : "bg-surface-2")}>
-            <span className={cn("absolute inset-y-0 w-1/3 animate-[button-runner_1.2s_linear_infinite]", variant === "primary" ? "bg-on-marigold" : "bg-marigold")} />
+          <span aria-hidden="true" className={cn("pointer-events-none absolute inset-x-0 bottom-0 h-[2px] overflow-hidden", variant === "primary" ? "bg-[rgba(18,17,16,0.25)]" : "bg-surface-2")}>
+            <span className={cn("absolute inset-y-0 w-1/3 animate-[button-runner_1.2s_linear_infinite]", variant === "primary" ? "bg-on-chalk" : "bg-ink")} />
           </span>
         ) : null}
       </button>

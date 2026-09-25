@@ -17,7 +17,8 @@ export type AvatarProps = {
 export function Avatar({ name, hue, size = 28, ghost = false, ring, className }: AvatarProps) {
   const initial = firstInitial(name);
   const fontSize = Math.round(size * 0.42);
-  const ringWidth = size >= 44 ? 4 : size >= 32 ? 3 : 2;
+  // 1.5: the ring is 2px at 28px and under, 3px at 32px and above.
+  const ringWidth = size >= 32 ? 3 : 2;
   return (
     <span
       role="img"
@@ -50,7 +51,7 @@ export function AvatarStack({ people, size = 28, ring = "var(--surface)" }: { pe
         </span>
       ))}
       {extra > 0 && (
-        <span className="ml-1 inline-flex h-6 items-center rounded-pill border border-line-strong px-2 text-[13px] font-medium text-ink-2">+{extra}</span>
+        <span className="ml-1 inline-flex h-6 items-center rounded-pill border border-line-strong px-2 chip-text text-ink-2">+{extra}</span>
       )}
     </span>
   );

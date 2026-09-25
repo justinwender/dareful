@@ -12,6 +12,7 @@ import * as claims from "@/lib/ledger/claims";
 import { createGroup, createInvite } from "@/lib/ledger/groups";
 import { ensureUsd } from "@/lib/ledger/denominations";
 import * as markets from "@/lib/ledger/markets";
+import { INKS, inkOf } from "@/lib/ui/ink";
 import { cleanup, cover, ghost, tempSigner, tempUser, track, type Signer, type User } from "../db/fixture";
 
 const BASE = process.env.TEST_BASE_URL ?? "http://localhost:3000";
@@ -72,7 +73,7 @@ before(async () => {
   track.group(mg.id);
   await db.insert(schema.groupMembers).values({ groupId: mg.id, userId: friend.user.id });
   const usd = await ensureUsd(mg.id, asker.user.id);
-  const ask = (title: string) => markets.draftMarket({ creatorId: asker.user.id, groupId: mg.id, denomId: usd.id, title, termsText: "Yes if the kettle is descaled by Friday.", resolvesBy: new Date(Date.now() + 86_400_000), anchorBps: 4100n, anchorRationale: "Kettles rarely get descaled." });
+  const ask = (title: string) => markets.draftMarket({ creatorId: asker.user.id, groupId: mg.id, denomId: usd.id, title, termsText: "Yes if the kettle is descaled by Friday.", resolvesBy: new Date(Date.now() + 86_400_000) });
   draftId = (await ask("Is this draft still a secret?")).id;
   const d0 = await ask("Does the kettle get descaled by Friday?");
   const d = await markets.openMarket(d0.id, asker.user.id, await asker.ledger.signTypedData(markets.createTypedData(d0)));
@@ -275,7 +276,8 @@ test("a draft is a 404 to everyone but the person who asked it, and its preview 
 test("someone in the group who has not picked sees who is in and no number; someone outside sees neither", async () => {
   const mine = await get(`/m/${marketId}`, cFriend);
   assert.equal(mine.status, 200);
-  assert.ok(mine.text.includes("One friend is in.") && mine.text.includes("Where the stake sits shows once you pick.") && mine.text.includes("1 of 2 in"));
+  // The count is the whole message (4.9): the caption that restated the picture is gone.
+  assert.ok(mine.text.includes("One friend is in.") && mine.text.includes("1 of 2 in") && !mine.text.includes("shows once you pick"));
   // Sent, not merely shown: the page's data travels in the HTML, so a number hidden by a component is still leaked.
   for (const s of ["83%", "about 8 in 10", "riding,", "8300", "heightPermille"]) assert.ok(!mine.html.includes(s), `someone who has not picked is sent "${s}"`);
   // The asker is in: the receipt is on the screen every time it opens, not for a second after the tap.
@@ -291,7 +293,8 @@ test("someone in the group who has not picked sees who is in and no number; some
 test("the terms and the stalemate rule are on the screen before anyone is in", async () => {
   const r = await get(`/m/${marketId}`, cFriend);
   assert.ok(r.text.includes("Yes if the kettle is descaled by Friday."));
-  assert.ok(r.text.includes("everyone says their piece and the app calls it. Being in means you’re fine with that."));
+  // The tiebreaker is one of the four facts in the details (3.25); the consent sentence lives on the invitation.
+  assert.ok(r.text.includes("If it’s unclear") && r.text.includes("Everyone says their piece and the app calls it."));
 });
 
 // ------------------------------------------------------------------------------------------ 2B: home, joining
@@ -317,7 +320,8 @@ test("Now holds what needs this person, then what is running, then what just hap
   const needs = a.text.indexOf("Needs you");
   const running = a.text.indexOf("Running");
   assert.ok(needs >= 0 && running > needs, `needs you, then running: ${needs}, ${running}`);
-  assert.ok(/Running.*Does the kettle get descaled by Friday\?.*You’re in · 1 of 2 in/.test(a.text), "where it stands, on the row");
+  assert.ok(/Running.*Does the kettle get descaled by Friday\?.*1 of 2 in/.test(a.text), "where it stands, on the row");
+  assert.ok(/<svg role="img" aria-label="You’re in"/.test(a.html), "the running row's mark says you're in (3.23)");
   // The action lives on the question's screen, never on a running row (design 4.7): no verb anywhere under Running.
   assert.equal(/\b(Enter|Vote|Yep|Finish|Lock)\b/.exec(a.text.slice(running))?.[0], undefined, "a verb on a running row");
   assert.ok(!/something with a clock is waiting on you/.test(a.html), "a draft can sit: no dot");
@@ -415,6 +419,30 @@ test("asking offers both paces and both ways of writing the terms, and the settl
 test("someone not yet in is shown the tiebreaker they would be agreeing to", async () => {
   const r = await get(`/m/${marketId}`, cStranger);
   assert.ok(r.text.includes("If nobody can agree how it came out, the app hears both sides and calls it. Being in means you’re fine with that."));
+});
+
+// ------------------------------------------------------------------------------------- the v2 migration
+
+test("state is a mark with a name, never a sentence: a question to get into is Open, and a cover to confirm is Proposed", async () => {
+  const r = await get("/", cFriend);
+  assert.ok(/<svg role="img" aria-label="Open"/.test(r.html), "the needs-you row carries the open mark");
+  for (const s of ["Waiting on an answer", "Waiting on how it came out", "Nobody’s in yet", "Everyone’s in", "Squared up", "Called it even"]) assert.ok(!r.text.includes(s), `state prose "${s}" on Now`);
+  const u = await get("/welcome", cU);
+  assert.ok(/<svg role="img" aria-label="Proposed"/.test(u.html), "a cover to confirm carries the proposed mark");
+});
+
+test("a market's own screen is its ink: the ground, surface and line swapped for its layers, its band on its field, and the details as four facts", async () => {
+  const [d] = await db.select({ id: schema.dares.id, ink: schema.dares.ink }).from(schema.dares).where(eq(schema.dares.id, marketId));
+  assert.ok(d);
+  const layers = INKS[inkOf(d)];
+  const r = await get(`/m/${marketId}`, cAsker);
+  assert.ok(r.html.includes(`--ground:${layers.ground}`) && r.html.includes(`--surface:${layers.surface}`) && r.html.includes(`--field:${layers.field}`), "the ink's layers on the screen's root");
+  assert.ok(!r.html.includes("--ink:") && !r.html.includes("--chalk:"), "type colours and the chalk button are never tinted");
+  assert.ok(/<svg role="img" aria-label="You’re in"/.test(r.html), "the band's mark: the asker is in");
+  for (const s of ["Counts if", "Decided", "Stakes", "If it’s unclear"]) assert.ok(r.text.includes(s), `the details carry ${s}`);
+  assert.ok(!r.text.includes("Every pair squares") && !r.text.includes("How we’ll know"), "scoring and the terms disclosure left the screen (4.9)");
+  const s = await get(`/m/${marketId}`, cStranger);
+  assert.ok(!s.html.includes(`--ground:${layers.ground}`), "the invitation is the neutral room, not the market's place");
 });
 
 // ------------------------------------------------------------------------------------------------ dates

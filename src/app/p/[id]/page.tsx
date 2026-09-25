@@ -38,7 +38,7 @@ export default async function PersonPage({ params, searchParams }: { params: Pro
       <div className="flex flex-col gap-6 py-2">
         <div className="flex items-center gap-4">
           <Avatar name={them.displayName} hue={hueFor(them.id)} size={56} />
-          <h1 className="text-display text-ink">{them.displayName}</h1>
+          <h1 className="text-body-strong text-ink">{them.displayName}</h1>
         </div>
         <PersonHeader me={me} them={them} theirs={view.header.theirs} yours={view.header.yours} />
         <SharedContextBand personId={them.id} contexts={view.contexts} selectedId={chosen?.groupId ?? null} />

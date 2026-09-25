@@ -256,3 +256,51 @@ who had not voted. Nothing is sent because time passed.
 - Whether the back gesture works in the installed PWA, which has no browser
   chrome.
  
+## Session 4: three people, one screen, and no way back
+
+**Date:** September 20-21, 2026
+**Testers:** the author and two other people, on their own phones
+**Build:** production, `dareful.app`, after the market-screen round
+
+The first session on the rebuilt home, the same-people picker and the market screen as one object in two states. Three people asked, joined and entered questions in one sitting.
+
+### What worked
+
+Asking, joining by link, entering a number and seeing the weight line change as the others got in. The picker preselected the last set of people. Nothing needed a group to be made first.
+
+### Findings
+
+**No way back.** Taking the group list and sign-out off home removed most of the incidental ways back without putting a deliberate one in their place, and an installed app has no browser chrome. The back control at the top left is the hardest place on a phone to reach one-handed.
+
+**"Needs you" put a cover to confirm above a vote closing that night.** The strip ordered by how long things had waited, so an old cover climbed over the one thing with a clock.
+
+**On a question in voting, the ballot was below the picture.** The person who had come to vote scrolled past the thing they had come for.
+
+### What changed because of it
+
+Recorded in `docs/decisions.md` (2026-09-21, "Navigation"). A way home under the thumb on every screen but home, deliberately the smallest structure that fixed it because a navigation architecture was being designed in parallel; it was replaced by that architecture's three roots, Start and back control on 2026-09-24. "Needs you" ranks what is time-bound above what can sit, as priority and never as pressure: no countdown, no day count, no ageing. On a question in voting where this person has not voted, the ballot is the screen.
+
+## Session 5: the settler, two accounts on the real chain
+
+**Date:** September 21-24, 2026
+**Testers:** the developer, with two test accounts: one on `dareful.app`, one on the development build, against the one database and the real chain
+**Build:** development, alongside production
+
+Not a session with people, and recorded as such: the two-account pattern the settler was verified with before it reached anyone. Each case below is a real signed-in session on each side, real signatures, and real chain writes.
+
+### What was verified
+
+- An interpersonal dispute ("I was right to be annoyed he bailed") declined, with a dare offered instead and the decline commenting on neither person.
+- A contestable claim (hitting a fastball against returning a serve) given three criteria, one chosen, the terms written around it, the criterion on the invitation before the other side was in, and a soft ruling ("leans yes, 82 to 18").
+- A deadlock: one yes, one no, a case stated by each side, "Let the app call it", and a ruling. The first real arbitration voided, because the written terms named two incompatible measures, which is the mechanism working. The stored ruling re-hashed to exactly what the contract and the indexer hold, and the asker's clean-resolution rate dropped to one of two.
+- A checkable argument (the Holland Tunnel against the Lincoln) locked in about two seconds, ruled in about seven at 95, agreed by both, the loser's whole stake on both timelines.
+
+### What broke
+
+- **A display-only line was discarding whole write-ups.** The one-line reason beside the starting number sometimes ran past 140 characters, the parse refused it, and the terms that came with it were thrown away, which is why testers had sometimes seen their question "as typed". Display-only prose is now clipped, never a reason to reject; a ruling's lean is clamped rather than refused; a tool call cut off by the token limit is reported as that. The starting number itself was removed on 2026-09-24.
+- **The first local call to the scheduler ran unscoped against the shared database** and locked two real questions that were a day past their time. What the scheduler is for, but an onchain write on real people's questions from a development machine before review. The tick now takes the ids it may touch, tests always pass them, and a mutant that opens the door is written so that even open it touches nothing.
+
+### Still to record
+
+- The second person's entry through the argument screen, careful mode from the questions to the terms, and expiry under the void rule, each through a real session rather than a script.
+- Whether a push arrives on a phone for the deadline notice and the ruling.
