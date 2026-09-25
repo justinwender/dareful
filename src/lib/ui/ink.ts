@@ -4,10 +4,11 @@
  * screen the four structural tokens (ground, surface, line, and the question band's field) are swapped for its
  * layers; everywhere else the ink shows only as the stamp behind the mark, on `field`.
  *
- * How a mark picks its ink, in the specification's order: the creator's pick; otherwise the mark's dominant hue
- * snapped to the nearest of the eight; hueless marks and markets with no mark fall through to a hash of the
- * market id; and balance last, so that among markets open between the same people no two share an ink while
- * fewer than eight are open. The chosen ink is stored on the row, so balance can be checked without pixels.
+ * How a mark picks its ink, in the specification's order: the creator's pick; otherwise the mark's ink from the
+ * emoji table (`emoji-ink.ts`, computed from the tile renderer's own font, with the folds below applied to the
+ * measured hue); hueless marks and markets with no mark fall through to a hash of the market id; and balance
+ * last, so that among markets open between the same people no two share an ink while fewer than eight are
+ * open. The chosen ink is stored on the row, so balance can be checked without pixels.
  */
 export const INK_NAMES = ["clay", "ochre", "olive", "sea", "slate", "iris", "plum", "rose"] as const;
 export type InkName = (typeof INK_NAMES)[number];
@@ -37,16 +38,17 @@ export function hueDistance(a: number, b: number): number {
 }
 
 /**
- * Hues under this read as red, and reds fold into Rose whatever is nearest (1.8). sRGB red is 29 in OKLCH, past
- * the midpoint between Rose (8) and Clay (45), so by the wheel alone a red mark would be Clay; 40 is where red
- * gives way to orange (orangered sits on it), so a fox or a peach still reads as Clay.
+ * The folds (1.8), for a hue measured from pixels (a picture or a sticker, at upload; emoji come from the table
+ * instead). Reds fold into Rose whatever is nearest: hues from 345 round to 20 always, and hues from 20 to 40
+ * when their mean chroma is 0.14 or more, while the lower-chroma browns in that band go to Clay. Greens from 120
+ * to 165 fold into Olive. With no chroma reading, a hue under 40 is taken as red. The mark's own lightness and
+ * chroma are otherwise thrown away: only the hue snaps, to the nearest of the eight.
  */
-export const RED_MAX = 40;
-
-/** The mark's own lightness and chroma are thrown away: only the hue snaps, to the nearest of the eight. */
-export function nearestInk(hue: number): InkName {
+export function nearestInk(hue: number, chroma: number | null = null): InkName {
   const h = ((hue % 360) + 360) % 360;
-  if (h < RED_MAX) return "rose";
+  if (h >= 345 || h < 20) return "rose";
+  if (h < 40) return chroma === null || chroma >= 0.14 ? "rose" : "clay";
+  if (h >= 120 && h < 165) return "olive";
   let best: InkName = "clay";
   let bestD = Number.POSITIVE_INFINITY;
   for (const name of INK_NAMES) {
@@ -89,11 +91,12 @@ export function balanceInk(wanted: InkName, taken: readonly InkName[]): InkName 
 
 /**
  * The ink a market gets, and why. A creator's pick is honoured as picked: balance is for inks nobody chose.
- * `markHue` is the mark's dominant hue in degrees, or null for a hueless mark or no mark.
+ * `markInk` is what the emoji table gives the mark (`emojiInk`), or null for a hueless mark, a template mark
+ * or no mark at all, which fall to a hash of the market id.
  */
-export function inkFor(input: { pick?: InkName | null; markHue: number | null; id: string; takenInGroup: readonly InkName[] }): { ink: InkName; source: InkSource } {
+export function inkFor(input: { pick?: InkName | null; markInk: InkName | null; id: string; takenInGroup: readonly InkName[] }): { ink: InkName; source: InkSource } {
   if (input.pick) return { ink: input.pick, source: "pick" };
-  if (input.markHue !== null && Number.isFinite(input.markHue)) return { ink: balanceInk(nearestInk(input.markHue), input.takenInGroup), source: "mark" };
+  if (input.markInk) return { ink: balanceInk(input.markInk, input.takenInGroup), source: "mark" };
   return { ink: balanceInk(hashInk(input.id), input.takenInGroup), source: "hash" };
 }
 

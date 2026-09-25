@@ -29,7 +29,8 @@ export function Leaderboard({ standings, outcome, viewerId }: { standings: Stand
         const you = s.userId === viewerId;
         return (
           <li key={s.userId} className={`grid grid-cols-[22px_minmax(0,1fr)] gap-x-3 rounded-button px-3 ${dense ? "py-2" : "py-2.5"} ${you ? "bg-surface" : ""}`} style={you ? { boxShadow: hueRing(hue) } : undefined}>
-            <span className="row-span-2 self-center text-numeral text-ink-3">
+            {/* 17px 600 tabular (3.7): the one property the fifth design session changed on a built screen. */}
+            <span className="row-span-2 self-center text-body-strong tabular-nums text-ink-3">
               {tied ? "=" : ""}
               {rank}
             </span>

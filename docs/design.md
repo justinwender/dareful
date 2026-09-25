@@ -10,11 +10,16 @@ below match the artboards:
 
 - System row: `Tokens`, `System2` (state, copy and the style budget), `Language`, `Marks`,
   `WeightSpec` (the odds line and the weight line), `Errors`, `Nav`.
-- Screens row, in flow order: `Now`, `FirstRun`, `Main` (person view), `Story`, `Ask`,
-  `JoinLink`, `Join`, `Claim`, `MarketDock` (the interactive market screen), `BlindSlow`,
-  `Voting`, `Split`, `Leaderboard` (settled), `Memory`.
+- Screens row, in flow order: `Now`, `FirstRun`, `Main` (person view), `Story`, `MarkPicker`
+  (the question step, interactive), `MarkPickerFrames` (the picker in four moments), `Ask`
+  (who's in), `JoinLink`, `Join`, `Claim`, `MarketDock` (the interactive market screen),
+  `BlindSlow`, `Voting`, `Split`, `Leaderboard` (settled), `Memory`.
 - `DockStates` (the sheet through a market's life), the link tiles (`TileAsk`, `TileAskRange`,
   `TilePhoto`, `TileCalled`, `TileInChat`), and the ink boards (`Inks`, `InkCompare`).
+
+Market colours on boards other than `Inks` and `MarkPicker` are illustrative and were drawn
+before the emoji ink table existed (1.8). Where a board and `src/lib/ui/emoji-inks.json` disagree, the
+table wins.
 
 Target: mobile web, installable as a PWA, 390px reference width. Tailwind plus shadcn/ui. Dark
 is the default and only shipped theme for v1; light values are given so nothing has to be
@@ -22,32 +27,39 @@ re-derived later.
 
 ### What changed in this revision
 
-If you built against the previous version of this file, these are the changes that touch code:
+This revision covers the fifth design session only. Everything not listed here is unchanged from
+what is built. Each item says what, if anything, it asks of existing code.
 
-1. Entry is an odds line, in percentages. The ten tiles, the "in 10" readout and the separate
-   fine-tune slider are gone. One slider, 0 to 100 percent, with the market's mark riding the
-   thumb (3.13). Every "7 in 10" in the product is now "70%".
-2. The market screen's action lives in a sheet pinned to the bottom (3.24). It has a grabber and
-   two heights when there is more to show, and it changes with the market's state. The tab bar's
-   old "pinned action" is this sheet.
-3. Every market has an ink: one of eight muted colour families derived from its mark (1.8,
-   3.25). It tints the market's own screen and appears as the stamp behind the mark everywhere
-   else.
-4. The AI's suggested number ("a number to argue with", "Start at 6") is removed from every
-   screen.
-5. Number markets have no range unless the asker set one (3.26). The axis comes from what people
-   entered.
-6. Link previews are two tiles only: the asking tile and the result tile (3.27). The "who's in"
-   and "everyone's in" tiles are retired, because previews freeze on the sender's phone.
-7. Stickers are a new kind of mark: a cutout with transparency and a cream die-cut edge (1.7,
-   3.28).
-8. `serif-m` is 17/22, down from 20/26. One serif size per screen; `numeral-hero` may join it
-   (1.2).
-9. No drop shadow on the sheet or anywhere else except the claimant's prints (1.5). Focus is a
-   2px ink outline (5.1). The pending line on chalk is `#121110` on a 25% track (5.2).
-10. Retired boards: `Entry`, `States`, `AfterEntry`, `Home`, `Empty`, the three share cards,
-    `TileOpen`, `TileLocked`.
-
+1. The type budget counts sizes, not tokens (1.2, 4.8). A size is a family at a pixel size, and
+   weight is free inside it. The cap stays at four a screen, one of them serif. Text inside
+   controls and obligation tokens is not counted, and the separate cap for a card is gone. Built
+   code: the lint, and one property on one screen. The leaderboard rank on the settled screen
+   drops from `numeral` 20 to 17px 600 (3.7). No other built screen changes.
+2. `numeral-hero` now lives only in the number field, and Hanken 20 only inside controls (1.2).
+   A settled number is written as a `serif-l` sentence ("14 shirts, then a seam gave out.")
+   instead of a 60px numeral (3.25, 3.26), and the roll call's numbers drop to 17px 600 (3.6).
+   Both are number-market displays. If they were built ahead of number entry, these are the two
+   properties to change.
+3. The mark picker is designed: the question step and the picker sheet (new 3.29, boards
+   `MarkPicker` and `MarkPickerFrames`). Emoji only. Stickers have a reserved slot and no
+   design. New code.
+4. The emoji ink table ships as data, `src/lib/ui/emoji-inks.json`, with the script that made it,
+   `scripts/emoji-inks.py`, and a lookup rule (1.8). Built code: the ink function gains a table
+   lookup ahead of the id hash. No market has a mark yet, so nothing on screen changes colour
+   until the picker ships.
+5. A unit's mark has no stamp fill inside a token and sits on `--surface-2` everywhere else,
+   never on an ink (1.7, 3.2). Built code: the interim neutral field is already right outside
+   tokens. Inside a token, make it transparent.
+6. Number markets are fully specified for display (3.5, 3.22, 3.24, 3.25, 3.26, 3.27). The
+   asker's bounds are gone from the entry and the axis, and the scoring scale is kept out of the
+   display entirely. New: a column per value for narrow spreads, the off-axis rule for one
+   far-off entry, no axis at all on a blind number market, the padding rule for one entry or
+   total agreement, the empty field, singular and plural units, the closed and voting sheet
+   rows, and the result tile. Built code: none, since number entry has not shipped.
+7. Canvas: `Inks` is corrected, because 👕 measures Sea in the reference font rather than Slate.
+   `Tokens`, `System2`, `Story` and `Leaderboard` carry items 1 and 2, and `WeightSpec` carries
+   item 6. The screens from `Ask` onward are renumbered in their board titles to make room for
+   the two picker boards.
 ---
 
 ## 1. Tokens
@@ -141,19 +153,26 @@ tabular-nums`.
 | `serif-xl` | Young Serif 400 | 40 | 2.5 | 44px | One per screen at most: claimant, first run |
 | `serif-l` | Young Serif 400 | 26 | 1.625 | 32px | The question on a screen or a story card, and an outcome line |
 | `serif-m` | Young Serif 400 | 17 | 1.0625 | 22px | A question inside a row or a list (was 20/26) |
-| `numeral-hero` | Young Serif 400 tabular | 60 | 3.75 | 60px | A number people care about: a numeric answer, the number-entry field |
-| `numeral` | Hanken 600 tabular | 20 / 15 | 1.25 / 0.9375 | 24px / 20px | Figures in chips, rows and tables; the riding percent on the odds line (at 700) |
+| `numeral-hero` | Young Serif 400 tabular | 60 | 3.75 | 60px | The number-entry field, and nowhere else (3.26). A settled number is a `serif-l` sentence |
+| `numeral` | Hanken 600 tabular | 15 / 20 | 0.9375 / 1.25 | 20px / 24px | 15 for figures in rows, tokens and tables; 20 only inside a control (the riding percent at 700, the code boxes) |
 | `body` | Hanken 400, 600 | 17 | 1.0625 | 24px / 22px | Running prose at 400, the subject of a row at 600 |
 | `body-sm` | Hanken 400 | 15 | 0.9375 | 20px | Supporting lines, token sentences |
 | `label` | Hanken 600 | 13 | 0.8125 | 16px | Section labels and kickers |
 | `caption` | Hanken 400 | 13 | 0.8125 | 18px | Metadata, clocks, helper text |
 
-The cap: a screen may use at most four of these nine, a card at most three, and one serif size.
-The same serif token may appear twice (a screen's question and its outcome are both `serif-l`).
-`numeral-hero` is a number rather than a sentence, so it may sit beside that one serif size.
-Counting is mechanical, so it can be a lint rule: if a screen's markup references five,
-something on it is decoration. Button labels belong to the button component (3.12) and do not
-count.
+The cap counts sizes, not tokens. A size is a family at a pixel size: Hanken 13, Hanken 15,
+Hanken 17, Young Serif 26, and so on. Weight is free inside a size, the way `body` has always
+carried both 400 and 600, so `label` and `caption` are one size, and `body-sm` and `numeral` 15
+are one size. A screen may use at most four sizes, and at most one of them may be serif. The
+same serif size may appear twice (a screen's question and its outcome are both `serif-l`). At
+any one size, use at most two weights, 400 and 600.
+
+Not counted: text inside a control (buttons, chips, inputs and textareas, the odds line's riding
+percent, the code boxes, the number field), text inside an obligation token (its quoted serif
+words and its dollars included), and the wordmark, which is a logo. Controls and tokens carry
+fixed type of their own and read as objects on the page rather than as more of its text. This is
+also why `numeral-hero` no longer needs an exception: it lives inside the number field. Counting
+is mechanical, so it is a lint rule (4.8).
 
 A consequence worth knowing: a screen whose headline is `serif-xl` (the claimant screen, first
 run) sets any questions it lists in `body` 600 rather than `serif-m`.
@@ -246,16 +265,25 @@ It always sits in a stamp:
 | A compact row | 28px | 8px | 16px | The market's `field` |
 | A list row (Now, starters) | 40px | 10px | 22px | The market's `field` |
 | The question band | 44px | 12px | 24px | The market's `ground` |
-| Large, the picker | 64px | 16px | 34px | The market's `field` |
+| The question step (3.29) | 64px | 16px | 34px | The market's `ground`, since the stamp sits in the band on `field` |
+| A unit's mark inside a token | none | none | 16px | None. The glyph sits on the token's fill, 4px before the quoted words |
+| A unit's mark anywhere else (unit lists, the unit editor, You) | 28px | 8px | 16px | `--surface-2`, never an ink |
 
 A picture mark fills the stamp, cropped square, served at 256px. A sticker is fit to 80% of the
 stamp with its transparency kept, and carries a cream (`#F2EDE3`) die-cut edge: 2px at 40px and
 up, 1.5px at 28px, none at 20px. Render the edge into the asset (dilate the alpha mask, fill it
 cream, composite under) rather than chaining CSS drop-shadows, so the app and the tile renderer
 draw it the same way. No mark renders nothing in app surfaces; the dashed empty stamp exists
-only in the picker.
+only on the question step and as the picker's None cell (3.29).
 
 A market's mark also decides its ink (1.8), and it rides the odds line (3.13).
+
+A unit is not a place, so a unit's mark never takes an ink. A market's stamp is inked because it
+is a small window into that market's screen; a unit has no screen, and an inked stamp inside a
+token would put one market's colour on an obligation that outlives the market. Inside a token
+there is no stamp at all: a filled square inside a 32px capsule is a box in a box, and the glyph
+reads on its own. Emoji only for now. Picture and sticker marks for units arrive with the upload
+pipeline and use the same two rows.
 
 ### 1.8 Market inks
 
@@ -292,16 +320,41 @@ How a mark picks its ink, in order:
 
 1. The creator's pick, if they made one: one tap from the market screen, never a step in
    creating it.
-2. Otherwise the mark's dominant hue, from a table computed once for every emoji and at upload
-   for pictures and stickers. Pixels under chroma 0.04 are ignored, and for a sticker only
-   pixels with alpha over 0.5 count. The hue snaps to the nearest of the eight and the mark's
-   own lightness and chroma are thrown away. Reds fold into Rose, greens into Olive.
-3. Hueless marks fall through to a hash of the market id: fewer than a quarter of pixels carry
-   colour, or the colour is a template rather than a choice (the yellow smiley family,
-   default-yellow hands).
-4. Balance last: among markets open between the same people, no two share an ink while fewer
-   than eight are open. A collision moves the newcomer to the nearest free neighbour. This is
+2. Otherwise the mark's dominant hue. For emoji this is a lookup in `src/lib/ui/emoji-inks.json`,
+   computed once by `scripts/emoji-inks.py` from Noto Color Emoji, the font the tile renderer
+   loads, so a market's ink never depends on which phone made it. The measurement: render at
+   109px, keep pixels with alpha over 0.5, ignore pixels under OKLCH chroma 0.04, build a 10°
+   hue histogram weighted by chroma, and take the chroma-weighted circular mean within 15° of
+   the heaviest bin. That hue snaps to the nearest of the eight, and the mark's own lightness
+   and chroma are thrown away. The folds: hues from 345° round to 20° go to Rose, as do hues
+   from 20° to 40° when their mean chroma is 0.14 or more (the lower-chroma browns in that band
+   go to Clay), and greens from 120° to 165° go to Olive. Pictures and stickers get the same
+   measurement at upload, once that pipeline exists.
+3. Hueless marks fall through to a hash of the market id. The table stores them as `null`. Two
+   kinds: marks where fewer than a quarter of the opaque pixels carry colour (🍸 🏁 ⚽ ☕ 🐺), and
+   marks whose colour is a template rather than a choice, which is every smiley and cat face and
+   everything in People and Body. Skin tone never picks an ink.
+4. Balance last, on the who's-in step, once the people are known: among markets open between the
+   same people, no two share an ink while fewer than eight are open. A collision moves the
+   newcomer to the nearest free ink by hue, which retints the who's-in step over 200ms. This is
    what stops beer turning every Friday market Ochre.
+
+The table, in practice: 1,907 emoji, 1,210 with an ink and 697 `null` (506 templates, 191
+greys). It leans on Rose (358) and Slate (294) and is thin on Iris (16) and Plum (27), because
+emoji are mostly red, orange and blue; balance is what spreads a group's markets back out.
+Worked examples: 🌙 🍺 🎂 🍕 Ochre, 🏀 Clay, 🐸 Olive, 👕 Sea (teal in the reference font, even where a
+phone draws it blue), 🌊 🚆 Slate, 🔮 Iris, 🍷 ❤️ Rose, and 😂 👍 🏃 🍸 hashed.
+
+Looking it up: keys are normalised by stripping U+FE0F and the skin-tone modifiers U+1F3FB to
+U+1F3FF, and a mark is normalised the same way before the lookup. The table's keys are exactly
+the emoji the reference font can draw (Noto Color Emoji 2.047, emojibase 17); seven newer ones
+it cannot draw are left out, and the picker does not offer them, because the asking tile would
+show a blank box. Regenerate the table whenever the renderer's font changes.
+
+Where it runs: the client carries the table so the picker can preview the ink as the mark is
+picked (3.29). The server computes the ink again from the same table when the market is created,
+and that answer is the one stored, as `ink` plus `ink_source` (`pick`, `mark` or `hash`) on the
+market row, so balance can be checked without re-reading any pixels.
 
 Arguments get an ink the same way, which usually means a hash, because most arguments have no
 mark.
@@ -423,7 +476,8 @@ Pill, height 32 in rows, 40 in the person-view header, 44 in spec contexts. Back
 yours `0 4px 0 12px`.
 
 Contents in order: owner avatar (theirs) / trailing (yours), glyph tally, mark plus quoted
-words, rule, dollars.
+words, rule, dollars. A unit's mark here is a bare 16px glyph on the token's fill, 4px before
+the quoted words, with no stamp behind it (1.7).
 
 States:
 
@@ -505,14 +559,20 @@ States:
 - **A result tile** (3.27): the person who called it wears an extra 2px cream ring outside their
   surface ring.
 
-For number markets the same component becomes a ruler: its ends are the lowest and highest
-numbers entered (or the asker's bounds, if they set any), labelled with the values and the unit,
-and the answer is a 4px cream tick at its position.
+For number markets the same component becomes a ruler. Its ends are the lowest and highest of
+the entries and the answer together, so the answer is always on it, with the padding rule from
+3.22 when they sit within two of each other. The ends are labelled with their values, the unit
+on the right end only ("12", "26 shirts"). Pins sit at each entry's value. The answer is a cream
+tick 8px taller than the pins, 4px wide in a card and 6px on a screen or a tile. The off-axis
+rule in 3.22 runs over the entries and the answer together, but the answer is never the one
+pushed off: an off-axis entry sits as a pin beyond a 6px break in the track at that end,
+labelled with its value and an arrow ("200 →").
 
 ### 3.6 Roll call
 
 Grid of participants ordered by closeness, 5 columns, 4px gap, each cell 10px vertical padding,
-`--surface-2`, radius 10: avatar 28, name 13px 600, number `numeral` 20, "off N" caption.
+`--surface-2`, radius 10: avatar 28, name 13px 600, number in 17px 600 tabular (it was `numeral`
+20), "off N" caption.
 
 States: **fewer than 5** (cells keep their width, grid left-aligns); **6 to 10** (wrap to a
 second row); **more than 10** (first 10 then a "Show all" text button); **your cell** (the
@@ -524,16 +584,19 @@ selection ring); **tie** (identical "off" values share a position, prefix both w
 Grid `22px minmax(0,1fr)`, 12px column gap, 8px row gap, 10px by 12px padding, radius 10.
 Heading above the list: "Closest first".
 
-Rank in `numeral` 20 `--ink-3`. Avatar 36. Name `body` 600, "said 85%" caption under it. "off by
-15" right, `numeral` 15 `--ink-2`. Under that, the gap bar: 4px track (the market's field), the
-person's segment from their value to the outcome end at `rgba(hue,0.40)`, a 14px dot in their
-hue at their value, a 3px cream tick at the outcome end, and a 1px `--line-strong` tick at 50%.
+Rank in 17px 600 tabular, `--ink-3` (it was `numeral` 20; this is the only built property the
+revision changes). Avatar 36. Name `body` 600, "said 85%" caption under it. "off by 15" right,
+`numeral` 15 `--ink-2`. Under that, the gap bar: 4px track (the market's field), the person's
+segment from their value to the outcome end at `rgba(hue,0.40)`, a 14px dot in their hue at
+their value, a 3px cream tick at the outcome end, and a 1px `--line-strong` tick at 50%.
 
 States: **you** (background the market's surface plus the selection ring); **annotated** (one
 13px `--ink-2` line under the bar, used when a result is counterintuitive, at most one per
 screen: "Only 20%, and still closer than Gabe and John."); **tie** (same rank number, `=`
 prefix, order alphabetically); **long name** (truncate at one line); **nine rows** (8px vertical
-padding, nothing else changes).
+padding, nothing else changes); **number market** ("said 17" under the name and "off by 3" on
+the right; the gap bar runs on the ruler's scale (3.5) from their number to a 3px cream tick at
+the answer, and there is no 50% tick).
 
 ### 3.8 Media frame
 
@@ -560,8 +623,10 @@ Sizes, radii and backgrounds in 1.7. States: **emoji** (rendered as text at the 
 never as an image); **picture** (256px square derivative, `object-fit: cover`); **sticker**
 (512px source with alpha, 256px derivative with the die-cut edge baked in, `object-fit: contain`
 at 80%); **none** (nothing renders in app surfaces; layout closes up); **broken image** (falls
-back to none, silently); **in the picker** (the dashed empty stamp is the "no mark" option and
-is the default selection).
+back to none, silently); **on the question step** (64px; dashed with a 24px plus when unset, the
+mark on the market's ground when set); **in the picker** (3.29: the dashed None cell is the
+no-mark option and the default selection; a picked cell takes the market's field and a 1.5px
+inset ring in your hue).
 
 ### 3.10 Person-view header
 
@@ -864,9 +929,41 @@ Change gone, the entry line reads "Locked at 10:40pm", nothing greyed); **settle
 the call line and closest first); **number market** (below); **nine or more entries**
 (unchanged).
 
-**Number markets.** Ten slices of an axis that runs from the lowest number entered to the
-highest, ends labelled with the real extremes and the unit ("12", "26", "40 people"). If the
-asker set bounds, the bounds are the axis. The marker's chip shows a plain number ("22").
+**Number markets.** The same row of columns, on an axis taken from what people entered. The
+asker's scoring scale (3.26) never draws anything here: the display and the scoring are
+deliberately different, and the display does not try to reflect the scoring.
+
+- **Ends.** `lo` and `hi` are the lowest and highest on-axis entries. If `hi − lo < 2`, pad by
+  one on each side, never below 0. Everyone on 14 draws 13 to 15; a single entry draws your
+  number with one either side, your column in the middle at full height.
+- **A narrow spread gets a column per value.** When `hi − lo + 1 ≤ 10`, draw `n = hi − lo + 1`
+  columns, one per whole number, with the same 3px gap. Label every column when `n ≤ 7`,
+  otherwise the two ends and the middle.
+- **A wide spread gets ten slices.** Otherwise `w = (hi − lo) / 10` and `bucket(v) =
+  clamp(ceil((v − lo) / w), 1, 10)`, so `lo` joins the first slice. Labels: `lo` at the left,
+  the rounded midpoint in the centre, `hi` at the right.
+- **The unit** rides the right-end label only ("40 people"). Every other label, and the marker's
+  chip, is a bare number.
+- **One far-off entry does not stretch the axis.** With four or more entries, sort them. The
+  highest is off-axis when its gap to the next highest is larger than the span of all the rest
+  (`v₁ − v₂ > v₂ − vₙ`, descending). Check the high end first over every entry, then the low end
+  the same way over what remains, and only while at least three entries would stay on the axis,
+  so there is at most one per end. An off-axis entry becomes an overflow column one column wide,
+  6px past the end, labelled with its value and an arrow ("200 →", "← 0"). Its height follows
+  the same normalisation and it still counts toward the group's number.
+- **The marker.** `g` is the stake-weighted mean. Across slices, `x = (g − lo) / (hi − lo)`;
+  across per-value columns, `x = (g − lo + 0.5) / n`. The chip shows `g` rounded to a whole
+  number with separators ("22", "1,240"), and the exact figure lives on the details sheet. If an
+  off-axis entry pulls `g` past an end, the marker clamps to that edge and the chip shows the
+  true value with an arrow ("41 →").
+- **Re-bucketing.** When a new entry moves `lo` or `hi`, the columns crossfade to the new layout
+  over 200ms and the marker slides to its new place. With reduced motion, it swaps.
+- **Blind.** A blind number market draws no axis before the reveal: your entry line, the lock
+  chip ("Numbers show when everyone's in") and the count. On a yes-or-no market the outlined
+  columns give nothing away, because 0 to 100 is fixed; on a number market the ends alone would
+  say what range everyone else picked.
+- **Locked and settled** behave as they do for yes-or-no: locked keeps the picture, and settled
+  becomes the ruler (3.5) and closest first (3.7).
 
 **A time series, for slow markets only.** A market open more than 24 hours with at least four
 entries gets a 56px line of the group's number over time under the weight line, drawn in the
@@ -946,6 +1043,13 @@ Where it rests says whose move it is, and it never goes empty while the market r
 Once the result has been sent, or once you leave the settled screen, the sheet is gone and the
 market is a story.
 
+Number markets use the same rows with their own words. **Open, not in** rests on "What's your
+number?" and the empty field (3.26). **Closed, not yet known** rests on "When it's clear, say
+what it was." with the number field, empty, and a chalk that reads "It was 14 shirts" once a
+number is typed; it opens the claim with the number filled in. **Voting, not said** carries the
+count line, a chalk "That's right, 14" and the secondary "Not how I saw it", which raises the
+sheet to the number field so the person can add the number they saw. That number is optional.
+
 On task screens the sheet holds the flow's primary action and at most one caption: "Set the
 terms" on the ask flow, "Join" on the code screen (with the form-level error block above it when
 there is one), "Yep, all 6 are right" on the claimant screen.
@@ -971,7 +1075,10 @@ say about how it works goes behind More.
 
 The settled screen adds, above the call line: the outcome in `serif-l` ("He did."), a caption
 ("Out cold, 1h 12m in."), the media frame at 200px and a tertiary "Add yours from Friday". Under
-the call line: closest first (3.7) and who's got who, grouped by owner.
+the call line: closest first (3.7) and who's got who, grouped by owner. On a number market the
+outcome is one `serif-l` sentence with the number in it ("14 shirts, then a seam gave out."),
+the caption says who was closest ("Theo was closest, off by 2."), and the ruler (3.5) stands
+where the call line would.
 
 ### 3.26 Number entry
 
@@ -982,13 +1089,44 @@ the unit beside it in `body` `--ink-2`, baseline-aligned. Tapping the field open
 keypad; the steppers move by one. One caption: "Any whole number. Tap it to type." Then the
 stake chips and "I'm in at 17 shirts, $5".
 
-No range unless the asker set one. Telling people to pick inside a range nobody chose puts an
-answer in their mouths, and the ends of that range become everyone's anchor. When the asker did
-bound it ("between 1 and 10 rounds"), the field clamps to the bounds, the caption says them, and
-the weight line's axis is the bounds.
+**The field.** Whole numbers from 0 to 999,999,999, shown with thousands separators. Use a text
+input with `inputmode="numeric"` and `pattern="[0-9]*"`, never `type="number"`, which accepts
+decimals and exponents and changes value under a scroll wheel. The numeral shrinks to fit as
+digits are added, from 60px to a floor of 28px, after which the unit drops beneath the number;
+the field is a control, so none of this counts against the budget (1.2). No decimals anywhere. A
+question that needs them asks in a smaller unit (minutes rather than hours, cents rather than
+dollars), and that is settled when the market is made.
 
-The answer, when it lands, is a `numeral-hero` numeral on the story ("14 shirts, then a seam
-gave out.") with the ruler (3.5) under it.
+**Empty, and at the edges.** Nothing is prefilled, for the same reason the odds line has no
+thumb until it is touched. Before any input the field shows a cream caret and no number, minus
+is disabled, and the primary reads "Type your number", disabled. Plus from empty starts at 1.
+Minus is disabled at 0. Holding a stepper repeats after 400ms, at ten steps a second.
+
+**The unit** is stored as a singular and a plural ("shirt", "shirts"), and the field and every
+sentence use the form that matches: "1 shirt", "I'm in at 17 shirts, $5". Chips, axis labels and
+roll-call cells carry the bare number, except the axis's right end (3.22).
+
+**Changing, failing, locking.** Change on the entry line reopens the sheet raised at your number
+with "Never mind" beside the primary, which reads "Save: 18 shirts, $5". Failed to send and
+locked are the odds line's states word for word (3.13).
+
+**Entering, as a moment.** The odds line's moment, unchanged: the sheet lowers, then the columns
+grow from the baseline over 700ms, your share fills in your hue, your avatar rises above your
+column and the marker draws last.
+
+**No range, and the scoring scale stays out of sight.** The field never shows a range and never
+clamps to one. Telling people to pick inside a range puts an answer in their mouths, and its
+ends become everyone's anchor. Scoring does use a scale, fixed when the market is made: the
+asker can set it, and when they leave it blank the AI sets one. It is never drawn, and the
+weight line's axis never uses it (3.22). If the asker set it, it appears once, as a row in the
+market's details `dl` labelled "Scored on", in the asker's own words. If the AI set it, it
+appears on no screen at all. This replaces the previous revision's bounds, which clamped the
+field and became the axis.
+
+The answer, when it lands, is a `serif-l` sentence with the number in it ("14 shirts, then a
+seam gave out."), with the ruler (3.5) under it. It was `numeral-hero` in the previous revision.
+A 60px numeral beside a 26px question put two serif sizes on one screen, and the sentence says
+the same thing in the size the screen already has.
 
 ### 3.27 Link tiles
 
@@ -1021,6 +1159,13 @@ Without one: the market's field, the mark and the outcome on one line, the call 
 pins where the person who called it wears an extra cream ring, the No and Yes labels, and "John
 called it at 10%." at 34px 600.
 
+A number market's result tile says the answer as its outcome. With a photo, the band carries "14
+shirts." at 76px and "Theo called it, off by 2." with his avatar. Without one: the market's
+field, the mark and "14 shirts." in serif at 72px on one line, the ruler (3.5) with 52px pins, a
+6px cream answer tick and its end labels, and "Theo called it, off by 2." at 34px 600. Whoever
+was closest wears the extra cream ring, as the person who called it does on a yes-or-no tile.
+The scoring scale is not on the tile.
+
 Rendering: server-side (Satori or equivalent) with Noto Color Emoji loaded for emoji marks and
 the 256px derivative reachable for picture marks and stickers. Both fail silently when
 forgotten.
@@ -1049,6 +1194,85 @@ Three ways in, cheapest first:
 Storage: the 512px source with alpha, plus a 256px derivative with the die-cut edge baked in
 (1.7). Schema: `mark_kind` gains `'sticker'` beside `'emoji'` and `'image'`, and every mark row
 stores its derived `ink` so balance (1.8) can be checked without re-reading pixels.
+
+### 3.29 The question step and the mark picker
+
+The first step of asking. Boards: `MarkPicker` (interactive: open the picker, try marks, search)
+and `MarkPickerFrames` (nothing picked, a mark with a colour, a hueless mark, done). Everything
+on it is an existing part: the question band (3.25), the stamp (1.7, 3.9), the sheet (3.24) and
+chips (3.3). No mark exists yet on any market, so every ink in the product is currently a hash;
+this step is what makes an ink mean something.
+
+**The step.** Header: the 48px back control and nothing on the right, matching the who's-in
+step, so there is no step counter. Then the question band on the market's field, which is the
+neutral `--surface-2` until a mark is picked: 12px from the screen edges, radius 12, 16px
+padding (20 at the bottom), 16px between its two parts.
+
+- **The mark row**, one button with `aria-haspopup="dialog"`: the 64px stamp, then "Add a mark"
+  in `body` 600 over "Optional. It picks this market's colour." in `caption` `--ink-2`. Unset,
+  the stamp is dashed (1.5px `--line-strong`, radius 16) around a 24px plus. Set, it is the mark
+  at 34px on the market's ground, the title reads "Mark", and the line under it is the emoji's
+  name and "tap to change" ("Crescent moon · tap to change").
+- **The question**: "Your question" in `label` `--ink-2`, then a borderless textarea in
+  `serif-l`, cream, three rows to start and growing with the text.
+
+The pinned sheet holds one chalk, "Next: who's in". "Optional" is said once, on the row, and
+never again.
+
+**The picker** is a modal sheet (6.4) 560px tall, on the current place's surface with its 1px
+top line and the grabber, 16px sides. It is opened from the band, not from the pinned sheet, so
+no sheet opens another. It closes with Done, a 48px text button in the close position, or by
+dragging down, and focus returns to the mark row. From the top:
+
+1. A 44px search field on the field colour, placeholder "Search: moon, beer, dog", with Done
+   beside it.
+2. Only while the picked mark is hueless, one `caption` line in `--ink-2`: "Faces, people and
+   grey marks don't set a colour, so this market gets one of its own."
+3. "Recent" in `label`, then one row of cells: a dashed None cell first (the no-mark option,
+   selected by default), then up to seven recent marks, most recent first, kept per device.
+4. Category chips as words, no icons, scrolling sideways in a `tablist`: Smileys, People,
+   Animals, Food, Activities, Travel, Objects, Symbols, Flags. Choosing one shows that group.
+5. The grid: 8 columns of 44px cells with a 2px gap, emoji at 28px, the group's name in `label`
+   above it. A search replaces the group with "Matches".
+
+**Picking.** A tap sets the mark at once. The picked cell takes the market's field and a 1.5px
+inset ring in your hue. Everything behind the sheet (the band, the stamp, the ground, the pinned
+sheet) retints to the mark's ink over 200ms, and so does the picker, since it sits on the
+current place's surface. The picker stays open so the person can try another; seeing the colour
+arrive is how they learn what a mark does, which is why no sentence explains it. None returns
+everything to the neutral room. A hueless mark retints to the market's hashed ink and shows the
+one line in item 2.
+
+**Search** runs over each emoji's CLDR name and tags (emojibase's `label` and `tags`, in the
+device's language) and matches any word that starts with what was typed. Nothing found: "Nothing
+called that. Try a plainer word." in `caption` `--ink-3` where the grid was.
+
+**Skin tones.** A long press on a cell that has them opens a one-row popover with the default
+and the five tones. The tone picked last is remembered per device and used for that emoji from
+then on. Tone never changes the ink (1.8).
+
+**What it offers.** Only emoji present in `src/lib/ui/emoji-inks.json`, which is exactly the set the
+tile renderer can draw, so a mark can never turn into a blank box in a group chat. The grid
+draws them with the phone's own emoji font; the ink always comes from the table, so an iPhone's
+👕 and the tile's 👕 share one ink even though the two fonts colour it differently.
+
+**Balance** is not shown here. The step previews the mark's own ink before anyone else is
+chosen; balance (1.8) applies on the who's-in step and may move the ink to a free neighbour
+there.
+
+**Reserved for stickers.** When the upload pipeline exists, a "Your stickers" section goes above
+Recent, in the same cell size. Nothing about it is designed here, nothing above changes when it
+arrives, and pasting a cutout (3.28) enters the same way.
+
+**For a unit's mark** the same picker opens from wherever a unit is made, with no ink preview:
+nothing retints and the hueless line never shows, because units take no ink (1.7).
+
+**Never:** a mark suggested from the question's words, anything preselected except None, or a
+mark required to continue.
+
+Accessibility: every cell is a `button` with the emoji's name as its `aria-label` and
+`aria-pressed`; the None cell is labelled "No mark"; the sheet is a `dialog` labelled "Pick a
+mark".
 
 ---
 
@@ -1206,8 +1430,9 @@ Two rules generalise out of this and apply everywhere:
 
 Two counts, both mechanical enough to lint:
 
-- At most four of the nine type tokens on a screen, at most three in a card, and one serif size
-  (4.1).
+- At most four sizes on a screen, at most one of them serif, and at most two weights at any one
+  size (1.2). Text inside controls and obligation tokens is not counted, and a card has no cap
+  of its own.
 - At most one chalk-filled control and at most one citron element in a viewport. On a root, the
   Start button is the chalk.
 
@@ -1216,6 +1441,52 @@ screen is doing a second job and belongs on the screen that does that job.
 
 A third count, softer, for review rather than lint: a screen that carries more than two
 sentences of explanation is explaining a mechanism at the wrong moment (4.9).
+
+**The lint.** A test over each screen's rendered DOM. Mark the root of every control and token
+component with `data-type-exempt`: buttons, chips, inputs and textareas, the odds line's riding
+percent, the code boxes, the number field, the obligation token, and the wordmark. Walk every
+text node that is not inside `[data-type-exempt]`, an avatar, or an emoji-only run, and read
+`getComputedStyle` on its parent: the first family in `font-family`, `font-size`, and
+`font-weight`. Fail when the screen has more than four distinct family and size pairs, more than
+one distinct Young Serif size, or more than two weights at any one pair. Run it per state, since
+a raised sheet adds its own text.
+
+**Why sizes and not tokens.** The tester's complaint was "too many different types of text", and
+a reader counts a family at a size as one type of text: 13px 600 and 13px 400 read as one size
+doing two jobs, the way `body` 400 and 600 always have. Counted as tokens, eleven built screens
+failed at four while reading clean, because `label` and `caption`, or `body-sm` and a 15px
+figure, counted twice. Excluding control labels changed no count, because every token a control
+uses also appears in content on the same screen; the double count was in the unit being counted,
+not in what was in scope. Raising the token cap far enough to pass them would also have passed
+the old settled screen, which set text at 26, 20, 17, 15 and 13. That is five sizes, and exactly
+the specimen-sheet look the complaint was about. Counting sizes at four fails that screen and
+passes the rest, so the fix costs one property on one built screen (the rank, 3.7) plus the
+lint. Redesigning components to fit a four-token count was the other option, and it would have
+reopened all eleven screens to remove distinctions nobody reported.
+
+The canvas after this revision, outside controls and tokens:
+
+| Screen | Sizes | Count |
+| --- | --- | --- |
+| `Now` | 13 · 17 · serif 17 | 3 |
+| `FirstRun` | 13 · 17 · serif 40 | 3 |
+| `Main` | 13 · 15 · 17 · serif 26 | 4 |
+| `Story` | 13 · 15 · 17 · serif 26 | 4 (was 6, with two serif sizes) |
+| `MarkPicker` | 13 · 17 · serif 26 | 3 |
+| `Ask` | 13 · 17 · serif 26 | 3 |
+| `JoinLink` | 13 · 17 · serif 26 | 3 |
+| `Join` | 13 · 17 · serif 26 | 3 |
+| `Claim` | 13 · 15 · 17 · serif 40 | 4 |
+| `MarketDock` | 13 · 17 · serif 26 | 3 |
+| `BlindSlow` | 13 · 17 · serif 26 | 3 |
+| `Voting` | 13 · 17 · serif 26 | 3 |
+| `Split` | 13 · 17 · serif 26 | 3 |
+| `Leaderboard` | 13 · 15 · 17 · serif 26 | 4 (was 5) |
+| `Memory` | 13 · 15 · 17 · serif 26 | 4 |
+| `DockStates`, all seven | 13 · 17 · serif 26 | 3 |
+
+Five screens sit at the cap, and each reads as one serif line, a subject line, a supporting line
+and metadata, which is the shape the cap is meant to allow.
 
 ### 4.9 Copy that earns its place
 
@@ -1359,6 +1630,7 @@ view for the same attention. Groups are not a destination for the reasons in 4.7
 | Feature | Home |
 | --- | --- |
 | Asking something | Start sheet → ask flow |
+| Picking a mark | The ask flow's question step, then the picker sheet (3.29); the same picker wherever a unit is made |
 | Joining by link | Deep link → the market's own screen, the sheet holding the empty odds line (3.17) |
 | Joining by code | Start sheet → join; plus the field on an empty Now |
 | Putting your odds in | Market screen, the sheet (3.13, 3.26) |
@@ -1399,13 +1671,12 @@ view for the same attention. Groups are not a destination for the reasons in 4.7
 ## 7. What we did not design, and how to derive it
 
 Not drawn in this canvas: the People tab's list and its standings segment, the You tab, the
-Start sheet itself, the rest of market creation (the question step with the mark picker and
-"Make a sticker", and the terms step; only the who's-in step exists), argument creation, the
-people picker behind "Someone else", the claim flow behind the two outcome wells, the
-arbitration screen, receipt capture and splitting, credit-card roulette, plans and RSVPs,
-search, the details sheet, the light theme in situ, and any desktop layout. Every one of them
-has an address in 6.3, so a later phase has somewhere to put its screens without reopening the
-structure.
+Start sheet itself, the rest of market creation ("Make a sticker" and the terms step; the
+question step and the who's-in step exist), argument creation, the people picker behind "Someone
+else", the claim flow behind the two outcome wells, the arbitration screen, receipt capture and
+splitting, credit-card roulette, plans and RSVPs, search, the details sheet, the light theme in
+situ, and any desktop layout. Every one of them has an address in 6.3, so a later phase has
+somewhere to put its screens without reopening the structure.
 
 Group management has come off this list rather than moving up it. Leaving, archiving, renaming
 and the group view do not exist, because a group is not a navigable object: there is no place to
@@ -1417,12 +1688,10 @@ To build one of them without waiting for a design pass:
 
 1. **Find its nearest relative in the canvas.** The terms step of market creation is the market
    screen before anyone is in: the question band in the chosen mark's ink, the details `dl` with
-   its labels made editable, the stake chips, and the sheet with a chalk "Send it". The mark
-   picker is the 64px stamp grid (1.7) with the dashed empty stamp selected by default and a
-   paste target for stickers (3.28). The claim flow behind the outcome wells is the claim card
-   (3.25) being filled in: the outcome already chosen, a camera row, and "Say it happened" in
-   the sheet. There is no group view to derive: a group is the picker, the chips, and the person
-   views of the people in it (4.7).
+   its labels made editable, the stake chips, and the sheet with a chalk "Send it". The claim
+   flow behind the outcome wells is the claim card (3.25) being filled in: the outcome already
+   chosen, a camera row, and "Say it happened" in the sheet. There is no group view to derive: a
+   group is the picker, the chips, and the person views of the people in it (4.7).
 2. **Classify every event it shows** with 4.4, then use the row or story anatomy as given.
 3. **Encode any obligation** with 2.1: side, hue, grammar, anatomy. If the screen has no "you,"
    fall back to sentence order with the owner's avatar leading.

@@ -152,7 +152,7 @@ export function CodeJoinFocused({ initial = "" }: { initial?: string }) {
           {Array.from({ length: CODE_LENGTH }, (_, i) => {
             const active = focused && i === Math.min(value.length, CODE_LENGTH - 1);
             return (
-              <span key={i} className={cn("flex h-[60px] w-12 items-center justify-center rounded-button border border-line bg-surface text-numeral text-ink", field && FIELD_PROBLEM_CLASS, active && "outline outline-2 outline-ink outline-offset-2")}>
+              <span key={i} data-type-exempt="" className={cn("flex h-[60px] w-12 items-center justify-center rounded-button border border-line bg-surface text-numeral text-ink", field && FIELD_PROBLEM_CLASS, active && "outline outline-2 outline-ink outline-offset-2")}>
                 {value[i] ?? (active ? <span className="h-6 w-px animate-pulse bg-ink-2" /> : null)}
               </span>
             );

@@ -1,5 +1,5 @@
-// Four tokens on content, and two more only on controls (a field's label and the field): within the budget,
-// because a control's label is outside the count (docs/design.md 1.2; docs/decisions.md 2026-09-25).
+// Four sizes on content, and a fifth only on a control (the code field at Hanken 20): within the budget, because
+// text inside a control is outside the count (docs/design.md 1.2, 4.8).
 export default function Controls() {
   return (
     <main>

@@ -1,4 +1,4 @@
-// Two serif sizes on one screen (docs/design.md 4.1), inside four tokens.
+// Two serif sizes on one screen (docs/design.md 1.2), inside four sizes.
 export default function TwoSerifs() {
   return (
     <main>

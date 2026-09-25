@@ -42,7 +42,7 @@ export function RoomCode({ dareId, url }: { dareId: string; url: string }) {
       {qr ? <div role="img" aria-label="A code to scan that opens this question" className="h-44 w-44 overflow-hidden rounded-button bg-ink p-3 [&>svg]:h-full [&>svg]:w-full" dangerouslySetInnerHTML={{ __html: qr }} /> : null}
       <p aria-label={`The code is ${code.split("").join(" ")}`} className="flex gap-2">
         {code.split("").map((c, i) => (
-          <span key={i} aria-hidden="true" className="flex h-[52px] w-10 items-center justify-center rounded-button border border-line bg-ground text-numeral text-ink">
+          <span key={i} aria-hidden="true" data-type-exempt="" className="flex h-[52px] w-10 items-center justify-center rounded-button border border-line bg-ground text-numeral text-ink">
             {c}
           </span>
         ))}

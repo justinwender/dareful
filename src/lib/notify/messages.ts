@@ -102,3 +102,20 @@ export function rulingNotice(input: { askerName: string | null; title: string; o
     url: `${input.appUrl}/m/${input.marketId}`,
   };
 }
+
+/**
+ * The person who was owed closed it (PLANNING.md Principle 1: "Gabe settled up" is a person acting). To the person
+ * who had it: who, and which one by its memo when it has one; never the unit, never an amount.
+ */
+export function closedNotice(input: { name: string; reason: "settled" | "forgiven"; memo: string | null; personId: string; appUrl: string }): Notice {
+  const url = `${input.appUrl}/p/${input.personId}`;
+  const which = input.memo ? `“${short(input.memo)}”` : null;
+  return input.reason === "forgiven"
+    ? { title: `${input.name} called it even`, body: which ? `Nothing more on ${which}.` : "Nothing more on that one.", url }
+    : { title: `${input.name} settled one with you`, body: which ? `${which} is done.` : "It's done.", url };
+}
+
+/** The other person cancelled out what went both ways. Who, and that only the difference is left; never the unit. */
+export function nettedNotice(input: { name: string; personId: string; appUrl: string }): Notice {
+  return { title: `${input.name} cancelled out what went both ways`, body: "Only the difference is left between you.", url: `${input.appUrl}/p/${input.personId}` };
+}

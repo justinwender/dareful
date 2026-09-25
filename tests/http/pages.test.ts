@@ -5,6 +5,7 @@
  */
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
+import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { SignJWT } from "jose";
 import { db, schema } from "@/db";
@@ -45,7 +46,7 @@ async function cookieFor(userId: string): Promise<string> {
 let A: User, B: User, C: User, U: User;
 let cA: string, cB: string, cU: string;
 let gabe: string, linkToken: string, inviteToken: string, groupId: string, boundId: string, ghostCoverId: string;
-let asker: Signer, friend: Signer, stranger: Signer, cAsker: string, cFriend: string, cStranger: string, marketId: string, draftId: string;
+let asker: Signer, friend: Signer, stranger: Signer, cAsker: string, cFriend: string, cStranger: string, marketId: string, draftId: string, owedId: string, photoId: string;
 
 before(async () => {
   const up = await fetch(BASE).catch(() => null);
@@ -79,6 +80,15 @@ before(async () => {
   const d = await markets.openMarket(d0.id, asker.user.id, await asker.ledger.signTypedData(markets.createTypedData(d0)));
   await markets.enterMarket({ dareId: d.id, userId: asker.user.id, stake: 1700n, valueBps: 8300n, signature: await asker.ledger.signTypedData(markets.enterTypedData(d, 1700n, 8300n)) });
   marketId = d.id;
+
+  // Between the asker and the friend: one cover the friend has to pick up, and four nobody expects to settle.
+  const row = (from: Signer, to: Signer, qty: bigint, settleExpected: boolean, memo: string | null, daysAgo: number) => ({ id: randomUUID(), tokenId: 1n, groupId: mg.id, fromUser: from.user.id, toUser: to.user.id, denomId: usd.id, quantity: qty, uniqueObligation: false, amountCents: qty, origin: "manual", settleExpected, memo, confirmTx: Buffer.alloc(32), createdAt: new Date(Date.now() - daysAgo * 86_400_000) });
+  const owed = row(friend, asker, 2300n, true, "Brunch at Ida’s", 1);
+  owedId = owed.id;
+  await db.insert(schema.obligations).values([owed, row(friend, asker, 900n, false, null, 9), row(asker, friend, 700n, false, null, 7), row(friend, asker, 1200n, false, null, 5), row(asker, friend, 400n, false, null, 3)]);
+  const [photo] = await db.insert(schema.media).values({ obligationId: owed.id, kind: "photo", storageKey: "frames/check.jpg", width: 810, height: 1080, authorId: asker.user.id }).returning({ id: schema.media.id });
+  photoId = (photo as { id: string }).id;
+  await db.update(schema.obligations).set({ mediaId: photoId }).where(eq(schema.obligations.id, owed.id));
 });
 after(cleanup);
 
@@ -338,6 +348,32 @@ test("every screen paints a band behind the status bar, and on a market screen i
   const ink = m.html.indexOf("--ground:");
   const band = m.html.indexOf('data-status-band=""');
   assert.ok(ink >= 0 && band > ink, `the band is inside the inked root, so it reads the market's ground: ink at ${ink}, band at ${band}`);
+});
+
+test("the person owed sees the row as the move to settle it or call it even, with its photo; the person who has it sees a row and the rally", async () => {
+  // docs/design.md 6.3: settling or forgiving is the person view, the obligation row, a sheet. Only the creditor closes (PLANNING.md 7).
+  const mine = await get(`/p/${friend.user.id}`, cAsker);
+  assert.equal(mine.status, 200);
+  assert.match(mine.html, /aria-label="Dev(&#x27;|')s got you\. Settle it, or call it even"/, "the creditor's row is the move");
+  assert.doesNotMatch(mine.html, /aria-label="You(&#x27;|')ve got[^"]*Settle it, or call it even"/, "what the viewer has to pick up is never theirs to close");
+  assert.ok(mine.html.includes(`/api/media/${photoId}?size=thumb`), "the settlement photo rides the row as its 84px thumbnail (3.4)");
+  assert.ok(/data-rally=""/.test(mine.html), "four unsettled pick-ups make a rally strip (3.11)");
+  assert.ok(!/\bnet\b|\bowes\b|\bbalance\b/i.test(mine.text), "nothing on the person view says net, owes or balance");
+  const theirs = await get(`/p/${asker.user.id}`, cFriend);
+  assert.equal(theirs.status, 200);
+  assert.doesNotMatch(theirs.html, /aria-label="You(&#x27;|')ve got[^"]*Settle it, or call it even"/, "the person who has it cannot close it: the friend's own rows to pick up are plain");
+  assert.match(theirs.html, /aria-label="Priya Raman(&#x27;|')s got you\. Settle it, or call it even"/, "and what the friend is owed in the rally is theirs to close");
+  assert.ok(/data-rally=""/.test(theirs.html));
+  assert.ok(owedId.length > 0);
+});
+
+test("a settlement photo is served to the two people in it and reads as nothing to anyone else", async () => {
+  assert.equal((await get(`/api/media/${photoId}`)).status, 404, "signed out: nothing");
+  assert.equal((await get(`/api/media/${photoId}?size=thumb`, cStranger)).status, 404, "someone else signed in: nothing, not even that it exists");
+  assert.equal((await get(`/api/media/${randomUUID()}`, cAsker)).status, 404, "an unknown photo");
+  const party = await get(`/api/media/${photoId}?size=thumb`, cFriend);
+  assert.notEqual(party.status, 404, "one of the two people in it is sent to the photo (or told the store is off, never that there is nothing)");
+  assert.ok(party.status === 302 ? /\/storage\/v1\/object\/sign\/media\//.test(party.loc ?? "") : party.status === 503, `a signed URL to the private bucket, or 503 when SUPABASE_SECRET_KEY is unset here: ${party.status}`);
 });
 
 test("the joining screen is for someone signed in; signed out it sends them home", async () => {

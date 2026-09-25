@@ -13,11 +13,23 @@ import { marketById, quorumOf, tally, VOID_OUTCOME, votesOf } from "@/lib/ledger
 import { firstName } from "@/lib/ui/copy";
 import { sendEmail, sendPush } from "./channels";
 import { positionsOf } from "@/lib/ledger/markets";
-import { deadlineNotice, rulingNotice, joinedNotice, nudgeNotice, nudgeSeq, nudgeTargets, openedNotice, recipientsAfterVote, resultNotice, voteRequest, type Notice } from "./messages";
+import { closedNotice, deadlineNotice, rulingNotice, joinedNotice, nettedNotice, nudgeNotice, nudgeSeq, nudgeTargets, openedNotice, recipientsAfterVote, resultNotice, voteRequest, type Notice } from "./messages";
 
 /** Claims the (person, market, kind, count) slot; false if it was already told. This is what makes a retry silent. */
 export async function claimNotice(userId: string, dareId: string, kind: "vote_request" | "result" | "opened" | "joined" | "nudge" | "deadline" | "ruling", seq: number, causedBy: string): Promise<string | null> {
   const [row] = await db.insert(schema.notificationLog).values({ userId, dareId, kind, seq, causedBy }).onConflictDoNothing().returning({ id: schema.notificationLog.id });
+  return row?.id ?? null;
+}
+
+/** The same slot, for an obligation: settled or forgiven is told once. */
+export async function claimObligationNotice(userId: string, obligationId: string, kind: "settled" | "forgiven", causedBy: string): Promise<string | null> {
+  const [row] = await db.insert(schema.notificationLog).values({ userId, obligationId, kind, seq: 0, causedBy }).onConflictDoNothing().returning({ id: schema.notificationLog.id });
+  return row?.id ?? null;
+}
+
+/** A netting is about two people and no one row: once per pair per six-hour window, the nudge's window. */
+export async function claimPairNotice(userId: string, causedBy: string, now: Date): Promise<string | null> {
+  const [row] = await db.insert(schema.notificationLog).values({ userId, kind: "netted", seq: nudgeSeq(now), causedBy }).onConflictDoNothing().returning({ id: schema.notificationLog.id });
   return row?.id ?? null;
 }
 
@@ -176,5 +188,27 @@ export async function notifyRuling(dareId: string, askedBy: string | null): Prom
     );
   } catch (err) {
     console.error("the ruling notice failed", { dareId, err });
+  }
+}
+
+/** The creditor closed it: the person who had it hears, once, which one and how (Principle 1). */
+export async function notifyClosed(obligationId: string, reason: "settled" | "forgiven", byUserId: string): Promise<void> {
+  try {
+    const [o] = await db.select({ fromUser: schema.obligations.fromUser, toUser: schema.obligations.toUser, memo: schema.obligations.memo }).from(schema.obligations).where(eq(schema.obligations.id, obligationId)).limit(1);
+    if (!o || o.toUser !== byUserId) return;
+    const [name, id] = await Promise.all([nameOf(byUserId), claimObligationNotice(o.fromUser, obligationId, reason, byUserId)]);
+    if (id) await deliver(o.fromUser, id, closedNotice({ name, reason, memo: o.memo, personId: byUserId, appUrl: APP_URL() }));
+  } catch (err) {
+    console.error("notifying that an obligation closed failed", { obligationId, err });
+  }
+}
+
+/** One person cancelled out what went both ways: the other hears, once per window. */
+export async function notifyNetted(otherUserId: string, byUserId: string, denomId: string): Promise<void> {
+  try {
+    const [name, id] = await Promise.all([nameOf(byUserId), claimPairNotice(otherUserId, byUserId, new Date())]);
+    if (id) await deliver(otherUserId, id, nettedNotice({ name, personId: byUserId, appUrl: APP_URL() }));
+  } catch (err) {
+    console.error("notifying that obligations were netted failed", { otherUserId, denomId, err });
   }
 }

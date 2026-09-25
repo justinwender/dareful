@@ -805,10 +805,10 @@ export const notificationLog = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id),
-    dareId: uuid("dare_id")
-      .notNull()
-      .references(() => dares.id),
-    kind: text("kind", { enum: ["vote_request", "result", "opened", "joined", "nudge", "deadline", "ruling"] }).notNull(),
+    /** What it is about: a question, or an obligation (settled, forgiven), or neither for a netting between two people. */
+    dareId: uuid("dare_id").references(() => dares.id),
+    obligationId: uuid("obligation_id").references(() => obligations.id),
+    kind: text("kind", { enum: ["vote_request", "result", "opened", "joined", "nudge", "deadline", "ruling", "settled", "forgiven", "netted"] }).notNull(),
     /**
      * What makes "the same thing" the same, per kind: how many had voted (vote_request), how many were in
      * (joined), a six-hour window (nudge), 0 otherwise.
@@ -822,7 +822,13 @@ export const notificationLog = pgTable(
     channels: text("channels").array().notNull().default(sql`'{}'`),
     createdAt: ts("created_at").notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("notification_log_once").on(t.userId, t.dareId, t.kind, t.seq)],
+  (t) => [
+    uniqueIndex("notification_log_once").on(t.userId, t.dareId, t.kind, t.seq).where(sql`${t.dareId} is not null`),
+    uniqueIndex("notification_log_once_obligation").on(t.userId, t.obligationId, t.kind, t.seq).where(sql`${t.obligationId} is not null`),
+    // A netting is between two people and about no one row: once per pair per window, keyed by who did it.
+    uniqueIndex("notification_log_once_pair").on(t.userId, t.causedBy, t.kind, t.seq).where(sql`${t.kind} = 'netted'`),
+    check("notification_log_about_one", sql`(${t.kind} = 'netted' and ${t.dareId} is null and ${t.obligationId} is null) or (${t.kind} <> 'netted' and (${t.dareId} is null) <> (${t.obligationId} is null))`),
+  ],
 ).enableRLS();
 
 /** When someone typed a room code that matched nothing, and nothing about the code. For the hourly guess limit. */

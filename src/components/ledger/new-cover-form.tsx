@@ -383,7 +383,7 @@ export function NewCoverForm({ people, groups, recent, initialPerson, initialGro
           {splitting ? "The total" : isMoney ? "How much" : "What it cost, if you want to remember (optional)"}
         </label>
         <div className="flex items-center gap-2">
-          <span className="text-numeral text-ink-2">$</span>
+          <span data-type-exempt="" className="text-numeral text-ink-2">$</span>
           <input
             id="amount"
             ref={amountRef}

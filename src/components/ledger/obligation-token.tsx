@@ -4,7 +4,6 @@ import { formatMoney, glyphKeyOf, quotedUnit, unitWords } from "@/lib/ui/units";
 import { possessive } from "@/lib/ui/copy";
 import { cn } from "@/lib/utils";
 import { Avatar } from "./avatar";
-import { MarkStamp } from "./mark-stamp";
 import { UnitGlyph } from "./glyphs";
 
 export type TokenOwner = { id: string; displayName: string; hue: Hue; ghost?: boolean };
@@ -33,7 +32,17 @@ export function ObligationToken({ owner, other, viewerId, denomination, quantity
   const label = `${possessiveSentence(owner, other, viewerId)} ${words}`;
   const avatarSize = height === 40 ? 28 : 22;
   const glyphSize = height === 40 ? 18 : 16;
-  const mark = denomination.markKind && denomination.markValue ? <MarkStamp kind={denomination.markKind === "image" ? "image" : "emoji"} value={denomination.markValue} size={20} /> : null;
+  // A unit's mark inside a token is a bare 16px glyph on the token's own fill, 4px before the quoted words, with
+  // no stamp behind it (docs/design.md 1.7, 3.2): a filled square inside a 32px capsule is a box in a box.
+  const mark =
+    denomination.markKind === "emoji" && denomination.markValue ? (
+      <span aria-hidden="true" className="inline-block shrink-0" style={{ fontSize: 16, lineHeight: 1 }}>
+        {denomination.markValue}
+      </span>
+    ) : denomination.markKind === "image" && denomination.markValue ? (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={denomination.markValue} alt="" width={16} height={16} className="h-4 w-4 shrink-0 object-cover" />
+    ) : null;
 
   let body: React.ReactNode;
   if (denomination.monetary) {
@@ -56,7 +65,7 @@ export function ObligationToken({ owner, other, viewerId, denomination, quantity
   } else {
     const n = Number(quantity);
     body = (
-      <span className="inline-flex items-center gap-1.5 text-ink" aria-hidden="true">
+      <span className="inline-flex items-center gap-1 text-ink" aria-hidden="true">
         {mark}
         <span className="text-serif-m">
           {n > 1 ? `${n} × ` : ""}

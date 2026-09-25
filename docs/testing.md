@@ -354,22 +354,69 @@ Not a session with people, and recorded as such: the two-account pattern the set
 2. **On every other screen the tab bar and the sheet sat high, with a dark band beneath.** Read as the bottom inset paid twice. It is paid once in the code: the body pays top and sides, the bar and the sheet each pay their own bottom, nothing else pays it.
 3. **Scrolled content ran under the translucent status bar** into the clock. The body's top padding only keeps content clear at rest.
 
-What the first two match, together, is a regression in iOS 26.0 (Apple Developer Forums thread 800125, and the same report against Edge on iOS): once the keyboard has been up and gone, `visualViewport.height` stays around 24px under `window.innerHeight` and `offsetTop` does not return to 0, and fixed elements track that stale viewport: a footer pinned to the bottom sits above the home indicator with the page showing beneath it, looks right while scrolling down and is visibly offset while scrolling up. The state lasts for the life of the document, so a client-side navigation carries it from the screen where something was typed to every screen after it. That fits the shape of the report: Now on a cold start is fine, the ask flow (fields) and everything reached after it is not, and Now again only after the code field or a return from the ask flow. It is recorded as a reading, not a confirmation: nothing here can run iOS 26, the iOS simulator on this machine has no Xcode behind it, and the desktop browser's phone emulation neither pays insets nor has the bug. Users report Apple fixed it in 26.1; 26.0.1 still has it.
+The first reading of the two bottom findings attributed them to a regression in iOS 26.0 (Apple Developer Forums thread 800125): after the keyboard has been up and gone, `visualViewport.height` stays short of `window.innerHeight` and `offsetTop` does not return to 0, and fixed elements track that stale viewport for the life of the document. That attribution was withdrawn the same day: the phone that showed the drift runs iOS 26.6.2, past the 26.1 fix, so the 26.0 bug cannot be what it was. What survives is a mechanism and a repair that answers to it: if dismissing the keyboard leaves the visual viewport stuck on this phone for whatever reason, the fixed bar and sheet would sit high with the page beneath and drift on scroll, which is the shape of the report (Now clean on a cold start, the ask flow and everything after it wrong); the repair fires on that symptom, never on the version. Nothing here can run iOS, the simulator on this machine has no Xcode behind it, and the desktop browser's phone emulation neither pays insets nor has the bug, so the cause on 26.6.2 is unknown until the phone is read.
 
 ### What changed
 
 - `Screen` paints a fixed band the height of the top inset behind the status bar: the ground with its grain, and on a market screen the market's ground, because the band is inside the inked root. Verified on localhost: the band is fixed, `z-20`, 0px tall on the desktop (no inset) and reads Sea's ground on a Sea market. A page test holds it on Now and inside the ink on a market screen.
-- `ViewportRepair` in the root layout, iOS only: after a field loses focus or the visual viewport resizes, while the reading says the viewport is stuck (short or offset, nothing focused, no pinch zoom), it scrolls one pixel and back so Safari re-reads the viewport. The rule is `viewportStuck`, with three mutants.
+- `ViewportRepair` in the root layout, iOS only: after a field loses focus or the visual viewport resizes, while the reading says the viewport is stuck (short or offset, nothing focused, no pinch zoom), it scrolls one pixel and back so Safari re-reads the viewport. The rule is `viewportStuck`, with three mutants. Kept, not reverted, until the cold-start check below says whether the mechanism holds.
 - Nothing about the inset changed, because nothing about it was wrong in the code.
 
 ### What to check on the phone
 
 All on the installed app. If the first check fails, the reading above is wrong and the cause is elsewhere.
 
-1. **Settings, General, About: the iOS version.** On 26.1 or later the drift and the band should not appear at all without any fix; on 26.0 or 26.0.1 they should, before this build.
-2. **Cold start onto Now, no typing.** Kill the app, open it, scroll Now up and down. The bar should stay put and sit on the home indicator with nothing beneath it. Then tap the code field, dismiss the keyboard, scroll up: on the old build this is where the bar drifted; on this build it should settle within a second of the keyboard going.
+1. **The deciding check, on iOS 26.6.2.** Cold start the installed app onto Now without touching any field, and scroll. Then tap the code field, dismiss the keyboard, and scroll again. If the bar is fine cold and drifts only after the keyboard, the mechanism holds and the repair either works (it settles within a second of the keyboard going) or needs a larger nudge. If it drifts on the cold start with no keyboard ever shown, the mechanism is wrong too and this needs a fresh diagnosis.
+2. **Then the same after typing elsewhere.** Type in the ask flow, dismiss the keyboard, come back to Now: the same two outcomes, read the same way.
 3. **Start, then the ask flow.** Type a question, dismiss the keyboard, then tap back to Now and over to People. The sheet on the ask flow and the bar on People should sit on the home indicator with no ground showing beneath.
 4. **Scroll any long screen** (a market with several people in, or People). The clock and the status bar should sit on a solid band of the screen's ground, never over moving content; on a market screen the band is the market's ink.
 5. **Pinch zoom on a market screen and let go.** Nothing should jiggle; the repair never runs under zoom.
-6. **If the bar still sits high after the keyboard on 26.0**, note whether it settles after a scroll of any size: that tells whether the one-pixel scroll is too small for Safari to re-read the viewport, which is the one part of the repair that could not be exercised here.
+6. **If the bar still sits high after the keyboard**, note whether it settles after a scroll of any size: that tells whether the one-pixel scroll is too small for Safari to re-read the viewport, which is the one part of the repair that could not be exercised here.
+
+## Session 8: the lifecycle, in two real sessions
+
+**When:** September 25, 2026. **Who:** the two test accounts: the creditor on localhost (the lifecycle build) and the other person on dareful.app (the deployed second-half build, which knows nothing of the new screens but reads the same chain), both in the development browser, both signed in by the author. Every chain write below is on the real relayer.
+
+### Confirmed first
+
+- **The last session's diagnosis was wrong about the version.** The phone that showed the drifting bar runs iOS 26.6.2, past the fix for the 26.0 regression it was blamed on; the entry is corrected in docs/decisions.md and the deciding check is item 1 under session 7. The repair stays until that check answers.
+- **The design session's files are in their places**, the old ones gone, the emoji data with the app's other data and the script in `scripts/` with its running note. The repository has no Python tooling; the script stays Python (docs/decisions.md).
+
+### What was exercised
+
+- **Netting, on one signature, in one transaction.** The two accounts had $10 each way from two arguments in the same set of people, and $2.10 more one way. The creditor's person view read "Claude Code's got you $2.10" in the header, as it always nets for display, and under it the new row: "Cancel out the $10 each way", with "You've got Claude Code $10 and Claude Code's got you $12.10, in Claude and you." The sheet asked "Cancel out the $10 each way?" over "After this, Claude Code's got you $2.10." and "Cancel them out" signed with the ledger wallet from its own button, the relayer carried one `net`, the page refreshed, the row was gone and the header read the difference alone. On dareful.app the other account's header showed the same.
+- **A cover, confirmed from the other origin, then settled.** "I got this one" on localhost against the other account ($18, "Lifecycle check: to settle"), confirmed on dareful.app with the deployed build's own "Yep, that's right", minted on the chain; back on localhost the covered card had become the move (its accessible name: "Claude Code's got you. Settle it, or call it even"), the sheet held the sentence, the memo, "Settled" in chalk and "Call it even" at the same size, and "Settled" signed the Close over the obligation's own counter. The card carries the Settled mark and is a control no longer; dareful.app shows the same mark from the indexer.
+- **A second cover, called even.** $7, confirmed the same way, then "Call it even" from the sheet: Forgiven on both origins.
+- **The photo row** did not appear in the sheet, because `SUPABASE_SECRET_KEY` is not set on the development machine; the sheet hides the camera rather than offering one that leads nowhere. The pipeline itself is exercised by its unit tests against a photo made by sharp's own EXIF writer: the fixture carries a GPS block, the stored frame carries no EXIF at all, orientation 6 turns a 1600 by 1200 input into an 810 by 1080 frame, and the capture time is read with the camera's offset.
+- **The notices.** The other account's `notification_log` holds one `settled` and one `forgiven` notice, caused by the creditor, and one `netted` notice for the pair; no channel took them, since push and email are off here.
+- **The type budget, counted in sizes**, against the build: twelve screens pass at four or under (eleven had failed the token count), three are held to a day-one baseline with their reasons in docs/decisions.md.
+
+### What broke
+
+- **A second close seconds after the first was refused by the contract.** `closeState` took what is open from the indexer, which runs seconds behind the chain, so a close signed for the full amount landed on a counter that had moved. It now takes the smaller of the indexer's figure and the chain's own `minted - closed`, and the chain test that found it passes.
+- **The card handed a Buffer to the client.** The covered card's unit was the whole denomination row, onchain id included, and React warned that binary data was crossing as JSON. The page now sends the card the seven fields it reads.
+- **The page test assumed a first name in an accessible name.** The sentence uses the display name the product uses everywhere ("Priya Raman's got you"); the test, not the product, was corrected.
+- **The header on localhost still said $7 for a moment after the forgiveness**, because the header is read from the indexer and the refresh beat it by a second or two; the card itself showed Forgiven at once from its own state, and the next load agreed. Recorded, not changed: the header is derived from the chain and stays that way.
+
+### What needs the operator, a phone or a second person
+
+1. **Photos need `SUPABASE_SECRET_KEY`.** Create a secret key (`sb_secret_…`) in the project's API settings, put it in `.env.local` and Vercel, then on a phone: open a cover you are owed, tap it, "Add a photo of it", take one, "Settled". Expect the 84px thumbnail on the card within a second of the sheet closing, the same thumbnail on the other person's phone, and a 404 (a blank tab) if a third person pastes the photo's address. Then disable the legacy `service_role` and anon keys in the dashboard: nothing reads them.
+2. **The email records**, for Cloudflare, all DNS-only, for approval before anything is entered. Values marked "from Resend" are shown when the domain is added there and cannot be written ahead.
+
+   | Type | Name | Content | Notes |
+   | --- | --- | --- | --- |
+   | TXT | `send` | `v=spf1 include:amazonses.com ~all` | SPF for the sending subdomain Resend uses as the return path |
+   | MX | `send` | `feedback-smtp.us-east-1.amazonses.com`, priority 10 | Bounces; the host depends on the region picked when the domain is added (from Resend) |
+   | TXT | `resend._domainkey` | `p=…` | DKIM, from Resend; proxy off |
+   | TXT | `_dmarc` | `v=DMARC1; p=none; rua=mailto:<the operator address>; adkim=r; aspf=r; pct=100` | Reports first; after a week of clean reports, `p=quarantine` |
+
+   With `EMAIL_FROM` as `Dareful <hello@dareful.app>` and DKIM signed by `dareful.app`, DMARC aligns on DKIM, which is what keeps a new domain out of Gmail's spam folder. Nothing else sends from the root today; a root `v=spf1 -all` would harden it further and is left out until that is confirmed. Then `RESEND_API_KEY` and `EMAIL_FROM` in Vercel turn the channel on for the relayer watch and for every user notice.
+3. **On a phone, after the deploy**: the sheet from a covered card (tap the card, not a button), the two buttons at the same size, "Never mind" by dragging the handle down; the netting row and its sheet; the rally strip's dots under a person with four or more covers nobody expects to settle.
+4. **The deciding check for the drifting bar** is still open: session 7, item 1.
+
+### Still owed
+
+- An obligation a market minted has no row of its own on the person view and cannot be closed from its story yet.
+- "Just happened" does not list closed obligations; it needs a moment to order by (docs/decisions.md, "Settling and forgiving, from the row").
+- Closing the books has no home in the specification; asked.
 

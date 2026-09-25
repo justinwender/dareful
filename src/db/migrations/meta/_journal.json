@@ -120,6 +120,13 @@
       "when": 1790346025596,
       "tag": "0016_ask_zone",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1790358059944,
+      "tag": "0017_notices_about_obligations",
+      "breakpoints": true
     }
   ]
 }

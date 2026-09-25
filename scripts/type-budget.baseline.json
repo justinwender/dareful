@@ -1,46 +1,14 @@
 {
   "src/app/c/[token]/page.tsx": {
-    "tokens": 8,
-    "serifs": 3
-  },
-  "src/app/join/page.tsx": {
-    "tokens": 6,
-    "serifs": 1
-  },
-  "src/app/m/[id]/page.tsx": {
-    "tokens": 8,
+    "sizes": 5,
     "serifs": 2
   },
   "src/app/m/new/page.tsx": {
-    "tokens": 6,
+    "sizes": 5,
     "serifs": 2
-  },
-  "src/app/new/page.tsx": {
-    "tokens": 5,
-    "serifs": 0
-  },
-  "src/app/o/[id]/page.tsx": {
-    "tokens": 6,
-    "serifs": 2
-  },
-  "src/app/p/[id]/page.tsx": {
-    "tokens": 7,
-    "serifs": 2
-  },
-  "src/app/p/c/[id]/page.tsx": {
-    "tokens": 6,
-    "serifs": 1
   },
   "src/app/page.tsx": {
-    "tokens": 8,
+    "sizes": 6,
     "serifs": 3
-  },
-  "src/app/people/page.tsx": {
-    "tokens": 6,
-    "serifs": 1
-  },
-  "src/app/welcome/page.tsx": {
-    "tokens": 7,
-    "serifs": 2
   }
 }

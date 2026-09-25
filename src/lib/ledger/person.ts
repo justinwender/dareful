@@ -8,6 +8,7 @@ import { db, schema } from "@/db";
 import { membersOfGroups, setLabel } from "./groups";
 import type { DenominationRow } from "./denominations";
 import { denominationsByIds } from "./denominations";
+import { nettablePairs } from "./closes";
 import { obligationsById, openBetween, type EnvioObligation } from "./envio";
 import { bytes16ToUuid, uuidToBytes16 } from "./ids";
 import { marketCards, type MarketCardData } from "./market-view";
@@ -68,6 +69,9 @@ export type TimelineEvent =
   /** A market both people were in: one story, with only what it left between these two beneath it. */
   | { kind: "market"; at: Date; market: MarketCardData };
 
+/** One unit in one set of people that goes both ways between these two: what one signature cancels (docs/design.md 2.1; PLANNING.md 5a `net`). */
+export type NettableLine = { groupId: string; denomId: string; denomination: DenominationRow; groupLabel: string | null; meOwes: bigint; theyOwe: bigint; cancels: bigint };
+
 export type PersonView = {
   me: UserRow;
   them: UserRow;
@@ -76,7 +80,21 @@ export type PersonView = {
   timeline: TimelineEvent[];
   /** Where these two turn up: the sets of people their shared events came out of, by how many. */
   contexts: SharedContext[];
+  nettable: NettableLine[];
 };
+
+export type RallyRow = { userId: string; slots: boolean[] };
+
+/**
+ * The rally strip (docs/design.md 3.11): the last twelve pick-ups nobody expects to settle, oldest first, one
+ * row per person (theirs first, then yours), a dot in that person's hue where they picked one up. It needs a
+ * pattern to show one: with fewer than four pick-ups there is no strip at all.
+ */
+export function rallyRows(pickups: Array<{ userId: string; at: Date }>, meId: string, themId: string): RallyRow[] | null {
+  if (pickups.length < 4) return null;
+  const recent = [...pickups].sort((a, b) => a.at.getTime() - b.at.getTime()).slice(-12);
+  return [themId, meId].map((userId) => ({ userId, slots: recent.map((p) => p.userId === userId) }));
+}
 
 export type SharedContext = { groupId: string; label: string; count: number; unnamed: boolean };
 const contextOf = (e: TimelineEvent): string => (e.kind === "market" ? e.market.dare.groupId : e.kind === "proposal" ? e.proposal.groupId : e.obligation.groupId);
@@ -181,7 +199,17 @@ export async function personView(me: UserRow, them: UserRow): Promise<PersonView
     else e.groupName = label;
   }
 
-  return { me, them, header, rally: { pickups, sentence }, timeline, contexts: sharedContexts(timeline, labels) };
+  // What goes both ways in one unit and one set of people, and so can cancel on one signature from either side.
+  const edges = open.flatMap((e) => {
+    const row = rows.get(bytes16ToUuid(e.id));
+    return row ? [{ ...e, groupId: row.groupId, denomId: row.denomId }] : [];
+  });
+  const nettable: NettableLine[] = nettablePairs(edges, me.ledgerWallet, them.ledgerWallet).flatMap((p) => {
+    const denomination = denoms.get(p.denomId);
+    return denomination ? [{ groupId: p.groupId, denomId: p.denomId, denomination, groupLabel: labels.get(p.groupId)?.label ?? null, meOwes: p.aOwes, theyOwe: p.bOwes, cancels: p.cancels }] : [];
+  });
+
+  return { me, them, header, rally: { pickups, sentence }, timeline, contexts: sharedContexts(timeline, labels), nettable };
 }
 
 export async function userById(id: string): Promise<UserRow | null> {

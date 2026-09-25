@@ -16,7 +16,7 @@
  * signed: every position in `create` carries its owner's own signature. And one resolution per transaction.
  */
 import { randomUUID } from "node:crypto";
-import { emojiHue } from "@/lib/ui/emoji-hue";
+import { drawable, emojiInk } from "@/lib/ui/emoji-ink";
 import { inkFor, inkOf, type InkName } from "@/lib/ui/ink";
 import { and, asc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { decodeEventLog, keccak256, stringToHex, verifyTypedData, type Address, type Hex } from "viem";
@@ -179,6 +179,8 @@ export async function draftMarket(input: DraftInput): Promise<DareRow> {
     .from(schema.groupMembers)
     .where(and(eq(schema.groupMembers.groupId, input.groupId), isNotNull(schema.groupMembers.userId), isNull(schema.groupMembers.leftAt)));
   const mark = input.markEmoji?.trim() || null;
+  // A mark the tile renderer's font cannot draw would be a blank box in the group chat (docs/design.md 1.8).
+  if (mark && !drawable(mark)) throw new MarketError("That mark can't be drawn on the link. Pick another.", "bad_input");
   // The market's ink (docs/design.md 1.8): the mark's hue, or a hash of the id, balanced against the inks of the
   // questions still open between these people. Decided once, here, and stored, so balance never re-reads pixels.
   const id = randomUUID();
@@ -186,7 +188,7 @@ export async function draftMarket(input: DraftInput): Promise<DareRow> {
     .select({ id: schema.dares.id, ink: schema.dares.ink })
     .from(schema.dares)
     .where(and(eq(schema.dares.groupId, input.groupId), isNotNull(schema.dares.creatorSignature), isNull(schema.dares.resolvedAt)));
-  const chosen = inkFor({ markHue: mark ? emojiHue(mark) : null, id, takenInGroup: openHere.map((o) => inkOf(o)) });
+  const chosen = inkFor({ markInk: mark ? emojiInk(mark) : null, id, takenInGroup: openHere.map((o) => inkOf(o)) });
   const [row] = await db
     .insert(schema.dares)
     .values({

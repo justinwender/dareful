@@ -26,7 +26,8 @@ keeps up with a group inventing bets every weekend. Anything a group invents can
 **mark** instead.
 
 - A mark is an emoji, a picture, or a sticker (a cutout with transparency) the creator picks.
-  Nothing is generated, suggested from the words, or defaulted.
+  Nothing is generated, suggested from the words, or defaulted. For now it is emoji only:
+  pictures and stickers wait for the upload pipeline.
 - Two things can carry one: a **market** (Priya's sleep market gets a moon) and a
   **denomination** (the dumpling run gets a dumpling).
 - Blank is the default and stays blank. An empty stamp never gets a placeholder.
@@ -36,7 +37,38 @@ keeps up with a group inventing bets every weekend. Anything a group invents can
 - A market's mark decides its ink, one of eight muted colour families (design.md 1.8). The
   creator can override it from the market screen; otherwise the mark's dominant hue snaps to
   the nearest ink, hueless marks fall back to a hash of the market id, and markets open between
-  the same people avoid sharing an ink while fewer than eight are open.
+  the same people avoid sharing an ink while fewer than eight are open. For emoji the hue is a
+  lookup in `src/lib/ui/emoji-inks.json` (below), and balance is applied on the who's-in step, once
+  the people are known.
+- A unit is not a place, so a denomination's mark never takes an ink. Inside an obligation token
+  it is a bare 16px glyph on the token's fill, 4px before the quoted words; anywhere else it sits
+  in a 28px stamp on surface-2.
+
+### The picker
+
+The first step of asking is the question step: the question in serif, and above it an optional
+mark row ("Add a mark", "Optional. It picks this market's colour."). Tapping it opens a picker
+sheet: search over emoji names and tags, a Recent row with a dashed None first, category chips
+as words, and an 8-column grid. A tap sets the mark and retints the whole step to the mark's ink
+at once, and the sheet stays open to try another, which is how people learn what a mark does
+without anyone explaining it. A face or a grey mark gets the market's hashed ink and one line
+saying why. The same picker serves a denomination's mark, with no colour preview. Stickers get a
+reserved "Your stickers" section above Recent when the upload pipeline exists, and nothing else
+about the picker changes then. Full spec: design.md 3.29; boards `MarkPicker` and
+`MarkPickerFrames`.
+
+### The emoji ink table
+
+`src/lib/ui/emoji-inks.json` maps every emoji to an ink or to `null` (hash). `scripts/emoji-inks.py`
+builds it from Noto Color Emoji, the font the tile renderer loads, so a market's ink never
+depends on which phone made it: 👕 is Sea everywhere, even on a phone that draws it blue.
+Faces, cat faces and everything in People and Body are `null` (their colour is a template, not a
+choice), as are marks with less than a quarter of their pixels in colour. Keys are normalised by
+stripping U+FE0F and the skin-tone modifiers U+1F3FB to U+1F3FF, and lookups normalise the same
+way, so skin tone never picks an ink. The keys are exactly the emoji the reference font can draw,
+and the picker offers only those, so a mark can never become a blank box on a tile. The client
+carries the table for the picker's preview; the server recomputes the ink from the same table at
+creation and stores it. Regenerate the table whenever the renderer's font changes.
 
 ### Where a market's mark appears
 
@@ -57,11 +89,12 @@ ink_source  text not null check (ink_source in ('pick','mark','hash'))
 ```
 
 Store the derived ink on the row when the market is created (and when the creator overrides
-it), so balance can be checked across open markets without re-reading any pixels.
+it), so balance can be checked across open markets without re-reading any pixels. Until the
+upload pipeline ships, `mark_kind` is only ever `'emoji'`.
 
-Sizes are fixed by the container, not by the asset: 20px in a token or kicker, 28px in a
-compact row, 40px in a list row, 44px in the question band, 64px in the picker. Radii 6 / 8 /
-10 / 12 / 16.
+Sizes are fixed by the container, not by the asset: 20px in a kicker, 28px in a compact row,
+40px in a list row, 44px in the question band, 64px on the question step. A denomination's mark
+inside a token has no stamp at all, just the 16px glyph. Radii 6 / 8 / 10 / 12 / 16.
 
 ### Pipeline notes
 
@@ -76,6 +109,9 @@ compact row, 40px in a list row, 44px in the question band, 64px in the picker. 
   as a blank box in a group chat, which is the worst place to find out.
 
 ## Stickers: a memory that becomes a mark
+
+Deferred until the upload pipeline exists. The picker reserves a place for them and nothing more;
+the notes below are for when that work starts.
 
 When a market settles with a photo, the settled screen offers "Make a sticker": tap the
 subject, the cutout lifts, one tap keeps it. John asleep on the couch becomes the mark on the
@@ -156,12 +192,13 @@ obligation rather than putting bytes anywhere near the chain.
 
 ## Phasing
 
-**In the hackathon build.** Marks on markets and denominations (emoji first, picture if time
-allows, stickers by paste). The derived ink on every market. Photos on resolved markets with
+**In the hackathon build.** Marks on markets and denominations, emoji only, through the picker.
+The derived ink on every market, from the emoji table. Photos on resolved markets with
 the full-width frame, credit and counter. "Add yours" on a resolved market. The asking tile and
 the result tile, with the emoji font loaded in the server renderer.
 
-**After.** Tap-to-cut stickers, video with inline playback, the "a year ago tonight" card, night-level grouping
+**After.** Picture marks and stickers once the upload pipeline exists (paste first, then
+tap-to-cut), video with inline playback, the "a year ago tonight" card, night-level grouping
 ("the rest of that night" on the memory screen), and per-group memory browsing.
 
 **Not building.** Camera roll sync, auto-albums, face grouping, any notification that counts
@@ -173,8 +210,11 @@ photos, and any surface that shows media outside the story it belongs to.
 2. Turning every mark off leaves every screen readable, including screen readers.
 3. An asking tile for a market with an emoji mark renders server-side with the emoji visible
    at both ends of the empty line, and a result tile with a video shows its poster frame.
-4. A pasted sticker keeps its transparency, gets its die-cut edge, and picks an ink from its
-   opaque pixels only.
+4. When stickers ship: a pasted sticker keeps its transparency, gets its die-cut edge, and picks
+   an ink from its opaque pixels only.
 5. A photo added three weeks after resolution appears in the story, in the strip and in the
    counter, credited to whoever added it.
 6. Nothing anywhere counts how many photos a person has or has not added.
+7. A market with a picked emoji has the same ink on every phone and on both of its tiles, and the
+   picker offers no emoji the tile renderer cannot draw.
+8. A denomination's mark inside a token has nothing behind it but the token's own fill.

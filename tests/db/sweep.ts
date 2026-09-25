@@ -32,7 +32,12 @@ async function main(): Promise<void> {
       await tx.delete(schema.obligations).where(inArray(schema.obligations.originId, ids));
       await tx.delete(D).where(inArray(D.id, ids));
     }
-    if (u.length) await tx.delete(schema.obligations).where(or(inArray(schema.obligations.fromUser, u), inArray(schema.obligations.toUser, u)));
+    if (u.length) {
+      // A settlement photo hangs off an obligation and the obligation points back at it: unhook, then remove both.
+      await tx.update(schema.obligations).set({ mediaId: null }).where(or(inArray(schema.obligations.fromUser, u), inArray(schema.obligations.toUser, u)));
+      await tx.delete(schema.media).where(inArray(schema.media.authorId, u));
+      await tx.delete(schema.obligations).where(or(inArray(schema.obligations.fromUser, u), inArray(schema.obligations.toUser, u)));
+    }
     const P = schema.obligationProposals;
     // Expenses hang off groups and users, and their items and claims hang off them.
     const E = schema.expenses;

@@ -29,6 +29,8 @@ export type CoveredCardProps = {
   href?: string;
   /** Replaces "Tap to confirm" where the card is not a control, such as a claim link seen before signing in. */
   pendingHint?: string;
+  /** The settlement photo (Principle 6), as the 84px thumbnail a covered card carries (3.4); the full frame behind it. */
+  photo?: { thumb: string; full: string };
 };
 
 /**
@@ -58,8 +60,17 @@ export function CoveredCard(p: CoveredCardProps) {
         </span>
         {p.groupName ? <Chip>{p.groupName}</Chip> : null}
       </div>
-      <p className="text-body-strong text-ink">{subject}</p>
-      {support ? <p className="text-body-sm text-ink-2">{support}</p> : null}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-body-strong text-ink">{subject}</p>
+          {support ? <p className="text-body-sm text-ink-2">{support}</p> : null}
+        </div>
+        {p.photo ? (
+          // Behind a signed URL that expires; next/image would need a loader for one. Not a link inside a link.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={p.photo.thumb} alt="The photo from when it was settled" width={84} height={84} loading="lazy" className="h-[84px] w-[84px] shrink-0 rounded-button bg-surface-2 object-cover" />
+        ) : null}
+      </div>
       <div className="mt-1 flex items-center justify-between gap-3 border-t border-line pt-3">
         <span className="text-body-sm text-ink-2">{p.state === "pending" && p.debtor.id === p.viewerId ? (p.pendingHint ?? "Tap to confirm") : consequence}</span>
         <ObligationToken

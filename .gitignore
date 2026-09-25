@@ -34,3 +34,4 @@ npm-debug.log*
 # local tooling
 .claude/
 tests/mutation/.restore.json
+scripts/emoji-inks-detail.json
