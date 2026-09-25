@@ -636,4 +636,17 @@ const httpMarkets: Mutant[] = [
   h("banned-on-ask-screen", "src/components/markets/ask-form.tsx", "What are you wondering?", "What is your balance?", ["no banned word on the ask screen"], "banned word on the page"),
 ];
 
-export const MUTANTS: Mutant[] = [...device, ...ai, ...post2b, ...phase2c0, ...settler, ...httpSettler, ...rework, ...reworkDb, ...httpRework, ...httpMarkets, ...marketMutants, ...viewMutants, ...scoring, ...resend, ...unit, ...invites, ...claims, ...many, ...share, ...http, ...client, ...login, ...covers];
+const VIEWPORT = "src/lib/ui/viewport.ts";
+const WATCH = "src/lib/chain/watch.ts";
+const U_SHELL = "tests/unit/shell.test.ts";
+const phone: Mutant[] = [
+  { id: "viewport-repairs-under-the-keyboard", file: VIEWPORT, find: "  if (r.typing) return false;", replace: "  void 0;", suite: U_SHELL, kills: ["a viewport that is short or offset with nothing typing and no zoom is stuck; the keyboard and pinch zoom are not"], why: "the page jiggles while someone types" },
+  { id: "viewport-repairs-pinch-zoom", file: VIEWPORT, find: "  if (r.scale !== 1) return false;", replace: "  void 0;", suite: U_SHELL, kills: ["a viewport that is short or offset with nothing typing and no zoom is stuck; the keyboard and pinch zoom are not"], why: "every pinch zoom is fought" },
+  { id: "viewport-never-stuck", file: VIEWPORT, find: "  return r.offsetTop !== 0 || r.innerHeight - r.height >= 1;", replace: "  return r.offsetTop !== 0;", suite: U_SHELL, kills: ["a viewport that is short or offset with nothing typing and no zoom is stuck; the keyboard and pinch zoom are not"], why: "the short viewport, the reported form, is never repaired" },
+  { id: "relayer-floor-is-a-tenth", file: WATCH, find: "export const RELAYER_FLOOR = 3n * 10n ** 18n;", replace: "export const RELAYER_FLOOR = 3n * 10n ** 17n;", suite: U_SHELL, kills: ["the relayer is low under three MON, said once an hour, and read in whole MON without a float"], why: "the warning arrives at 0.3 MON, too late for anyone to refill before the chain writes fail" },
+  { id: "relayer-said-every-minute", file: WATCH, find: "  return now.getUTCMinutes() === 0;", replace: "  return true;", suite: U_SHELL, kills: ["the relayer is low under three MON, said once an hour, and read in whole MON without a float"], why: "sixty emails an hour" },
+  { id: "relayer-mon-rounds-up", file: WATCH, find: '  return `${whole}.${(frac + "00").slice(0, 2)}`;', replace: "  return Number(formatEther(balance)).toFixed(2);", suite: U_SHELL, kills: ["the relayer is low under three MON, said once an hour, and read in whole MON without a float"], why: "a float on the number, and 0.0084 reads as 0.01" },
+  h("no-band-behind-the-status-bar", SCREEN, '      <div aria-hidden="true" data-status-band="" className="grain fixed inset-x-0 top-0 z-20 h-[env(safe-area-inset-top)]" />\n', "", ["every screen paints a band behind the status bar, and on a market screen it sits inside the market's ink"], "scrolled content runs into the clock again"),
+];
+
+export const MUTANTS: Mutant[] = [...device, ...ai, ...post2b, ...phase2c0, ...settler, ...httpSettler, ...rework, ...reworkDb, ...httpRework, ...httpMarkets, ...marketMutants, ...viewMutants, ...scoring, ...resend, ...unit, ...invites, ...claims, ...many, ...share, ...http, ...client, ...login, ...covers, ...phone];

@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { notifyDeadline, notifyRuling } from "@/lib/notify";
 import { tick } from "@/lib/ledger/settle";
+import { watchRelayer } from "@/lib/chain/watch";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -20,8 +21,14 @@ export async function POST(req: Request): Promise<Response> {
   const given = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
   const ok = Boolean(secret) && secret !== undefined && given.length === secret.length && timingSafeEqual(Buffer.from(given), Buffer.from(secret));
   if (!ok) return new NextResponse(null, { status: 404 });
-  const report = await tick(new Date(), notifyDeadline);
+  const now = new Date();
+  const report = await tick(now, notifyDeadline);
   await Promise.all(report.arbitrated.map((id) => notifyRuling(id, null)));
   if (report.failed.length > 0) console.error("tick: some jobs failed", report.failed);
-  return NextResponse.json({ locked: report.locked.length, notified: report.notified.length, expired: report.expired.length, arbitrated: report.arbitrated.length, failed: report.failed.length });
+  // The relayer's gas, read after the jobs so the read never delays a send; unread is reported, never thrown.
+  const relayer = await watchRelayer(now).catch((err: unknown) => {
+    console.error("tick: the relayer's balance could not be read", err instanceof Error ? err.message : err);
+    return null;
+  });
+  return NextResponse.json({ locked: report.locked.length, notified: report.notified.length, expired: report.expired.length, arbitrated: report.arbitrated.length, failed: report.failed.length, relayer });
 }

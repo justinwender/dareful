@@ -60,6 +60,25 @@ async function loginEmail(dynamicUserId: string): Promise<string | null> {
   return ("user" in parsed.data ? parsed.data.user.email : parsed.data.email) ?? null;
 }
 
+let warnedOps = false;
+/**
+ * A line to whoever runs the app, never to a person in it: the relayer's balance (src/lib/chain/watch.ts). Off,
+ * and said once, when `OPS_EMAIL` or the email channel is not set. Nothing about any user goes through here.
+ */
+export async function sendOps(subject: string, text: string): Promise<boolean> {
+  const key = process.env.RESEND_API_KEY;
+  const from = process.env.EMAIL_FROM;
+  const to = process.env.OPS_EMAIL;
+  if (!key || !from || !to) {
+    if (!warnedOps) console.warn("ops email is off: RESEND_API_KEY, EMAIL_FROM or OPS_EMAIL is not set");
+    warnedOps = true;
+    return false;
+  }
+  const { error } = await new Resend(key).emails.send({ from, to, subject, text });
+  if (error) console.error("ops email failed", { name: error.name });
+  return !error;
+}
+
 let warnedEmail = false;
 export async function sendEmail(userId: string, notice: Notice): Promise<boolean> {
   const key = process.env.RESEND_API_KEY;

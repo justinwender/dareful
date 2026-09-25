@@ -8,7 +8,16 @@ import { cn } from "@/lib/utils";
  * padding grows by `--sheet-room` while a pinned sheet (3.24) is on the screen, so nothing is trapped under it.
  */
 export function Screen({ children, className }: { children: ReactNode; className?: string }) {
-  return <main className={cn("mx-auto flex w-full max-w-[430px] flex-1 flex-col px-5 pb-[calc(max(2rem,env(safe-area-inset-bottom)+1rem)+var(--sheet-room,0px))]", className)}>{children}</main>;
+  return (
+    <main className={cn("mx-auto flex w-full max-w-[430px] flex-1 flex-col px-5 pb-[calc(max(2rem,env(safe-area-inset-bottom)+1rem)+var(--sheet-room,0px))]", className)}>
+      {/* The status bar is translucent in the installed app (viewport-fit=cover) and the body's top padding only
+          keeps content out from under it at rest: scrolled, the content ran under the clock. This band is the
+          ground, with its grain, fixed behind the status bar for exactly the top inset. Inside the screen rather
+          than the root layout so that on a market's own screen it reads the market's ground (1.8). */}
+      <div aria-hidden="true" data-status-band="" className="grain fixed inset-x-0 top-0 z-20 h-[env(safe-area-inset-top)]" />
+      {children}
+    </main>
+  );
 }
 
 /**

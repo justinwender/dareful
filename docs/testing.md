@@ -337,3 +337,39 @@ Not a session with people, and recorded as such: the two-account pattern the set
 
 - **The production scheduler is not running any of its jobs.** Every minute pg_cron posts to `https://dareful.app/api/tick`, and every one of those calls has been answered 404 (the route's answer to a wrong or missing secret) for as far back as the runtime log shows. The secret in Supabase Vault matches the one on the development machine byte for byte; a call to production with that same secret is also refused; so the deployed function's `TICK_SECRET` is a different value, or unset. Until it is set to the Vault value (they rotate together, per the brief) nothing on production auto-locks at its time, no deadline notice goes out, nothing expires by itself and no deadlock reaches the backstop; every one of those is still reachable by a person, so nothing breaks, it waits. Read from the Vercel runtime log and the cron run history; the Vercel environment itself could not be read from here (the token is not allowed to list it), so which of the two it is (different or unset) is an assumption.
 - **A market expired by the tick carries a `resolved_at` two seconds before its `locked_at`.** The tick's clock is taken once at the start of the run and stamped on the expiry, while the lock's stamp is the moment its receipt came back. Cosmetic today (nothing orders by these two against each other), recorded so it is not read as corruption later.
+
+## Session 7: the installed app on an iPhone, and the scheduler on production
+
+**When:** September 25, 2026. **Who:** the author, on the installed app on iOS, after the second half was deployed; the scheduler and the relayer checked from the development machine against production.
+
+### Confirmed
+
+- **The scheduler runs.** `net._http_response` shows 349 answers of 404 from 10:06 to 15:54 UTC and 200 from 15:55 on, every minute, each with the tick's report. The route lives at `/api/tick` and pg_cron posts to `https://dareful.app/api/tick`, so the path was never the cause; the deployed secret was.
+- **The database suites pass on the refilled relayer:** 127 of 127, on 24.98 MON before the run and 24.51 after. A full run costs about half a MON.
+- **The relayer is watched** from the tick from this build on: the balance in every tick's report, a warning in the log under 3 MON, and an email to `OPS_EMAIL` at the top of each hour while it lasts. `OPS_EMAIL` has to be set in Vercel for the email to go out; the unit test covers the rule and the tick on production carries the reading.
+
+### Three findings from the phone
+
+1. **On Now, the tab bar sometimes scrolled with the content.** The grain was the first suspect: a `filter` on an ancestor makes it the containing block of every fixed descendant. It is cleared: the grain's filter is inside the SVG that the background image is made of, not a CSS filter on the body, and the rendered page (read in the development browser) shows no ancestor of the bar (main, body, html) with a transform, filter, will-change, perspective, contain or backdrop-filter.
+2. **On every other screen the tab bar and the sheet sat high, with a dark band beneath.** Read as the bottom inset paid twice. It is paid once in the code: the body pays top and sides, the bar and the sheet each pay their own bottom, nothing else pays it.
+3. **Scrolled content ran under the translucent status bar** into the clock. The body's top padding only keeps content clear at rest.
+
+What the first two match, together, is a regression in iOS 26.0 (Apple Developer Forums thread 800125, and the same report against Edge on iOS): once the keyboard has been up and gone, `visualViewport.height` stays around 24px under `window.innerHeight` and `offsetTop` does not return to 0, and fixed elements track that stale viewport: a footer pinned to the bottom sits above the home indicator with the page showing beneath it, looks right while scrolling down and is visibly offset while scrolling up. The state lasts for the life of the document, so a client-side navigation carries it from the screen where something was typed to every screen after it. That fits the shape of the report: Now on a cold start is fine, the ask flow (fields) and everything reached after it is not, and Now again only after the code field or a return from the ask flow. It is recorded as a reading, not a confirmation: nothing here can run iOS 26, the iOS simulator on this machine has no Xcode behind it, and the desktop browser's phone emulation neither pays insets nor has the bug. Users report Apple fixed it in 26.1; 26.0.1 still has it.
+
+### What changed
+
+- `Screen` paints a fixed band the height of the top inset behind the status bar: the ground with its grain, and on a market screen the market's ground, because the band is inside the inked root. Verified on localhost: the band is fixed, `z-20`, 0px tall on the desktop (no inset) and reads Sea's ground on a Sea market. A page test holds it on Now and inside the ink on a market screen.
+- `ViewportRepair` in the root layout, iOS only: after a field loses focus or the visual viewport resizes, while the reading says the viewport is stuck (short or offset, nothing focused, no pinch zoom), it scrolls one pixel and back so Safari re-reads the viewport. The rule is `viewportStuck`, with three mutants.
+- Nothing about the inset changed, because nothing about it was wrong in the code.
+
+### What to check on the phone
+
+All on the installed app. If the first check fails, the reading above is wrong and the cause is elsewhere.
+
+1. **Settings, General, About: the iOS version.** On 26.1 or later the drift and the band should not appear at all without any fix; on 26.0 or 26.0.1 they should, before this build.
+2. **Cold start onto Now, no typing.** Kill the app, open it, scroll Now up and down. The bar should stay put and sit on the home indicator with nothing beneath it. Then tap the code field, dismiss the keyboard, scroll up: on the old build this is where the bar drifted; on this build it should settle within a second of the keyboard going.
+3. **Start, then the ask flow.** Type a question, dismiss the keyboard, then tap back to Now and over to People. The sheet on the ask flow and the bar on People should sit on the home indicator with no ground showing beneath.
+4. **Scroll any long screen** (a market with several people in, or People). The clock and the status bar should sit on a solid band of the screen's ground, never over moving content; on a market screen the band is the market's ink.
+5. **Pinch zoom on a market screen and let go.** Nothing should jiggle; the repair never runs under zoom.
+6. **If the bar still sits high after the keyboard on 26.0**, note whether it settles after a scroll of any size: that tells whether the one-pixel scroll is too small for Safari to re-read the viewport, which is the one part of the repair that could not be exercised here.
+

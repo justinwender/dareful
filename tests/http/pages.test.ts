@@ -328,6 +328,18 @@ test("Now holds what needs this person, then what is running, then what just hap
   assert.ok(!/something with a clock is waiting on you/.test(a.html), "a draft can sit: no dot");
 });
 
+test("every screen paints a band behind the status bar, and on a market screen it sits inside the market's ink", async () => {
+  // docs/testing.md session 7: scrolled content ran under the translucent status bar and into the clock.
+  const now = await get("/", cFriend);
+  assert.equal(now.status, 200);
+  assert.ok(/data-status-band=""/.test(now.html), "the band on a root");
+  const m = await get(`/m/${marketId}`, cFriend);
+  assert.equal(m.status, 200);
+  const ink = m.html.indexOf("--ground:");
+  const band = m.html.indexOf('data-status-band=""');
+  assert.ok(ink >= 0 && band > ink, `the band is inside the inked root, so it reads the market's ground: ink at ${ink}, band at ${band}`);
+});
+
 test("the joining screen is for someone signed in; signed out it sends them home", async () => {
   const out = await get("/join");
   assert.ok(out.status === 307 || out.status === 302);
