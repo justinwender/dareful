@@ -34,7 +34,7 @@ async function main(): Promise<void> {
     const valueBps = BigInt(Math.round(Number(a ?? "50") * 100));
     if (step === "open") await markets.openMarket(d.id, p.user.id, await p.ledger.signTypedData(markets.createTypedData(d)));
     const fresh = (await markets.marketById(d.id)) as markets.DareRow;
-    await markets.enterMarket({ dareId: d.id, userId: p.user.id, stake, valueBps, signature: await p.ledger.signTypedData(markets.enterTypedData(fresh, stake, valueBps)) });
+    await markets.enterMarket({ dareId: d.id, userId: p.user.id, stake, value: valueBps, signature: await p.ledger.signTypedData(markets.enterTypedData(fresh, stake, valueBps)) });
     console.log(`${p.user.displayName} is in at ${a}% with ${stake}`);
   } else if (step === "lock") {
     const [creator] = await db.select().from(schema.users).where(eq(schema.users.id, d.creatorId));

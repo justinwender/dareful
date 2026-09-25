@@ -1,0 +1,48 @@
+{
+  "model": "claude-sonnet-5",
+  "id": "msg_011CfQkqSi8u8gP786qrLuYa",
+  "type": "message",
+  "role": "assistant",
+  "content": [
+    {
+      "type": "tool_use",
+      "id": "toolu_01KWdXRiYyWCVWeWM1GQnfiP",
+      "name": "write_number_terms",
+      "input": {
+        "title": "How many shirts can Gabe wear at once?",
+        "terms": "Grab as many shirts as you can find and have Gabe put them on one at a time until he can't fit another one or move his arms. Count how many shirts he's got on when he stops. Settle it tonight before everyone loses interest.",
+        "unit": {
+          "singular": "shirt",
+          "plural": "shirts"
+        },
+        "low": 5,
+        "high": 20,
+        "typical": 10,
+        "resolvesInHours": 3
+      },
+      "caller": {
+        "type": "direct"
+      }
+    }
+  ],
+  "container": null,
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "stop_details": null,
+  "usage": {
+    "input_tokens": 1239,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "cache_creation": {
+      "ephemeral_5m_input_tokens": 0,
+      "ephemeral_1h_input_tokens": 0
+    },
+    "output_tokens": 270,
+    "output_tokens_details": {
+      "thinking_tokens": 0
+    },
+    "service_tier": "standard",
+    "inference_geo": "global"
+  },
+  "diagnostics": null
+}

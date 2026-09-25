@@ -1,0 +1,3 @@
+ALTER TABLE "dares" ADD COLUMN "range_source" text;--> statement-breakpoint
+ALTER TABLE "dares" ADD CONSTRAINT "dares_range_source_known" CHECK ("dares"."range_source" is null or "dares"."range_source" in ('asker', 'ai'));--> statement-breakpoint
+ALTER TABLE "dares" ADD CONSTRAINT "dares_range_with_source" CHECK (("dares"."kind" <> 'numeric') or ("dares"."range" is not null and "dares"."range" > 0 and "dares"."range_source" is not null));

@@ -75,7 +75,7 @@ export async function notifyAfterVote(dareId: string, voterId: string): Promise<
       }),
       ...results.map(async (userId) => {
         const id = await claimNotice(userId, dareId, "result", 0, voterId);
-        const outcome = d.resolvedOutcome === VOID_OUTCOME ? "void" : d.resolvedOutcome === 1n ? "yes" : "no";
+        const outcome = d.resolvedOutcome === VOID_OUTCOME ? "void" : d.kind === "numeric" ? "number" : d.resolvedOutcome === 1n ? "yes" : "no";
         if (id) await deliver(userId, id, resultNotice({ deciderName: voterName, title: d.title, outcome, marketId: d.id, appUrl }));
       }),
     ]);
@@ -178,7 +178,7 @@ export async function notifyRuling(dareId: string, askedBy: string | null): Prom
     const d = await marketById(dareId);
     if (!d || !d.resolvedAt || d.resolvedBy !== "arbitration") return;
     const positions = await positionsOf(dareId);
-    const outcome = d.resolvedOutcome === VOID_OUTCOME ? "void" : d.resolvedOutcome === 1n ? "yes" : "no";
+    const outcome = d.resolvedOutcome === VOID_OUTCOME ? "void" : d.kind === "numeric" ? "number" : d.resolvedOutcome === 1n ? "yes" : "no";
     const askerName = askedBy ? await nameOf(askedBy) : null;
     await Promise.all(
       positions.map((p) => p.userId).filter((x): x is string => x !== null && x !== askedBy).map(async (userId) => {

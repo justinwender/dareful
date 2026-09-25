@@ -22,6 +22,23 @@ export function scoreBinary(valueBps: bigint, outcome: bigint): bigint {
   return BPS - (miss * miss) / BPS;
 }
 
+/** The largest number a number market takes as an entry or an answer (docs/design.md 3.26): nine digits. */
+export const MAX_NUMBER = 999_999_999n;
+
+/**
+ * Numeric: S = max(0, 10000 - |value - outcome| x 10000 / range), integer division, floored at zero once the
+ * miss reaches the scale. The scale is fixed when the question is asked and never derived from entries
+ * (docs/decisions.md 2026-09-24): one absurd entry would otherwise widen it, compress everyone else's score
+ * differences, and under truncation collapse the market to a single edge.
+ */
+export function scoreNumeric(value: bigint, outcome: bigint, range: bigint): bigint {
+  if (range <= 0n) throw new RangeError("a number market's scale is at least one");
+  if (value < 0n || outcome < 0n) throw new RangeError("a number is never negative");
+  const miss = value > outcome ? value - outcome : outcome - value;
+  if (miss >= range) return 0n;
+  return BPS - (miss * BPS) / range;
+}
+
 /** BigInt division already truncates toward zero, for either sign. Named so the rule is visible at the call. */
 export function truncDiv(x: bigint, d: bigint): bigint {
   return x / d;
@@ -72,7 +89,7 @@ export function nets(positions: ScoredPosition[], edges: Edge[]): Map<string, bi
   return out;
 }
 
-/** The group's number for a binary market: the stake-weighted mean probability. A poll average, never a price. */
+/** The group's number on a yes-or-no market: the stake-weighted mean probability. A poll average, never a price. A number market's is the median (`weightedMedian`, number-axis.ts). */
 export function groupNumber(positions: Array<{ stake: bigint; value: bigint }>): bigint | null {
   const total = positions.reduce((a, p) => a + p.stake, 0n);
   if (total === 0n) return null;

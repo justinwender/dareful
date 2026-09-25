@@ -1,0 +1,47 @@
+{
+  "model": "claude-fable-5-1",
+  "id": "msg_011CfQkqjia8DsKkVtmVYcbf",
+  "type": "message",
+  "role": "assistant",
+  "content": [
+    {
+      "type": "thinking",
+      "thinking": "",
+      "signature": "CAQSgAgKEAgSGAI4AUIIdGhpbmtpbmcSDG5tFVgRWzN03nnBgRoM/yWFPQZegg8thRriIjB8TaPQTTKwvhEBCJuUENhAXYGMImIMN+Ab7gSzaZ7swZZs0B7BGteHmUMoc0X219oqnQeyraSjaR5IBcbMPbVdC9bQTBxlUJlKVfZKU13QclYpQPpUEDuDUo+XttV3zFliyjx+xK13FnvwFuQ2CAk5xVdiK0F4qVvZfaBZ8Vp2l3YUT4vwbrCkMhhsvV1H7fQtQ3Nb4Ymxaj7gLUHdCn4kYfMEdbKNw8Wbhcma0nQzeXkOGGB4VD2vJ0ny2L2YEHF/nQgwlSEiMPPsIUkTXtdJ0K+cttYZ8x7tLJvo5JdqHhhpKMUnru/kfkWJX35UTDcidEvpW94XYF86hq3kzYc5CZzNmuDicCjvMKkDV/t885txHjok5H54prHJMjvRcO0wg5TGaxGBt6wF2OrsFwYvuHnaMsHlLjDPJRRMHJwJRy1tFJenDLBLoViWgr9Yk62p7dg2QTNnxd4E3DnLFpV3iBDR+oEDofxxvQFLiaglyRb5GEJKKFvAJDsH1RQQWDP6u+LG8EzjdtlaAfuMwmhP0CA4TTmMObd2oQfxdqiy1YeIC1IxRsxu0UeJasLrGjulHFsvHiERNJQe42/JpcsUBOtnlRzYXvbzVBHLdXO6O6OijI7cUcj4h3+hX6/T/cWAxmVypfK8+S09mR6ptRT0JnSHqH26fV2PcDh8eBLGP799HyQYx5L0dLMa0gbGuBp9WQGptW1JVS0QP2ogGSrx6uSv9qLIofxNsnErUh3C/ZPGAUtTafy8m2k2iWPvxj2e40PJcbk8RLWtmxW7O0xY6VWyFJKpH28CTXKr00NO/wFxeOxui3vXtnxYKQLftygzydTYNgB+rXtJHrenmDbL+/KEtksHwKr8suwK7OSYKo5dJTn6TWolqe2KXL7nkCAfO2JQeDKoeyLg02oFsGrtTOfx2udhSHN7i7lpSAqyM9g0y4C1+goqRkzH2GZW37GwiPkYo2D+kbnwldY7GtbaghHUrhTn1n8mL1VMCZrv44x3HdUAZfQiONT+QK538/MKAm7ntw0Iy+gB6TRKLpY68oUKzjgBFpXzwN8+XsR+abJDj9fBuUCrGO3Ukujm+otG8y0/ZU2NZ0ohvGwdP5AFd9b0iONMB2XZEtmhg9TDj2SistTwOn9cC7ozVwscEH+cIq8VG6JvjN5TGA6jL/U3VZn3b/ny6kJ/EDvpAutEBijerxj4UTRQ89sQ60GRjaLNI38YBCoGXqUsH401eTf22iQ0rMvgUU8TJK8WliTbwk6ZhmdkpbkTDy2mg03XUt2oMG1lhyFt2795Q3Umt5PtGAE="
+    },
+    {
+      "type": "tool_use",
+      "id": "toolu_01Vmo6u7JQdDnVz9Gb8RGN24",
+      "name": "propose_number",
+      "input": {
+        "outcome": "number",
+        "number": 14,
+        "confidencePercent": 75,
+        "rationale": "Sam says 14 were on him when the fifteenth tore going on, and the terms count what is on him at the moment one tears. If you decide a shirt that tears while being pulled on counts as \"on him,\" that would make it 15."
+      },
+      "caller": {
+        "type": "direct"
+      }
+    }
+  ],
+  "container": null,
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "stop_details": null,
+  "usage": {
+    "input_tokens": 935,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "cache_creation": {
+      "ephemeral_5m_input_tokens": 0,
+      "ephemeral_1h_input_tokens": 0
+    },
+    "output_tokens": 364,
+    "output_tokens_details": {
+      "thinking_tokens": 174
+    },
+    "service_tier": "standard",
+    "inference_geo": "global"
+  },
+  "diagnostics": null
+}

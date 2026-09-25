@@ -11,13 +11,13 @@
 import { and, asc, eq, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
 import { keccak256, stringToHex, type Hex } from "viem";
 import { db, schema } from "@/db";
-import { arbitrate as askArbitrator, ruleClaim } from "@/lib/ai/settler";
+import { arbitrate as askArbitrator, arbitrateNumber, ruleClaim } from "@/lib/ai/settler";
 import { contracts } from "@/lib/chain/contracts";
 import { gasFor } from "@/lib/chain/gas";
 import { submit } from "@/lib/chain/relayer";
 import { bufferToHex } from "./ids";
 import { isMember } from "./groups";
-import { lockMarket, marketById, MarketError, mirrorSettlement, positionsOf, reconcileFromIndexer, settlementFromReceipt, stateOf, toChainOutcome, VOID_OUTCOME, votesOf, type DareRow } from "./markets";
+import { lockMarket, marketById, MarketError, mirrorSettlement, positionsOf, reconcileFromIndexer, settlementFromReceipt, stateOf, toChainOutcome, unitOf, VOID_OUTCOME, votesOf, type DareRow } from "./markets";
 
 /** If nobody presses, the scheduler hears a deadlock this long after the question was due (or locked, if later). */
 export const ARBITRATION_BACKSTOP_MS = 24 * 3_600_000;
@@ -88,7 +88,7 @@ export function rulingHash(rulingText: string): Hex {
  * One transaction, which is this market's resolution and nobody else's. The written ruling is stored exactly as
  * hashed; a finding that the terms cannot decide it voids, and that void carries the toll.
  */
-export async function arbitrateMarket(dareId: string, byUserId: string | null, now: Date = new Date()): Promise<{ outcome: "yes" | "no" | "void"; txHash: Hex }> {
+export async function arbitrateMarket(dareId: string, byUserId: string | null, now: Date = new Date()): Promise<{ outcome: "yes" | "no" | "void" | "number"; number?: bigint; txHash: Hex }> {
   const d = await marketById(dareId);
   if (!d) throw new MarketError("That one doesn't exist.", "not_found");
   if (d.resolvedAt) throw new MarketError("It's already decided.", "wrong_state");
@@ -101,19 +101,19 @@ export async function arbitrateMarket(dareId: string, byUserId: string | null, n
     db.select({ id: schema.users.id, displayName: schema.users.displayName }).from(schema.users).where(inArray(schema.users.id, positions.map((p) => p.userId as string))),
   ]);
   const nameOf = (id: string) => users.find((u) => u.id === id)?.displayName.split(/\s+/)[0] ?? "Someone";
-  const ruling = await askArbitrator({
-    title: d.title,
-    terms: d.termsText,
-    positions: positions.map((p) => ({ name: nameOf(p.userId as string), percent: Math.round(Number(p.value) / 100) })),
-    updates: said.filter((s) => s.kind === "update").map((s) => ({ name: nameOf(s.userId), said: s.statement })),
-    statements: said.filter((s) => s.kind === "statement").map((s) => ({ name: nameOf(s.userId), said: s.statement })),
-  }).catch((err: unknown) => {
+  const updates = said.filter((s) => s.kind === "update").map((s) => ({ name: nameOf(s.userId), said: s.statement }));
+  const statements = said.filter((s) => s.kind === "statement").map((s) => ({ name: nameOf(s.userId), said: s.statement }));
+  const unit = unitOf(d);
+  const heard = await (unit
+    ? arbitrateNumber({ title: d.title, terms: d.termsText, unit, positions: positions.map((p) => ({ name: nameOf(p.userId as string), number: p.value.toString() })), updates, statements }).then((r) => ({ voided: r.outcome === "cannot_decide" || r.number === null, outcome: r.outcome === "number" && r.number !== null ? BigInt(r.number) : VOID_OUTCOME, ruling: r.ruling, word: "number" as const }))
+    : askArbitrator({ title: d.title, terms: d.termsText, positions: positions.map((p) => ({ name: nameOf(p.userId as string), percent: Math.round(Number(p.value) / 100) })), updates, statements }).then((r) => ({ voided: r.outcome === "cannot_decide", outcome: r.outcome === "cannot_decide" ? VOID_OUTCOME : r.outcome === "yes" ? 1n : 0n, ruling: r.ruling, word: r.outcome === "yes" ? ("yes" as const) : ("no" as const) }))
+  ).catch((err: unknown) => {
     console.error("the arbitrator did not answer", { dareId, err });
     throw new MarketError("The app couldn't hear it just now. Nothing changed. Try again in a minute.", "chain");
   });
-
-  const voided = ruling.outcome === "cannot_decide";
-  const outcome = voided ? VOID_OUTCOME : ruling.outcome === "yes" ? 1n : 0n;
+  const ruling = { ruling: heard.ruling };
+  const voided = heard.voided;
+  const outcome = heard.outcome;
   const hash = rulingHash(ruling.ruling);
   const { dares } = contracts();
   let result;
@@ -132,7 +132,7 @@ export async function arbitrateMarket(dareId: string, byUserId: string | null, n
     throw new MarketError(`The ruling is written, but recording it didn't go through. Nothing changed. (${err instanceof Error ? (err.message.split("\n")[0] ?? "") : "unknown"})`, "chain");
   }
   await mirrorSettlement(d, settlementFromReceipt(result, outcome), { by: "arbitration", rulingText: ruling.ruling, rulingHash: hash });
-  return { outcome: voided ? "void" : ruling.outcome === "yes" ? "yes" : "no", txHash: result.hash };
+  return { outcome: voided ? "void" : heard.word, number: voided || heard.word !== "number" ? undefined : outcome, txHash: result.hash };
 }
 
 // --------------------------------------------------------------------------------------------------- expiry

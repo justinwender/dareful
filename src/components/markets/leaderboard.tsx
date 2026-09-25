@@ -13,6 +13,53 @@ export type Transfer = { fromId: string; toId: string; quantity: bigint };
  * Ranking is by score, which for a yes-or-no question is the same as ranking by distance; people the same
  * distance off share a rank, marked "=", in alphabetical order.
  */
+export type NumberStanding = { userId: string; name: string; value: string; xPermille: number; score: number };
+
+/**
+ * A number market's rows (3.7): "said 17" under the name and "off by 3" on the right; the gap bar runs on the
+ * ruler's scale from their number to a 3px cream tick at the answer, and there is no 50% tick.
+ */
+export function NumberLeaderboard({ standings, answer, viewerId }: { standings: NumberStanding[]; answer: { value: string; xPermille: number }; viewerId: string }) {
+  const sorted = [...standings].sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+  const dense = sorted.length >= 9;
+  const truth = answer.xPermille / 10;
+  return (
+    <ol className="flex flex-col gap-1.5">
+      {sorted.map((s) => {
+        const rank = 1 + sorted.filter((o) => o.score > s.score).length;
+        const tied = sorted.filter((o) => o.score === s.score).length > 1;
+        const off = BigInt(s.value) > BigInt(answer.value) ? BigInt(s.value) - BigInt(answer.value) : BigInt(answer.value) - BigInt(s.value);
+        const hue = hueFor(s.userId);
+        const mine = s.xPermille / 10;
+        const lo = Math.min(mine, truth);
+        const hi = Math.max(mine, truth);
+        const you = s.userId === viewerId;
+        return (
+          <li key={s.userId} className={`grid grid-cols-[22px_minmax(0,1fr)] gap-x-3 rounded-button px-3 ${dense ? "py-2" : "py-2.5"} ${you ? "bg-surface" : ""}`} style={you ? { boxShadow: hueRing(hue) } : undefined}>
+            <span className="row-span-2 self-center text-body-strong tabular-nums text-ink-3">
+              {tied ? "=" : ""}
+              {rank}
+            </span>
+            <div className="flex items-center gap-3">
+              <Avatar name={s.name} hue={hue} size={36} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-body-strong text-ink">{you ? "You" : s.name}</p>
+                <p className="text-caption text-ink-3">said {s.value}</p>
+              </div>
+              <span className="text-numeral-sm text-ink-2">{off === 0n ? "dead on" : `off by ${off.toLocaleString("en-US")}`}</span>
+            </div>
+            <div className="relative mt-2 h-1 rounded-pill bg-surface-2" aria-hidden="true">
+              <span className="absolute inset-y-0 rounded-pill" style={{ left: `${lo}%`, width: `${hi - lo}%`, background: hueBar(hue) }} />
+              <span className="absolute top-1/2 h-3 w-[3px] -translate-x-1/2 -translate-y-1/2 rounded-pill bg-chalk" style={{ left: `${truth}%` }} />
+              <span className="absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-pill" style={{ left: `${mine}%`, background: hueVar(hue) }} />
+            </div>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 export function Leaderboard({ standings, outcome, viewerId }: { standings: Standing[]; outcome: 0 | 1; viewerId: string }) {
   const truth = outcome * 100;
   const sorted = [...standings].sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));

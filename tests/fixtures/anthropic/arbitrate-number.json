@@ -1,0 +1,46 @@
+{
+  "model": "claude-fable-5-1",
+  "id": "msg_011CfQkrFw1RTWXWccUU3dEm",
+  "type": "message",
+  "role": "assistant",
+  "content": [
+    {
+      "type": "thinking",
+      "thinking": "",
+      "signature": "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"
+    },
+    {
+      "type": "tool_use",
+      "id": "toolu_0199MJyNP68dcBm4Xauy93cT",
+      "name": "arbitrate_number",
+      "input": {
+        "outcome": "number",
+        "number": 14,
+        "ruling": "The terms fix the count at how many shirts are on Gabe at once when he stops or one tears. Both accounts agree fourteen shirts were fully on him and that the fifteenth tore as it went on. Theo's case is that the torn shirt was on him and so counts; Sam's case is that the tear is the moment the count is taken, so the tearing shirt is out. The terms make the tear the stopping point, and a shirt whose seam gives out while being pulled on is the event that ends the attempt, not a shirt worn at once with the others. The count is 14 shirts."
+      },
+      "caller": {
+        "type": "direct"
+      }
+    }
+  ],
+  "container": null,
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "stop_details": null,
+  "usage": {
+    "input_tokens": 1106,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "cache_creation": {
+      "ephemeral_5m_input_tokens": 0,
+      "ephemeral_1h_input_tokens": 0
+    },
+    "output_tokens": 728,
+    "output_tokens_details": {
+      "thinking_tokens": 450
+    },
+    "service_tier": "standard",
+    "inference_geo": "global"
+  },
+  "diagnostics": null
+}

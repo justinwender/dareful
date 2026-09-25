@@ -25,6 +25,9 @@ import { daresDomain, daresTypes, Kind, Pace, Stalemate, VOID } from "../src/lib
 
 const toHex = (b: Buffer): Hex => `0x${b.toString("hex")}`;
 
+/** `number` surveys a number market instead (Phase 5): the same struct with Kind.Numeric and a scale, entries as whole numbers. */
+const NUMERIC = process.argv.includes("number");
+
 async function main(): Promise<void> {
   const { dares, ledger, chainId } = contracts();
   const { publicClient, walletClient, account: relayerAccount } = relayer();
@@ -56,17 +59,20 @@ async function main(): Promise<void> {
   console.log(`group with ${best.members.length} seed members, quorum of ${quorum.length}, threshold ${Math.floor(quorum.length / 2) + 1}\n`);
 
   const rows: Array<{ n: number; create: bigint; resolve: bigint | null; resolveVoid: bigint | null; edges: number }> = [];
-  for (let n = 2; n <= Math.min(6, best.members.length); n += 1) {
+  // A number survey sends two markets, the smallest and the largest, which is enough for the per-position slope.
+  const sizes = NUMERIC ? [2, Math.min(6, best.members.length)] : Array.from({ length: Math.min(6, best.members.length) - 1 }, (_, i) => i + 2);
+  for (const n of sizes) {
     const people = best.members.slice(0, n).map((id) => keys.get(id)!);
     const creator = people[0]!;
     const dareId = keccak256(stringToHex(`dareful:gas-survey:${randomUUID()}`));
     const resolvesBy = BigInt(Math.floor(Date.now() / 1000) + 3600);
-    const create = { dareId, groupId: best.groupId, kind: Kind.Binary, pace: Pace.Dare, termsHash: keccak256(stringToHex("gas survey")), denomId: best.denomId, range: 0n, options: 0, stalemate: Stalemate.Arbitrate, resolvesBy };
+    const create = { dareId, groupId: best.groupId, kind: NUMERIC ? Kind.Numeric : Kind.Binary, pace: Pace.Dare, termsHash: keccak256(stringToHex("gas survey")), denomId: best.denomId, range: NUMERIC ? 20n : 0n, options: 0, stalemate: Stalemate.Arbitrate, resolvesBy };
     const creatorSig = await creator.ledger.signTypedData({ domain, types: daresTypes, primaryType: "Create", message: create });
     // Distinct probabilities and distinct, large stakes: every pair differs, so every pair mints.
-    const positions = people.map((p, i) => ({ ledger: p.ledger.address, stake: BigInt(5000 + 1000 * i), value: BigInt(Math.round((10000 * (i + 1)) / (n + 1))), confidenceBps: 0 }));
+    // Distinct numbers on a scale of 20 (every score distinct, so every pair mints), or distinct probabilities.
+    const positions = people.map((p, i) => ({ ledger: p.ledger.address, stake: BigInt(5000 + 1000 * i), value: NUMERIC ? BigInt(10 + 3 * i) : BigInt(Math.round((10000 * (i + 1)) / (n + 1))), confidenceBps: 0 }));
     const sigs = await Promise.all(people.map((p, i) => p.ledger.signTypedData({ domain, types: daresTypes, primaryType: "Enter", message: { dareId, stake: positions[i]!.stake, value: positions[i]!.value, confidenceBps: 0, stalemate: Stalemate.Arbitrate } })));
-    const struct = { id: dareId, groupId: best.groupId, kind: Kind.Binary, pace: Pace.Dare, creator: creator.ledger.address, termsHash: create.termsHash, denomId: best.denomId, range: 0n, options: 0, stalemate: Stalemate.Arbitrate, quorum: [] as Address[], threshold: 0, resolvesBy, status: 0, outcome: 0n };
+    const struct = { id: dareId, groupId: best.groupId, kind: create.kind, pace: Pace.Dare, creator: creator.ledger.address, termsHash: create.termsHash, denomId: best.denomId, range: create.range, options: 0, stalemate: Stalemate.Arbitrate, quorum: [] as Address[], threshold: 0, resolvesBy, status: 0, outcome: 0n };
     const args = [struct, positions, sigs, creatorSig] as const;
 
     const createGas = await publicClient.estimateContractGas({ account: relayerAccount, address: dares.address, abi: dares.abi, functionName: "create", args });
@@ -82,7 +88,8 @@ async function main(): Promise<void> {
         console.log(`  resolve(${outcome === VOID ? "VOID" : outcome}) with ${n}: could not estimate (${e instanceof Error ? e.message.split("\n")[0] : e})`);
         return null;
       });
-    rows.push({ n, create: createGas, resolve: await est(1n), resolveVoid: await est(VOID), edges: (n * (n - 1)) / 2 });
+    // A number market resolves at 10: every entry a different distance from it.
+    rows.push({ n, create: createGas, resolve: await est(NUMERIC ? 10n : 1n), resolveVoid: await est(VOID), edges: (n * (n - 1)) / 2 });
     console.log(`n=${n}  create ${createGas}   resolve(yes, ${(n * (n - 1)) / 2} edges, ${threshold} votes) ${rows.at(-1)!.resolve}   resolve(VOID) ${rows.at(-1)!.resolveVoid}`);
   }
 

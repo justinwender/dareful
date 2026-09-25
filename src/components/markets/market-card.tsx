@@ -12,7 +12,7 @@ import type { DenominationRow } from "@/lib/ledger/denominations";
 import { gotSentence } from "@/lib/ui/copy";
 import { hueFor } from "@/lib/ui/hue";
 import type { InkName } from "@/lib/ui/ink";
-import { CallLine, type Pin } from "./call-line";
+import { CallLine, Ruler, type Pin, type RulerData } from "./call-line";
 
 export type MarketCardProps = {
   id: string;
@@ -34,6 +34,8 @@ export type MarketCardProps = {
   people: Array<{ id: string; name: string; percent: number | null }>;
   groupSize: number;
   outcome: 0 | 1 | null;
+  /** A number question: the ruler (3.5) where the call line would be, and the answer as a sentence once it has one. */
+  number?: { ruler: RulerData | null; answerLine: string | null } | null;
   denomination: DenominationRow;
   /** What this market left between the people in view: the whole market on a group page, one pair on a person page. */
   consequences: Array<{ id?: string; from: { id: string; displayName: string }; to: { id: string; displayName: string }; quantity: bigint }>;
@@ -87,10 +89,17 @@ export function MarketCard(p: MarketCardProps) {
         ) : p.state === "voided" ? (
           <p className="text-body-sm text-ink-2">Nobody could tell, so it’s void.</p>
         ) : (
+          p.number ? (
+            <>
+              {p.state === "resolved" && p.number.answerLine ? <p className="text-serif-l text-ink">{p.number.answerLine}</p> : null}
+              {p.number.ruler ? <Ruler ruler={p.number.ruler} state={p.state === "resolved" ? "resolved" : "in"} /> : <Ruler ruler={{ leftLabel: "", rightLabel: "", pins: [], answer: null }} state="hidden" />}
+            </>
+          ) : (
           <>
             {p.state === "resolved" && p.outcome !== null ? <p className="text-serif-l text-ink">{p.outcome === 1 ? "Yes." : "No."}</p> : null}
             <CallLine pins={pins} state={p.state === "resolved" ? "resolved" : pins.length > 0 ? "in" : "hidden"} outcome={p.outcome ?? undefined} />
           </>
+          )
         )}
 
         <p className="text-body-sm text-ink-2">

@@ -13,7 +13,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
  * A modal sheet closes with a 48px close at its top right and by dragging down (docs/design.md 6.4). The drag
  * is read from the handle row only, so the sheet's own content still scrolls. A sheet never opens another sheet.
  */
-export function Sheet({ open, onClose, labelledBy, children }: { open: boolean; onClose: () => void; labelledBy: string; children: ReactNode }) {
+export function Sheet({ open, onClose, labelledBy, children, closeLabel, tall = false }: { open: boolean; onClose: () => void; labelledBy: string; children: ReactNode; /** A word in the close position instead of the cross ("Done" on the mark picker, 3.29). */ closeLabel?: string; /** A fixed 560px sheet (the mark picker), instead of one that fits its content. */ tall?: boolean }) {
   const panel = useRef<HTMLDivElement>(null);
   const startY = useRef<number | null>(null);
   // The distance so far lives in a ref as well as in state: a flick can end before the last move has rendered,
@@ -44,7 +44,7 @@ export function Sheet({ open, onClose, labelledBy, children }: { open: boolean; 
         aria-modal="true"
         aria-labelledby={labelledBy}
         style={dy > 0 ? { transform: `translateY(${dy}px)` } : undefined}
-        className="relative mx-auto flex max-h-[85%] w-full max-w-[430px] flex-col gap-5 overflow-y-auto overscroll-contain rounded-t-card border border-b-0 border-line bg-surface px-4 pt-2 pb-[max(1.5rem,env(safe-area-inset-bottom))] motion-safe:animate-[sheet-up_200ms_ease-out]"
+        className={`relative mx-auto flex w-full max-w-[430px] flex-col gap-5 overflow-y-auto overscroll-contain rounded-t-card border border-b-0 border-line bg-surface px-4 pt-2 pb-[max(1.5rem,env(safe-area-inset-bottom))] motion-safe:animate-[sheet-up_200ms_ease-out] ${tall ? "h-[min(560px,85%)]" : "max-h-[85%]"}`}
       >
         <div
           className="relative -mb-2 flex h-10 shrink-0 touch-none select-none items-center justify-center"
@@ -75,11 +75,17 @@ export function Sheet({ open, onClose, labelledBy, children }: { open: boolean; 
           }}
         >
           <span aria-hidden="true" className="h-[5px] w-9 rounded-[3px] bg-line-strong" />
+          {closeLabel ? (
+            <button type="button" onClick={onClose} className="absolute top-0 -right-2 inline-flex h-12 items-center justify-center rounded-button px-3 text-body-sm font-semibold text-ink">
+              {closeLabel}
+            </button>
+          ) : (
           <button type="button" aria-label="Close" onClick={onClose} className="absolute top-0 -right-2 inline-flex h-12 w-12 items-center justify-center rounded-pill text-ink">
             <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M6 6l12 12M18 6L6 18" />
             </svg>
           </button>
+          )}
         </div>
         {children}
       </div>

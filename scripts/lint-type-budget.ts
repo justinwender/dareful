@@ -91,6 +91,10 @@ const CONTROLS = new Set([
   "src/lib/ui/share-card.tsx",
   "src/components/markets/odds-line.tsx",
   "src/components/ledger/obligation-token.tsx",
+  // The number field with its steppers (docs/design.md 3.26: "the field is a control, so none of this counts"), and the
+  // picker's cells, chips and search field (3.29): every piece of text in them is inside a control.
+  "src/components/markets/number-entry.tsx",
+  "src/components/markets/mark-picker.tsx",
 ]);
 /** Rendered to an image, never to the screen. */
 const RENDERERS = [/opengraph-image\.tsx$/, /^src\/app\/icons\//];

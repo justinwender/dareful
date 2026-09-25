@@ -266,6 +266,18 @@
   }
 }
 
+/* The ask flow retints to a picked mark's ink over 200ms (docs/design.md 3.29): the layers that read the ink tokens ease. */
+.retint,
+.retint :is(main, section, div, textarea, span) {
+  transition: background-color 200ms ease, border-color 200ms ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .retint,
+  .retint :is(main, section, div, textarea, span) {
+    transition: none;
+  }
+}
+
 @keyframes sheet-up {
   from { transform: translateY(24px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }

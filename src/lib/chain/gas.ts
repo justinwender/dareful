@@ -20,7 +20,13 @@
  * overpayment on every market. The per-edge limit carries extra room because the survey's group already
  * held balances for some of those token ids, and a first mint into an empty slot costs more than a second.
  * `arbitrate` is measured (below). `expire` is one status write and is still derived; measure it when a
- * void-rule question first expires. Monad receipts report
+ * void-rule question first expires.
+ *
+ * A number market (2026-09-25, the same survey with `number`, quorum of five): `create` 590,596 for two positions
+ * and 924,879 for five, which is 368k plus 111k a position; `resolve` 274,309 for one edge and 1,232,630 for ten,
+ * which is 168k plus 106k an edge; VOID 74k to 82k. Within three percent of the yes-or-no figures, since the
+ * struct is the same size and scoring by distance costs no more than Brier, so the limits below cover both kinds
+ * with the same room (about 25 percent at five positions). Monad receipts report
  * `gasUsed` equal to the declared limit, so receipts cannot calibrate anything; `RELAYER_LOG_GAS=1` only
  * shows whether a limit was enough. Re-measure with the survey whenever a contract changes and record the
  * change in docs/decisions.md.

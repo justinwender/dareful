@@ -17,9 +17,14 @@ import { INKS, inkOf, inkVars } from "@/lib/ui/ink";
 import type { CSSProperties } from "react";
 import { Screen, SectionLabel, TopBar } from "@/components/ledger/screen";
 import { When } from "@/components/ledger/when";
-import { CallLine } from "@/components/markets/call-line";
+import { CallLine, Ruler } from "@/components/markets/call-line";
 import { CallSheet, type Word } from "@/components/markets/call-sheet";
-import { Leaderboard, Transfers } from "@/components/markets/leaderboard";
+import { Leaderboard, NumberLeaderboard, Transfers } from "@/components/markets/leaderboard";
+import { rulerFor } from "@/components/markets/market-card-from";
+import { VotePoll } from "@/components/markets/vote-poll";
+import { numberAxis, serialiseAxis, unitPhrase, withSeparators } from "@/lib/ledger/number-axis";
+import { pulseOf } from "@/lib/ledger/pulse";
+import { farOffThreshold } from "@/lib/ledger/scale";
 import { InvitePreview } from "@/components/markets/invite-preview";
 import { RoomCode } from "@/components/markets/room-code";
 import { AfterVote } from "@/components/notify/after-vote";
@@ -63,6 +68,7 @@ import {
   reconcileFromIndexer,
   stateOf,
   tally,
+  unitOf,
   VOID_OUTCOME,
   votesOf,
 } from "@/lib/ledger/markets";
@@ -95,13 +101,11 @@ export async function generateMetadata({
   };
 }
 
-const word = (o: bigint | null): Word | null =>
-  o === null ? null : o === VOID_OUTCOME ? "void" : o === 1n ? "yes" : "no";
-const SAID: Record<Word, string> = {
-  yes: "yes",
-  no: "no",
-  void: "nobody can tell",
-};
+/** An outcome as the sheet's word: yes, no, nobody can tell, or "n:" and the number on a number question. */
+const wordFor =
+  (numeric: boolean) =>
+  (o: bigint | null): Word | null =>
+    o === null ? null : o === VOID_OUTCOME ? "void" : numeric ? `n:${o.toString()}` : o === 1n ? "yes" : "no";
 
 export default async function MarketPage({
   params,
@@ -170,6 +174,10 @@ export default async function MarketPage({
   const state = stateOf(d);
   if (state === "draft" && d.creatorId !== me.id) notFound();
   const ink = inkOf(d);
+  const numberUnit = unitOf(d);
+  const word = wordFor(numberUnit !== null);
+  /** "14 shirts", "yes", "no", "nobody can tell": an outcome in the middle of a sentence. */
+  const SAID = (w: Word): string => (w === "yes" ? "yes" : w === "no" ? "no" : w === "void" ? "nobody can tell" : numberUnit ? unitPhrase(BigInt(w.slice(2)), numberUnit) : w.slice(2));
 
   const [group] = await db
     .select()
@@ -289,6 +297,11 @@ export default async function MarketPage({
     name: person.get(p.userId as string)?.displayName ?? "Someone",
     percent: Number(p.value) / 100,
   }));
+  // A number question's ruler (3.5): everyone's number and, once there is one, the answer.
+  const answerNumber = numberUnit && d.resolvedOutcome !== null && d.resolvedOutcome !== VOID_OUTCOME && state === "resolved" ? d.resolvedOutcome : null;
+  const rulerData = numberUnit && show ? rulerFor({ unit: numberUnit, answer: answerNumber === null ? null : answerNumber.toString(), people: positions.map((p) => ({ id: p.userId as string, name: person.get(p.userId as string)?.displayName ?? "Someone", percent: null, number: p.value.toString() })) }) : null;
+  /** "14 shirts · $5", "70% · $5": a person's number and what they put on it. */
+  const numberWords = (v: bigint) => (numberUnit ? unitPhrase(v, numberUnit) : `${Number(v) / 100}%`);
 
   const { chainId, dares } = contracts();
   const signing: Signing = {
@@ -306,7 +319,7 @@ export default async function MarketPage({
       pace: c.pace,
       termsHash: c.termsHash,
       denomId: c.denomId,
-      range: "0",
+      range: c.range.toString(),
       options: 0,
       resolvesBy: c.resolvesBy.toString(),
     };
@@ -330,9 +343,14 @@ export default async function MarketPage({
     valueBps: p.value,
   }));
   const number = groupsNumberBps(entries);
+  const axis = numberUnit && show && mine ? numberAxis(positions.map((p) => ({ id: p.userId as string, stake: p.stake, value: p.value })), numberUnit) : null;
   const picture: StagePicture | null = !mine
     ? null
-    : show
+    : show && numberUnit
+      ? axis
+        ? { kind: "numbers", axis: serialiseAxis(axis), caption: positions.length <= 1 ? "You’re first in. Height is how much is riding on each number, not how many people picked it." : axis.offHigh || axis.offLow ? "Height is how much is riding on each number, not how many people picked it. One number sits past the end so the rest can be read." : "Height is how much is riding on each number, not how many people picked it." }
+        : null
+      : show
       ? {
           kind: "weights",
           buckets: buckets(entries).map((b) => ({
@@ -371,6 +389,7 @@ export default async function MarketPage({
   const spark =
     show &&
     mine &&
+    !numberUnit &&
     number !== null &&
     sparkEligible({
       openedAt: d.createdAt,
@@ -433,13 +452,15 @@ export default async function MarketPage({
       mine={
         mine
           ? {
-              percent: Number(mine.value) / 100,
+              percent: numberUnit ? 0 : Number(mine.value) / 100,
+              ...(numberUnit ? { number: mine.value.toString() } : {}),
               stake: mine.stake.toString(),
               stakeWords: stakeWords(mine.stake),
             }
           : null
       }
       picture={picture}
+      numberUnit={numberUnit}
       mark={d.markKind === "emoji" ? d.markValue : null}
       argument={argument}
       lockedLine={lockedLine}
@@ -458,6 +479,11 @@ export default async function MarketPage({
           ? { count: positions.length, everyoneIn }
           : null
       }
+      farOff={
+        numberUnit && farOffThreshold(d) !== null
+          ? { threshold: (farOffThreshold(d) as bigint).toString(), scale: d.rangeSource === "asker" && d.range !== null ? d.range.toString() : null }
+          : null
+      }
     />
   );
   const more = (
@@ -470,9 +496,14 @@ export default async function MarketPage({
         {denomination.monetary ? "dollars" : unit.plural}, the same for
         everyone, so it can be weighed.
       </p>
-      {show && number !== null && showsMarker(entries) ? (
+      {show && !numberUnit && number !== null && showsMarker(entries) ? (
         <p className="text-body-sm text-ink-2">
           The group’s number, exactly: {(Number(number) / 100).toFixed(1)}%.
+        </p>
+      ) : null}
+      {axis?.marker && numberUnit ? (
+        <p className="text-body-sm text-ink-2">
+          The group’s number is {unitPhrase(BigInt(axis.marker.chip.replace(/,/g, "")), numberUnit)}: half of what’s riding sits at or below it.
         </p>
       ) : null}
       {d.creatorId === me.id &&
@@ -514,6 +545,13 @@ export default async function MarketPage({
           : unit.plural.charAt(0).toUpperCase() + unit.plural.slice(1)}
         , the same for everyone
       </dd>
+      {/* The scoring scale, once, only when the asker set it (3.26): a scale the app set appears on no screen. */}
+      {numberUnit && d.range !== null && d.rangeSource === "asker" ? (
+        <>
+          <dt className="text-label text-ink-3">Scored on</dt>
+          <dd className="text-body text-ink">Off by {unitPhrase(d.range, numberUnit)} or more scores nothing. Closer scores more.</dd>
+        </>
+      ) : null}
       <dt className="text-label text-ink-3">If it’s unclear</dt>
       <dd className="text-body text-ink">
         {d.stalemate === "void"
@@ -655,7 +693,7 @@ export default async function MarketPage({
         <div className="flex min-w-0 flex-col gap-1">
           <p className="text-body-strong text-ink">
             {first(claimant.userId)}{" "}
-            {claimant.userId === me.id ? "say" : "says"} {SAID[claimWord]}
+            {claimant.userId === me.id ? "say" : "says"} {SAID(claimWord)}
           </p>
           {claimSaid ? (
             <p className="text-body-sm text-ink-2">{claimSaid}</p>
@@ -699,6 +737,7 @@ export default async function MarketPage({
             : null
         }
         awaitingProposal={d.pace === "argument" && !d.aiProposedAt}
+        numberUnit={numberUnit}
         split={
           d.stalemate === "arbitrate" && mine && counted.length > 1
             ? {
@@ -726,12 +765,17 @@ export default async function MarketPage({
           null,
         )
       : null;
+  // The answer as a sentence (3.25): "14 shirts, then a seam gave out." when the claimant said what happened in a few words, else "14 shirts."
+  const claimantSaid = state === "resolved" ? (statements.find((s) => s.userId === orderedVotes[0]?.userId)?.statement ?? null) : null;
+  const answerLine = answerNumber !== null && numberUnit ? `${unitPhrase(answerNumber, numberUnit)}${claimantSaid && claimantSaid.length <= 60 ? `, ${claimantSaid.charAt(0).toLowerCase()}${claimantSaid.slice(1).replace(/[.!]+$/, "")}.` : "."}` : outcome === "yes" ? "Yes." : "No.";
+  const offBy = (p: (typeof positions)[number]) => (answerNumber === null ? 0n : p.value > answerNumber ? p.value - answerNumber : answerNumber - p.value);
+  const closestLine = closest ? (numberUnit ? `${first(closest.userId as string)} ${closest.userId === me.id ? "were" : "was"} closest, ${offBy(closest) === 0n ? "dead on" : `off by ${withSeparators(offBy(closest))}`}.` : `${first(closest.userId as string)} ${closest.userId === me.id ? "were" : "was"} closest, at ${Number(closest.value) / 100}%.`) : "";
   const settledSheet =
     state === "resolved" && outcome && outcome !== "void" ? (
       <SettledSheet
         dareId={d.id}
         tileUrl={`/m/${d.id}/opengraph-image`}
-        caption={`${outcome === "yes" ? "Yes." : "No."}${closest ? ` ${first(closest.userId as string)} ${closest.userId === me.id ? "were" : "was"} closest, at ${Number(closest.value) / 100}%.` : ""}`}
+        caption={`${answerLine}${closestLine ? ` ${closestLine}` : ""}`}
         url={`${appUrl}/m/${d.id}`}
         text={`How it ended: ${d.title}`}
       />
@@ -750,9 +794,11 @@ export default async function MarketPage({
           {state === "resolved" && outcome && outcome !== "void" ? (
             <>
               <section className="flex flex-col gap-4">
-                <p className="text-serif-l text-ink">
-                  {outcome === "yes" ? "Yes." : "No."}
-                </p>
+                <p className="text-serif-l text-ink">{answerLine}</p>
+                {numberUnit && closestLine ? <p className="text-caption text-ink-2">{closestLine}</p> : null}
+                {numberUnit && rulerData ? (
+                  <Ruler ruler={rulerData} state="resolved" size="screen" surface="var(--ground)" />
+                ) : (
                 <CallLine
                   pins={pins}
                   state="resolved"
@@ -760,9 +806,23 @@ export default async function MarketPage({
                   size="screen"
                   surface="var(--ground)"
                 />
+                )}
               </section>
               <section className="flex flex-col gap-3">
                 <SectionLabel>Who was closest</SectionLabel>
+                {numberUnit && rulerData && rulerData.answer ? (
+                  <NumberLeaderboard
+                    viewerId={me.id}
+                    answer={rulerData.answer}
+                    standings={positions.map((p) => ({
+                      userId: p.userId as string,
+                      name: person.get(p.userId as string)?.displayName ?? "Someone",
+                      value: p.value.toString(),
+                      xPermille: rulerData.pins.find((x) => x.id === p.userId)?.xPermille ?? 0,
+                      score: p.score ?? 0,
+                    }))}
+                  />
+                ) : (
                 <Leaderboard
                   viewerId={me.id}
                   outcome={outcome === "yes" ? 1 : 0}
@@ -774,6 +834,7 @@ export default async function MarketPage({
                     score: p.score ?? 0,
                   }))}
                 />
+                )}
               </section>
               <section className="flex flex-col gap-2">
                 <SectionLabel>What changes hands</SectionLabel>
@@ -797,12 +858,14 @@ export default async function MarketPage({
               <p className="text-body text-ink-2">
                 Nobody could tell, so it’s void. Nothing changes hands.
               </p>
+              {numberUnit ? (rulerData ? <Ruler ruler={rulerData} size="screen" surface="var(--ground)" /> : null) : (
               <CallLine
                 pins={pins}
                 state="in"
                 size="screen"
                 surface="var(--ground)"
               />
+              )}
             </section>
           ) : null}
 
@@ -869,7 +932,9 @@ export default async function MarketPage({
                     ? "Where each of you stands"
                     : "Everyone’s in, and numbers are locked"}
                 </SectionLabel>
-                {mine ? null : (
+                {mine ? null : numberUnit ? (
+                  rulerData ? <Ruler ruler={rulerData} size="screen" surface="var(--ground)" /> : null
+                ) : (
                   <CallLine
                     pins={pins}
                     state="in"
@@ -894,7 +959,7 @@ export default async function MarketPage({
                         {nameOf(p.userId as string)}
                       </span>
                       <span className="text-body-sm text-ink-2">
-                        {Number(p.value) / 100}% · {stakeWords(p.stake)}
+                        {numberWords(p.value)} · {stakeWords(p.stake)}
                       </span>
                     </li>
                   ))}
@@ -911,12 +976,14 @@ export default async function MarketPage({
                 that happened. Nothing changes hands, and it counts against
                 nobody.
               </p>
+              {numberUnit ? (rulerData ? <Ruler ruler={rulerData} size="screen" surface="var(--ground)" /> : null) : (
               <CallLine
                 pins={pins}
                 state="in"
                 size="screen"
                 surface="var(--ground)"
               />
+              )}
             </section>
           ) : null}
 
@@ -957,6 +1024,8 @@ export default async function MarketPage({
           {state === "draft" ? stage : null}
           {callSheet}
           {settledSheet}
+          {/* A market in voting goes stale on screen: a light poll of Postgres, never the indexer, while it is locked and this screen is visible. */}
+          {state === "locked" ? <VotePoll dareId={d.id} pulse={pulseOf({ votes, statements, resolvedAt: d.resolvedAt, aiProposedAt: d.aiProposedAt })} /> : null}
         </div>
       </Screen>
     </div>

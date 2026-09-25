@@ -8,37 +8,74 @@ import { afterEntry, arbitrateMarket, proposeForArgument, stateCase } from "@/li
 import { isHex, type Hex } from "viem";
 import { z } from "zod";
 import { isInkName } from "@/lib/ui/ink";
-import { plainScope, proposeOutcome, scopeMarket } from "@/lib/ai/markets";
+import { plainNumberScope, plainScope, proposeNumber, proposeOutcome, scopeMarket, scopeNumber } from "@/lib/ai/markets";
+import { createHmac, timingSafeEqual } from "node:crypto";
+import { checkScale, parseAskerScale } from "@/lib/ledger/scale";
+import { MAX_NUMBER } from "@/lib/ledger/scoring";
 import { viewerZone } from "@/lib/ui/zone";
 import { requireUser } from "@/lib/auth/session";
 import { db, schema } from "@/db";
 import { and, asc, eq } from "drizzle-orm";
 import { denominationById, ensureUnitInGroup, ensureUsd } from "@/lib/ledger/denominations";
 import { createOccasionGroup, isMember, setForPeople } from "@/lib/ledger/groups";
-import { castVote, draftMarket, enterMarket, lockMarket, MarketError, marketById, openMarket, sayWhatHappened, stateOf, VOID_OUTCOME, pickInk } from "@/lib/ledger/markets";
+import { callToOutcome, castVote, draftMarket, enterMarket, lockMarket, MarketError, marketById, openMarket, sayWhatHappened, stateOf, unitOf, VOID_OUTCOME, pickInk } from "@/lib/ledger/markets";
 
 const uuid = z.string().uuid();
 const say = (err: unknown, fallback: string) => (err instanceof MarketError ? err.message : fallback);
 
-export type ScopeResult = { title: string; terms: string; ambiguous: boolean; criteria: string[]; resolvesInHours: number; plain: boolean };
+export type ScopeResult = { title: string; terms: string; ambiguous: boolean; criteria: string[]; resolvesInHours: number; plain: boolean; number: NumberScopeResult | null };
+/**
+ * A number question's write-up carries its unit and, when the model's scale passed the check, that scale under a
+ * token only this server can mint for this person: the draft that comes back with it is stored as the model's
+ * scale, which is never shown, so a scale nobody but the server chose must not be able to wear that label.
+ */
+export type NumberScopeResult = { unit: { singular: string; plural: string }; model: { range: string | null; typical: string; token: string } | null };
+
+/** The token covers the model's scale (null when it failed the check) and its most likely answer together. */
+function scaleToken(userId: string, range: string | null, typical: string): string {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret || secret.length < 32) throw new Error("SESSION_SECRET is not set or too short");
+  return createHmac("sha256", secret).update(`dareful:ai-scale:v2:${userId}:${range ?? ""}:${typical}`).digest("base64url");
+}
+function scaleTokenValid(userId: string, range: string | null, typical: string, token: string): boolean {
+  const want = Buffer.from(scaleToken(userId, range, typical));
+  const got = Buffer.from(token);
+  return want.length === got.length && timingSafeEqual(want, got);
+}
 
 /**
  * Quick mode: one line in, terms out. The model drafts; if it is slow, down, or answers in the wrong shape, the
  * line is used as typed and the screen says so, because a market must never wait on a model.
  */
-export async function scopeMarketAction(rawLine: string, rawCriterion?: string, rawAnswers?: Array<{ question: string; yes: boolean }>): Promise<ScopeResult | { error: string }> {
-  await requireUser();
+export async function scopeMarketAction(rawLine: string, rawCriterion?: string, rawAnswers?: Array<{ question: string; yes: boolean }>, rawKind?: "binary" | "numeric"): Promise<ScopeResult | { error: string }> {
+  const user = await requireUser();
   const line = z.string().trim().min(3).max(280).safeParse(rawLine);
   if (!line.success) return { error: "Ask it in a line." };
   const criterion = rawCriterion ? z.string().trim().min(3).max(120).safeParse(rawCriterion) : null;
+  if (rawKind === "numeric") {
+    try {
+      const s = await scopeNumber({ line: line.data, now: new Date() });
+      const unit = { singular: s.unit.singular.toLowerCase(), plural: s.unit.plural.toLowerCase() };
+      // The model's scale is used only when it passes the check; otherwise the asker sets one (src/lib/ledger/scale.ts).
+      const checked = checkScale({ low: s.low, high: s.high, typical: s.typical });
+      if (!checked.ok) console.warn("number scale proposal refused", { why: checked.why, low: s.low, high: s.high, typical: s.typical });
+      const range = checked.ok ? checked.range.toString() : null;
+      const typical = Number.isInteger(s.typical) && s.typical >= 0 ? String(s.typical) : "0";
+      return { title: s.title, terms: s.terms, ambiguous: false, criteria: [], resolvesInHours: s.resolvesInHours, plain: false, number: { unit, model: { range, typical, token: scaleToken(user.id, range, typical) } } };
+    } catch (err) {
+      console.error("scoping a number question failed; using the line as typed", err);
+      const p = plainNumberScope(line.data);
+      return { ...p, ambiguous: false, criteria: [], resolvesInHours: 24, plain: true, number: { unit: { singular: "", plural: "" }, model: null } };
+    }
+  }
   try {
     const answers = z.array(z.object({ question: z.string().trim().min(3).max(160), yes: z.boolean() })).max(3).safeParse(rawAnswers ?? []);
     const s = await scopeMarket({ line: line.data, criterion: criterion?.success ? criterion.data : undefined, answers: answers.success ? answers.data : undefined, now: new Date() });
-    return { title: s.title, terms: s.terms, ambiguous: s.ambiguous && s.criteria.length > 0, criteria: s.criteria, resolvesInHours: s.resolvesInHours, plain: false };
+    return { title: s.title, terms: s.terms, ambiguous: s.ambiguous && s.criteria.length > 0, criteria: s.criteria, resolvesInHours: s.resolvesInHours, plain: false, number: null };
   } catch (err) {
     console.error("scoping failed; using the line as typed", err);
     const p = plainScope(line.data);
-    return { ...p, ambiguous: false, criteria: [], resolvesInHours: 24, plain: true };
+    return { ...p, ambiguous: false, criteria: [], resolvesInHours: 24, plain: true, number: null };
   }
 }
 
@@ -66,6 +103,16 @@ const Draft = z.object({
   terms: z.string().trim().min(3).max(800),
   resolvesBy: z.string().datetime().nullable(),
   markEmoji: z.string().trim().max(16).optional(),
+  /** The id the client made up front, so the ink it previewed on the question step is the ink that is stored (docs/design.md 3.29). */
+  id: z.string().uuid().optional(),
+  /** A number question: its unit, the asker's scale as typed (blank for the model's), and what the model said under its token. */
+  number: z
+    .object({
+      unit: z.object({ singular: z.string().trim().min(1).max(24), plural: z.string().trim().max(24) }),
+      scale: z.string().trim().max(16),
+      model: z.object({ range: z.string().regex(/^\d{1,9}$/).nullable(), typical: z.string().regex(/^\d{1,9}$/), token: z.string().max(200) }).nullable(),
+    })
+    .optional(),
 });
 
 /** Saves the draft and sends the creator to it; they read the terms there and sign to open it. */
@@ -81,12 +128,34 @@ export async function draftMarketAction(input: z.infer<typeof Draft>): Promise<{
     const groupId = d.who.kind === "set" ? d.who.groupId : d.who.kind === "people" ? (await setForPeople(user.id, d.who.userIds)).id : (await createOccasionGroup(user.id)).id;
     const denom = d.unit.kind === "usd" ? await ensureUsd(groupId, user.id) : d.unit.kind === "existing" ? await denominationById(d.unit.id) : await ensureUnitInGroup(groupId, user.id, d.unit);
     if (!denom) return { error: "That unit isn't around any more. Pick another." };
+    // The scale (docs/design.md 3.26): the asker's when they typed one, else the model's, checked and signed by this server.
+    // The model's most likely answer, under the same token, is kept as the far-off check's reference and never shown.
+    let scale: { range: bigint; source: "asker" | "ai" } | null = null;
+    let typical: bigint | null = null;
+    if (d.number) {
+      const model = d.number.model && scaleTokenValid(user.id, d.number.model.range, d.number.model.typical, d.number.model.token) ? d.number.model : null;
+      if (model) typical = BigInt(model.typical);
+      if (d.number.scale) {
+        const typed = parseAskerScale(d.number.scale);
+        if (!typed) return { error: "The scale is a whole number of at least one, like 20." };
+        scale = { range: typed, source: "asker" };
+      } else if (model?.range && BigInt(model.range) >= 1n && BigInt(model.range) <= MAX_NUMBER) {
+        scale = { range: BigInt(model.range), source: "ai" };
+      } else {
+        return { error: "Say how far off scores nothing, like 20." };
+      }
+    }
     const row = await draftMarket({
+      id: d.id,
       creatorId: user.id,
       groupId,
       denomId: denom.id,
       title: d.title,
       termsText: d.terms,
+      kind: d.number ? "numeric" : "binary",
+      unit: d.number?.unit ?? null,
+      scale,
+      typical,
       resolvesBy: d.argument ? null : d.resolvesBy ? new Date(d.resolvesBy) : null,
       pace: d.argument ? "argument" : "dare",
       tier: d.argument?.tier ?? null,
@@ -103,7 +172,9 @@ export async function draftMarketAction(input: z.infer<typeof Draft>): Promise<{
   }
 }
 
-const Position = z.object({ stake: z.string().regex(/^\d{1,15}$/), valueBps: z.number().int().min(0).max(10_000) });
+/** A position's number: a probability in whole percent on a yes-or-no question, or the whole number on a number question. */
+const Position = z.object({ stake: z.string().regex(/^\d{1,15}$/), valueBps: z.number().int().min(0).max(10_000).optional(), number: z.string().regex(/^\d{1,9}$/).optional() }).refine((p) => (p.valueBps === undefined) !== (p.number === undefined), "one number");
+const valueOf = (p: z.infer<typeof Position>): bigint => (p.number !== undefined ? BigInt(p.number) : BigInt(p.valueBps ?? 0));
 
 /** The creator's two signatures: one opens the market, one is their own position. Either failing leaves it a draft or open with nobody in. */
 export async function openMarketAction(rawId: string, createSignature: string, rawPosition: z.infer<typeof Position>, enterSignature: string): Promise<{ ok: true } | { error: string }> {
@@ -113,7 +184,7 @@ export async function openMarketAction(rawId: string, createSignature: string, r
   if (!id.success || !position.success || !isHex(createSignature) || !isHex(enterSignature)) return { error: "That didn't come through. Try again." };
   try {
     await openMarket(id.data, user.id, createSignature as Hex);
-    await enterMarket({ dareId: id.data, userId: user.id, stake: BigInt(position.data.stake), valueBps: BigInt(position.data.valueBps), signature: enterSignature as Hex });
+    await enterMarket({ dareId: id.data, userId: user.id, stake: BigInt(position.data.stake), value: valueOf(position.data), signature: enterSignature as Hex });
   } catch (err) {
     return { error: say(err, "That didn't go through. Try again.") };
   }
@@ -130,7 +201,7 @@ export async function enterMarketAction(rawId: string, rawPosition: z.infer<type
   const position = Position.safeParse(rawPosition);
   if (!id.success || !position.success || !isHex(signature)) return { error: "That didn't come through. Try again." };
   try {
-    await enterMarket({ dareId: id.data, userId: user.id, stake: BigInt(position.data.stake), valueBps: BigInt(position.data.valueBps), signature: signature as Hex });
+    await enterMarket({ dareId: id.data, userId: user.id, stake: BigInt(position.data.stake), value: valueOf(position.data), signature: signature as Hex });
   } catch (err) {
     return { error: say(err, "That didn't go through. Try again.") };
   }
@@ -210,8 +281,11 @@ async function refreshProposal(dareId: string): Promise<void> {
     .where(and(eq(schema.dareStatements.dareId, dareId), eq(schema.dareStatements.kind, "update")))
     .orderBy(asc(schema.dareStatements.statedAt));
   try {
-    const p = await proposeOutcome({ title: d.title, terms: d.termsText, statements: said, now: new Date() });
-    const outcome = p.outcome === "yes" ? 1n : p.outcome === "no" ? 0n : p.outcome === "cannot_be_decided" ? VOID_OUTCOME : null;
+    const unit = unitOf(d);
+    const p = unit
+      ? await proposeNumber({ title: d.title, terms: d.termsText, unit, statements: said, now: new Date() }).then((r) => ({ outcome: r.outcome === "number" && r.number !== null ? BigInt(r.number) : r.outcome === "cannot_be_decided" ? VOID_OUTCOME : null, confidencePercent: r.confidencePercent, rationale: r.rationale }))
+      : await proposeOutcome({ title: d.title, terms: d.termsText, statements: said, now: new Date() }).then((r) => ({ outcome: r.outcome === "yes" ? 1n : r.outcome === "no" ? 0n : r.outcome === "cannot_be_decided" ? VOID_OUTCOME : null, confidencePercent: r.confidencePercent, rationale: r.rationale }));
+    const outcome = p.outcome;
     await db
       .update(schema.dares)
       .set({ aiOutcome: outcome, aiConfidenceBps: outcome === null ? null : p.confidencePercent * 100, aiRationale: p.rationale, aiProposedAt: new Date() })
@@ -222,13 +296,13 @@ async function refreshProposal(dareId: string): Promise<void> {
 }
 
 /** A vote is a signature from the voter's governance wallet. This relays it; nothing here can make one. */
-export async function castVoteAction(rawId: string, rawOutcome: "yes" | "no" | "void", signature: string): Promise<{ ok: true; resolved: boolean; counts: VoteCounts | null } | { error: string }> {
+export async function castVoteAction(rawId: string, rawOutcome: string, signature: string): Promise<{ ok: true; resolved: boolean; counts: VoteCounts | null } | { error: string }> {
   const user = await requireUser();
   const id = uuid.safeParse(rawId);
-  const outcome = z.enum(["yes", "no", "void"]).safeParse(rawOutcome);
-  if (!id.success || !outcome.success || !isHex(signature)) return { error: "That didn't come through. Try again." };
+  const outcome = typeof rawOutcome === "string" ? callToOutcome(rawOutcome) : null;
+  if (!id.success || outcome === null || !isHex(signature)) return { error: "That didn't come through. Try again." };
   try {
-    const r = await castVote({ dareId: id.data, userId: user.id, outcome: outcome.data === "yes" ? 1n : outcome.data === "no" ? 0n : VOID_OUTCOME, signature: signature as Hex });
+    const r = await castVote({ dareId: id.data, userId: user.id, outcome, signature: signature as Hex });
     revalidatePath(`/m/${id.data}`);
     revalidatePath("/");
     // The rest of the quorum hears about it after the voter has their answer, never before and never instead.
@@ -292,7 +366,7 @@ export async function stateCaseAction(rawId: string, rawText: string): Promise<{
 }
 
 /** "Let the app call it": someone who is in it asks for the arbitration everyone agreed to going in. */
-export async function arbitrateAction(rawId: string): Promise<{ ok: true; outcome: "yes" | "no" | "void" } | { error: string }> {
+export async function arbitrateAction(rawId: string): Promise<{ ok: true; outcome: "yes" | "no" | "void" | "number" } | { error: string }> {
   const user = await requireUser();
   const id = uuid.safeParse(rawId);
   if (!id.success) return { error: "That one doesn't exist." };

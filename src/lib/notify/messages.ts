@@ -10,7 +10,11 @@ const short = (title: string) => {
   return t.length > 60 ? `${t.slice(0, 59).trimEnd()}…` : t;
 };
 
-const LABEL = { yes: "Yes", no: "No", void: "Nobody could tell" } as const;
+/**
+ * "Yes", "No", "Nobody could tell", or, for a number question, "Decided": a notice never carries a number
+ * (the rule for notices and relay text), and the answer waits on the screen the notice opens.
+ */
+const LABEL = { yes: "Yes", no: "No", void: "Nobody could tell", number: "Decided" } as const;
 export type OutcomeWord = keyof typeof LABEL;
 
 /**

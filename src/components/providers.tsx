@@ -8,6 +8,7 @@ import { WalletBootstrap } from "@/components/auth/wallet-bootstrap";
 import { DeviceNotice, MeProvider } from "@/components/auth/device";
 import type { Me } from "@/lib/auth/device";
 import { OpenFromNotification } from "@/components/notify/open-from-notification";
+import { Refresh } from "@/components/ui/refresh";
 
 const environmentId = process.env.NEXT_PUBLIC_DYNAMIC_ENVIRONMENT_ID ?? "";
 
@@ -40,6 +41,7 @@ export function Providers({ children, settled, me }: { children: ReactNode; sett
         <WalletBootstrap settled={settled} sessionDynamicUserId={me?.dynamicUserId ?? null} />
         <DeviceNotice />
         <OpenFromNotification />
+        <Refresh />
         {children}
       </MeProvider>
     </DynamicContextProvider>

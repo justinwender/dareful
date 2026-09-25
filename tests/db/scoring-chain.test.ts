@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { contracts } from "@/lib/chain/contracts";
 import { relayer } from "@/lib/chain/relayer";
-import { pairwiseTransfer, scoreBinary } from "@/lib/ledger/scoring";
+import { pairwiseTransfer, scoreBinary, scoreNumeric } from "@/lib/ledger/scoring";
 
 test("scores agree with the deployed contract across the whole probability range", async () => {
   const { dares } = contracts();
@@ -37,5 +37,34 @@ test("pairwise transfers agree with the deployed contract, including where trunc
   for (const [si, sj, a, b, n] of cases) {
     const onchain = await publicClient.readContract({ address: dares.address, abi: dares.abi, functionName: "pairwiseTransfer", args: [si, sj, a, b, n] });
     assert.equal(onchain, pairwiseTransfer(si, sj, BigInt(a), BigInt(b), n), `stakes ${si}/${sj}, scores ${a}/${b}, n ${n}`);
+  }
+});
+
+test("number scores agree with the deployed contract, across the shirts example, the edges of the scale and the contract's own table", async () => {
+  const { dares } = contracts();
+  const { publicClient } = relayer();
+  const cases: Array<[bigint, bigint, bigint]> = [
+    // The shirts (tests/unit/numbers.test.ts): five entries against 14 on a scale of 20.
+    [14n, 14n, 20n],
+    [18n, 14n, 20n],
+    [12n, 14n, 20n],
+    [9n, 14n, 20n],
+    [200n, 14n, 20n],
+    // The contract's own table (contracts/test/DarefulDares.t.sol).
+    [60n, 50n, 100n],
+    [0n, 50n, 100n],
+    [150n, 50n, 100n],
+    [151n, 50n, 100n],
+    [1n, 0n, 3n],
+    [2n, 0n, 3n],
+    [20n, 12n, 20n],
+    // A wide scale, where the integer division bites, and the largest number the field takes.
+    [18n, 14n, 10_000n],
+    [999_999_999n, 0n, 999_999_999n],
+    [0n, 999_999_999n, 1n],
+  ];
+  for (const [value, outcome, range] of cases) {
+    const onchain = await publicClient.readContract({ address: dares.address, abi: dares.abi, functionName: "scoreNumeric", args: [value, outcome, range] });
+    assert.equal(BigInt(onchain), scoreNumeric(value, outcome, range), `value ${value}, outcome ${outcome}, scale ${range}`);
   }
 });

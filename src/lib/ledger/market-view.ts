@@ -10,7 +10,7 @@ import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { denominationsByIds, type DenominationRow } from "./denominations";
 import { inkOf, type InkName } from "@/lib/ui/ink";
-import { stateOf, VOID_OUTCOME, type DareRow, type MarketState, type PositionRow } from "./markets";
+import { stateOf, unitOf, VOID_OUTCOME, type DareRow, type MarketState, type PositionRow, type Unit } from "./markets";
 
 export type MarketPerson = { id: string; displayName: string };
 export type MarketCardData = {
@@ -24,8 +24,12 @@ export type MarketCardData = {
   groupName: string | null;
   groupSize: number;
   denomination: DenominationRow;
-  people: Array<{ id: string; name: string; percent: number | null }>;
+  /** Percents on a yes-or-no question; on a number question `percent` is null and `number` carries the entry, as text. Both null when numbers may not be shown. */
+  people: Array<{ id: string; name: string; percent: number | null; number: string | null }>;
   outcome: 0 | 1 | null;
+  /** A number question: its unit, and the answer once it has one. */
+  unit: Unit | null;
+  answer: string | null;
   consequences: Array<{ id: string; from: MarketPerson; to: MarketPerson; quantity: bigint }>;
   needsYou: string | null;
   /** How many of the group have called it, and who first said what happened. For the "Needs you" context line. */
@@ -81,6 +85,7 @@ export async function marketCards(input: { viewerId: string; groupId?: string; w
     const iAmIn = ps.some((p) => p.userId === input.viewerId);
     const show = numbersVisible(d, iAmIn);
     const between = (e: (typeof edges)[number]) => !input.withUserId || ((e.fromUser === input.viewerId || e.toUser === input.viewerId) && (e.fromUser === input.withUserId || e.toUser === input.withUserId));
+    const unit = unitOf(d);
     out.push({
       dare: d,
       state,
@@ -90,8 +95,10 @@ export async function marketCards(input: { viewerId: string; groupId?: string; w
       groupName: groups.find((g) => g.id === d.groupId)?.name ?? null,
       groupSize: seats.filter((s) => s.groupId === d.groupId).length,
       denomination,
-      people: ps.map((p) => ({ id: p.userId as string, name: nameOf.get(p.userId as string) ?? "Someone", percent: show ? percentOf(p) : null })),
-      outcome: state === "resolved" && d.resolvedOutcome !== null && d.resolvedOutcome !== VOID_OUTCOME ? (Number(d.resolvedOutcome) as 0 | 1) : null,
+      people: ps.map((p) => ({ id: p.userId as string, name: nameOf.get(p.userId as string) ?? "Someone", percent: show && !unit ? percentOf(p) : null, number: show && unit ? p.value.toString() : null })),
+      outcome: state === "resolved" && !unit && d.resolvedOutcome !== null && d.resolvedOutcome !== VOID_OUTCOME ? (Number(d.resolvedOutcome) as 0 | 1) : null,
+      unit,
+      answer: state === "resolved" && unit && d.resolvedOutcome !== null && d.resolvedOutcome !== VOID_OUTCOME ? d.resolvedOutcome.toString() : null,
       consequences: edges
         .filter((e) => e.originId === d.id && between(e))
         .map((e) => ({ id: e.id, from: { id: e.fromUser, displayName: nameOf.get(e.fromUser) ?? "Someone" }, to: { id: e.toUser, displayName: nameOf.get(e.toUser) ?? "Someone" }, quantity: e.quantity ?? 1n })),

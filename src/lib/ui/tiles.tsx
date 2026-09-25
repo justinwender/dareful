@@ -35,6 +35,8 @@ export type AskTile = {
   mark: string | null;
   ink: InkName;
   closes: string | null;
+  /** A number question: the empty field with the unit in serif stands where the odds line would (3.27). */
+  unit: string | null;
 };
 export type CalledTile = {
   kind: "called";
@@ -45,7 +47,17 @@ export type CalledTile = {
   pins: Array<{ name: string; hue: Hue; percent: number; caller: boolean }>;
   line: string;
 };
-export type Tile = AskTile | CalledTile;
+/** A number question's result tile (3.27): the answer as its outcome, the ruler with the answer tick, and who was closest. */
+export type NumberTile = {
+  kind: "number";
+  mark: string | null;
+  ink: InkName;
+  /** "14 shirts." */
+  outcomeLine: string;
+  ruler: { leftLabel: string; rightLabel: string; answerPermille: number; pins: Array<{ name: string; hue: Hue; xPermille: number; closest: boolean }> };
+  line: string;
+};
+export type Tile = AskTile | CalledTile | NumberTile;
 
 const initial = (name: string) => name.trim().charAt(0).toUpperCase();
 
@@ -150,6 +162,19 @@ function ask(t: AskTile) {
         gap: 10,
       }}
     >
+      {t.unit !== null ? (
+        // A number question's empty answer: the 88px mark stamp, an empty 210 by 96 field with a cream caret, and the unit in serif.
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 24, height: 110 }}>
+          {t.mark ? (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 88, height: 88, borderRadius: 16, background: layers.ground, fontSize: 56, lineHeight: 1 }}>{t.mark}</div>
+          ) : null}
+          <div style={{ display: "flex", alignItems: "center", width: 210, height: 96, borderRadius: 16, background: layers.ground, paddingLeft: 28 }}>
+            <div style={{ display: "flex", width: 4, height: 56, background: CREAM, borderRadius: 2 }} />
+          </div>
+          <div style={{ display: "flex", fontFamily: "Young Serif", fontSize: 44, color: CREAM }}>{t.unit}</div>
+        </div>
+      ) : (
+        <>
       {t.mark ? (
         <div
           style={{
@@ -199,6 +224,8 @@ function ask(t: AskTile) {
         <div style={{ display: "flex" }}>0%</div>
         <div style={{ display: "flex" }}>100%</div>
       </div>
+        </>
+      )}
     </div>,
     ...(t.closes
       ? [
@@ -357,8 +384,42 @@ function called(t: CalledTile) {
   ]);
 }
 
+/** A number question's result tile without a photo: the mark and the answer on one line, the ruler with the cream answer tick, and who was closest. */
+function numberTile(t: NumberTile) {
+  const layers = INKS[t.ink];
+  const pin = 52;
+  const inset = 24;
+  const w = SAFE.w - inset * 2;
+  return frame(t.ink, [
+    <div key="outcome" style={{ display: "flex", alignItems: "center", gap: 24 }}>
+      {t.mark ? (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 88, height: 88, borderRadius: 16, background: layers.ground, fontSize: 56, lineHeight: 1 }}>{t.mark}</div>
+      ) : null}
+      <div style={{ display: "flex", fontFamily: "Young Serif", fontSize: 72 }}>{t.outcomeLine}</div>
+    </div>,
+    <div key="ruler" style={{ display: "flex", flexDirection: "column", width: SAFE.w, gap: 14 }}>
+      <div style={{ position: "relative", display: "flex", height: pin + 16, width: SAFE.w }}>
+        <div style={{ position: "absolute", left: inset, right: inset, top: (pin + 16) / 2 - 6, height: 12, borderRadius: 6, background: layers.ground, display: "flex" }} />
+        {t.ruler.pins.map((p, i) => (
+          <div key={i} style={{ position: "absolute", top: 8, left: Math.round(inset + (p.xPermille / 1000) * w - pin / 2), display: "flex" }}>
+            {avatar(p.name, p.hue, pin, p.closest ? CREAM : layers.field)}
+          </div>
+        ))}
+        <div style={{ position: "absolute", top: 4, left: Math.round(inset + (t.ruler.answerPermille / 1000) * w - 3), width: 6, height: pin + 8, borderRadius: 3, background: CREAM, display: "flex" }} />
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 28, color: layers.hi }}>
+        <div style={{ display: "flex" }}>{t.ruler.leftLabel}</div>
+        <div style={{ display: "flex" }}>{t.ruler.rightLabel}</div>
+      </div>
+    </div>,
+    <div key="who" style={{ display: "flex", fontSize: 34, fontWeight: 600, textAlign: "center", justifyContent: "center", width: SAFE.w }}>
+      {t.line}
+    </div>,
+  ]);
+}
+
 export function renderTile(tile: Tile, fonts: TileFonts): ImageResponse {
-  return new ImageResponse(tile.kind === "ask" ? ask(tile) : called(tile), {
+  return new ImageResponse(tile.kind === "ask" ? ask(tile) : tile.kind === "number" ? numberTile(tile) : called(tile), {
     ...tileSize,
     emoji: "noto",
     fonts: [

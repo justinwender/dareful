@@ -21,23 +21,26 @@ import {
 } from "@/lib/actions/markets";
 import { daresTypes } from "@/lib/chain/typed-data";
 import { countWord } from "@/lib/ledger/weight";
+import { unitPhrase } from "@/lib/ledger/number-axis";
 import type { Hue } from "@/lib/ui/hue";
 import { cn } from "@/lib/utils";
 import type { Signing } from "./market-actions";
+import { NumberEntry } from "./number-entry";
 
-export type Word = "yes" | "no" | "void";
-const LABEL: Record<Word, string> = {
-  yes: "Yes",
-  no: "No",
-  void: "Nobody can tell",
-};
-const SAID: Record<Word, string> = {
-  yes: "yes",
-  no: "no",
-  void: "nobody can tell",
-};
+/** What a vote names: yes, no, nobody can tell, or, on a number question, "n:" and the whole number. */
+export type Word = "yes" | "no" | "void" | `n:${string}`;
+type Unit = { singular: string; plural: string } | null;
+const isNumber = (w: Word): w is `n:${string}` => w.startsWith("n:");
+const numberOf = (w: Word): bigint => BigInt(w.slice(2));
+/** "Yes", "No", "Nobody can tell", "14 shirts". */
+const label = (w: Word, unit: Unit): string => (w === "yes" ? "Yes" : w === "no" ? "No" : w === "void" ? "Nobody can tell" : unit ? unitPhrase(numberOf(w), unit) : w.slice(2));
+/** "yes", "no", "nobody can tell", "14 shirts", for the middle of a sentence. */
+const said = (w: Word, unit: Unit): string => (w === "yes" ? "yes" : w === "no" ? "no" : w === "void" ? "nobody can tell" : unit ? unitPhrase(numberOf(w), unit) : w.slice(2));
+/** The bare number in a count line ("3 of 6 have said 14."), the unit having been said once already. */
+const bare = (w: Word, unit: Unit): string => (isNumber(w) ? numberOf(w).toLocaleString("en-US") : said(w, unit));
 const WORDS: Word[] = ["yes", "no", "void"];
 const VOID = (1n << 256n) - 1n;
+const outcomeOf = (w: Word): bigint => (w === "yes" ? 1n : w === "no" ? 0n : w === "void" ? VOID : numberOf(w));
 
 export type CallSheetProps = {
   dareId: string;
@@ -58,6 +61,8 @@ export type CallSheetProps = {
   } | null;
   /** An argument whose read is on its way: the screen re-reads itself for a minute. */
   awaitingProposal: boolean;
+  /** A number question: what the number counts. The sheet then takes a number where it took yes or no (3.24). */
+  numberUnit?: { singular: string; plural: string } | null;
   /** Under the arbitrate rule, once the vote is split: the cases, and whether the app may be asked yet. */
   split: {
     cases: Array<{ name: string; said: string }>;
@@ -77,9 +82,12 @@ export type CallSheetProps = {
  */
 export function CallSheet(props: CallSheetProps) {
   const { dareId, signing, threshold, quorum, votes, myVote, proposal } = props;
+  const unit = props.numberUnit ?? null;
   const router = useRouter();
   const sign = useSigner();
   const [pick, setPick] = useState<Word | null>(null);
+  /** The number typed on a number question: the claim, or the number a dissenter saw. */
+  const [typed, setTyped] = useState<bigint | null>(null);
   const [picking, setPicking] = useState(false);
   const [raised, setRaised] = useState(false);
   const [line, setLine] = useState("");
@@ -99,8 +107,8 @@ export function CallSheet(props: CallSheetProps) {
   const countLine = !leading
     ? null
     : tally.length === 1
-      ? `${leading.n} of ${quorum} ${leading.n === 1 ? "has" : "have"} said ${SAID[leading.outcome]}.${leading.n < threshold ? ` ${cap(countWord(threshold - leading.n))} more and it settles.` : ""}`
-      : `${tally.map((t) => `${t.n} ${t.n === 1 ? "says" : "say"} ${SAID[t.outcome]}`).join(", ")}. It takes ${threshold} agreeing.`;
+      ? `${leading.n} of ${quorum} ${leading.n === 1 ? "has" : "have"} said ${bare(leading.outcome, unit)}.${leading.n < threshold ? ` ${cap(countWord(threshold - leading.n))} more and it settles.` : ""}`
+      : `${tally.map((t) => `${t.n} ${t.n === 1 ? "says" : "say"} ${bare(t.outcome, unit)}`).join(", ")}. It takes ${threshold} agreeing.`;
 
   async function cast(outcome: Word) {
     setProblem(null);
@@ -114,7 +122,7 @@ export function CallSheet(props: CallSheetProps) {
           primaryType: "Vote",
           message: {
             dareId: signing.dareOnchainId,
-            outcome: outcome === "yes" ? 1n : outcome === "no" ? 0n : VOID,
+            outcome: outcomeOf(outcome),
           },
         },
         "vote",
@@ -123,6 +131,7 @@ export function CallSheet(props: CallSheetProps) {
       if ("error" in r) return setProblem(r.error);
       setChoice(null);
       setPick(null);
+      setTyped(null);
       setPicking(false);
       setRaised(false);
       router.refresh();
@@ -135,7 +144,7 @@ export function CallSheet(props: CallSheetProps) {
 
   /** The claim: what happened, in a line if there is one, then the vote that goes with it. */
   async function say() {
-    if (!pick) return;
+    const call: Word | null = unit ? (typed !== null ? `n:${typed.toString()}` : null) : pick;
     setProblem(null);
     if (line.trim().length >= 2) {
       setBusy(true);
@@ -143,8 +152,21 @@ export function CallSheet(props: CallSheetProps) {
       setBusy(false);
       if ("error" in r) return setProblem(r.error);
     }
-    setChoice(pick);
+    // On a number question the number a dissenter saw is optional (3.24): words alone go on the record and cast nothing.
+    if (!call) {
+      setPicking(false);
+      setRaised(false);
+      setLine("");
+      router.refresh();
+      return;
+    }
+    setChoice(call);
   }
+  /** The number field with the line under it, for the claim and for a dissenter (3.24). */
+  const numberPanel = unit ? (
+    <NumberEntry header={null} label="What it was" value={typed} unit={unit} hue={props.me.hue} disabled={busy} onChange={(v) => setTyped(v)} />
+  ) : null;
+  const numberPrimary = unit ? (typed !== null ? `That’s how I saw it: ${unitPhrase(typed, unit)}` : line.trim().length >= 2 ? "Say what happened" : "Say what you saw") : "";
 
   const modal = (
     <Sheet
@@ -159,7 +181,7 @@ export function CallSheet(props: CallSheetProps) {
           <div className="flex flex-col gap-2">
             <p className="text-label text-ink-3">You’re calling it</p>
             <h2 id="call-it-title" className="text-serif-l text-ink">
-              {LABEL[choice]}.
+              {label(choice, unit)}.
             </h2>
           </div>
           <p className="text-body-sm text-ink-2">
@@ -175,7 +197,7 @@ export function CallSheet(props: CallSheetProps) {
               onClick={() => cast(choice)}
               loading={busy}
             >
-              Call it {SAID[choice]}
+              Call it {said(choice, unit)}
             </Button>
             <Button
               variant="tertiary"
@@ -190,18 +212,40 @@ export function CallSheet(props: CallSheetProps) {
     </Sheet>
   );
 
-  const others = (except: Word | null) => (
+  const others = (except: Word | null) =>
+    unit ? (
+      // Not how I saw it, on a number question: the field, the line, and the number is optional.
+      <div className="flex flex-col gap-3">
+        {numberPanel}
+        <div className="flex flex-col gap-2">
+          <label htmlFor="what-happened-2" className="text-label text-ink-3">
+            What happened?
+          </label>
+          <input id="what-happened-2" value={line} onChange={(e) => setLine(e.target.value)} maxLength={280} placeholder="I counted 15 with the torn one" className="h-12 rounded-button border border-line bg-ground px-4 text-body text-ink placeholder:text-ink-3" />
+        </div>
+        <ProblemSummary messages={[choice === null ? problem : null]} />
+        <Button variant="primary" onClick={say} loading={busy && choice === null} disabled={typed === null && line.trim().length < 2}>
+          {numberPrimary}
+        </Button>
+        <Button variant="tertiary" onClick={() => setChoice("void")}>
+          Nobody can tell
+        </Button>
+        <Button variant="tertiary" onClick={() => (setPicking(false), setTyped(null))}>
+          Never mind
+        </Button>
+      </div>
+    ) : (
     <div className="flex flex-col gap-2">
       {WORDS.filter((w) => w !== except).map((w) => (
         <Button key={w} variant="secondary" onClick={() => setChoice(w)}>
-          {LABEL[w]}
+          {label(w, unit)}
         </Button>
       ))}
       <Button variant="tertiary" onClick={() => setPicking(false)}>
         Never mind
       </Button>
     </div>
-  );
+    );
 
   const whoSaidWhat = (
     <div className="flex flex-col gap-2">
@@ -209,7 +253,7 @@ export function CallSheet(props: CallSheetProps) {
         <p key={i} className="flex items-center gap-2 text-body-sm text-ink-2">
           <Avatar name={v.name} hue={v.hue} size={22} />
           <span>
-            <span className="text-ink">{v.name}</span> said {SAID[v.outcome]}
+            <span className="text-ink">{v.name}</span> said {said(v.outcome, unit)}
           </span>
         </p>
       ))}
@@ -236,11 +280,14 @@ export function CallSheet(props: CallSheetProps) {
           onRaise={setRaised}
           header={
             <p className="text-body-strong text-ink">
-              When it’s clear, say what happened.
+              {unit ? "When it’s clear, say what it was." : "When it’s clear, say what happened."}
             </p>
           }
           low={
             <>
+              {unit ? (
+                <div onFocusCapture={() => setRaised(true)}>{numberPanel}</div>
+              ) : (
               <div
                 role="group"
                 aria-label="What happened"
@@ -258,10 +305,11 @@ export function CallSheet(props: CallSheetProps) {
                       setRaised(true);
                     }}
                   >
-                    {LABEL[w]}
+                    {label(w, unit)}
                   </Button>
                 ))}
               </div>
+              )}
               <Button variant="tertiary" onClick={() => setChoice("void")}>
                 Nobody can tell
               </Button>
@@ -295,9 +343,9 @@ export function CallSheet(props: CallSheetProps) {
                 variant="primary"
                 onClick={say}
                 loading={busy && choice === null}
-                disabled={pick === null}
+                disabled={unit ? typed === null : pick === null}
               >
-                {pick ? `Say it: ${SAID[pick]}` : "Pick what happened"}
+                {unit ? (typed !== null ? `It was ${unitPhrase(typed, unit)}` : "Type what it was") : pick ? `Say it: ${said(pick, unit)}` : "Pick what happened"}
               </Button>
             </>
           }
@@ -327,7 +375,7 @@ export function CallSheet(props: CallSheetProps) {
               <>
                 <ProblemSummary messages={[choice === null ? problem : null]} />
                 <Button variant="primary" onClick={() => setChoice(claim)}>
-                  {LABEL[claim]}, that’s right
+                  {claim === "void" ? `${label(claim, unit)}, that’s right` : unit ? `That’s right, ${bare(claim, unit)}` : `${label(claim, unit)}, that’s right`}
                 </Button>
                 <Button variant="secondary" onClick={() => setPicking(true)}>
                   Not how I saw it
@@ -343,12 +391,12 @@ export function CallSheet(props: CallSheetProps) {
   }
 
   // Said, and the vote is not split (or the rule is void): one line, and Change.
-  const said = myVote as Word;
+  const mineWord = myVote as Word;
   const saidLine = (
     <div className="flex items-center gap-3">
       <Avatar name={props.me.name} hue={props.me.hue} size={28} />
       <div className="flex min-w-0 flex-1 flex-col">
-        <p className="text-body-strong text-ink">You said {SAID[said]}</p>
+        <p className="text-body-strong text-ink">You said {said(mineWord, unit)}</p>
         {countLine ? (
           <p className="text-caption text-ink-3">{countLine}</p>
         ) : null}
@@ -369,7 +417,7 @@ export function CallSheet(props: CallSheetProps) {
             picking ? (
               <>
                 {saidLine}
-                {others(said)}
+                {others(mineWord)}
               </>
             ) : (
               saidLine
@@ -391,7 +439,7 @@ export function CallSheet(props: CallSheetProps) {
           picking ? (
             <>
               {saidLine}
-              {others(said)}
+              {others(mineWord)}
             </>
           ) : (
             <>

@@ -951,11 +951,15 @@ deliberately different, and the display does not try to reflect the scoring.
   so there is at most one per end. An off-axis entry becomes an overflow column one column wide,
   6px past the end, labelled with its value and an arrow ("200 →", "← 0"). Its height follows
   the same normalisation and it still counts toward the group's number.
-- **The marker.** `g` is the stake-weighted mean. Across slices, `x = (g − lo) / (hi − lo)`;
-  across per-value columns, `x = (g − lo + 0.5) / n`. The chip shows `g` rounded to a whole
-  number with separators ("22", "1,240"), and the exact figure lives on the details sheet. If an
-  off-axis entry pulls `g` past an end, the marker clamps to that edge and the chip shows the
-  true value with an arrow ("41 →").
+- **The marker.** `g` is the stake-weighted median: the smallest value with at least half the
+  stake at or below it (amended 2026-09-25; it was the mean). Absolute-error scoring rewards
+  each person for reporting their median, so the group's summary is the same statistic, and one
+  far-off entry cannot move it unless it holds half the stake. Across slices, `x = (g − lo) /
+  (hi − lo)`; across per-value columns, `x = (g − lo + 0.5) / n`. The chip shows `g` with
+  separators ("22", "1,240"); it is always one of the entries, so it is a whole number and the
+  details sheet says it in a sentence rather than to a decimal. It never sits past an end: an
+  off-axis entry that holds half the stake is the median, and the marker stands over that
+  entry's own column. There is no clamp and no arrow.
 - **Re-bucketing.** When a new entry moves `lo` or `hi`, the columns crossfade to the new layout
   over 200ms and the marker slides to its new place. With reduced motion, it swaps.
 - **Blind.** A blind number market draws no axis before the reveal: your entry line, the lock

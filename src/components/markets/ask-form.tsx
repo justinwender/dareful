@@ -1,18 +1,23 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition, type CSSProperties, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/ledger/avatar";
 import { Chip } from "@/components/ledger/chip";
+import { MarkStamp } from "@/components/ledger/mark-stamp";
 import { FIELD_PROBLEM_CLASS, Problem, ProblemSummary } from "@/components/ledger/problem";
+import { Screen } from "@/components/ledger/screen";
 import { Button } from "@/components/ui/button";
 import { PinnedSheet } from "@/components/ui/pinned-sheet";
 import { dismissNamePromptAction, nameGroupAction } from "@/lib/actions/join";
 import { carefulQuestionsAction, draftMarketAction, scopeMarketAction, triageAction, type ScopeResult, type TriageResult } from "@/lib/actions/markets";
+import { emojiInk } from "@/lib/ui/emoji-ink";
 import type { Hue } from "@/lib/ui/hue";
+import { inkFor, inkVars, type InkName } from "@/lib/ui/ink";
 import { cn } from "@/lib/utils";
+import { MarkPicker } from "./mark-picker";
 
-type SetOption = { groupId: string; label: string; caption: string; avatars: Array<{ name: string; hue: Hue }>; offerName: boolean; size: number; units: Array<{ id: string; label: string; template: string | null }> };
+type SetOption = { groupId: string; label: string; caption: string; avatars: Array<{ name: string; hue: Hue }>; offerName: boolean; size: number; units: Array<{ id: string; label: string; template: string | null }>; /** The inks of the questions still open in this set, for balance (1.8, rule 4). */ takenInks: InkName[] };
 type Person = { id: string; name: string; hue: Hue };
 type Who = { kind: "set"; groupId: string } | { kind: "people"; userIds: string[] } | { kind: "link" };
 type Unit = { kind: "usd" } | { kind: "existing"; id: string } | { kind: "new"; template: "beer" | "round" | "coffee" | "next_time"; label: string };
@@ -36,11 +41,20 @@ const COUNT = ["", "", "two", "three", "four", "five", "six", "seven", "eight", 
  * screen says so. The last set of people is preselected: the common case is the same people as last time, and
  * it should cost one tap in total.
  */
-export function AskForm({ sets, people, initialLine = "", initialPace = "dare" }: { sets: SetOption[]; people: Person[]; initialLine?: string; initialPace?: "dare" | "argument" }) {
+export function AskForm({ sets, people, initialLine = "", initialPace = "dare", me, chrome }: { sets: SetOption[]; people: Person[]; initialLine?: string; initialPace?: "dare" | "argument"; me: { hue: Hue }; /** The screen's top bar, rendered by the page; the form owns the screen so a picked mark can retint all of it (3.29). */ chrome: ReactNode }) {
   const router = useRouter();
   const [step, setStep] = useState<"question" | "declined" | "criterion" | "careful" | "who" | "terms">("question");
   // Two paces, one object (PLANNING.md 8a): something that will happen, or a claim to settle now.
   const [pace, setPace] = useState<"dare" | "argument">(initialPace);
+  // Yes or no, or a number (docs/design.md 3.26). Chosen before the write-up, since the terms say how the answer is counted.
+  const [kind, setKind] = useState<"binary" | "numeric">("binary");
+  // The mark (3.29), and the id the market will have, made here so the ink previewed is the ink stored.
+  const [mark, setMark] = useState<string | null>(null);
+  const [markName, setMarkName] = useState<string | null>(null);
+  const [pickingMark, setPickingMark] = useState(false);
+  const [draftId] = useState(() => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : null));
+  const [unitWords, setUnitWords] = useState({ singular: "", plural: "" });
+  const [scale, setScale] = useState("");
   const [mode, setMode] = useState<"quick" | "careful">("quick");
   const [verdict, setVerdict] = useState<TriageResult | null>(null);
   const [criterion, setCriterion] = useState<string | null>(null);
@@ -68,15 +82,24 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare" }
   const [saving, startSave] = useTransition();
   const [namingBusy, startNaming] = useTransition();
   const selectedSet = who.kind === "set" ? sets.find((s) => s.groupId === who.groupId) : undefined;
+  const numeric = pace === "dare" && kind === "numeric";
+  // The ink this market would get (1.8, 3.29): the mark's from the table, or a hash of the id for a hueless mark, balanced on the
+  // who's-in step against the questions still open between the same people. The server computes it again the same way and stores that.
+  const previewInk = useMemo<InkName | null>(() => {
+    if (!mark || !draftId) return null;
+    return inkFor({ markInk: emojiInk(mark), id: draftId, takenInGroup: step === "question" ? [] : (selectedSet?.takenInks ?? []) }).ink;
+  }, [mark, draftId, step, selectedSet]);
+  const room: CSSProperties | undefined = previewInk ? (inkVars(previewInk) as CSSProperties) : undefined;
 
   function writeUp(chosen?: string, source?: string) {
     scoping.current = (async () => {
       const asked = questions.map((question, i) => ({ question, yes: answers[i] ?? false })).filter((_, i) => i in answers);
-      const r = await scopeMarketAction(source ?? line, chosen, mode === "careful" && pace === "dare" ? asked : undefined);
+      const r = await scopeMarketAction(source ?? line, chosen, mode === "careful" && pace === "dare" ? asked : undefined, numeric ? "numeric" : "binary");
       if ("error" in r) return setProblem(r.error);
       setScope(r);
       setTitle(r.title);
       setTerms(r.terms);
+      if (r.number) setUnitWords(r.number.unit);
       setHours(WHEN.reduce((best, w) => (Math.abs(w.hours - r.resolvesInHours) < Math.abs(best - r.resolvesInHours) ? w.hours : best), WHEN[0]?.hours ?? 30));
     })();
   }
@@ -84,7 +107,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare" }
   function toWho() {
     setFieldProblem(null);
     setProblem(null);
-    if (line.trim().length < 3) return setFieldProblem(pace === "argument" ? "Say what you two disagree about, in a line." : "Ask it in a line, like “John falls asleep during the movie.”");
+    if (line.trim().length < 3) return setFieldProblem(pace === "argument" ? "Say what you two disagree about, in a line." : numeric ? "Ask it in a line, like “How many shirts can Gabe wear at once.”" : "Ask it in a line, like “John falls asleep during the movie.”");
     setScope(null);
     if (pace === "argument") {
       // The triage comes before anything else, and it matters more than the ruling: some things are not the app's to call.
@@ -132,15 +155,22 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare" }
     if (!scope) return;
     if (title.trim().length < 3) return setProblem("The question needs a few words.");
     if (terms.trim().length < 3) return setProblem("Say how you’ll know, in a sentence.");
+    if (numeric && unitWords.singular.trim().length < 1) return setProblem("Say what the number counts, like shirts.");
+    // The scale is the asker's when typed; otherwise the model's, if it passed the check; otherwise it has to be typed (3.26).
+    if (numeric && !scale.trim() && !scope?.number?.model?.range) return setProblem("Say how far off scores nothing, like 20.");
+    if (numeric && scale.trim() && !/^\s*[\d,]{1,11}\s*$/.test(scale)) return setProblem("The scale is a whole number, like 20.");
     startSave(async () => {
       const arguing = pace === "argument" && verdict?.kind === "ok";
       // The criterion has to be inside the terms: the terms are what is hashed, and what entering accepts.
       const finalTerms = arguing && criterion && !terms.includes(criterion) ? `${terms.trim()} Decided ${criterion}.` : terms;
       const r = await draftMarketAction({
+        id: draftId ?? undefined,
         who,
         unit,
         title,
         terms: finalTerms,
+        markEmoji: mark ?? undefined,
+        number: numeric ? { unit: { singular: unitWords.singular.trim().toLowerCase(), plural: unitWords.plural.trim().toLowerCase() || unitWords.singular.trim().toLowerCase() }, scale: scale.trim(), model: scope?.number?.model ?? null } : undefined,
         resolvesBy: arguing ? null : new Date(Date.now() + hours * 3_600_000).toISOString(),
         blind: arguing ? false : blind,
         stalemate,
@@ -152,8 +182,17 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare" }
     });
   }
 
+  const wrap = (children: ReactNode) => (
+    <div style={room} className={cn("flex flex-1 flex-col", previewInk && "grain retint")}>
+      <Screen>
+        {chrome}
+        <div className="py-2">{children}</div>
+      </Screen>
+    </div>
+  );
+
   if (step === "question") {
-    return (
+    return wrap(
       <form
         id="ask-question"
         className="flex flex-col gap-6"
@@ -163,6 +202,41 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare" }
           toWho();
         }}
       >
+        {/* The question band (3.29): on the market's field, neutral until a mark is picked. The mark row opens the picker; "Optional" is said once. */}
+        <section className="-mx-2 flex flex-col gap-4 rounded-card bg-field p-4 pb-5">
+          <button type="button" aria-haspopup="dialog" aria-expanded={pickingMark} onClick={() => setPickingMark(true)} className="flex items-center gap-4 rounded-button text-left">
+            {mark ? (
+              <MarkStamp kind="emoji" value={mark} size={64} onGround />
+            ) : (
+              <span aria-hidden="true" className="flex h-16 w-16 shrink-0 items-center justify-center rounded-panel border-[1.5px] border-dashed border-line-strong text-ink-2">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+              </span>
+            )}
+            <span className="flex min-w-0 flex-col">
+              <span className="text-body-strong text-ink">{mark ? "Mark" : "Add a mark"}</span>
+              <span className="text-caption text-ink-2">{mark ? `${markName ?? "Your mark"} · tap to change` : "Optional. It picks this market’s colour."}</span>
+            </span>
+          </button>
+          <div className="flex flex-col gap-2">
+            <label htmlFor="ask-line" className="text-label text-ink-2">
+              {pace === "argument" ? "What you disagree about" : "Your question"}
+            </label>
+            <textarea id="ask-line" rows={3} value={line} onChange={(e) => setLine(e.target.value)} maxLength={280} placeholder={pace === "argument" ? "The Holland Tunnel is longer than the Lincoln" : numeric ? "How many shirts can Gabe wear at once" : "John falls asleep during the movie"} aria-invalid={fieldProblem ? true : undefined} aria-describedby={fieldProblem ? "ask-line-problem" : undefined} className={cn("field-sizing-content resize-none bg-transparent text-serif-l text-ink placeholder:text-ink-3 outline-none", fieldProblem && "rounded-button px-2 " + FIELD_PROBLEM_CLASS)} />
+            <Problem id="ask-line-problem" message={fieldProblem} />
+          </div>
+        </section>
+        <MarkPicker
+          open={pickingMark}
+          onClose={() => setPickingMark(false)}
+          value={mark}
+          hue={me.hue}
+          onPick={(glyph, name) => {
+            setMark(glyph);
+            setMarkName(glyph ? (name ? name.charAt(0).toUpperCase() + name.slice(1) : null) : null);
+          }}
+        />
         <div role="group" aria-label="What kind of thing" className="flex flex-wrap gap-2">
           <button type="button" aria-pressed={pace === "dare"} onClick={() => setPace("dare")} className="rounded-pill">
             <Chip size={36} selected={pace === "dare"}>
@@ -175,13 +249,23 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare" }
             </Chip>
           </button>
         </div>
-        <div className="flex flex-col gap-3">
-          <label htmlFor="ask-line" className="text-serif-l text-ink">
-            {pace === "argument" ? "What do you two disagree about?" : "What are you wondering?"}
-          </label>
-          <textarea id="ask-line" rows={2} value={line} onChange={(e) => setLine(e.target.value)} maxLength={280} placeholder={pace === "argument" ? "The Holland Tunnel is longer than the Lincoln" : "John falls asleep during the movie"} aria-invalid={fieldProblem ? true : undefined} aria-describedby={fieldProblem ? "ask-line-problem" : undefined} className={cn("rounded-button border border-line bg-surface px-3 py-3 text-body text-ink placeholder:text-ink-3", fieldProblem && FIELD_PROBLEM_CLASS)} />
-          <Problem id="ask-line-problem" message={fieldProblem} />
-        </div>
+        {pace === "dare" ? (
+          <div className="flex flex-col gap-2">
+            <div role="group" aria-label="What the answer is" className="flex flex-wrap gap-2">
+              <button type="button" aria-pressed={kind === "binary"} onClick={() => setKind("binary")} className="rounded-pill">
+                <Chip size={36} selected={kind === "binary"}>
+                  Yes or no
+                </Chip>
+              </button>
+              <button type="button" aria-pressed={kind === "numeric"} onClick={() => setKind("numeric")} className="rounded-pill">
+                <Chip size={36} selected={kind === "numeric"}>
+                  A number
+                </Chip>
+              </button>
+            </div>
+            <p className="text-caption text-ink-3">{kind === "numeric" ? "Everyone names a number, and closest wins." : "Everyone puts their odds on it."}</p>
+          </div>
+        ) : null}
         {pace === "dare" ? (
           <div className="flex flex-col gap-2">
             <div role="group" aria-label="How the terms get written" className="flex flex-wrap gap-2">
@@ -208,18 +292,18 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare" }
             <>
               <ProblemSummary messages={[fieldProblem, problem]} />
               <Button type="submit" form="ask-question" variant="primary" loading={thinking}>
-                {pace === "argument" ? "Weigh it up" : mode === "careful" ? "Ask me" : "Who’s in?"}
+                {pace === "argument" ? "Weigh it up" : mode === "careful" ? "Ask me" : "Next: who’s in"}
               </Button>
             </>
           }
         />
-      </form>
+      </form>,
     );
   }
 
   if (step === "declined" && verdict?.kind === "declined") {
     const instead = verdict.dareInstead;
-    return (
+    return wrap(
       <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-3">
           <h1 className="text-serif-l text-ink">That one isn’t the app’s to call.</h1>
@@ -251,12 +335,12 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare" }
             </Button>
           }
         />
-      </div>
+      </div>,
     );
   }
 
   if (step === "criterion" && verdict?.kind === "ok") {
-    return (
+    return wrap(
       <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-3">
           <p className="text-caption text-ink-3">Your claim</p>
@@ -282,13 +366,13 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare" }
         <Button variant="tertiary" onClick={() => setStep("question")}>
           Say it another way
         </Button>
-      </div>
+      </div>,
     );
   }
 
   if (step === "careful") {
     const done = questions.every((_, i) => i in answers);
-    return (
+    return wrap(
       <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-2">
           <h1 className="text-serif-l text-ink">Three quick ones</h1>
@@ -327,7 +411,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare" }
             </Button>
           }
         />
-      </div>
+      </div>,
     );
   }
 
@@ -354,7 +438,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare" }
         ) : null}
       </span>
     );
-    return (
+    return wrap(
       <div className="flex flex-col gap-6">
         {question}
         <div className="flex flex-col gap-2">
@@ -473,13 +557,13 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare" }
             </>
           }
         />
-      </div>
+      </div>,
     );
   }
 
-  if (!scope) return <ProblemSummary messages={[problem ?? "The write-up didn’t come through. Go back and try once more."]} />;
+  if (!scope) return wrap(<ProblemSummary messages={[problem ?? "The write-up didn’t come through. Go back and try once more."]} />);
   if (scope.ambiguous && scope.criteria.length > 0) {
-    return (
+    return wrap(
       <div className="flex flex-col gap-6">
         {question}
         <div className="flex flex-col gap-3 rounded-card border border-dashed border-line-strong p-4">
@@ -500,7 +584,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare" }
             </Button>
           ))}
         </div>
-      </div>
+      </div>,
     );
   }
 
@@ -516,7 +600,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare" }
     );
   };
 
-  return (
+  return wrap(
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-2">
         <label htmlFor="ask-title" className="text-label text-ink-3">
@@ -531,6 +615,28 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare" }
         <textarea id="ask-terms" rows={4} value={terms} onChange={(e) => setTerms(e.target.value)} maxLength={800} className="rounded-button border border-line bg-surface px-3 py-3 text-body-sm text-ink" />
         <p className="text-caption text-ink-3">{scope.plain ? "The write-up didn’t come through, so this is your line as you typed it. Change it however you like." : "Written up from your line. Change anything; everyone sees exactly this before they’re in."}</p>
       </div>
+      {numeric ? (
+        <>
+          <div className="flex flex-col gap-2">
+            <h2 className="text-label text-ink-3">What the number counts</h2>
+            <div className="grid grid-cols-2 gap-2">
+              <input id="ask-unit-one" value={unitWords.singular} onChange={(e) => setUnitWords((u) => ({ ...u, singular: e.target.value }))} maxLength={24} placeholder="shirt" aria-label="One of them" className="h-12 min-w-0 rounded-button border border-line bg-surface px-4 text-body text-ink placeholder:text-ink-3" />
+              <input id="ask-unit-many" value={unitWords.plural} onChange={(e) => setUnitWords((u) => ({ ...u, plural: e.target.value }))} maxLength={24} placeholder="shirts" aria-label="More than one" className="h-12 min-w-0 rounded-button border border-line bg-surface px-4 text-body text-ink placeholder:text-ink-3" />
+            </div>
+            <p className="text-caption text-ink-3">One shirt, two shirts. Whole numbers only: a question that needs halves asks in a smaller unit.</p>
+          </div>
+          <div className="flex flex-col gap-2">
+            <label htmlFor="ask-scale" className="text-label text-ink-3">
+              Scored on
+            </label>
+            <div className="flex items-center gap-3">
+              <input id="ask-scale" inputMode="numeric" pattern="[0-9]*" value={scale} onChange={(e) => setScale(e.target.value)} maxLength={11} placeholder={scope.number?.model?.range ? "Set for you" : "20"} aria-describedby="ask-scale-help" className="h-12 w-32 rounded-button border border-line bg-surface px-4 text-body text-ink placeholder:text-ink-3" />
+              <span className="text-body text-ink-2">{unitWords.plural.trim() || unitWords.singular.trim() || "of them"} off scores nothing</span>
+            </div>
+            <p id="ask-scale-help" className="text-caption text-ink-3">{scope.number?.model?.range ? "How far off scores nothing. Leave it blank and it’s set for you; type one and everyone sees it in the details." : "How far off scores nothing. Everyone sees it in the details."}</p>
+          </div>
+        </>
+      ) : null}
       {pace === "argument" ? (
         <div className="flex flex-col gap-3">
           <h2 className="text-label text-ink-3">Your side</h2>
@@ -615,6 +721,6 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare" }
           </>
         }
       />
-    </div>
+    </div>,
   );
 }

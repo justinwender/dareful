@@ -450,3 +450,31 @@ So there is an instrument: on You, "Measure the screen" prints the window's heig
 3. With the deployed build: open a cover you are owed, tap the card, add a photo from the camera, "Settled"; expect the thumbnail on the card within a second of the sheet closing and the same thumbnail on the other person's phone.
 4. Then disable the legacy Supabase keys.
 
+
+## Session 10: a number question in a real session, and the chain
+
+**When:** September 25, 2026, the Phase 5 build, on localhost against the production database, the real chain and the hosted indexer. **Who:** the author's test account on localhost (signed in by the author); the second account's session lives on dareful.app, which runs the build before this one, so the second person's side of a number question waits for the deploy. A five-person market ran as temporary accounts on the real chain in `tests/db/numbers.test.ts`.
+
+### Exercised
+
+- **Asking a number question, with a mark.** The question step as 3.29 draws it: the mark row opened the picker; Food, 🍺; the room retinted to Ochre (the band, the ground, the sheet); the row read "Beer mug · tap to change"; the beer landed first in Recent; Done closed it. "A number", the line "how many shirts can Gabe wear at once", "Next: who's in": the model wrote the question, the terms, the unit ("shirt", "shirts") and a scale of 15 that passed the check; who's in kept the Ochre; the terms step showed the two unit fields and "Scored on" with "Set for you" as its placeholder; "Looks right" saved the draft under the id the step had made, with the mark, the ink from the table (`mark`) and the model's scale (`ai`).
+- **Entering a number.** On the draft's screen the sheet held the number field, empty, with "Type your number" waiting; 14 typed, "Looks right. I'm in at 14 shirts, $10" signed Create (the scale inside it) and Enter (the number as the value); the screen came back with the 🍺 band on Ochre, "You're in at 14 shirts", "Where the stake sits" with three columns labelled 13, 14 and 15 shirts and the avatar over the middle one at full height, "1 of 2 in", the share sheet. "Scored on" absent, since the model set the scale.
+- **The locked state.** With the question marked locked for a minute, the sheet read "When it's clear, say what it was." over the empty number field, "Nobody can tell", the "What happened?" line and "Type what it was"; the poll asked `/api/m/[id]/pulse` every six seconds once the screen counted as visible (the development browser's pane is hidden, so the visibility was set by hand for the check).
+- **The far-off check**, on the same question once its most likely answer was set: Change, 2,400 typed, Save: the line "2,400 shirts is a lot of shirts." with "It's 2,400 shirts" and "Not quite" above the primary, nothing signed; "Not quite" put the sheet back; 14 saved as before.
+- **Pull-to-refresh**, with touches synthesised on Now in the development browser (the pane has no touch of its own): the line under the status band filled with the pull (28, 69, 100 percent), ran on release, and was gone once the screen had re-read; a real finger on the installed app is the check that remains.
+- **The chain.** Five temporary accounts, the shirts example, three votes for 14 and one for 15: locked with the scale in the struct, resolved at 14 by the third 14, scores and nets to the hand figures, ten edges to the cent, the chain's `obligationOf` agreeing row by row, the calibration record and the clean-resolution rate moved for the people in it. `verify-envio` then recomputed every market the indexer knows (75, one a number market) with no mismatch, and printed the number market's scale, answer, entries and the one floored. The deployed contract's own `scoreNumeric` agrees with the mirror across the example, its own test table and the edges of the scale. The gas survey's `number` mode measured `create` and `resolve` within three percent of the yes-or-no figures.
+
+### What broke
+
+- **The market screen crashed after the entry**: "A server error occurred" on the number question's own screen, because the axis serialiser lived in a client module and the server render called it. Moved to the pure axis module. Found in the real session, not by a test; the page test written after it would have.
+- **The poll never resumed once a hidden screen's tick had fired**: the tick returned without clearing its timer, so the visibility handler thought one was pending. Found while watching the pulse in the hidden pane; fixed, and the two requests six seconds apart are the check.
+- **A helper exported from the server-actions file was not async**, which the dev server refused at compile; moved beside the market module's other pure functions.
+- **The page fixture**: the friend's Now grew a dot from open number questions the asker had not entered, and the fixture's blind question counted shirts while the test expected people. Both the fixture.
+
+### What needs a phone, a second person, or the deploy
+
+1. **The five-person checkpoint on production** needs three more real accounts: a number question in a five-person group, one entry far off, three votes for the same number and one dissent, the transfers matching the shirts example (the chain test is the same shape with temporary accounts). With the two real accounts, after the deploy: ask a number question on dareful.app with a mark, enter on both devices, lock, "It was 14 shirts" on one phone, "That's right, 14" on the other, and expect "14 shirts." with the ruler and closest first on both.
+2. **A blind number question** on production: the second device sees "Numbers show when everyone's in" and no axis until lock; after lock, everyone's numbers.
+3. **A vote cast on one device appearing on another** without a reload: open the locked question on both phones, vote on one, expect the other's count line to change within about six seconds with the screen on; then background the app on one phone for a few seconds and bring it back, and expect the screen re-read.
+4. **Pull-to-refresh in the installed app**: from the top of Now, pull down until the line under the status bar fills, let go, and expect the line to run and the screen to re-read; a pull that stops short does nothing.
+5. **The profiles** wait for the You tab's design.

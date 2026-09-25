@@ -6,13 +6,14 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { SignJWT } from "jose";
 import { db, schema } from "@/db";
 import * as claims from "@/lib/ledger/claims";
 import { createGroup, createInvite } from "@/lib/ledger/groups";
 import { ensureUsd } from "@/lib/ledger/denominations";
 import * as markets from "@/lib/ledger/markets";
+import { marketTile } from "@/lib/ledger/share";
 import { INKS, inkOf } from "@/lib/ui/ink";
 import { thumbKey } from "@/lib/media";
 import { putObject, removeObjects, storageConfigured } from "@/lib/media/storage";
@@ -50,6 +51,7 @@ let A: User, B: User, C: User, U: User;
 let cA: string, cB: string, cU: string;
 let gabe: string, linkToken: string, inviteToken: string, groupId: string, boundId: string, ghostCoverId: string;
 let asker: Signer, friend: Signer, stranger: Signer, cAsker: string, cFriend: string, cStranger: string, marketId: string, draftId: string, owedId: string, photoId: string, settledMarketId: string, mintedId: string;
+let numberId: string, aiScaleId: string, blindNumberId: string, answeredId: string;
 
 before(async () => {
   const up = await fetch(BASE).catch(() => null);
@@ -81,7 +83,7 @@ before(async () => {
   draftId = (await ask("Is this draft still a secret?")).id;
   const d0 = await ask("Does the kettle get descaled by Friday?");
   const d = await markets.openMarket(d0.id, asker.user.id, await asker.ledger.signTypedData(markets.createTypedData(d0)));
-  await markets.enterMarket({ dareId: d.id, userId: asker.user.id, stake: 1700n, valueBps: 8300n, signature: await asker.ledger.signTypedData(markets.enterTypedData(d, 1700n, 8300n)) });
+  await markets.enterMarket({ dareId: d.id, userId: asker.user.id, stake: 1700n, value: 8300n, signature: await asker.ledger.signTypedData(markets.enterTypedData(d, 1700n, 8300n)) });
   marketId = d.id;
 
   // Between the asker and the friend: one cover the friend has to pick up, and four nobody expects to settle.
@@ -99,13 +101,41 @@ before(async () => {
   // A settled question both were in that minted one obligation the asker is owed: closable from its story (6.3).
   const d2draft = await ask("Did the kettle get descaled?");
   const d2 = await markets.openMarket(d2draft.id, asker.user.id, await asker.ledger.signTypedData(markets.createTypedData(d2draft)));
-  await markets.enterMarket({ dareId: d2.id, userId: asker.user.id, stake: 600n, valueBps: 8000n, signature: await asker.ledger.signTypedData(markets.enterTypedData(d2, 600n, 8000n)) });
-  await markets.enterMarket({ dareId: d2.id, userId: friend.user.id, stake: 600n, valueBps: 3000n, signature: await friend.ledger.signTypedData(markets.enterTypedData(d2, 600n, 3000n)) });
+  await markets.enterMarket({ dareId: d2.id, userId: asker.user.id, stake: 600n, value: 8000n, signature: await asker.ledger.signTypedData(markets.enterTypedData(d2, 600n, 8000n)) });
+  await markets.enterMarket({ dareId: d2.id, userId: friend.user.id, stake: 600n, value: 3000n, signature: await friend.ledger.signTypedData(markets.enterTypedData(d2, 600n, 3000n)) });
   await db.update(schema.dares).set({ lockedAt: new Date(Date.now() - 7_200_000), resolvedAt: new Date(Date.now() - 3_600_000), resolvedOutcome: 1n, resolvedBy: "quorum" }).where(eq(schema.dares.id, d2.id));
   settledMarketId = d2.id;
   const minted = { ...row(friend, asker, 600n, true, null, 1), origin: "dare", originId: d2.id };
   mintedId = minted.id;
   await db.insert(schema.obligations).values(minted);
+
+  // Number questions (docs/design.md 3.26): one on a scale the asker set with the asker in at 14 shirts; one on a scale the
+  // model set; one blind with the asker in; and one answered at 14, where the friend said 12.
+  const number = async (title: string, scale: { range: bigint; source: "asker" | "ai" }, revealMode: "open" | "blind" = "open", typical: bigint | null = null) =>
+    markets.draftMarket({ creatorId: asker.user.id, groupId: mg.id, denomId: usd.id, title, termsText: "Gabe puts on shirts one over another until he stops or one tears. The count is what is on him then.", resolvesBy: new Date(Date.now() + 86_400_000), kind: "numeric", unit: { singular: "shirt", plural: "shirts" }, scale, revealMode, typical });
+  const enterNumber = async (d: markets.DareRow, who: Signer, stake: bigint, value: bigint) => markets.enterMarket({ dareId: d.id, userId: who.user.id, stake, value, signature: await who.ledger.signTypedData(markets.enterTypedData(d, stake, value)) });
+  const draftN = await number("How many shirts can Gabe wear at once?", { range: 20n, source: "asker" });
+  const n = await markets.openMarket(draftN.id, asker.user.id, await asker.ledger.signTypedData(markets.createTypedData(draftN)));
+  await enterNumber(n, asker, 500n, 14n);
+  numberId = n.id;
+  // The model's scale (30, hidden) and its most likely answer (37, hidden): the far-off check's reference.
+  const draftAi = await number("How many minutes late is Theo?", { range: 30n, source: "ai" }, "open", 37n);
+  const ai = await markets.openMarket(draftAi.id, asker.user.id, await asker.ledger.signTypedData(markets.createTypedData(draftAi)));
+  // The asker is in every question they asked, so nothing with a clock waits on them (the Now test's "a draft can sit").
+  await enterNumber(ai, asker, 500n, 20n);
+  aiScaleId = ai.id;
+  const draftBlind = await number("How many people turn up?", { range: 40n, source: "asker" }, "blind");
+  const blind = await markets.openMarket(draftBlind.id, asker.user.id, await asker.ledger.signTypedData(markets.createTypedData(draftBlind)));
+  await enterNumber(blind, asker, 500n, 22n);
+  blindNumberId = blind.id;
+  const draftDone = await number("How many shirts did Gabe wear?", { range: 20n, source: "asker" });
+  const done = await markets.openMarket(draftDone.id, asker.user.id, await asker.ledger.signTypedData(markets.createTypedData(draftDone)));
+  await enterNumber(done, asker, 500n, 14n);
+  await enterNumber(done, friend, 500n, 12n);
+  await db.update(schema.dares).set({ lockedAt: new Date(Date.now() - 7_200_000), resolvedAt: new Date(Date.now() - 3_600_000), resolvedOutcome: 14n, resolvedBy: "quorum" }).where(eq(schema.dares.id, done.id));
+  await db.update(schema.darePositions).set({ score: 10000 }).where(and(eq(schema.darePositions.dareId, done.id), eq(schema.darePositions.userId, asker.user.id)));
+  await db.update(schema.darePositions).set({ score: 9000 }).where(and(eq(schema.darePositions.dareId, done.id), eq(schema.darePositions.userId, friend.user.id)));
+  answeredId = done.id;
 });
 after(async () => {
   if (storageConfigured() && photoId) await removeObjects([thumbKey(photoId)]);
@@ -512,7 +542,7 @@ test("asking offers both paces and both ways of writing the terms, and the settl
   for (const t of ["Something that’ll happen", "Settle an argument", "Just write it up", "Ask me three things first"]) assert.ok(r.text.includes(t), t);
   // Start's "Settle an argument" row lands on the same screen, on the settler's pace.
   const arg = await get("/m/new?pace=argument", cAsker);
-  assert.ok(/aria-pressed="true"[^>]*>\s*<span[^>]*>\s*Settle an argument/.test(arg.html) && arg.text.includes("What do you two disagree about?"), "the settler preselected");
+  assert.ok(/aria-pressed="true"[^>]*>\s*<span[^>]*>\s*Settle an argument/.test(arg.html) && arg.text.includes("What you disagree about"), "the settler preselected");
 });
 
 test("someone not yet in is shown the tiebreaker they would be agreeing to", async () => {
@@ -559,7 +589,7 @@ test("the market screen keeps its one move in the pinned sheet: the odds line be
 
 test("a task screen's primary is in the sheet too: the ask flow, the code screen", async () => {
   const ask = await get("/m/new", cAsker);
-  assert.ok(/<section aria-label="Next"[^>]*>[\s\S]*?Who’s in\?/.test(ask.html), "the ask flow's first move");
+  assert.ok(/<section aria-label="Next"[^>]*>[\s\S]*?Next: who’s in/.test(ask.html), "the ask flow's first move (3.29: one chalk, Next: who's in)");
   const join = await get("/join", cA);
   assert.ok(/<section aria-label="Join"[^>]*>[\s\S]*?>Join</.test(join.html), "Join, in the sheet");
 });
@@ -572,6 +602,100 @@ test("the asking tile carries the asker's first name and the mechanic, and never
   const plain = await get(`/m/00000000-0000-4000-8000-000000000000/opengraph-image`);
   assert.ok(!r.bytes.equals(plain.bytes));
   assert.ok(r.bytes.length > 10_000, "a drawn tile, not an empty frame");
+});
+
+// ------------------------------------------------------------------------------------------ Phase 5: numbers, refresh, the picker
+
+test("a number question takes a whole number in the field, never an odds line, and shows its scale only when the asker set it", async () => {
+  const before = await get(`/m/${numberId}`, cFriend);
+  assert.equal(before.status, 200);
+  assert.ok(before.text.includes("What’s your number?") && before.text.includes("Type your number") && before.text.includes("Any whole number. Tap it to type."), "the number field, empty, and the primary waiting");
+  // React serialises the attribute as `inputMode`; the browser reads either spelling.
+  assert.ok(/<input[^>]*inputmode="numeric"[^>]*pattern="\[0-9\]\*"/i.test(before.html) && !/type="number"/.test(before.html), "a text input with the numeric keypad, never type=number (3.26)");
+  assert.ok(!before.text.includes("Slide to pick your odds") && !before.text.includes("What are the odds?"), "no odds line on a number question");
+  assert.ok(before.text.includes("Scored on") && before.text.includes("Off by 20 shirts or more scores nothing"), "the asker's scale, once, in the details");
+  for (const s of ["You’re in at", "14 shirts", "\"stake\":\"500\"", "columns"]) assert.ok(!before.html.includes(s), `someone who has not picked is sent "${s}"`);
+  const after = await get(`/m/${numberId}`, cAsker);
+  assert.ok(after.text.includes("You’re in at 14 shirts") && after.text.includes("Where the stake sits"), "the entry line in the unit's words");
+  assert.ok(after.text.includes("13") && after.text.includes("15 shirts"), "one entry draws its number with one either side, the unit on the right end only (3.22)");
+  const ai = await get(`/m/${aiScaleId}`, cFriend);
+  assert.ok(!ai.text.includes("Scored on") && !ai.html.includes("scores nothing"), "a scale the app set appears on no screen (3.26)");
+});
+
+test("the far-off check's threshold reaches the screen as a round figure far past the scale, and the hidden scale does not", async () => {
+  // The model set the scale (30) around a most likely answer of 37: the screen gets the threshold, 4,000, and no scale to name.
+  // The stage's props travel in the page's flight data with their quotes escaped; read them flat.
+  const flat = (h: string) => h.replace(/\\+"/g, '"');
+  const hidden = flat((await get(`/m/${aiScaleId}`, cFriend)).html);
+  assert.ok(hidden.includes('"farOff":{"threshold":"4000","scale":null}'), "a hundred times the most likely answer, to one figure, with no scale beside it");
+  assert.ok(!hidden.includes('"threshold":"3700"') && !hidden.includes('"scale":"30"'), "neither the answer to the digit nor the hidden scale");
+  // The asker set this one's scale (20), which the details already show, so the check may name it; with no most likely answer it stands at fifty times the scale.
+  const shown = flat((await get(`/m/${numberId}`, cFriend)).html);
+  assert.ok(shown.includes('"farOff":{"threshold":"1000","scale":"20"}'), "the asker's scale, named");
+});
+
+test("a blind number question draws no axis before the reveal, because the ends alone would say what everyone picked", async () => {
+  const r = await get(`/m/${blindNumberId}`, cAsker);
+  assert.ok(r.text.includes("You’re in at 22 shirts") && r.text.includes("Numbers show when everyone’s in"), "the entry line and the lock chip");
+  // No axis drawn, and none sent: the labels either side of the one entry, the heading, and the axis data a component would read.
+  assert.ok(!/\b21\b/.test(r.text) && !r.text.includes("23 shirts") && !r.text.includes("Where the stake sits"), "a blind number question draws its ends");
+  for (const s of ["\"columns\"", "xPermille"]) assert.ok(!r.html.includes(s), `a blind number question is sent an axis: "${s}"`);
+});
+
+test("an answered number question says the answer as a sentence, stands the ruler where the call line was, and ranks closest first by distance", async () => {
+  const r = await get(`/m/${answeredId}`, cAsker);
+  assert.ok(r.text.includes("14 shirts.") && r.text.includes("You were closest, dead on."), "the outcome sentence and the caption (3.25)");
+  assert.ok(r.text.includes("Who was closest") && r.text.includes("said 12") && r.text.includes("off by 2"), "the leaderboard in the unit's numbers (3.7)");
+  assert.ok(r.text.includes("14 shirts") && r.text.includes("12") && !r.text.includes("Said no"), "the ruler's ends, never No and Yes");
+  // The story on a timeline (the person view lists every question both are in) carries the answer as its sentence and the ruler, never a side.
+  const story = await get(`/p/${asker.user.id}`, cFriend);
+  const card = (story.html.split("<article").find((a) => a.includes("How many shirts did Gabe wear?")) ?? "").replace(/<[^>]+>/g, " ");
+  assert.ok(card.includes("14 shirts.") && card.includes("12") && !card.includes("Said no") && !card.includes("Yes."), "the story carries the answer and the ruler, never a side");
+});
+
+test("a market in voting can be watched: its pulse is Postgres only, answers the people in its group, and is nothing to anyone else", async () => {
+  await db.update(schema.dares).set({ lockedAt: new Date() }).where(eq(schema.dares.id, numberId));
+  const r = await fetch(`${BASE}/api/m/${numberId}/pulse`, { headers: { cookie: `dareful_session=${cFriend}` } });
+  assert.equal(r.status, 200);
+  const body = (await r.json()) as { pulse: string; resolved: boolean };
+  assert.equal(body.resolved, false);
+  assert.match(body.pulse, /^v\[\] s\[\] r0 p0$/, "nothing said, nothing voted");
+  assert.equal(r.headers.get("cache-control"), "no-store");
+  await markets.sayWhatHappened(numberId, friend.user.id, "14, then a seam gave out");
+  const again = (await (await fetch(`${BASE}/api/m/${numberId}/pulse`, { headers: { cookie: `dareful_session=${cFriend}` } })).json()) as { pulse: string };
+  assert.notEqual(again.pulse, body.pulse, "what was said moves the pulse");
+  assert.equal((await fetch(`${BASE}/api/m/${numberId}/pulse`, { headers: { cookie: `dareful_session=${cStranger}` } })).status, 404, "someone outside the group");
+  assert.equal((await fetch(`${BASE}/api/m/${numberId}/pulse`)).status, 404, "signed out");
+  assert.equal((await fetch(`${BASE}/api/m/00000000-0000-4000-8000-000000000000/pulse`, { headers: { cookie: `dareful_session=${cFriend}` } })).status, 404, "an id that matches nothing");
+  const page = await get(`/m/${numberId}`, cFriend);
+  assert.ok(page.text.includes("When it’s clear, say what it was.") && page.text.includes("Type what it was"), "closed, not yet known: the number field, empty (3.24)");
+  await db.update(schema.dares).set({ lockedAt: null }).where(eq(schema.dares.id, numberId));
+});
+
+test("asking offers a number beside yes or no, and the question step carries the mark row with Optional said once", async () => {
+  const r = await get("/m/new", cAsker);
+  for (const t of ["Yes or no", "A number", "Add a mark", "Optional. It picks this market’s colour.", "Your question", "Next: who’s in"]) assert.ok(r.text.includes(t), t);
+  assert.equal((r.text.match(/Optional/g) ?? []).length, 1, "Optional is said once, on the row, and never again (3.29)");
+  assert.ok(/aria-haspopup="dialog"/.test(r.html), "the mark row opens the picker");
+});
+
+test("a number question's asking tile is drawn, and differs from a yes-or-no question's", async () => {
+  const r = await get(`/m/${numberId}/opengraph-image`);
+  assert.equal(r.status, 200);
+  assert.equal(r.type, "image/png");
+  const yesNo = await get(`/m/${marketId}/opengraph-image`);
+  assert.ok(!r.bytes.equals(yesNo.bytes), "the empty field and the unit, not the odds line");
+  const answered = await get(`/m/${answeredId}/opengraph-image`);
+  assert.equal(answered.status, 200);
+  assert.ok(!answered.bytes.equals(r.bytes) && answered.bytes.length > 10_000, "the result tile: the answer and the ruler");
+  // What the tiles are drawn from (3.27): the asking tile names the unit in place of the odds line, and the result tile carries the
+  // answer, the ruler with the answer's place, and who was closest. Never a number anyone picked while it runs.
+  const asking = await marketTile(numberId);
+  assert.ok(asking?.kind === "ask" && asking.frame === "Name a number." && asking.unit === "shirts", "the empty field and the unit in serif");
+  const plain = await marketTile(marketId);
+  assert.ok(plain?.kind === "ask" && plain.unit === null, "a yes-or-no question's tile has no unit: the odds line");
+  const result = await marketTile(answeredId);
+  assert.ok(result?.kind === "number" && result.outcomeLine === "14 shirts." && result.ruler.leftLabel === "12" && result.ruler.rightLabel === "14 shirts" && result.ruler.pins.some((p) => p.closest), "the answer, the ruler, whoever was closest ringed");
 });
 
 // ------------------------------------------------------------------------------------------------ dates

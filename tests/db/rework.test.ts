@@ -134,7 +134,7 @@ test("home lists people with something open one by one and everyone square as on
 test("getting in and changing a number each leave a point of the group's number over time, and nothing about who", async () => {
   const { d } = await open();
   await joinByMarketLink(d.id, ben.user.id);
-  const enter = async (who: Signer, stake: bigint, bps: bigint) => markets.enterMarket({ dareId: d.id, userId: who.user.id, stake, valueBps: bps, signature: await who.ledger.signTypedData(markets.enterTypedData(d, stake, bps)) });
+  const enter = async (who: Signer, stake: bigint, bps: bigint) => markets.enterMarket({ dareId: d.id, userId: who.user.id, stake, value: bps, signature: await who.ledger.signTypedData(markets.enterTypedData(d, stake, bps)) });
   await enter(ana, 1000n, 8000n);
   await enter(ben, 3000n, 4000n);
   await enter(ben, 3000n, 2000n);
@@ -147,10 +147,10 @@ test("getting in and changing a number each leave a point of the group's number 
 test("after lock a number cannot move, and nothing can be put on it for nothing", async () => {
   const { d } = await open();
   const sign = async (stake: bigint, bps: bigint) => ana.ledger.signTypedData(markets.enterTypedData(d, stake, bps));
-  assert.equal(await codeOf(async () => markets.enterMarket({ dareId: d.id, userId: ana.user.id, stake: 0n, valueBps: 5000n, signature: await sign(0n, 5000n) })), "bad_input", "the contract refuses a stake of zero, and one refusal fails the whole lock");
-  await markets.enterMarket({ dareId: d.id, userId: ana.user.id, stake: 1000n, valueBps: 5000n, signature: await sign(1000n, 5000n) });
+  assert.equal(await codeOf(async () => markets.enterMarket({ dareId: d.id, userId: ana.user.id, stake: 0n, value: 5000n, signature: await sign(0n, 5000n) })), "bad_input", "the contract refuses a stake of zero, and one refusal fails the whole lock");
+  await markets.enterMarket({ dareId: d.id, userId: ana.user.id, stake: 1000n, value: 5000n, signature: await sign(1000n, 5000n) });
   await db.update(schema.dares).set({ lockedAt: new Date() }).where(eq(schema.dares.id, d.id));
-  assert.equal(await codeOf(async () => markets.enterMarket({ dareId: d.id, userId: ana.user.id, stake: 1000n, valueBps: 9000n, signature: await sign(1000n, 9000n) })), "wrong_state");
+  assert.equal(await codeOf(async () => markets.enterMarket({ dareId: d.id, userId: ana.user.id, stake: 1000n, value: 9000n, signature: await sign(1000n, 9000n) })), "wrong_state");
   assert.equal((await markets.positionsOf(d.id))[0]?.value, 5000n);
 });
 
@@ -182,7 +182,7 @@ test("asking tells the rest of the group once; getting in tells the asker once p
   await notifyOpened(d.id, ana.user.id);
   await notifyOpened(d.id, ana.user.id);
   assert.deepEqual(await told(d.id), ["opened:ben<-ana", "opened:cy<-ana"]);
-  const enter = async (who: Signer, bps: bigint) => markets.enterMarket({ dareId: d.id, userId: who.user.id, stake: 1000n, valueBps: bps, signature: await who.ledger.signTypedData(markets.enterTypedData(d, 1000n, bps)) });
+  const enter = async (who: Signer, bps: bigint) => markets.enterMarket({ dareId: d.id, userId: who.user.id, stake: 1000n, value: bps, signature: await who.ledger.signTypedData(markets.enterTypedData(d, 1000n, bps)) });
   await enter(ana, 5000n);
   await notifyJoined(d.id, ana.user.id);
   await enter(ben, 3000n);
@@ -195,7 +195,7 @@ test("asking tells the rest of the group once; getting in tells the asker once p
 test("a nudge reaches whoever is not in, once per window however many times it is tapped, and only from someone who is in", async () => {
   const { g, d } = await open();
   await db.insert(schema.groupMembers).values([ben, cy].map((p) => ({ groupId: g.id, userId: p.user.id })));
-  await markets.enterMarket({ dareId: d.id, userId: ana.user.id, stake: 1000n, valueBps: 5000n, signature: await ana.ledger.signTypedData(markets.enterTypedData(d, 1000n, 5000n)) });
+  await markets.enterMarket({ dareId: d.id, userId: ana.user.id, stake: 1000n, value: 5000n, signature: await ana.ledger.signTypedData(markets.enterTypedData(d, 1000n, 5000n)) });
   const now = new Date();
   assert.deepEqual(await sendNudge(d.id, cy.user.id, now), { waitingOn: 0, told: 0, reached: 0 }, "cy is not in, so cy cannot say we");
   assert.deepEqual(await sendNudge(d.id, ana.user.id, now), { waitingOn: 2, told: 2, reached: 0 });
@@ -205,7 +205,7 @@ test("a nudge reaches whoever is not in, once per window however many times it i
 
 test("a question this person has acted on is running, and once it is over it just happened", async () => {
   const { d } = await open("Does the running row know where it stands?");
-  const enter = async (who: Signer, stake: bigint, bps: bigint) => markets.enterMarket({ dareId: d.id, userId: who.user.id, stake, valueBps: bps, signature: await who.ledger.signTypedData(markets.enterTypedData(d, stake, bps)) });
+  const enter = async (who: Signer, stake: bigint, bps: bigint) => markets.enterMarket({ dareId: d.id, userId: who.user.id, stake, value: bps, signature: await who.ledger.signTypedData(markets.enterTypedData(d, stake, bps)) });
   assert.equal((await home(ana)).needs.some((n) => n.key === d.id), true, "not in yet: it needs a number");
   await enter(ana, 1000n, 7000n);
   const h = await home(ana);

@@ -29,7 +29,7 @@ async function openMarket(reveal: "open" | "blind" = "open") {
   const usd = await ensureUsd(g.id, ana.user.id);
   const d0 = await markets.draftMarket({ creatorId: ana.user.id, groupId: g.id, denomId: usd.id, title: "Does Zanzibar get rain this weekend?", termsText: "Yes if it rains there Saturday or Sunday.", resolvesBy: new Date(Date.now() + 3_600_000), revealMode: reveal });
   const d = await markets.openMarket(d0.id, ana.user.id, await ana.ledger.signTypedData(markets.createTypedData(d0)));
-  const enter = async (who: Signer, stake: bigint, bps: bigint) => markets.enterMarket({ dareId: d.id, userId: who.user.id, stake, valueBps: bps, signature: await who.ledger.signTypedData(markets.enterTypedData(d, stake, bps)) });
+  const enter = async (who: Signer, stake: bigint, bps: bigint) => markets.enterMarket({ dareId: d.id, userId: who.user.id, stake, value: bps, signature: await who.ledger.signTypedData(markets.enterTypedData(d, stake, bps)) });
   return { d, g, usd, enter };
 }
 const card = async (viewer: Signer, id: string, withUser?: Signer) => (await marketCards({ viewerId: viewer.user.id, withUserId: withUser?.user.id })).find((m) => m.dare.id === id);

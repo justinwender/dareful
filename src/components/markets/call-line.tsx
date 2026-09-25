@@ -56,6 +56,58 @@ export function CallLine({ pins, state, outcome, size = "card", surface = "var(-
   );
 }
 
+export type RulerData = { leftLabel: string; rightLabel: string; pins: Array<{ id: string; name: string; value: string; xPermille: number; off: "low" | "high" | null }>; answer: { value: string; xPermille: number } | null };
+
+/**
+ * The ruler (docs/design.md 3.5, number markets): the call line become a number line. Its ends are the lowest
+ * and highest of the entries and the answer together, labelled with their values, the unit on the right end
+ * only. Pins sit at each entry's value; the answer is a cream tick 8px taller than the pins. An off-axis entry
+ * sits as a pin beyond a 6px break in the track at that end, labelled with its value and an arrow.
+ */
+export function Ruler({ ruler, size = "card", surface = "var(--surface)", state = "in" }: { ruler: RulerData; size?: "card" | "screen"; surface?: string; state?: "in" | "resolved" | "hidden" }) {
+  const pin = size === "card" ? 24 : 32;
+  const track = size === "card" ? 6 : 8;
+  if (state === "hidden") {
+    return (
+      <div className="flex flex-col gap-2">
+        <div className="flex h-[10px] items-center justify-center rounded-pill" style={{ background: "repeating-linear-gradient(90deg, var(--surface-2) 0 10px, var(--surface) 10px 20px)" }} />
+        <p className="self-center rounded-pill border border-line-strong px-3 py-1 text-caption text-ink-2">Numbers show when everyone’s in.</p>
+      </div>
+    );
+  }
+  const offLow = ruler.pins.filter((p) => p.off === "low");
+  const offHigh = ruler.pins.filter((p) => p.off === "high");
+  const on = ruler.pins.filter((p) => p.off === null);
+  const side = pin + 6;
+  const lane = (pins: RulerData["pins"], at: "left" | "right") =>
+    pins.length ? (
+      <span className="absolute top-1/2 flex -translate-y-1/2" style={{ [at]: -side, zIndex: 20 }} title={pins.map((p) => `${p.name} ${p.value}`).join(", ")}>
+        <Avatar name={(pins[0] as { name: string }).name} hue={hueFor((pins[0] as { id: string }).id)} size={pin} ring={surface} />
+      </span>
+    ) : null;
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="relative" style={{ height: pin + 8, marginLeft: offLow.length ? side + 12 : 12, marginRight: offHigh.length ? side + 12 : 12 }}>
+        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 rounded-pill bg-surface-2" style={{ height: track }} />
+        {offLow.length ? <span aria-hidden="true" className="absolute top-1/2 h-3 w-[6px] -translate-y-1/2 bg-ground" style={{ left: -3 }} /> : null}
+        {offHigh.length ? <span aria-hidden="true" className="absolute top-1/2 h-3 w-[6px] -translate-y-1/2 bg-ground" style={{ right: -3 }} /> : null}
+        {ruler.answer && state === "resolved" ? <span aria-hidden="true" className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-pill bg-chalk" style={{ width: size === "card" ? 4 : 6, height: pin + 8, left: `${ruler.answer.xPermille / 10}%`, zIndex: 30 }} /> : null}
+        {on.map((p, i) => (
+          <span key={p.id} className="absolute top-1/2 flex -translate-x-1/2 -translate-y-1/2" style={{ left: `${p.xPermille / 10}%`, zIndex: i + 1 }} title={`${p.name} ${p.value}`}>
+            <Avatar name={p.name} hue={hueFor(p.id)} size={pin} ring={surface} />
+          </span>
+        ))}
+        {lane(offLow, "left")}
+        {lane(offHigh, "right")}
+      </div>
+      <div className="flex justify-between text-caption text-ink-3 tabular-nums">
+        <span>{offLow.length ? `← ${(offLow[0] as { value: string }).value}` : ruler.leftLabel}</span>
+        <span>{offHigh.length ? `${(offHigh[0] as { value: string }).value} →` : ruler.rightLabel}</span>
+      </div>
+    </div>
+  );
+}
+
 /** Beyond six people, pins within six points of each other share one stacked marker; the line never grows a second row. */
 function cluster(pins: Pin[]): Array<{ percent: number; members: Pin[] }> {
   const sorted = [...pins].sort((a, b) => a.percent - b.percent);

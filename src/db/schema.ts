@@ -380,9 +380,19 @@ export const dares = pgTable(
     termsText: text("terms_text").notNull(),
     /** ['no','yes'] for binary; option names for categorical; unit name for numeric. */
     outcomeLabels: text("outcome_labels").array().notNull(),
-    /** Numeric only; the plausible span. */
+    /**
+     * Numeric only: the scoring scale, fixed when the question is asked and never derived from entries
+     * (docs/decisions.md 2026-09-24). Scoring divides a miss by it; a miss of the whole scale scores zero.
+     */
     range: money("range"),
-    /** Numeric shortcut: when set, the market is binary on "over". */
+    /** 'asker' | 'ai' for a number market: whose scale it is. Only an asker's is ever shown (docs/design.md 3.26). */
+    rangeSource: text("range_source"),
+    /**
+     * The model's most likely answer for a number market, when it scoped the question: the reference for the
+     * far-off check on an entry (Phase 5), and never shown. Null when the model did not answer.
+     */
+    typical: money("typical"),
+    /** Dead: the over/under shortcut was dropped (Phase 5 audit). Nothing reads it; the column comes out after the build that stops selecting it is deployed. */
     overUnder: money("over_under"),
     denomId: uuid("denom_id")
       .notNull()
@@ -451,6 +461,8 @@ export const dares = pgTable(
     check("dares_mark_kind_known", sql`${t.markKind} is null or ${t.markKind} in ('emoji', 'image')`),
     check("dares_mark_both_or_neither", sql`(${t.markKind} is null) = (${t.markValue} is null)`),
     check("dares_kind_known", sql`${t.kind} in ('binary', 'numeric', 'categorical')`),
+    check("dares_range_source_known", sql`${t.rangeSource} is null or ${t.rangeSource} in ('asker', 'ai')`),
+    check("dares_range_with_source", sql`(${t.kind} <> 'numeric') or (${t.range} is not null and ${t.range} > 0 and ${t.rangeSource} is not null)`),
     check("dares_pace_known", sql`${t.pace} in ('dare', 'argument')`),
     check("dares_tier_known", sql`${t.tier} is null or ${t.tier} in ('checkable', 'contestable')`),
     check("dares_mode_known", sql`${t.mode} in ('quick', 'careful')`),

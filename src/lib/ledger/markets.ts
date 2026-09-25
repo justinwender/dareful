@@ -29,6 +29,8 @@ import { denominationById } from "./denominations";
 import { dareByOnchainId } from "./envio";
 import { isMember } from "./groups";
 import { groupsNumberBps } from "./weight";
+import { MAX_NUMBER } from "./scoring";
+import { scaleAfterward } from "./scale";
 import { bufferToHex, bytes16ToUuid, dareOnchainId, denomOnchainId, groupOnchainId, hexToBuffer } from "./ids";
 import { ensureDenomOnchain, ensureGroupOnchain } from "./registry";
 
@@ -40,6 +42,34 @@ export type VoteRow = typeof schema.dareVotes.$inferSelect;
 export const VOID_OUTCOME = -1n;
 export const toChainOutcome = (o: bigint): bigint => (o === VOID_OUTCOME ? VOID : o);
 export const MAX_POSITIONS = 12;
+
+export type MarketKind = "binary" | "numeric";
+export type Unit = { singular: string; plural: string };
+/** A number market's unit, kept as [singular, plural] in `outcome_labels` (PLANNING.md 5b: "unit name for numeric"). */
+export function unitOf(d: Pick<DareRow, "kind" | "outcomeLabels">): Unit | null {
+  if (d.kind !== "numeric") return null;
+  const [singular, plural] = d.outcomeLabels;
+  return { singular: singular ?? "", plural: plural ?? singular ?? "" };
+}
+/** A value a position may carry: a probability in basis points, or a whole number up to nine digits. */
+export function valueAllowed(kind: string, value: bigint): boolean {
+  if (kind === "numeric") return value >= 0n && value <= MAX_NUMBER;
+  return value >= 0n && value <= 10_000n;
+}
+/** What a vote names, from the browser: yes, no, nobody can tell, or, on a number question, "n:" and the whole number. */
+export type Call = "yes" | "no" | "void" | `n:${string}`;
+export function callToOutcome(call: string): bigint | null {
+  if (call === "yes") return 1n;
+  if (call === "no") return 0n;
+  if (call === "void") return VOID_OUTCOME;
+  const m = /^n:(\d{1,9})$/.exec(call);
+  return m ? BigInt(m[1] as string) : null;
+}
+/** An outcome a vote may name: yes, no, or nobody can tell; or, on a number market, any whole number or nobody can tell. */
+export function outcomeAllowed(kind: string, outcome: bigint): boolean {
+  if (outcome === VOID_OUTCOME) return true;
+  return valueAllowed(kind, outcome) && (kind === "numeric" || outcome === 0n || outcome === 1n);
+}
 
 export class MarketError extends Error {
   constructor(
@@ -108,11 +138,12 @@ export function createTypedData(d: DareRow) {
     message: {
       dareId: dareOnchainId(d.id),
       groupId: groupOnchainId(d.groupId),
-      kind: Kind.Binary,
+      kind: d.kind === "numeric" ? Kind.Numeric : Kind.Binary,
       pace: d.pace === "argument" ? Pace.Argument : Pace.Dare,
       termsHash: termsHash(d.termsText),
       denomId: denomOnchainId(d.denomId),
-      range: 0n,
+      // The scoring scale of a number market, fixed here and signed by the asker; zero for yes-or-no.
+      range: d.kind === "numeric" ? (d.range ?? 0n) : 0n,
       options: 0,
       stalemate: d.stalemate === "void" ? Stalemate.Void : Stalemate.Arbitrate,
       resolvesBy: requireResolvesBy(d),
@@ -120,14 +151,14 @@ export function createTypedData(d: DareRow) {
   };
 }
 
-/** What a participant signs: their stake, their number, and their consent to the stalemate rule, in one signature. */
-export function enterTypedData(d: DareRow, stake: bigint, valueBps: bigint) {
+/** What a participant signs: their stake, their number (basis points, or the whole number on a number market), and their consent to the stalemate rule, in one signature. */
+export function enterTypedData(d: DareRow, stake: bigint, value: bigint) {
   const { chainId, dares } = contracts();
   return {
     domain: daresDomain(chainId, dares.address),
     types: daresTypes,
     primaryType: "Enter" as const,
-    message: { dareId: dareOnchainId(d.id), stake, value: valueBps, confidenceBps: 0, stalemate: d.stalemate === "void" ? Stalemate.Void : Stalemate.Arbitrate },
+    message: { dareId: dareOnchainId(d.id), stake, value, confidenceBps: 0, stalemate: d.stalemate === "void" ? Stalemate.Void : Stalemate.Arbitrate },
   };
 }
 
@@ -140,6 +171,8 @@ export function voteTypedData(d: DareRow, outcome: bigint) {
 // ------------------------------------------------------------------------------------------------ creating
 
 export type DraftInput = {
+  /** Made by the client on the question step, so the ink previewed there is the one stored; a fresh one otherwise. */
+  id?: string;
   creatorId: string;
   groupId: string;
   denomId: string;
@@ -156,6 +189,13 @@ export type DraftInput = {
   markEmoji?: string | null;
   /** The asker's IANA zone, for the absolute close time on the link tile (docs/design.md 3.27). */
   zone?: string | null;
+  /** Yes-or-no by default. A number market carries its unit and its scoring scale (docs/design.md 3.26). */
+  kind?: MarketKind;
+  unit?: Unit | null;
+  /** The asker's scale, if they set one; else the model's, already through `checkScale`; else the draft is refused. */
+  scale?: { range: bigint; source: "asker" | "ai" } | null;
+  /** The model's most likely answer, when it scoped the question: the far-off check's reference, never shown. */
+  typical?: bigint | null;
 };
 
 /** A draft: terms the creator can read and has not yet signed. Nobody else can see it. */
@@ -169,6 +209,12 @@ export async function draftMarket(input: DraftInput): Promise<DareRow> {
   // The criterion a contestable claim is ruled against has to be inside the terms, because the terms are what is hashed and what entering accepts.
   if (input.criterion && !termsText.includes(input.criterion.trim())) throw new MarketError("The terms have to say how it's being decided.", "bad_input");
   if (!(await isMember(input.groupId, input.creatorId))) throw new MarketError("You're not in that group.", "not_member");
+  const kind: MarketKind = input.kind ?? "binary";
+  if (kind === "numeric" && pace === "argument") throw new MarketError("An argument is yes or no.", "bad_input");
+  const unit = kind === "numeric" ? { singular: input.unit?.singular.trim() ?? "", plural: input.unit?.plural.trim() || input.unit?.singular.trim() || "" } : null;
+  if (kind === "numeric" && (!unit || unit.singular.length < 1 || unit.singular.length > 24 || unit.plural.length > 24)) throw new MarketError("Say what the number counts, like shirts.", "bad_input");
+  // The scale is a scoring rule (docs/decisions.md 2026-09-24): fixed now, signed by the asker in `Create`, never derived from entries.
+  if (kind === "numeric" && (!input.scale || input.scale.range < 1n || input.scale.range > MAX_NUMBER)) throw new MarketError("Say how far off scores nothing, like 20.", "bad_input");
   const denom = await denominationById(input.denomId);
   if (!denom || denom.groupId !== input.groupId) throw new MarketError("That unit belongs to another group.", "bad_input");
 
@@ -183,7 +229,7 @@ export async function draftMarket(input: DraftInput): Promise<DareRow> {
   if (mark && !drawable(mark)) throw new MarketError("That mark can't be drawn on the link. Pick another.", "bad_input");
   // The market's ink (docs/design.md 1.8): the mark's hue, or a hash of the id, balanced against the inks of the
   // questions still open between these people. Decided once, here, and stored, so balance never re-reads pixels.
-  const id = randomUUID();
+  const id = input.id && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.id) ? input.id.toLowerCase() : randomUUID();
   const openHere = await db
     .select({ id: schema.dares.id, ink: schema.dares.ink })
     .from(schema.dares)
@@ -197,7 +243,7 @@ export async function draftMarket(input: DraftInput): Promise<DareRow> {
       inkSource: chosen.source,
       zone: input.zone ?? null,
       groupId: input.groupId,
-      kind: "binary",
+      kind,
       pace,
       tier: input.tier ?? null,
       criterion: input.criterion?.trim() || null,
@@ -205,7 +251,10 @@ export async function draftMarket(input: DraftInput): Promise<DareRow> {
       creatorId: input.creatorId,
       title,
       termsText,
-      outcomeLabels: ["no", "yes"],
+      outcomeLabels: unit ? [unit.singular, unit.plural] : ["no", "yes"],
+      range: kind === "numeric" && input.scale ? input.scale.range : null,
+      rangeSource: kind === "numeric" && input.scale ? input.scale.source : null,
+      typical: kind === "numeric" && input.typical !== undefined && input.typical !== null && input.typical >= 0n && input.typical <= MAX_NUMBER ? input.typical : null,
       denomId: denom.id,
       stalemate: input.stalemate ?? "arbitrate",
       revealMode: input.revealMode ?? "open",
@@ -240,12 +289,12 @@ export async function openMarket(dareId: string, creatorId: string, signature: H
  * can be changed until lock, and each change is a fresh signature over the new numbers, because the signature is
  * what goes onchain.
  */
-export async function enterMarket(input: { dareId: string; userId: string; stake: bigint; valueBps: bigint; signature: Hex }): Promise<PositionRow> {
+export async function enterMarket(input: { dareId: string; userId: string; stake: bigint; value: bigint; signature: Hex }): Promise<PositionRow> {
   const d = await marketById(input.dareId);
   if (!d) throw new MarketError("That one doesn't exist.", "not_found");
   if (stateOf(d) !== "open") throw new MarketError(stateOf(d) === "draft" ? "It isn't open yet." : "Numbers are locked.", "wrong_state");
   if (!(await isMember(d.groupId, input.userId))) throw new MarketError("This one is for the people in its group.", "not_member");
-  if (input.valueBps < 0n || input.valueBps > 10_000n) throw new MarketError("A number from 0 to 100.", "bad_input");
+  if (!valueAllowed(d.kind, input.value)) throw new MarketError(d.kind === "numeric" ? "Any whole number, up to nine digits." : "A number from 0 to 100.", "bad_input");
   const denom = await denominationById(d.denomId);
   if (!denom) throw new MarketError("unknown unit", "not_found");
   // An unquantifiable unit ("a next time") forces every stake to 1; the contract refuses anything else.
@@ -254,7 +303,7 @@ export async function enterMarket(input: { dareId: string; userId: string; stake
 
   const [user] = await db.select().from(schema.users).where(eq(schema.users.id, input.userId)).limit(1);
   if (!user) throw new MarketError("unknown user", "not_found");
-  const ok = await verifyTypedData({ ...enterTypedData(d, input.stake, input.valueBps), address: user.ledgerWallet as Address, signature: input.signature });
+  const ok = await verifyTypedData({ ...enterTypedData(d, input.stake, input.value), address: user.ledgerWallet as Address, signature: input.signature });
   if (!ok) throw new MarketError("That didn't come from your account.", "bad_signature");
 
   const existing = await positionsOf(d.id);
@@ -265,12 +314,14 @@ export async function enterMarket(input: { dareId: string; userId: string; stake
   const now = new Date();
   const [row] = await db
     .insert(schema.darePositions)
-    .values({ dareId: d.id, userId: input.userId, stake: input.stake, value: input.valueBps, enterSignature: hexToBuffer(input.signature), enteredBy: input.userId, acknowledgedAt: now })
-    .onConflictDoUpdate({ target: [schema.darePositions.dareId, schema.darePositions.userId], set: { stake: input.stake, value: input.valueBps, enterSignature: hexToBuffer(input.signature) } })
+    .values({ dareId: d.id, userId: input.userId, stake: input.stake, value: input.value, enterSignature: hexToBuffer(input.signature), enteredBy: input.userId, acknowledgedAt: now })
+    .onConflictDoUpdate({ target: [schema.darePositions.dareId, schema.darePositions.userId], set: { stake: input.stake, value: input.value, enterSignature: hexToBuffer(input.signature) } })
     .returning();
   if (!row) throw new MarketError("Couldn't save that.", "chain");
   // The group's number at this moment, for the line a slow question gets. The aggregate and a headcount only:
   // never whose entry moved it (docs/design.md 3.22). Best effort; a missing point is a gap in a sparkline.
+  // A number market's aggregate is not in basis points and the series column is, so it keeps no series yet (docs/decisions.md, Phase 5).
+  if (d.kind === "numeric") return row;
   try {
     const all = await positionsOf(d.id);
     const number = groupsNumberBps(all.map((p) => ({ id: p.userId ?? "", stake: p.stake, valueBps: p.value })));
@@ -320,7 +371,7 @@ export async function lockMarket(dareId: string, byUserId: string | null): Promi
     creator: creator.ledgerWallet as Address,
     termsHash: typed.message.termsHash,
     denomId: typed.message.denomId,
-    range: 0n,
+    range: typed.message.range,
     options: 0,
     stalemate: typed.message.stalemate,
     quorum: [] as Address[], // ignored by the contract, which reads the ledger
@@ -409,7 +460,7 @@ export async function castVote(input: { dareId: string; userId: string; outcome:
   const d = await marketById(input.dareId);
   if (!d) throw new MarketError("That one doesn't exist.", "not_found");
   if (stateOf(d) !== "locked") throw new MarketError(d.resolvedAt ? "It's already decided." : "It isn't locked yet.", "wrong_state");
-  if (input.outcome !== 0n && input.outcome !== 1n && input.outcome !== VOID_OUTCOME) throw new MarketError("Yes, no, or nobody can tell.", "bad_input");
+  if (!outcomeAllowed(d.kind, input.outcome)) throw new MarketError(d.kind === "numeric" ? "A whole number, or nobody can tell." : "Yes, no, or nobody can tell.", "bad_input");
 
   const [user] = await db.select().from(schema.users).where(eq(schema.users.id, input.userId)).limit(1);
   if (!user) throw new MarketError("unknown user", "not_found");
@@ -495,6 +546,12 @@ export async function mirrorSettlement(d: DareRow, s: Settlement, how: { by: "qu
   const voided = s.outcome === VOID_OUTCOME;
   if (!voided && s.scores.size !== positions.length) throw new MarketError(`the settlement scored ${s.scores.size} of ${positions.length} people; refusing to record a partial result`, "chain");
   if (voided && s.edges.length > 0) throw new MarketError("a voided market minted something; refusing to record it", "chain");
+  // The scale, checked afterward (src/lib/ledger/scale.ts): a number market whose answer fell outside its own scale
+  // for most people, or whose scale was so wide that nobody's miss mattered, is visible in the log and in verify-envio.
+  if (!voided && d.kind === "numeric") {
+    const after = scaleAfterward([...s.scores.values()].map((x) => BigInt(x)));
+    if (after.floored * 2 > after.of || after.allNear) console.warn("number market scale", { dareId: d.id, range: d.range?.toString(), source: d.rangeSource, outcome: s.outcome.toString(), ...after });
+  }
 
   const now = new Date();
   await db.transaction(async (tx) => {
@@ -553,6 +610,18 @@ export async function reconcileFromIndexer(dareId: string): Promise<boolean> {
     edges: indexed.edges.map((e) => ({ tokenId: BigInt(e.tokenId), debtor: e.debtor.toLowerCase(), creditor: e.creditor.toLowerCase(), qty: BigInt(e.qty), obligationId: e.id as Hex, unique: e.unique })),
   }, { by: indexed.rulingHash ? "arbitration" : "quorum" });
   return true;
+}
+
+/**
+ * The inks of the questions still open in each of these sets of people, for balance on the who's-in step
+ * (docs/design.md 1.8, rule 4; 3.29): the client previews with the same rule the server stores by.
+ */
+export async function openInksByGroup(groupIds: string[]): Promise<Map<string, InkName[]>> {
+  const out = new Map<string, InkName[]>(groupIds.map((g) => [g, []]));
+  if (groupIds.length === 0) return out;
+  const rows = await db.select({ id: schema.dares.id, groupId: schema.dares.groupId, ink: schema.dares.ink }).from(schema.dares).where(and(inArray(schema.dares.groupId, groupIds), isNotNull(schema.dares.creatorSignature), isNull(schema.dares.resolvedAt)));
+  for (const r of rows) out.get(r.groupId)?.push(inkOf(r));
+  return out;
 }
 
 /** The creator's ink pick (docs/design.md 1.8, rule 1): one tap from the market's own screen, never a step in creating it. */

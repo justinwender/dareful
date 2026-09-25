@@ -35,7 +35,7 @@ async function draft(creator: Signer, groupId: string, unit: "usd" | "next_time"
 }
 const open = async (d: markets.DareRow, creator: Signer) => markets.openMarket(d.id, creator.user.id, await creator.ledger.signTypedData(markets.createTypedData(d)));
 const enter = async (d: markets.DareRow, who: Signer, stake: bigint, valueBps: bigint, signWith = who.ledger) =>
-  markets.enterMarket({ dareId: d.id, userId: who.user.id, stake, valueBps, signature: await signWith.signTypedData(markets.enterTypedData(d, stake, valueBps)) });
+  markets.enterMarket({ dareId: d.id, userId: who.user.id, stake, value: valueBps, signature: await signWith.signTypedData(markets.enterTypedData(d, stake, valueBps)) });
 const vote = async (d: markets.DareRow, who: Signer, outcome: bigint, signWith = who.governance) =>
   markets.castVote({ dareId: d.id, userId: who.user.id, outcome, signature: await signWith.signTypedData(markets.voteTypedData(d, outcome)) });
 const code = async (fn: () => Promise<unknown>) => fn().then(() => null, (e: unknown) => (e instanceof markets.MarketError ? e.code : `other: ${e instanceof Error ? e.message : e}`));
@@ -76,7 +76,7 @@ test("a position is a stake and a number signed by its owner's ledger wallet, an
   assert.equal(await code(() => enter(d, alex, 500n, 5000n, gabe.ledger)), "bad_signature"); // someone else's key
   assert.equal(await code(() => enter(d, alex, 500n, 5000n, alex.governance)), "bad_signature"); // the wrong one of their own keys
   // a signature over different numbers than the ones submitted
-  assert.equal(await code(async () => markets.enterMarket({ dareId: d.id, userId: alex.user.id, stake: 500n, valueBps: 9000n, signature: await alex.ledger.signTypedData(markets.enterTypedData(d, 500n, 5000n)) })), "bad_signature");
+  assert.equal(await code(async () => markets.enterMarket({ dareId: d.id, userId: alex.user.id, stake: 500n, value: 9000n, signature: await alex.ledger.signTypedData(markets.enterTypedData(d, 500n, 5000n)) })), "bad_signature");
   assert.equal((await markets.positionsOf(d.id)).length, 1);
 });
 

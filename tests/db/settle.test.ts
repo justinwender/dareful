@@ -25,7 +25,7 @@ async function question(over: Partial<markets.DraftInput> = {}) {
   const usd = await ensureUsd(g.id, ana.user.id);
   const d0 = await markets.draftMarket({ creatorId: ana.user.id, groupId: g.id, denomId: usd.id, title: "Is the Holland Tunnel longer than the Lincoln?", termsText: "Yes if the Holland Tunnel's longest tube is longer. Decided by official tube length.", resolvesBy: new Date(Date.now() + 3_600_000), ...over });
   const d = await markets.openMarket(d0.id, ana.user.id, await ana.ledger.signTypedData(markets.createTypedData(d0)));
-  const enter = async (who: Signer, bps: bigint) => markets.enterMarket({ dareId: d.id, userId: who.user.id, stake: 1000n, valueBps: bps, signature: await who.ledger.signTypedData(markets.enterTypedData(d, 1000n, bps)) });
+  const enter = async (who: Signer, bps: bigint) => markets.enterMarket({ dareId: d.id, userId: who.user.id, stake: 1000n, value: bps, signature: await who.ledger.signTypedData(markets.enterTypedData(d, 1000n, bps)) });
   return { d, enter };
 }
 const lockInMirror = (id: string, set: Partial<typeof schema.dares.$inferInsert> = {}) => db.update(schema.dares).set({ lockedAt: new Date(), onchainId: Buffer.from(id.replace(/-/g, "").padEnd(64, "0"), "hex"), ...set }).where(eq(schema.dares.id, id));
