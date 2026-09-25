@@ -27,3 +27,9 @@ test("the type budget refuses a second serif size on a screen", () => {
 test("the type budget refuses a token from the first design", () => {
   assert.match(lint().out, /src\/app\/legacy\/page\.tsx: legacy token "text-question"/);
 });
+
+test("a control's label is outside the count: a page with four tokens on content and two more on a field and its label passes", () => {
+  const r = lint();
+  assert.match(r.out, /src\/app\/controls\/page\.tsx: 4 tokens \(body, body-sm, label, serif-l\)\n/);
+  assert.doesNotMatch(r.out, /controls\/page\.tsx: [56] tokens/);
+});

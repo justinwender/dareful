@@ -71,6 +71,21 @@ export function closesLabel(at: Date, now: Date, timeZone: string): string {
   return at.toLocaleDateString("en-US", { timeZone, month: "short", day: "numeric" });
 }
 
+/**
+ * "until 10:40pm" on the day, "until tomorrow" or "until Friday" after it (docs/design.md 3.22, 3.24): the
+ * clock a number can still change by, and the one a link still gets people in by. Never how long is left.
+ */
+export function untilLabel(at: Date, now: Date, timeZone: string): string {
+  if (at.getTime() <= now.getTime()) return "until it closes";
+  if (dayNumber(at, timeZone) === dayNumber(now, timeZone)) return `until ${clockOf(at, timeZone)}`;
+  return `until ${closesLabel(at, now, timeZone)}`;
+}
+
+/** "10:40pm", "11pm": the time of day in the viewer's zone. */
+export function clockOf(at: Date, timeZone: string): string {
+  return at.toLocaleTimeString("en-US", { timeZone, hour: "numeric", minute: "2-digit" }).replace(":00", "").replace(" ", "").toLowerCase();
+}
+
 /** The day, as the label at the top of a root: "Thursday, Sep 24", in the viewer's zone. */
 export function todayLabel(now: Date, timeZone: string): string {
   return now.toLocaleDateString("en-US", { timeZone, weekday: "long", month: "short", day: "numeric" });
@@ -109,9 +124,6 @@ export function setCaption(input: { size: number; lastAskedAt: Date | null; isMo
 
 /** "Locked at 11pm" on the day, "Locked Sat, Sep 12" after it. In the viewer's zone, and never how long ago. */
 export function lockedLabel(at: Date, now: Date, timeZone: string): string {
-  if (dayNumber(now, timeZone) === dayNumber(at, timeZone)) {
-    const t = at.toLocaleTimeString("en-US", { timeZone, hour: "numeric", minute: "2-digit" }).replace(":00", "").replace(" ", "").toLowerCase();
-    return `Locked at ${t}`;
-  }
+  if (dayNumber(now, timeZone) === dayNumber(at, timeZone)) return `Locked at ${clockOf(at, timeZone)}`;
   return `Locked ${at.toLocaleDateString("en-US", { timeZone, weekday: "short", month: "short", day: "numeric" })}`;
 }

@@ -36,12 +36,21 @@ export function hueDistance(a: number, b: number): number {
   return d > 180 ? 360 - d : d;
 }
 
+/**
+ * Hues under this read as red, and reds fold into Rose whatever is nearest (1.8). sRGB red is 29 in OKLCH, past
+ * the midpoint between Rose (8) and Clay (45), so by the wheel alone a red mark would be Clay; 40 is where red
+ * gives way to orange (orangered sits on it), so a fox or a peach still reads as Clay.
+ */
+export const RED_MAX = 40;
+
 /** The mark's own lightness and chroma are thrown away: only the hue snaps, to the nearest of the eight. */
 export function nearestInk(hue: number): InkName {
+  const h = ((hue % 360) + 360) % 360;
+  if (h < RED_MAX) return "rose";
   let best: InkName = "clay";
   let bestD = Number.POSITIVE_INFINITY;
   for (const name of INK_NAMES) {
-    const d = hueDistance(hue, INKS[name].hue);
+    const d = hueDistance(h, INKS[name].hue);
     if (d < bestD) {
       bestD = d;
       best = name;

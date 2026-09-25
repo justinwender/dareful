@@ -4,7 +4,7 @@
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { weightCaption, bucketOf, buckets, groupsNumberBps, overHalf, showsMarker, sparkEligible, tenthOf, type Entry } from "@/lib/ledger/weight";
+import { weightCaption, bucketOf, buckets, groupsNumberBps, overHalf, showsMarker, sparkEligible, percentOf, type Entry } from "@/lib/ledger/weight";
 
 const e = (id: string, tenth: number, dollars: number): Entry => ({ id, stake: BigInt(dollars * 100), valueBps: BigInt(tenth * 1000) });
 const fence = [e("you", 7, 10), e("priya", 7, 5), e("gabe", 7, 5), e("maya", 5, 10), e("theo", 9, 15), e("john", 2, 50)];
@@ -14,7 +14,7 @@ test("the fence question: six numbers average 6 in 10 and the group's number is 
   assert.equal(Math.round(plain / 1000), 6);
   // By hand: (7*10 + 7*5 + 7*5 + 5*10 + 9*15 + 2*50) / (10+5+5+10+15+50) = 425 / 95 = 4.4737.
   assert.equal(groupsNumberBps(fence), 4473n);
-  assert.equal(tenthOf(4473n), 4);
+  assert.equal(percentOf(4473n), 45);
 });
 
 test("a bucket is the tenth a number falls in: 1 to 10 is the first, 61 to 70 the seventh, and zero has no tenth so it sits in the first", () => {
@@ -42,8 +42,8 @@ test("when nobody has anything on it the picture is dots and the group's number 
   assert.equal(groupsNumberBps([]), null);
 });
 
-test("the group's number shows as the nearest whole tenth, halves up", () => {
-  assert.deepEqual([4499n, 4500n, 5333n, 400n, 9999n].map(tenthOf), [4, 5, 5, 0, 10]);
+test("the group’s number shows as the nearest whole percent, halves up", () => {
+  assert.deepEqual([4499n, 4500n, 5333n, 400n, 9999n].map(percentOf), [45, 45, 53, 4, 100]);
 });
 
 test("the marker waits for a third entry", () => {
@@ -69,10 +69,10 @@ test("a line over time needs more than a day open and at least four in: a slow t
 
 const say = (entries: Entry[], viewerId = "you") => weightCaption({ entries, viewerId, nameOf: (id) => id[0]?.toUpperCase() + id.slice(1), stakeWords: (s) => `$${Number(s) / 100}` });
 test("the caption says in words what the picture says in shapes, and names the one stake that outweighs the rest", () => {
-  assert.equal(say(fence), "Height is how much is riding on each number, not how many people picked it. John has $50 on 2, more than half of what’s riding, which is why the group’s number sits at 4.");
+  assert.equal(say(fence), "Height is how much is riding on each number, not how many people picked it. John has $50 on 20%, more than half of what’s riding, which is why the group’s number sits at 45%.");
   assert.match(say(fence, "john"), /You have \$50 on 2/);
   assert.match(say(fence.slice(0, 1)), /^You’re first in\./);
-  assert.match(say(fence.slice(0, 3)), /^Everyone’s on the same number\./);
+  assert.match(say(fence.slice(0, 3)), /^No spread at all\./);
 });
 
 test("nothing said about the group's number borrows a word from finance", () => {

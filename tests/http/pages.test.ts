@@ -276,13 +276,13 @@ test("a draft is a 404 to everyone but the person who asked it, and its preview 
 test("someone in the group who has not picked sees who is in and no number; someone outside sees neither", async () => {
   const mine = await get(`/m/${marketId}`, cFriend);
   assert.equal(mine.status, 200);
-  // The count is the whole message (4.9): the caption that restated the picture is gone.
-  assert.ok(mine.text.includes("One friend is in.") && mine.text.includes("1 of 2 in") && !mine.text.includes("shows once you pick"));
+  // The count is the whole message (4.9): the captions that restated it are gone.
+  assert.ok(mine.text.includes("1 of 2 in") && !mine.text.includes("shows once you pick") && !mine.text.includes("One friend is in."));
   // Sent, not merely shown: the page's data travels in the HTML, so a number hidden by a component is still leaked.
-  for (const s of ["83%", "about 8 in 10", "riding,", "8300", "heightPermille"]) assert.ok(!mine.html.includes(s), `someone who has not picked is sent "${s}"`);
+  for (const s of ["83%", "You’re in at", "8300", "\"stake\":\"1700\"", "buckets"]) assert.ok(!mine.html.includes(s), `someone who has not picked is sent "${s}"`);
   // The asker is in: the receipt is on the screen every time it opens, not for a second after the tap.
   const asked = await get(`/m/${marketId}`, cAsker);
-  assert.ok(asked.text.includes("You’re in at about 8 in 10") && asked.text.includes("yours to change until it closes") && asked.text.includes("Where the stake sits"));
+  assert.ok(asked.text.includes("You’re in at 83%") && asked.text.includes("yours to change until") && asked.text.includes("Where the stake sits"));
   const outside = await get(`/m/${marketId}`, cStranger);
   assert.equal(outside.status, 200);
   // The invitation (docs/design.md 3.17): what it is and who asked, by first name, and nothing it could cost.
@@ -294,7 +294,8 @@ test("the terms and the stalemate rule are on the screen before anyone is in", a
   const r = await get(`/m/${marketId}`, cFriend);
   assert.ok(r.text.includes("Yes if the kettle is descaled by Friday."));
   // The tiebreaker is one of the four facts in the details (3.25); the consent sentence lives on the invitation.
-  assert.ok(r.text.includes("If it’s unclear") && r.text.includes("Everyone says their piece and the app calls it."));
+  // The tiebreaker is credited to the agreement, never to the app (docs/decisions.md 2026-09-25).
+  assert.ok(r.text.includes("If it’s unclear") && r.text.includes("Everyone says their piece and the tiebreaker everyone agreed to calls it."));
 });
 
 // ------------------------------------------------------------------------------------------ 2B: home, joining
@@ -363,7 +364,8 @@ test("nothing on a question borrows a word from finance", async () => {
   const FINANCE = /\b(odds|implied|price|pot|house|buy|sell|shares|liquidity|position size)\b|the market says/i;
   for (const who of [cFriend, cAsker]) {
     const r = await get(`/m/${marketId}`, who);
-    const m = FINANCE.exec(r.text);
+    // The one exception the vocabulary boundary makes (docs/design.md 4.6): the question the odds line asks.
+    const m = FINANCE.exec(r.text.replace(/What are the odds(, in percent)?\?/g, "").replace(/Slide to pick your odds/g, ""));
     assert.equal(m, null, m ? `found "${m[0]}" in: ...${r.text.slice(Math.max(0, m.index - 40), m.index + 40)}...` : "");
   }
 });
@@ -443,6 +445,36 @@ test("a market's own screen is its ink: the ground, surface and line swapped for
   assert.ok(!r.text.includes("Every pair squares") && !r.text.includes("How we’ll know"), "scoring and the terms disclosure left the screen (4.9)");
   const s = await get(`/m/${marketId}`, cStranger);
   assert.ok(!s.html.includes(`--ground:${layers.ground}`), "the invitation is the neutral room, not the market's place");
+});
+
+// ---------------------------------------------------------------------------------- the v2 migration, second half
+
+test("the market screen keeps its one move in the pinned sheet: the odds line before you are in, the link once you are", async () => {
+  const before = await get(`/m/${marketId}`, cFriend);
+  assert.ok(/<section aria-label="Your number"/.test(before.html), "the sheet, labelled as the move");
+  assert.ok(before.text.includes("What are the odds?") && before.text.includes("Slide to answer") && before.text.includes("Slide to pick your odds"), "the odds line, untouched: no thumb, no number, the primary waiting");
+  assert.ok(before.html.includes('aria-valuetext="not picked yet"'), "nothing starts picked: a thumb parked at 50% anchors everyone on a coin flip");
+  const after = await get(`/m/${marketId}`, cAsker);
+  assert.ok(/<section aria-label="Get people in"/.test(after.html) && after.text.includes("Send it to the chat") && after.text.includes("Anyone with the link can get in until"), "once in, the move is the link");
+  assert.ok(!after.text.includes("Slide to pick your odds"), "the odds line has become the weight line");
+  for (const s of ["in 10", "Fine-tune", "Not once", "Every time"]) assert.ok(!after.text.includes(s) && !before.text.includes(s), `tenths copy "${s}" came back`);
+});
+
+test("a task screen's primary is in the sheet too: the ask flow, the code screen", async () => {
+  const ask = await get("/m/new", cAsker);
+  assert.ok(/<section aria-label="Next"[^>]*>[\s\S]*?Who’s in\?/.test(ask.html), "the ask flow's first move");
+  const join = await get("/join", cA);
+  assert.ok(/<section aria-label="Join"[^>]*>[\s\S]*?>Join</.test(join.html), "Join, in the sheet");
+});
+
+test("the asking tile carries the asker's first name and the mechanic, and never who is in or at what", async () => {
+  const r = await get(`/m/${marketId}/opengraph-image`);
+  assert.equal(r.status, 200);
+  assert.equal(r.type, "image/png");
+  // A different picture from the plain card and from a cover's card: it is drawn from the market.
+  const plain = await get(`/m/00000000-0000-4000-8000-000000000000/opengraph-image`);
+  assert.ok(!r.bytes.equals(plain.bytes));
+  assert.ok(r.bytes.length > 10_000, "a drawn tile, not an empty frame");
 });
 
 // ------------------------------------------------------------------------------------------------ dates

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { signingProblem, useSigner } from "@/components/ledger/use-signer";
 import type { TypedDataDomain } from "viem";
 import { Button } from "@/components/ui/button";
+import { PinnedSheet } from "@/components/ui/pinned-sheet";
 import { confirmManyAction } from "@/lib/actions/proposals";
 import { ledgerTypes } from "@/lib/chain/typed-data";
 import { ProblemSummary } from "@/components/ledger/problem";
@@ -57,9 +58,14 @@ export function ConfirmAll({ payload }: { payload: ConfirmAllPayload }) {
       {error ? (
         <ProblemSummary messages={[error]} />
       ) : null}
-      <Button variant="primary" onClick={confirmAll} loading={state !== "idle"} disabled={state === "done"}>
-        {n === 1 ? "Yep, that’s right" : `Yep, all ${n} are right`}
-      </Button>
+      <PinnedSheet
+        label="Confirm"
+        low={
+          <Button variant="primary" onClick={confirmAll} loading={state !== "idle"} disabled={state === "done"}>
+            {n === 1 ? "Yep, that’s right" : `Yep, all ${n} are right`}
+          </Button>
+        }
+      />
     </div>
   );
 }

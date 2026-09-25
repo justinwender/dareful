@@ -55,9 +55,9 @@ export function groupsNumberBps(entries: Entry[]): bigint | null {
   return entries.reduce((a, e) => a + e.valueBps, 0n) / BigInt(entries.length);
 }
 
-/** "4 in 10": the nearest whole tenth, halves rounding up. The exact figure lives on the details sheet. */
-export function tenthOf(bps: bigint): number {
-  return Number((bps + 500n) / 1000n);
+/** "45%": the nearest whole percent, halves rounding up. The exact figure lives on the details sheet. */
+export function percentOf(bps: bigint): number {
+  return Number((bps + 50n) / 100n);
 }
 
 /** The marker appears from the third entry: with one or two it would only restate a number already on screen. */
@@ -100,8 +100,8 @@ export function weightCaption(input: { entries: Entry[]; viewerId: string; nameO
   const number = groupsNumberBps(entries);
   if (heavy && number !== null) {
     const who = heavy.id === input.viewerId ? "You have" : `${input.nameOf(heavy.id)} has`;
-    return `${base} ${who} ${input.stakeWords(heavy.stake)} on ${bucketOf(heavy.valueBps)}, more than half of what’s riding, which is why the group’s number sits at ${tenthOf(number)}.`;
+    return `${base} ${who} ${input.stakeWords(heavy.stake)} on ${percentOf(heavy.valueBps)}%, more than half of what’s riding, which is why the group’s number sits at ${percentOf(number)}%.`;
   }
-  if (new Set(entries.map((e) => bucketOf(e.valueBps))).size === 1) return `Everyone’s on the same number. ${base}`;
+  if (new Set(entries.map((e) => bucketOf(e.valueBps))).size === 1) return `No spread at all. ${base}`;
   return base;
 }

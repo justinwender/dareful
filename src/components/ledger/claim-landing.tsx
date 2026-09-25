@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { SignInButton } from "@/components/auth/sign-in-button";
 import { Button } from "@/components/ui/button";
+import { PinnedSheet } from "@/components/ui/pinned-sheet";
 import { concedeAction, thatsMeAction } from "@/lib/actions/claims";
 import { ProblemSummary } from "@/components/ledger/problem";
 
@@ -36,26 +37,34 @@ export function ClaimChoice({ token, name, signedIn, held }: { token: string; na
     });
   }
 
+  // The move, in the sheet (3.24): "That's me", with the problem above it when there is one.
+  const move = (
+    <PinnedSheet
+      label="Is this you?"
+      low={
+        <>
+          <ProblemSummary messages={[error]} />
+          <Button variant="primary" onClick={thatsMe} loading={pending}>
+            That’s me
+          </Button>
+        </>
+      }
+    />
+  );
   return (
     <div className="flex flex-col gap-3">
-      {error ? (
-        <ProblemSummary messages={[error]} />
-      ) : null}
       {signedIn ? (
-        <Button variant="primary" onClick={thatsMe} loading={pending}>
-          That’s me
-        </Button>
+        move
       ) : isHeld ? (
         <>
+          {error ? <ProblemSummary messages={[error]} /> : null}
           <p className="text-body text-ink-2">Got it, {name}. Sign in and these are yours to say yes or no to. An email or a phone number is all it takes.</p>
           <SignInButton label="Sign in" />
         </>
       ) : (
         <>
-          <Button variant="primary" onClick={thatsMe} loading={pending}>
-            That’s me
-          </Button>
           <SignInButton label="I already have an account" />
+          {move}
         </>
       )}
     </div>

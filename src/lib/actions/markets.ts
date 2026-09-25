@@ -9,6 +9,7 @@ import { isHex, type Hex } from "viem";
 import { z } from "zod";
 import { isInkName } from "@/lib/ui/ink";
 import { plainScope, proposeOutcome, scopeMarket } from "@/lib/ai/markets";
+import { viewerZone } from "@/lib/ui/zone";
 import { requireUser } from "@/lib/auth/session";
 import { db, schema } from "@/db";
 import { and, asc, eq } from "drizzle-orm";
@@ -94,6 +95,7 @@ export async function draftMarketAction(input: z.infer<typeof Draft>): Promise<{
       stalemate: d.stalemate,
       markEmoji: d.markEmoji,
       revealMode: d.blind ? "blind" : "open",
+      zone: await viewerZone(),
     });
     return { id: row.id };
   } catch (err) {

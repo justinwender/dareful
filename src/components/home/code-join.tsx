@@ -4,6 +4,7 @@ import { useId, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { LinkPending } from "@/components/ui/link-pending";
+import { PinnedSheet } from "@/components/ui/pinned-sheet";
 import { FIELD_PROBLEM_CLASS, Problem, ProblemSummary } from "@/components/ledger/problem";
 import { joinByCodeAction, joinByLinkAction } from "@/lib/actions/join";
 import { CODE_LENGTH, readCode, tidyCode } from "@/lib/ledger/room-code";
@@ -118,6 +119,7 @@ export function CodeJoinFocused({ initial = "" }: { initial?: string }) {
 
   return (
     <form
+      id={`${id}-form`}
       className="flex flex-col gap-4"
       noValidate
       onSubmit={(e) => {
@@ -161,10 +163,18 @@ export function CodeJoinFocused({ initial = "" }: { initial?: string }) {
       <p id={`${id}-help`} className="text-caption text-ink-3">
         Six characters. Case doesn’t matter, and there’s no O, I, Z, zero or one in any code. Pasting works.
       </p>
-      <ProblemSummary messages={[form]} />
-      <Button type="submit" variant="primary" disabled={!full} loading={pending}>
-        Join
-      </Button>
+      {/* The move, in the sheet (3.24), with the form-level problem above it when there is one. */}
+      <PinnedSheet
+        label="Join"
+        low={
+          <>
+            <ProblemSummary messages={[form]} />
+            <Button type="submit" form={`${id}-form`} variant="primary" disabled={!full} loading={pending}>
+              Join
+            </Button>
+          </>
+        }
+      />
     </form>
   );
 }

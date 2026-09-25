@@ -430,6 +430,12 @@ export const dares = pgTable(
     ink: text("ink"),
     /** 'pick' | 'mark' | 'hash'. */
     inkSource: text("ink_source"),
+    /**
+     * The asker's time zone when it was asked (an IANA name), so the link tile can say an absolute close time
+     * for a preview that gets frozen into a chat with no viewer to render it for (docs/design.md 3.27). Null on
+     * rows from before; those tiles say the time in UTC and say so.
+     */
+    zone: text("zone"),
     /** 'emoji' | 'image' | null for no mark. Blank is the default and stays blank. */
     markKind: text("mark_kind"),
     /** The emoji, or a media id as text for a picture mark. */

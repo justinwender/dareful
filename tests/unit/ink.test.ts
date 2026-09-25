@@ -12,6 +12,9 @@ test("a hue snaps to the nearest of the eight inks, the short way round the whee
   assert.equal(nearestInk(140), "olive", "green folds into Olive");
   assert.equal(nearestInk(200), "sea");
   assert.equal(nearestInk(355), "rose", "just past the top of the wheel is Rose, not Plum");
+  assert.equal(nearestInk(29), "rose", "sRGB red is 29 in OKLCH, nearer Clay by the wheel; reds fold into Rose (1.8)");
+  assert.equal(nearestInk(38), "rose", "an apple is red");
+  assert.equal(nearestInk(43), "clay", "a fox is orange, and Clay");
   assert.equal(hueDistance(350, 10), 20);
   assert.equal(hueDistance(10, 350), 20);
 });

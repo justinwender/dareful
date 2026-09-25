@@ -6,6 +6,7 @@ import { Avatar } from "@/components/ledger/avatar";
 import { Chip } from "@/components/ledger/chip";
 import { FIELD_PROBLEM_CLASS, Problem, ProblemSummary } from "@/components/ledger/problem";
 import { Button } from "@/components/ui/button";
+import { PinnedSheet } from "@/components/ui/pinned-sheet";
 import { dismissNamePromptAction, nameGroupAction } from "@/lib/actions/join";
 import { carefulQuestionsAction, draftMarketAction, scopeMarketAction, triageAction, type ScopeResult, type TriageResult } from "@/lib/actions/markets";
 import type { Hue } from "@/lib/ui/hue";
@@ -154,6 +155,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare" }
   if (step === "question") {
     return (
       <form
+        id="ask-question"
         className="flex flex-col gap-6"
         noValidate
         onSubmit={(e) => {
@@ -199,10 +201,18 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare" }
         ) : (
           <p className="text-caption text-ink-3">The app says what kind of disagreement it is before anyone puts anything on it. If it’s about one of you rather than about the world, it won’t call it.</p>
         )}
-        <ProblemSummary messages={[fieldProblem, problem]} />
-        <Button type="submit" variant="primary" loading={thinking}>
-          {pace === "argument" ? "Weigh it up" : mode === "careful" ? "Ask me" : "Who’s in?"}
-        </Button>
+        {/* The step's one move, in the sheet (3.24), with the form-level problem above it when there is one. */}
+        <PinnedSheet
+          label="Next"
+          low={
+            <>
+              <ProblemSummary messages={[fieldProblem, problem]} />
+              <Button type="submit" form="ask-question" variant="primary" loading={thinking}>
+                {pace === "argument" ? "Weigh it up" : mode === "careful" ? "Ask me" : "Who’s in?"}
+              </Button>
+            </>
+          }
+        />
       </form>
     );
   }
@@ -222,22 +232,25 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare" }
             <p className="text-serif-m text-ink">{instead}</p>
           </div>
         ) : null}
-        <div className="flex flex-col gap-1">
-          <Button
-            variant="primary"
-            onClick={() => {
-              setPace("dare");
-              setLine(instead ?? "");
-              setVerdict(null);
-              setStep("question");
-            }}
-          >
-            Make it a dare instead
-          </Button>
-          <Button variant="tertiary" onClick={() => setStep("question")}>
-            Say it another way
-          </Button>
-        </div>
+        <Button variant="tertiary" className="self-start" onClick={() => setStep("question")}>
+          Say it another way
+        </Button>
+        <PinnedSheet
+          label="Instead"
+          low={
+            <Button
+              variant="primary"
+              onClick={() => {
+                setPace("dare");
+                setLine(instead ?? "");
+                setVerdict(null);
+                setStep("question");
+              }}
+            >
+              Make it a dare instead
+            </Button>
+          }
+        />
       </div>
     );
   }
@@ -299,16 +312,21 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare" }
             </li>
           ))}
         </ol>
-        <Button
-          variant="primary"
-          disabled={!done}
-          onClick={() => {
-            writeUp();
-            setStep("who");
-          }}
-        >
-          Who’s in?
-        </Button>
+        <PinnedSheet
+          label="Next"
+          low={
+            <Button
+              variant="primary"
+              disabled={!done}
+              onClick={() => {
+                writeUp();
+                setStep("who");
+              }}
+            >
+              Who’s in?
+            </Button>
+          }
+        />
       </div>
     );
   }
@@ -443,13 +461,18 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare" }
             {circle(who.kind === "link")}
           </button>
         </div>
-        <ProblemSummary messages={[problem]} />
-        <div className="flex flex-col gap-2">
-          <Button variant="primary" onClick={toTerms} loading={waiting}>
-            Set the terms
-          </Button>
-          <p className="text-caption text-ink-3">{waiting ? "Writing up how you’ll know. A few seconds." : "You can add anyone else right up until it closes."}</p>
-        </div>
+        <PinnedSheet
+          label="Next"
+          low={
+            <>
+              <ProblemSummary messages={[problem]} />
+              <Button variant="primary" onClick={toTerms} loading={waiting}>
+                Set the terms
+              </Button>
+              <p className="text-caption text-ink-3">{waiting ? "Writing up how you’ll know. A few seconds." : "You can add anyone else right up until it closes."}</p>
+            </>
+          }
+        />
       </div>
     );
   }
@@ -578,13 +601,20 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare" }
         </div>
         <p className="text-caption text-ink-3">Everyone sees this before they’re in, and being in means they’re fine with it.</p>
       </div>
-      <ProblemSummary messages={[problem]} />
-      <Button variant="primary" onClick={save} loading={saving}>
-        Looks right
-      </Button>
-      <Button variant="tertiary" onClick={() => setStep("who")} disabled={saving}>
+      <Button variant="tertiary" className="self-start" onClick={() => setStep("who")} disabled={saving}>
         Back to who’s in
       </Button>
+      <PinnedSheet
+        label="Finish"
+        low={
+          <>
+            <ProblemSummary messages={[problem]} />
+            <Button variant="primary" onClick={save} loading={saving}>
+              Looks right
+            </Button>
+          </>
+        }
+      />
     </div>
   );
 }

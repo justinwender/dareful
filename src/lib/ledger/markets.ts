@@ -154,6 +154,8 @@ export type DraftInput = {
   stalemate?: "arbitrate" | "void";
   revealMode?: "open" | "blind";
   markEmoji?: string | null;
+  /** The asker's IANA zone, for the absolute close time on the link tile (docs/design.md 3.27). */
+  zone?: string | null;
 };
 
 /** A draft: terms the creator can read and has not yet signed. Nobody else can see it. */
@@ -191,6 +193,7 @@ export async function draftMarket(input: DraftInput): Promise<DareRow> {
       id,
       ink: chosen.ink,
       inkSource: chosen.source,
+      zone: input.zone ?? null,
       groupId: input.groupId,
       kind: "binary",
       pace,
