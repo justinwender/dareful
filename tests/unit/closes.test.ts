@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { closeTypedData, netTypedData, nettablePairs, reasonCode } from "@/lib/ledger/closes";
 import { rallyRows } from "@/lib/ledger/person";
-import { uuidToBytes16 } from "@/lib/ledger/ids";
+import { isUuidLike, uuidToBytes16 } from "@/lib/ledger/ids";
 
 const A = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const B = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
@@ -76,3 +76,14 @@ test("the rally is the last twelve pick-ups, one row per person, and needs four 
   const many = rallyRows(Array.from({ length: 20 }, (_, i) => ({ userId: i % 3 === 0 ? them : me, at: at(20 - i) })), me, them);
   assert.equal(many?.[0]?.slots.length, 12, "never more than twelve slots");
 });
+
+test("an id a market derived has no RFC bits and still passes the boundary; anything that is not five hex groups does not", () => {
+  assert.equal(isUuidLike("0650f47d-785b-4bdd-e0bd-982eb16c7ae4"), true, "a market-minted obligation: variant nibble e, which z.string().uuid() refuses");
+  assert.equal(isUuidLike("f9069115-fd90-33d6-a25b-2bd60312b139"), true, "version 3 bits, also derived");
+  assert.equal(isUuidLike("8ffed2db-77af-40a1-8858-f8e33d440095"), true, "an ordinary v4");
+  assert.equal(isUuidLike("8FFED2DB-77AF-40A1-8858-F8E33D440095"), true);
+  assert.equal(isUuidLike("0650f47d785b4bdde0bd982eb16c7ae4"), false, "no groups");
+  assert.equal(isUuidLike("0650f47d-785b-4bdd-e0bd-982eb16c7ae4; drop table"), false);
+  assert.equal(isUuidLike(""), false);
+});
+

@@ -420,3 +420,33 @@ All on the installed app. If the first check fails, the reading above is wrong a
 - "Just happened" does not list closed obligations; it needs a moment to order by (docs/decisions.md, "Settling and forgiving, from the row").
 - Closing the books has no home in the specification; asked.
 
+## Session 9: the photo path on production, the story's consequence, and the band
+
+**When:** September 25, 2026, after the lifecycle build was deployed and the secret key set. **Who:** the two test accounts again, the creditor this time on dareful.app (the deployed lifecycle build) and the other person on localhost, both in the development browser, both signed in by the author; the settle-with-a-photo checkpoint on production, end to end.
+
+### Exercised
+
+- **Settled with a photo, on production.** A cover logged on dareful.app against the other account ($9, "Photo check"), confirmed by that account on localhost, then on dareful.app: the row, the sheet, "Add a photo of it" given a JPEG (a canvas-drawn one, handed to the file input the way a camera would hand one), the preview in the row and "Change the photo", then "Settled". The close went through, the photo went up after it, and the card came back with the Settled mark and its 84px thumbnail, loaded (256 by 256). The thumbnail's address, `/api/media/<id>?size=thumb`, answered a redirect into the private bucket's signed path and the bucket answered the image. **The other person sees it**: the debtor's person view on localhost carries the same thumbnail, loaded. **Nobody else does**: signed out, both the thumbnail and the frame answer 404; the bucket's public path answers 400, since it is not public. A third real account is not available in this browser; the page test covers the outsider with a temporary account (404) and the two people in it (302 to the signed path), against a thumbnail written to the real bucket for the test and removed after.
+- **A market-minted obligation closed from its story.** On localhost the story "Is the Holland Tunnel longer than the Lincoln Tunnel?" carried its consequence as the move; the sheet showed the sentence and the question; "Settled" closed what the indexer said was still open on it after the morning's netting ($2.10 of the $10 the market minted), and the consequence came back with the Settled mark and is a control no longer.
+- **The email channel.** One line through `sendOps` from the development machine with the sending key, accepted by Resend; the records that actually went in are in docs/decisions.md.
+- **Just happened** carries the morning's settled and forgiven covers on the creditor's Now, at the moment they closed, with the mark the indexer gives them.
+
+### What broke
+
+- **The story's consequence refused to close: "That didn't go through."** Every obligation a market mints has an id the contract derived (a keccak folded to sixteen bytes) with no RFC version or variant bits, and the close and photo boundaries validated the id with `z.string().uuid()`, which refuses it. Every market loser's debt was unclosable at the boundary, which is exactly the gap this session was meant to close. The boundaries now take `isUuidLike` (five hex groups, nothing more), with a unit test that names the derived id and a mutant that puts the RFC bits back.
+- **The page test's settled question was not a story on the person view** until both people had a position in it: the person view lists markets both are in. The fixture, not the product.
+- **The media test met the real bucket.** With the secret key now set here, a fixture row whose object did not exist made the door answer 502. The fixture writes a real 8px thumbnail to the bucket and removes it after, and the test now insists on the 302 into the signed path for both people in it.
+
+### The band under the tab bar, in the installed app
+
+The cold start (the installed app fully closed, reopened, straight to People, no field touched) showed the band. That rules out the keyboard mechanism entirely, so the viewport repair is removed (docs/decisions.md). The reading offered, that the inset is paid as position rather than padding, was checked against the CSS the server actually sends: the tab bar is `bottom: 0` with `padding-bottom: env(safe-area-inset-bottom)`, the pinned sheet is `bottom: 0` with `padding-bottom: calc(24px + env(safe-area-inset-bottom))`, and the only thing positioned by the inset is the Start button, at `calc(80px + env(safe-area-inset-bottom))`, which has to clear the bar. So the shape is the standard one, and it would put the bar's own surface, not the ground, under the labels; a ground-coloured band means the bar's box ends above the screen's bottom edge, which the CSS does not do on its own. Two readings remain, and only the phone can pick: the layout viewport is shorter than the screen in the installed app (a `bottom: 0` box lands above the home indicator while `env()` still reports the inset), or the inset resolves to a different number than the screen's. Nothing here runs iOS, the simulator on this machine has no Xcode behind it, and the desktop browser's phone emulation pays no insets.
+
+So there is an instrument: on You, "Measure the screen" prints the window's height against the screen's, the visual viewport, both insets as the browser resolves them, where a `position: fixed; bottom: 0` box actually lands, the tab bar's own box, and whether the page is standalone. It is behind a tertiary button rather than a query string because the installed app has no address bar.
+
+### What to check in the installed app, and report
+
+1. Cold start the installed app, go to You, tap "Measure the screen", and send the ten lines as they read. The band's cause is in them: if "fixed bottom:0 lands at" is less than the window's height, the viewport is short; if "inset top / bottom" reads 0 / 0 while the band shows, the inset is not what the app is paying; if the tab bar's bottom equals the window's height and the band still shows, the window itself is shorter than the screen.
+2. Do the same in a Safari tab, for the pair of readings.
+3. With the deployed build: open a cover you are owed, tap the card, add a photo from the camera, "Settled"; expect the thumbnail on the card within a second of the sheet closing and the same thumbnail on the other person's phone.
+4. Then disable the legacy Supabase keys.
+

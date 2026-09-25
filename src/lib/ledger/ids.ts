@@ -36,3 +36,14 @@ export function hexToBuffer(hex: Hex): Buffer {
 export function bufferToHex(b: Buffer): Hex {
   return `0x${b.toString("hex")}`;
 }
+
+/**
+ * Whether a string has the shape of an id in this database. Every `uuid` column takes 32 hex digits in five
+ * groups, and an obligation a market minted has an id the contract derived (a keccak, folded to sixteen bytes),
+ * which carries no RFC version or variant bits: `z.string().uuid()` refuses it at the boundary and the person
+ * owed can never close it (docs/testing.md, session 9). Boundaries that take an obligation id use this.
+ */
+export function isUuidLike(s: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+}
+

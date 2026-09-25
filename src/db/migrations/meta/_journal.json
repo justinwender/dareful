@@ -127,6 +127,13 @@
       "when": 1790358059944,
       "tag": "0017_notices_about_obligations",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1790362727908,
+      "tag": "0018_closed_at",
+      "breakpoints": true
     }
   ]
 }

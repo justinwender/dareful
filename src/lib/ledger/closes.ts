@@ -81,6 +81,7 @@ export async function closeObligation(input: { obligationId: string; creditorUse
   const ok = await verifyTypedData({ ...typed, address: creditor.ledgerWallet as Address, signature: input.signature });
   if (!ok) throw new CloseError("That did not come from your account.", "bad_signature");
   const { ledger } = contracts();
+  let txHash: Hex;
   try {
     const result = await submit({
       label: `close ${input.reason} ${o.id}`,
@@ -90,10 +91,14 @@ export async function closeObligation(input: { obligationId: string; creditorUse
       args: [typed.message.id, typed.message.qty, typed.message.reason, typed.message.obligationId, input.signature],
       gas: gasFor.close(),
     });
-    return { txHash: result.hash, qty: state.remaining };
+    txHash = result.hash;
   } catch (err) {
     throw new CloseError(err instanceof Error ? err.message : "the chain write failed", "chain");
   }
+  // The offchain clock of the close (docs/decisions.md 2026-09-25): the moment "Just happened" orders by. Whether
+  // it was settled or forgiven, and what is still open, stay the chain's to say.
+  await db.update(schema.obligations).set({ closedAt: new Date() }).where(eq(schema.obligations.id, o.id));
+  return { txHash, qty: state.remaining };
 }
 
 // ------------------------------------------------------------------------------------------- netting

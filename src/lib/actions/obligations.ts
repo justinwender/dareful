@@ -6,12 +6,13 @@ import { eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireUser } from "@/lib/auth/session";
 import { CloseError, closeObligation, closeState, closeTypedData, netBetween, netNonce, netTypedData, type ReasonWord } from "@/lib/ledger/closes";
-import { denomOnchainId, groupOnchainId } from "@/lib/ledger/ids";
+import { denomOnchainId, groupOnchainId, isUuidLike } from "@/lib/ledger/ids";
 import { notifyClosed, notifyNetted } from "@/lib/notify";
 import type { Address } from "viem";
 
 const Reason = z.enum(["settled", "forgiven"]);
-const Uuid = z.string().uuid();
+// An obligation a market minted has an id the contract derived, with no RFC bits: never `z.string().uuid()` here.
+const Uuid = z.string().refine(isUuidLike);
 
 const PLAIN = "That didn't go through. Try again.";
 

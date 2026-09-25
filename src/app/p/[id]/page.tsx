@@ -84,7 +84,7 @@ export default async function PersonPage({ params, searchParams }: { params: Pro
         ) : (
           <div className="flex flex-col gap-3">
             {timeline.map((e) => {
-              if (e.kind === "market") return <MarketCardFrom key={`m-${e.market.dare.id}`} m={e.market} viewerId={me.id} clock={clock} />;
+              if (e.kind === "market") return <MarketCardFrom key={`m-${e.market.dare.id}`} m={e.market} viewerId={me.id} clock={clock} consequenceStates={view.consequenceStates} close={{ domain, photosOn }} />;
               if (e.kind === "proposal") {
                 const debtor = byId.get(e.proposal.fromUser ?? "");
                 const creditor = byId.get(e.proposal.toUser ?? "");

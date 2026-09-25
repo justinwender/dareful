@@ -3,6 +3,7 @@ import { SignOutButton } from "@/components/auth/sign-out-button";
 import { Avatar } from "@/components/ledger/avatar";
 import { Screen } from "@/components/ledger/screen";
 import { TabBar } from "@/components/ui/tab-bar";
+import { ViewportProbe } from "@/components/ui/viewport-probe";
 import { currentUser } from "@/lib/auth/session";
 import { liveFor } from "@/lib/ledger/home";
 import { hueFor } from "@/lib/ui/hue";
@@ -29,6 +30,8 @@ export default async function YouPage() {
           <p className="text-body-strong text-ink">{me.displayName}</p>
         </div>
         <SignOutButton />
+        {/* An instrument for the installed app's tab bar (docs/testing.md session 9), to be removed with the cause. */}
+        <ViewportProbe />
       </div>
       <TabBar active="/you" live={live} start />
     </Screen>

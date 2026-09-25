@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { TypedDataDomain } from "viem";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { ledgerTypes } from "@/lib/chain/typed-data";
 import { addSettlementPhotoAction } from "@/lib/actions/media";
 import { closeObligationAction, closePayloadAction } from "@/lib/actions/obligations";
 import { CoveredCard, type CoveredCardProps } from "./covered-card";
+import { StateMark } from "./state-mark";
 
 type Phase = "idle" | "signing" | "sending" | "photo";
 type Reason = "settled" | "forgiven";
@@ -40,7 +41,7 @@ async function shrink(file: File): Promise<Blob> {
  * one button; the photo, when there is one, goes up after the chain has the close, and a photo that fails
  * never undoes a settlement.
  */
-export function CloseObligation({ obligationId, card, sentence, what, domain, photosOn }: { obligationId: string; card: CoveredCardProps; sentence: string; what: string; domain: TypedDataDomain; photosOn: boolean }) {
+export function CloseObligation({ obligationId, card, children, sentence, what, domain, photosOn }: { obligationId: string; card?: CoveredCardProps; children?: ReactNode; sentence: string; what: string; domain: TypedDataDomain; photosOn: boolean }) {
   const router = useRouter();
   const sign = useSigner();
   const titleId = useId();
@@ -126,17 +127,27 @@ export function CloseObligation({ obligationId, card, sentence, what, domain, ph
     }
   }
 
-  const shown: CoveredCardProps = done
-    ? { ...card, state: done.reason, photo: done.mediaId ? { thumb: `/api/media/${done.mediaId}?size=thumb`, full: `/api/media/${done.mediaId}` } : preview ? { thumb: preview, full: preview } : card.photo }
-    : card;
+  const photo = done ? (done.mediaId ? { thumb: `/api/media/${done.mediaId}?size=thumb`, full: `/api/media/${done.mediaId}` } : preview ? { thumb: preview, full: preview } : card?.photo) : card?.photo;
 
   return (
     <>
       {done ? (
-        <CoveredCard {...shown} />
+        card ? (
+          <CoveredCard {...card} state={done.reason} photo={photo} />
+        ) : (
+          // A row (a market's consequence): the mark says how it closed; the story's own words stay as they were.
+          <div className="flex items-center gap-2">
+            <StateMark state={done.reason} />
+            <div className="min-w-0 flex-1">{children}</div>
+            {photo ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={photo.thumb} alt="The photo from when it was settled" width={44} height={44} className="h-11 w-11 shrink-0 rounded-button object-cover" />
+            ) : null}
+          </div>
+        )
       ) : (
-        <button type="button" onClick={() => setOpen(true)} aria-label={`${sentence}. Settle it, or call it even`} className="block w-full rounded-card text-left">
-          <CoveredCard {...card} />
+        <button type="button" onClick={() => setOpen(true)} aria-label={`${sentence}. Settle it, or call it even`} className={card ? "block w-full rounded-card text-left" : "block w-full rounded-button text-left"}>
+          {card ? <CoveredCard {...card} /> : children}
         </button>
       )}
       <Sheet open={open} onClose={() => (phase === "idle" ? setOpen(false) : undefined)} labelledBy={titleId}>

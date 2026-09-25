@@ -81,6 +81,8 @@ export type PersonView = {
   /** Where these two turn up: the sets of people their shared events came out of, by how many. */
   contexts: SharedContext[];
   nettable: NettableLine[];
+  /** What a market minted between the two, by obligation id: open (and so the creditor's to close from the story), settled or forgiven. */
+  consequenceStates: Record<string, "open" | "settled" | "forgiven">;
 };
 
 export type RallyRow = { userId: string; slots: boolean[] };
@@ -209,7 +211,15 @@ export async function personView(me: UserRow, them: UserRow): Promise<PersonView
     return denomination ? [{ groupId: p.groupId, denomId: p.denomId, denomination, groupLabel: labels.get(p.groupId)?.label ?? null, meOwes: p.aOwes, theyOwe: p.bOwes, cancels: p.cancels }] : [];
   });
 
-  return { me, them, header, rally: { pickups, sentence }, timeline, contexts: sharedContexts(timeline, labels), nettable };
+  const consequenceStates: Record<string, "open" | "settled" | "forgiven"> = {};
+  for (const o of obligations) {
+    if (o.origin !== "dare") continue;
+    const e = indexed.get(uuidToBytes16(o.id));
+    const open = e ? BigInt(e.remaining) : (o.quantity ?? 1n);
+    consequenceStates[o.id] = open > 0n ? "open" : e && BigInt(e.forgiven) > 0n && BigInt(e.settled) === 0n ? "forgiven" : "settled";
+  }
+
+  return { me, them, header, rally: { pickups, sentence }, timeline, contexts: sharedContexts(timeline, labels), nettable, consequenceStates };
 }
 
 export async function userById(id: string): Promise<UserRow | null> {

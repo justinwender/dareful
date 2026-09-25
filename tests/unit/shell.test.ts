@@ -1,48 +1,11 @@
 /**
- * Two rules from the phone test of 2026-09-25 (docs/testing.md, session 7): when the visual viewport counts as
- * stuck, and when the relayer's balance is low and said so.
+ * From the phone test of 2026-09-25 (docs/testing.md, session 7): when the relayer's balance is low and said so.
+ * The viewport rule that sat beside it was removed the same day, once a cold start showed the band it was built
+ * for with no keyboard ever shown.
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { hourly, monOf, RELAYER_FLOOR, relayerLow } from "@/lib/chain/watch";
-import { viewportStuck } from "@/lib/ui/viewport";
-
-const fine = {
-  scale: 1,
-  offsetTop: 0,
-  height: 852,
-  innerHeight: 852,
-  typing: false,
-};
-
-test("a viewport that is short or offset with nothing typing and no zoom is stuck; the keyboard and pinch zoom are not", () => {
-  assert.equal(viewportStuck(fine), false, "at rest nothing is repaired");
-  assert.equal(
-    viewportStuck({ ...fine, height: 828 }),
-    true,
-    "short after the keyboard went (iOS 26.0)",
-  );
-  assert.equal(
-    viewportStuck({ ...fine, offsetTop: 24 }),
-    true,
-    "offset from the top",
-  );
-  assert.equal(
-    viewportStuck({ ...fine, height: 500, typing: true }),
-    false,
-    "the keyboard is up: the short viewport is real",
-  );
-  assert.equal(
-    viewportStuck({ ...fine, scale: 2, height: 426, offsetTop: 100 }),
-    false,
-    "pinch zoom is meant to be smaller",
-  );
-  assert.equal(
-    viewportStuck({ ...fine, height: 851.5 }),
-    false,
-    "half a pixel of rounding is not a stuck viewport",
-  );
-});
 
 test("the relayer is low under three MON, said once an hour, and read in whole MON without a float", () => {
   assert.equal(RELAYER_FLOOR, 3_000_000_000_000_000_000n);

@@ -6,6 +6,7 @@
  */
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
+import { eq } from "drizzle-orm";
 import { parseEventLogs, type Address } from "viem";
 import { db, schema } from "@/db";
 import { contracts } from "@/lib/chain/contracts";
@@ -52,6 +53,8 @@ test("the creditor settles what is open on one signature over the obligation's o
   assert.equal(await code(async () => closeObligation({ obligationId: id, creditorUserId: a.user.id, reason: "settled", signature: await signClose(b, id, "settled") })), "bad_signature", "the creditor's close with the debtor's key");
   const { qty } = await closeObligation({ obligationId: id, creditorUserId: a.user.id, reason: "settled", signature: await signClose(a, id, "settled") });
   assert.equal(qty, 2300n);
+  const [row] = await db.select({ closedAt: schema.obligations.closedAt }).from(schema.obligations).where(eq(schema.obligations.id, id));
+  assert.ok(row?.closedAt && Date.now() - row.closedAt.getTime() < 60_000, "the moment of the close is written by the app, the offchain clock the timeline orders by");
   const { ledger, publicClient } = chain();
   const ob = await publicClient.readContract({ address: ledger.address, abi: ledger.abi, functionName: "obligationOf", args: [uuidToBytes16(id)] });
   assert.equal(ob.closed, 2300n);

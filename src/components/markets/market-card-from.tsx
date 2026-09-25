@@ -1,11 +1,13 @@
 import type { MarketCardData } from "@/lib/ledger/market-view";
 import { closesLabel } from "@/lib/ui/copy";
-import { MarketCard } from "./market-card";
+import { MarketCard, type MarketCardProps } from "./market-card";
 
 /** The view model from `marketCards()` as a timeline card. */
-export function MarketCardFrom({ m, viewerId, clock }: { m: MarketCardData; viewerId: string; clock: { zone: string; now: number } }) {
+export function MarketCardFrom({ m, viewerId, clock, consequenceStates, close }: { m: MarketCardData; viewerId: string; clock: { zone: string; now: number }; consequenceStates?: MarketCardProps["consequenceStates"]; close?: MarketCardProps["close"] }) {
   return (
     <MarketCard
+      consequenceStates={consequenceStates}
+      close={close}
       id={m.dare.id}
       title={m.dare.title}
       mark={m.dare.markKind === "emoji" ? m.dare.markValue : null}

@@ -1,7 +1,9 @@
 import Link from "next/link";
+import type { TypedDataDomain } from "viem";
 import { LinkPending } from "@/components/ui/link-pending";
 import { AvatarStack } from "@/components/ledger/avatar";
 import { Chip } from "@/components/ledger/chip";
+import { CloseObligation } from "@/components/ledger/close-obligation";
 import { MarkStamp } from "@/components/ledger/mark-stamp";
 import { ObligationToken } from "@/components/ledger/obligation-token";
 import { StateMark, type MarketMark } from "@/components/ledger/state-mark";
@@ -34,7 +36,11 @@ export type MarketCardProps = {
   outcome: 0 | 1 | null;
   denomination: DenominationRow;
   /** What this market left between the people in view: the whole market on a group page, one pair on a person page. */
-  consequences: Array<{ from: { id: string; displayName: string }; to: { id: string; displayName: string }; quantity: bigint }>;
+  consequences: Array<{ id?: string; from: { id: string; displayName: string }; to: { id: string; displayName: string }; quantity: bigint }>;
+  /** Each consequence's state by obligation id, where the screen knows it (the person view does; Now does not). */
+  consequenceStates?: Record<string, "open" | "settled" | "forgiven">;
+  /** Given, a consequence the viewer is owed and that is still open becomes the move to settle it or call it even (6.3). */
+  close?: { domain: TypedDataDomain; photosOn: boolean };
 };
 
 /** The market's state as its mark (3.23): the sentence the kicker used to spend on it is gone. */
@@ -53,10 +59,11 @@ function markOf(p: Pick<MarketCardProps, "state" | "viewerIn" | "votesCast">): M
 export function MarketCard(p: MarketCardProps) {
   const pins: Pin[] = p.people.filter((x): x is { id: string; name: string; percent: number } => x.percent !== null).map((x) => ({ id: x.id, name: x.name, percent: x.percent }));
   const mark = markOf(p);
+  // The story is the link; its consequences sit under it, outside the link, because one of them may be a control.
   return (
-    <Link prefetch={false} href={`/m/${p.id}`} className="relative block rounded-card">
-      <LinkPending />
-      <article className="flex flex-col gap-3 rounded-card border border-line bg-surface px-4 py-3.5">
+    <article className="flex flex-col rounded-card border border-line bg-surface">
+      <Link prefetch={false} href={`/m/${p.id}`} className="relative flex flex-col gap-3 rounded-card px-4 py-3.5">
+        <LinkPending />
         <div className="flex items-center justify-between gap-2">
           <span className="inline-flex min-w-0 items-center gap-2 text-label text-ink-2">
             <StateMark state={mark} hue={mark === "in" ? hueFor(p.viewerId) : undefined} />
@@ -89,24 +96,43 @@ export function MarketCard(p: MarketCardProps) {
         <p className="text-body-sm text-ink-2">
           <When iso={p.at.toISOString()} zone={p.clock.zone} serverNow={p.clock.now} />
         </p>
+      </Link>
 
-        {p.state === "resolved" ? (
-          <div className="flex flex-col border-t border-line pt-1">
-            {p.consequences.length === 0 ? (
-              <p className="pt-2 text-body-sm text-ink-2">Nothing changes hands between you.</p>
-            ) : (
-              p.consequences.map((c) => (
-                <div key={`${c.from.id}-${c.to.id}`} className="flex items-center justify-between gap-3 py-2">
-                  <span className="text-body-sm text-ink-2">{gotSentence(c.from, c.to, p.viewerId)}</span>
+      {p.state === "resolved" ? (
+        <div className="mx-4 flex flex-col border-t border-line pt-1 pb-3.5">
+          {p.consequences.length === 0 ? (
+            <p className="pt-2 text-body-sm text-ink-2">Nothing changes hands between you.</p>
+          ) : (
+            p.consequences.map((c) => {
+              const state = c.id ? p.consequenceStates?.[c.id] : undefined;
+              const sentence = gotSentence(c.from, c.to, p.viewerId);
+              const row = (
+                <div className="flex items-center justify-between gap-3 py-2">
+                  <span className="inline-flex items-center gap-2 text-body-sm text-ink-2">
+                    {state === "settled" || state === "forgiven" ? <StateMark state={state} /> : null}
+                    {sentence}
+                  </span>
                   <ObligationToken owner={{ id: c.from.id, displayName: c.from.displayName, hue: hueFor(c.from.id) }} other={c.to} viewerId={p.viewerId} denomination={p.denomination} quantity={c.quantity} />
                 </div>
-              ))
-            )}
-            <span className="pt-1 link-tertiary">See how everyone did</span>
-          </div>
-        ) : null}
-      </article>
-    </Link>
+              );
+              // An obligation a market minted closes the same way a cover does: from its row, by the person owed.
+              if (c.id && state === "open" && p.close && c.to.id === p.viewerId) {
+                return (
+                  <CloseObligation key={c.id} obligationId={c.id} sentence={sentence} what={p.title} domain={p.close.domain} photosOn={p.close.photosOn}>
+                    {row}
+                  </CloseObligation>
+                );
+              }
+              return <div key={c.id ?? `${c.from.id}-${c.to.id}`}>{row}</div>;
+            })
+          )}
+          <Link prefetch={false} href={`/m/${p.id}`} className="relative pt-1 link-tertiary">
+            <LinkPending />
+            See how everyone did
+          </Link>
+        </div>
+      ) : null}
+    </article>
   );
 }
 

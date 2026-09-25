@@ -339,6 +339,12 @@ export const obligations = pgTable(
     mediaId: uuid("media_id").references((): AnyPgColumn => media.id),
     confirmTx: bytea("confirm_tx").notNull(),
     createdAt: ts("created_at").notNull().defaultNow(),
+    /**
+     * When the creditor closed it, written by the app at that moment (docs/decisions.md 2026-09-25): the offchain
+     * clock the timeline orders by, so a settlement or a forgiveness can sit in "Just happened". Whether it was
+     * settled or forgiven stays derived from the chain, as does what is still open.
+     */
+    closedAt: ts("closed_at"),
   },
   (t) => [
     check("obligations_quantity_positive", sql`${t.quantity} is null or ${t.quantity} > 0`),

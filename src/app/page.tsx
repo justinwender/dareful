@@ -103,7 +103,7 @@ export default async function Now({ searchParams }: { searchParams: Promise<{ al
                   <MarketCardFrom key={e.market.dare.id} m={e.market} viewerId={user.id} clock={clock} />
                 ) : (
                   <CoveredCard
-                    key={e.obligation.id}
+                    key={`${e.kind}-${e.obligation.id}`}
                     clock={clock}
                     viewerId={user.id}
                     creditor={e.to}
@@ -114,7 +114,8 @@ export default async function Now({ searchParams }: { searchParams: Promise<{ al
                     memo={e.obligation.memo}
                     at={e.at}
                     groupName={e.groupLabel}
-                    state="open"
+                    state={e.kind === "closed" ? e.state : "open"}
+                    photo={e.kind === "closed" && e.obligation.mediaId ? { thumb: `/api/media/${e.obligation.mediaId}?size=thumb`, full: `/api/media/${e.obligation.mediaId}` } : undefined}
                     href={`/p/${e.from.id === user.id ? e.to.id : e.from.id}`}
                   />
                 ),

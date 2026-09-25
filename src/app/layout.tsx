@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import { Hanken_Grotesk, Young_Serif } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
-import { ViewportRepair } from "@/components/ui/viewport-repair";
 import { PLACEHOLDER_NAME } from "@/lib/auth/login";
 import { currentUser } from "@/lib/auth/session";
 
@@ -50,7 +49,6 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           bar). The top and side insets are paid once, here, so no screen can forget them; anything fixed or sticky
           pays its own (docs/decisions.md 2026-09-20). Sized from the parent's height, never from 100vh. */}
       <body className="flex min-h-full flex-col pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)]">
-        <ViewportRepair />
         <Providers settled={settled} me={me ? { dynamicUserId: me.dynamicUserId, ledgerWallet: me.ledgerWallet, governanceWallet: me.governanceWallet } : null}>
           {children}
         </Providers>

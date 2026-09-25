@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/auth/session";
 import { addSettlementPhoto, MediaError } from "@/lib/media";
 import { MAX_UPLOAD_BYTES } from "@/lib/media/pipeline";
 import { StorageUnavailable } from "@/lib/media/storage";
+import { isUuidLike } from "@/lib/ledger/ids";
 import { viewerZone } from "@/lib/ui/zone";
 
 /**
@@ -14,7 +15,7 @@ import { viewerZone } from "@/lib/ui/zone";
  */
 export async function addSettlementPhotoAction(form: FormData): Promise<{ ok: true; mediaId: string } | { error: string }> {
   const user = await requireUser();
-  const obligationId = z.string().uuid().safeParse(form.get("obligationId"));
+  const obligationId = z.string().refine(isUuidLike).safeParse(form.get("obligationId"));
   const file = form.get("photo");
   if (!obligationId.success || !(file instanceof File)) return { error: "That didn't come through. Try again." };
   if (file.size === 0) return { error: "That doesn't look like a photo." };

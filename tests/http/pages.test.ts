@@ -14,6 +14,9 @@ import { createGroup, createInvite } from "@/lib/ledger/groups";
 import { ensureUsd } from "@/lib/ledger/denominations";
 import * as markets from "@/lib/ledger/markets";
 import { INKS, inkOf } from "@/lib/ui/ink";
+import { thumbKey } from "@/lib/media";
+import { putObject, removeObjects, storageConfigured } from "@/lib/media/storage";
+import sharp from "sharp";
 import { cleanup, cover, ghost, tempSigner, tempUser, track, type Signer, type User } from "../db/fixture";
 
 const BASE = process.env.TEST_BASE_URL ?? "http://localhost:3000";
@@ -46,7 +49,7 @@ async function cookieFor(userId: string): Promise<string> {
 let A: User, B: User, C: User, U: User;
 let cA: string, cB: string, cU: string;
 let gabe: string, linkToken: string, inviteToken: string, groupId: string, boundId: string, ghostCoverId: string;
-let asker: Signer, friend: Signer, stranger: Signer, cAsker: string, cFriend: string, cStranger: string, marketId: string, draftId: string, owedId: string, photoId: string;
+let asker: Signer, friend: Signer, stranger: Signer, cAsker: string, cFriend: string, cStranger: string, marketId: string, draftId: string, owedId: string, photoId: string, settledMarketId: string, mintedId: string;
 
 before(async () => {
   const up = await fetch(BASE).catch(() => null);
@@ -89,8 +92,25 @@ before(async () => {
   const [photo] = await db.insert(schema.media).values({ obligationId: owed.id, kind: "photo", storageKey: "frames/check.jpg", width: 810, height: 1080, authorId: asker.user.id }).returning({ id: schema.media.id });
   photoId = (photo as { id: string }).id;
   await db.update(schema.obligations).set({ mediaId: photoId }).where(eq(schema.obligations.id, owed.id));
+  // The thumbnail itself, in the real bucket (there is no other one), so the door can be seen to open for the two people in it. Removed after.
+  if (storageConfigured()) await putObject(thumbKey(photoId), await sharp({ create: { width: 8, height: 8, channels: 3, background: { r: 60, g: 40, b: 30 } } }).jpeg().toBuffer(), "image/jpeg");
+  // One the asker settled an hour ago, for "Just happened" (4.7): the moment is the app's clock, the reason the chain's.
+  await db.insert(schema.obligations).values({ ...row(friend, asker, 1500n, true, "Cab home", 2), closedAt: new Date(Date.now() - 3_600_000) });
+  // A settled question both were in that minted one obligation the asker is owed: closable from its story (6.3).
+  const d2draft = await ask("Did the kettle get descaled?");
+  const d2 = await markets.openMarket(d2draft.id, asker.user.id, await asker.ledger.signTypedData(markets.createTypedData(d2draft)));
+  await markets.enterMarket({ dareId: d2.id, userId: asker.user.id, stake: 600n, valueBps: 8000n, signature: await asker.ledger.signTypedData(markets.enterTypedData(d2, 600n, 8000n)) });
+  await markets.enterMarket({ dareId: d2.id, userId: friend.user.id, stake: 600n, valueBps: 3000n, signature: await friend.ledger.signTypedData(markets.enterTypedData(d2, 600n, 3000n)) });
+  await db.update(schema.dares).set({ lockedAt: new Date(Date.now() - 7_200_000), resolvedAt: new Date(Date.now() - 3_600_000), resolvedOutcome: 1n, resolvedBy: "quorum" }).where(eq(schema.dares.id, d2.id));
+  settledMarketId = d2.id;
+  const minted = { ...row(friend, asker, 600n, true, null, 1), origin: "dare", originId: d2.id };
+  mintedId = minted.id;
+  await db.insert(schema.obligations).values(minted);
 });
-after(cleanup);
+after(async () => {
+  if (storageConfigured() && photoId) await removeObjects([thumbKey(photoId)]);
+  await cleanup();
+});
 
 // ------------------------------------------------------------------------------ the claim link, signed out
 
@@ -367,13 +387,42 @@ test("the person owed sees the row as the move to settle it or call it even, wit
   assert.ok(owedId.length > 0);
 });
 
+test("a closed obligation sits in Just happened at the moment it closed, with the mark that says how", async () => {
+  const r = await get("/", cAsker);
+  assert.equal(r.status, 200);
+  const happened = r.text.indexOf("Just happened");
+  assert.ok(happened >= 0 && r.text.indexOf("Cab home") > happened, "the settled cover is under Just happened");
+  const card = r.html.slice(r.html.indexOf("Cab home") - 1500, r.html.indexOf("Cab home"));
+  assert.match(card, /aria-label="Settled"/, "its state mark reads settled (3.23), derived from the chain, never stored");
+});
+
+test("an obligation a market minted is settleable and forgivable from its story, the same way a cover is", async () => {
+  const r = await get(`/p/${friend.user.id}`, cAsker);
+  assert.equal(r.status, 200);
+  // The story's own article, and nothing past it: the cover rows beneath carry the same control for a different reason.
+  const article = (html: string) => {
+    const at = html.indexOf("Did the kettle get descaled?");
+    assert.ok(at >= 0, "the settled question is a story on the person view");
+    return html.slice(at, html.indexOf("</article>", at));
+  };
+  assert.match(article(r.html), /aria-label="Dev(&#x27;|')s got you\. Settle it, or call it even"/, "the consequence the asker is owed is the move, inside the story");
+  assert.ok(mintedId.length > 0 && settledMarketId.length > 0);
+  const theirs = await get(`/p/${asker.user.id}`, cFriend);
+  assert.doesNotMatch(article(theirs.html), /Settle it, or call it even/, "what the friend has to pick up is never theirs to close");
+});
+
 test("a settlement photo is served to the two people in it and reads as nothing to anyone else", async () => {
   assert.equal((await get(`/api/media/${photoId}`)).status, 404, "signed out: nothing");
   assert.equal((await get(`/api/media/${photoId}?size=thumb`, cStranger)).status, 404, "someone else signed in: nothing, not even that it exists");
   assert.equal((await get(`/api/media/${randomUUID()}`, cAsker)).status, 404, "an unknown photo");
   const party = await get(`/api/media/${photoId}?size=thumb`, cFriend);
-  assert.notEqual(party.status, 404, "one of the two people in it is sent to the photo (or told the store is off, never that there is nothing)");
-  assert.ok(party.status === 302 ? /\/storage\/v1\/object\/sign\/media\//.test(party.loc ?? "") : party.status === 503, `a signed URL to the private bucket, or 503 when SUPABASE_SECRET_KEY is unset here: ${party.status}`);
+  if (storageConfigured()) {
+    assert.equal(party.status, 302, "one of the two people in it is sent to the photo");
+    assert.match(party.loc ?? "", /\/storage\/v1\/object\/sign\/media\/thumbs\//, "a signed URL into the private bucket, never a public path");
+    assert.equal((await get(`/api/media/${photoId}?size=thumb`, cAsker)).status, 302, "and so is the other");
+  } else {
+    assert.equal(party.status, 503, "with no key here the door says the store is off, never that there is nothing");
+  }
 });
 
 test("the joining screen is for someone signed in; signed out it sends them home", async () => {

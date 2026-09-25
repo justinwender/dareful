@@ -5,12 +5,12 @@
  *
  * The rows are assembled here as data so the ordering rule and the "nothing counts, nothing ages" rule have tests.
  */
-import { and, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, ne, or } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { inkOf, type InkName } from "@/lib/ui/ink";
-import { bytes16ToUuid } from "./ids";
+import { bytes16ToUuid, uuidToBytes16 } from "./ids";
 import { denominationsByIds, type DenominationRow } from "./denominations";
-import { openTouching } from "./envio";
+import { obligationsById, openTouching } from "./envio";
 import { membersOfGroups, peopleForUser, setLabel } from "./groups";
 import { marketCards, type MarketCardData } from "./market-view";
 import { pendingForDebtor, type ProposalRow } from "./proposals";
@@ -84,7 +84,7 @@ export type RunningRow = { id: string; title: string; mark: string | null; ink: 
 export type HomeData = {
   needs: NeedRow[];
   running: RunningRow[];
-  happened: Array<{ kind: "market"; at: Date; market: MarketCardData } | { kind: "cover"; at: Date; obligation: typeof schema.obligations.$inferSelect; denomination: DenominationRow; from: Person; to: Person; groupLabel: string | null }>;
+  happened: Array<{ kind: "market"; at: Date; market: MarketCardData } | { kind: "cover"; at: Date; obligation: typeof schema.obligations.$inferSelect; denomination: DenominationRow; from: Person; to: Person; groupLabel: string | null } | { kind: "closed"; at: Date; obligation: typeof schema.obligations.$inferSelect; denomination: DenominationRow; from: Person; to: Person; groupLabel: string | null; state: "settled" | "forgiven" }>;
   /** People with something open: a row each. */
   people: PersonRow[];
   /** Everyone who is square: one row, an avatar stack and a sentence, never a column of "nothing open". */
@@ -142,9 +142,9 @@ export async function liveFor(me: { id: string }, now: Date): Promise<boolean> {
   return timeBound((await questionsFor(me, { now, closes: () => "" })).needs);
 }
 
-/** Now: no indexer query at all. What needs this person, what is running, and what just happened are all in the database. */
+/** Now: what needs this person, what is running, and what just happened are all in the database; the one indexer read is for how the closed ones closed, and only when there are any. */
 export async function nowFor(me: { id: string; displayName: string }, opts: { now: Date; closes: (at: Date) => string }): Promise<NowData> {
-  const [{ needs, running, over }, pending, drafts, covers] = await Promise.all([
+  const [{ needs, running, over }, pending, drafts, covers, closed] = await Promise.all([
     questionsFor(me, opts),
     pendingForDebtor(me.id),
     db.select().from(schema.dares).where(and(eq(schema.dares.creatorId, me.id), isNull(schema.dares.creatorSignature))).orderBy(desc(schema.dares.createdAt)).limit(6),
@@ -154,16 +154,23 @@ export async function nowFor(me: { id: string; displayName: string }, opts: { no
       .where(and(or(eq(schema.obligations.fromUser, me.id), eq(schema.obligations.toUser, me.id)), ne(schema.obligations.origin, "dare")))
       .orderBy(desc(schema.obligations.createdAt))
       .limit(8),
+    // Closed obligations, by the offchain moment of the close (docs/decisions.md 2026-09-25): a settlement or a forgiveness is what the group did.
+    db
+      .select()
+      .from(schema.obligations)
+      .where(and(or(eq(schema.obligations.fromUser, me.id), eq(schema.obligations.toUser, me.id)), isNotNull(schema.obligations.closedAt)))
+      .orderBy(desc(schema.obligations.closedAt))
+      .limit(8),
   ]);
   // The label on an event says which set of people it came out of. It is a label, never a way in.
-  const groupIds = Array.from(new Set([...over.map((m) => m.dare.groupId), ...covers.map((o) => o.groupId)]));
+  const groupIds = Array.from(new Set([...over.map((m) => m.dare.groupId), ...covers.map((o) => o.groupId), ...closed.map((o) => o.groupId)]));
   const [groupRows, groupMembers] = await Promise.all([groupIds.length ? db.select().from(schema.groups).where(inArray(schema.groups.id, groupIds)) : Promise.resolve([]), membersOfGroups(groupIds)]);
   const labelOf = new Map(groupRows.map((g) => [g.id, setLabel({ name: g.name, isDyad: g.isDyad, memberNames: (groupMembers.get(g.id) ?? []).filter((m) => m.userId).map((m) => m.displayName), viewerName: me.displayName })]));
 
-  const counterparties = Array.from(new Set([...pending.map((p) => p.toUser), ...covers.flatMap((o) => [o.fromUser, o.toUser])].filter((x): x is string => Boolean(x) && x !== me.id)));
+  const counterparties = Array.from(new Set([...pending.map((p) => p.toUser), ...covers.flatMap((o) => [o.fromUser, o.toUser]), ...closed.flatMap((o) => [o.fromUser, o.toUser])].filter((x): x is string => Boolean(x) && x !== me.id)));
   const [users, denoms] = await Promise.all([
     counterparties.length ? db.select({ id: schema.users.id, displayName: schema.users.displayName }).from(schema.users).where(inArray(schema.users.id, counterparties)) : Promise.resolve([]),
-    denominationsByIds(Array.from(new Set([...pending.map((p) => p.denomId), ...covers.map((o) => o.denomId)]))),
+    denominationsByIds(Array.from(new Set([...pending.map((p) => p.denomId), ...covers.map((o) => o.denomId), ...closed.map((o) => o.denomId)]))),
   ]);
   const userById = new Map<string, Person>([[me.id, { id: me.id, displayName: me.displayName }], ...users.map((u) => [u.id, { id: u.id, displayName: u.displayName }] as const)]);
 
@@ -182,6 +189,17 @@ export async function nowFor(me: { id: string; displayName: string }, opts: { no
     const from = userById.get(o.fromUser);
     const to = userById.get(o.toUser);
     if (denomination && from && to) happened.push({ kind: "cover", at: o.createdAt, obligation: o, denomination, from, to, groupLabel: labelOf.get(o.groupId) ?? null });
+  }
+  // How each closed one closed is the chain's to say; the moment it closed is the app's (closed_at).
+  const indexed = closed.length ? await obligationsById(closed.map((o) => uuidToBytes16(o.id))).catch(() => new Map<string, never>()) : new Map<string, never>();
+  for (const o of closed) {
+    const denomination = denoms.get(o.denomId);
+    const from = userById.get(o.fromUser);
+    const to = userById.get(o.toUser);
+    if (!denomination || !from || !to || !o.closedAt) continue;
+    const e = indexed.get(uuidToBytes16(o.id)) as { settled: string; forgiven: string } | undefined;
+    const state = e && BigInt(e.forgiven) > 0n && BigInt(e.settled) === 0n ? "forgiven" : "settled";
+    happened.push({ kind: "closed", at: o.closedAt, obligation: o, denomination, from, to, groupLabel: labelOf.get(o.groupId) ?? null, state });
   }
   // The offchain timestamp, never the chain's.
   happened.sort((a, b) => b.at.getTime() - a.at.getTime());

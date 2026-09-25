@@ -26,7 +26,7 @@ export type MarketCardData = {
   denomination: DenominationRow;
   people: Array<{ id: string; name: string; percent: number | null }>;
   outcome: 0 | 1 | null;
-  consequences: Array<{ from: MarketPerson; to: MarketPerson; quantity: bigint }>;
+  consequences: Array<{ id: string; from: MarketPerson; to: MarketPerson; quantity: bigint }>;
   needsYou: string | null;
   /** How many of the group have called it, and who first said what happened. For the "Needs you" context line. */
   votesCast: number;
@@ -94,7 +94,7 @@ export async function marketCards(input: { viewerId: string; groupId?: string; w
       outcome: state === "resolved" && d.resolvedOutcome !== null && d.resolvedOutcome !== VOID_OUTCOME ? (Number(d.resolvedOutcome) as 0 | 1) : null,
       consequences: edges
         .filter((e) => e.originId === d.id && between(e))
-        .map((e) => ({ from: { id: e.fromUser, displayName: nameOf.get(e.fromUser) ?? "Someone" }, to: { id: e.toUser, displayName: nameOf.get(e.toUser) ?? "Someone" }, quantity: e.quantity ?? 1n })),
+        .map((e) => ({ id: e.id, from: { id: e.fromUser, displayName: nameOf.get(e.fromUser) ?? "Someone" }, to: { id: e.toUser, displayName: nameOf.get(e.toUser) ?? "Someone" }, quantity: e.quantity ?? 1n })),
       votesCast: votes.filter((v) => v.dareId === d.id).length,
       saidBy: ((u) => (u ? (nameOf.get(u) ?? null) : null))(said.find((x) => x.dareId === d.id)?.userId),
       needsYou: state === "open" && !iAmIn ? "Put your number in" : state === "locked" && !votes.some((v) => v.dareId === d.id && v.userId === input.viewerId) ? "Say how it came out" : null,
