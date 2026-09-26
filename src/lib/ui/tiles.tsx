@@ -40,6 +40,22 @@ export type AskTile = {
   closes: string | null;
   /** A number question: the empty field with the unit in serif stands where the odds line would (3.27). */
   unit: string | null;
+  /** A pick-one question: the answers themselves, all of them, stand where the odds line would (3.27). */
+  answers?: TileAnswer[] | null;
+};
+/** An answer on a tile: the words, and the person with their avatar where it is a person. */
+export type TileAnswer = { text: string; person: { name: string; hue: Hue } | null };
+/** A pick-one question's result tile (3.27): the answer as its outcome, the rows with the pickers' avatars and the called answer washed, and who called it. Never a share. */
+export type PickTile = {
+  kind: "pick";
+  mark: string | null;
+  markImage: string | null;
+  ink: InkName;
+  photos: boolean;
+  /** "Priya." */
+  outcomeLine: string;
+  rows: Array<TileAnswer & { pickers: Array<{ name: string; hue: Hue }>; called: boolean }>;
+  line: string;
 };
 export type CalledTile = {
   kind: "called";
@@ -65,7 +81,7 @@ export type NumberTile = {
   ruler: { leftLabel: string; rightLabel: string; answerPermille: number; pins: Array<{ name: string; hue: Hue; xPermille: number; closest: boolean }> };
   line: string;
 };
-export type Tile = AskTile | CalledTile | NumberTile;
+export type Tile = AskTile | CalledTile | NumberTile | PickTile;
 
 const initial = (name: string) => name.trim().charAt(0).toUpperCase();
 
@@ -203,7 +219,10 @@ function ask(t: AskTile) {
         gap: 10,
       }}
     >
-      {t.unit !== null ? (
+      {t.answers ? (
+        // A pick-one question's empty answer is the answers themselves (3.27): one row each, in a 420px column centred in the safe square.
+        answerRows(t.answers.map((a) => ({ ...a, pickers: [], called: false })), layers.field, layers.ground)
+      ) : t.unit !== null ? (
         // A number question's empty answer: the 88px mark stamp, an empty 210 by 96 field with a cream caret, and the unit in serif.
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 24, height: 110 }}>
           {markBox(t, 88, 56, layers.ground)}
@@ -270,6 +289,57 @@ function ask(t: AskTile) {
           </div>,
         ]
       : []),
+  ]);
+}
+
+/**
+ * The answers as rows (3.27): a 44px avatar where the answer is a person, the answer at 40px 600, left-aligned in a
+ * 420px column centred in the safe square, with the pickers' 44px avatars beside each on a result tile and the
+ * called answer washed. Six rows fit the square with the close time under them.
+ */
+function answerRows(rows: PickTile["rows"], field: string, ground: string) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", width: 420, marginLeft: (SAFE.w - 420) / 2, gap: 6 }}>
+      {rows.slice(0, 6).map((r, i) => (
+        <div key={i} style={{ display: "flex", alignItems: "center", gap: 14, height: 56, borderRadius: 12, paddingLeft: r.called ? 14 : 0, paddingRight: r.called ? 14 : 0, background: r.called ? `rgba(${INKS_RGB(field)}, 0.4)` : "transparent" }}>
+          {r.called ? <div style={{ display: "flex", width: 6, height: 44, borderRadius: 3, background: CREAM }} /> : null}
+          <div style={{ display: "flex", width: 44, height: 44, alignItems: "center", justifyContent: "center" }}>{r.person ? avatar(r.person.name, r.person.hue, 44) : null}</div>
+          <div style={{ display: "flex", flex: 1, fontSize: 40, fontWeight: 600, color: r.called ? CREAM : CREAM_2 }}>{r.text}</div>
+          {r.pickers.length > 0 ? (
+            <div style={{ display: "flex" }}>
+              {r.pickers.slice(0, 5).map((p, k) => (
+                <div key={k} style={{ display: "flex", marginLeft: k === 0 ? 0 : -10 }}>
+                  {avatar(p.name, p.hue, 44, r.called ? CREAM : ground)}
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+/** The wash on a called row is the market's ink at 0.40 (3.25); the renderer needs the rgb triple, which the ink layers carry. */
+function INKS_RGB(field: string): string {
+  const ink = Object.values(INKS).find((l) => l.field === field);
+  return ink ? ink.inkRgb : "242, 237, 227";
+}
+
+/** A pick-one question's result tile without a photo: the mark and the answer, the answers with whoever picked each, and who called it. */
+function pickTile(t: PickTile) {
+  const layers = INKS[t.ink];
+  return frame(t.ink, [
+    <div key="outcome" style={{ display: "flex", alignItems: "center", gap: 24 }}>
+      {markBox(t, 88, 56, layers.ground)}
+      <div style={{ display: "flex", fontFamily: "Young Serif", fontSize: 72 }}>{t.outcomeLine}</div>
+    </div>,
+    ...photosLine(t, layers.hi),
+    <div key="rows" style={{ display: "flex", width: SAFE.w }}>
+      {answerRows(t.rows, layers.field, layers.ground)}
+    </div>,
+    <div key="who" style={{ display: "flex", fontSize: 34, fontWeight: 600, textAlign: "center", justifyContent: "center", width: SAFE.w }}>
+      {t.line}
+    </div>,
   ]);
 }
 
@@ -448,7 +518,7 @@ function numberTile(t: NumberTile) {
 }
 
 export function renderTile(tile: Tile, fonts: TileFonts): ImageResponse {
-  return new ImageResponse(tile.kind === "ask" ? ask(tile) : tile.kind === "number" ? numberTile(tile) : called(tile), {
+  return new ImageResponse(tile.kind === "ask" ? ask(tile) : tile.kind === "number" ? numberTile(tile) : tile.kind === "pick" ? pickTile(tile) : called(tile), {
     ...tileSize,
     emoji: "noto",
     fonts: [

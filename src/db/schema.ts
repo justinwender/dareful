@@ -378,8 +378,14 @@ export const dares = pgTable(
     title: text("title").notNull(),
     /** AI-drafted, creator-approved; includes the criterion; hash goes onchain. */
     termsText: text("terms_text").notNull(),
-    /** ['no','yes'] for binary; option names for categorical; unit name for numeric. */
+    /** ['no','yes'] for binary; the answers, in the asker's order, for categorical (two to six); unit name for numeric. */
     outcomeLabels: text("outcome_labels").array().notNull(),
+    /**
+     * Categorical only (docs/design.md 3.29): which answers are people, aligned with `outcome_labels`, the person's
+     * id where the answer is a person and null where it is words. A person answer can be anyone the asker knows in
+     * the app, whether or not they end up in the market. Null when no answer is a person.
+     */
+    answerPeople: uuid("answer_people").array().$type<Array<string | null>>(),
     /**
      * Numeric only: the scoring scale, fixed when the question is asked and never derived from entries
      * (docs/decisions.md 2026-09-24). Scoring divides a miss by it; a miss of the whole scale scores zero.
@@ -469,6 +475,8 @@ export const dares = pgTable(
     check("dares_mark_kind_known", sql`${t.markKind} is null or ${t.markKind} in ('emoji', 'image', 'sticker')`),
     check("dares_mark_both_or_neither", sql`(${t.markKind} is null) = (${t.markValue} is null)`),
     check("dares_kind_known", sql`${t.kind} in ('binary', 'numeric', 'categorical')`),
+    check("dares_answers_two_to_six", sql`${t.kind} <> 'categorical' or array_length(${t.outcomeLabels}, 1) between 2 and 6`),
+    check("dares_answer_people_aligned", sql`${t.answerPeople} is null or array_length(${t.answerPeople}, 1) = array_length(${t.outcomeLabels}, 1)`),
     check("dares_range_source_known", sql`${t.rangeSource} is null or ${t.rangeSource} in ('asker', 'ai')`),
     check("dares_range_with_source", sql`(${t.kind} <> 'numeric') or (${t.range} is not null and ${t.range} > 0 and ${t.rangeSource} is not null)`),
     check("dares_pace_known", sql`${t.pace} in ('dare', 'argument')`),

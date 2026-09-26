@@ -162,6 +162,13 @@
       "when": 1790443868854,
       "tag": "0022_outcome_words",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1790447466781,
+      "tag": "0023_answer_people",
+      "breakpoints": true
     }
   ]
 }

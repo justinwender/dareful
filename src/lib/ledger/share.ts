@@ -6,7 +6,7 @@
  * gets the plain card, identical for an unknown id, a malformed one, and a closed one.
  */
 import { z } from "zod";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { pendingForClaim, readClaimLink } from "@/lib/ledger/claims";
 import { clip, plainCard, type ShareCard } from "@/lib/ui/share-card";
@@ -19,6 +19,8 @@ import { outcomeLine } from "@/lib/ui/outcome-words";
 import { pictureMarkById } from "@/lib/media/marks";
 import { getObject } from "@/lib/media/storage";
 import { ruler, unitPhrase, withSeparators } from "./number-axis";
+import { answersOf } from "./markets";
+import { calledItLine } from "./pick-one";
 
 /** What a share route shows a visitor with no session: the card, and the text metadata beside it. */
 export type ProposalShare = {
@@ -156,6 +158,7 @@ export async function marketTile(rawId: string): Promise<Tile | null> {
       markValue: schema.dares.markValue,
       outcomeLabels: schema.dares.outcomeLabels,
       outcomeWords: schema.dares.outcomeWords,
+      answerPeople: schema.dares.answerPeople,
     })
     .from(schema.dares)
     .where(eq(schema.dares.id, id.data))
@@ -168,9 +171,18 @@ export async function marketTile(rawId: string): Promise<Tile | null> {
   const markImage = d.markKind === "sticker" && d.markValue ? await stickerDataUrl(d.markValue) : null;
   const ink = inkOf(d);
   const unit = d.kind === "numeric" ? { singular: d.outcomeLabels[0] ?? "", plural: d.outcomeLabels[1] ?? d.outcomeLabels[0] ?? "" } : null;
+  const answers = answersOf(d);
+  // A person answer wears their avatar on the tile (3.27); the name is the one the asker listed, never the account's full name.
+  const answerPeople = answers?.some((a) => a.userId)
+    ? await db
+        .select({ id: schema.users.id })
+        .from(schema.users)
+        .where(inArray(schema.users.id, answers.flatMap((a) => (a.userId ? [a.userId] : []))))
+    : [];
+  const tileAnswers = answers?.map((a) => ({ text: clip(a.text, 24), person: a.userId && answerPeople.some((p) => p.id === a.userId) ? { name: a.text, hue: hueFor(a.userId) } : null })) ?? null;
   const answered = d.resolvedAt && d.resolvedOutcome !== null && d.resolvedOutcome >= 0n;
   const outcome =
-    answered && !unit
+    answered && !unit && !answers
       ? d.resolvedOutcome === 1n
         ? (1 as const)
         : (0 as const)
@@ -192,7 +204,9 @@ export async function marketTile(rawId: string): Promise<Tile | null> {
           ? "Take the other side."
           : d.kind === "numeric"
             ? "Name a number."
-            : "What are the odds?",
+            : answers
+              ? "Pick one."
+              : "What are the odds?",
       mark,
       markImage,
       ink,
@@ -201,6 +215,7 @@ export async function marketTile(rawId: string): Promise<Tile | null> {
           ? closesAbsolute(d.resolvesBy, d.zone)
           : null,
       unit: unit ? unit.plural : null,
+      answers: tileAnswers,
     };
   }
   const positions = await db
@@ -220,6 +235,22 @@ export async function marketTile(rawId: string): Promise<Tile | null> {
   );
   // Whether there are photos: the tile says so as a reason to tap through, and never carries one (docs/decisions.md, the media phase).
   const photos = (await frameOnMarkets([d.id])).get(d.id)?.length ? true : false;
+  if (answers && tileAnswers && d.resolvedOutcome !== null) {
+    // The pick-one result tile (3.27): the answer as the outcome, every answer with whoever picked it, the called one washed, and who
+    // called it, which on a pick-one question is everyone who picked the answer that happened (3.25). Never a share.
+    const picked = Number(d.resolvedOutcome);
+    const callers = positions.filter((p) => Number(p.value) === picked).map((p) => clip(firstName(p.name), 18));
+    return {
+      kind: "pick",
+      mark,
+      markImage,
+      ink,
+      photos,
+      outcomeLine: `${tileAnswers[picked]?.text ?? "Decided"}.`,
+      rows: tileAnswers.map((a, i) => ({ ...a, pickers: positions.filter((p) => Number(p.value) === i).map((p) => ({ name: p.name, hue: hueFor(p.userId ?? "") })), called: i === picked })),
+      line: d.resolvedBy === "arbitration" ? `Settled by the tiebreaker everyone agreed to. ${calledItLine(callers, false)}`.trim() : calledItLine(callers, false),
+    };
+  }
   if (unit && d.resolvedOutcome !== null) {
     // The number tile (3.27): the answer as the outcome, the ruler with the cream tick, whoever was closest ringed. The scale is not on it.
     const answer = d.resolvedOutcome;

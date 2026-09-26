@@ -10,6 +10,7 @@ import { coveredSentence, gotSentence } from "@/lib/ui/copy";
 import { hueFor } from "@/lib/ui/hue";
 import { markRefOf } from "@/lib/ui/mark";
 import { outcomeLine } from "@/lib/ui/outcome-words";
+import { calledItLine } from "@/lib/ledger/pick-one";
 
 /**
  * Just happened (docs/design.md 4.7, 3.15): what the group did, each as one row and never a story card. A resolved
@@ -33,17 +34,21 @@ export function JustHappened({ rows, viewerId, clock }: { rows: HomeData["happen
             const mark = markRefOf(d);
             const outcome =
               m.state === "resolved"
-                ? m.unit && m.answer !== null
-                  ? `${unitPhrase(BigInt(m.answer), m.unit)}.`
-                  : m.outcome !== null
-                    ? outcomeLine(d, m.outcome === 1)
-                    : null
+                ? m.pickOne && m.pickOne.outcome !== null
+                  ? `${m.pickOne.answers[m.pickOne.outcome]?.text ?? "Decided"}.`
+                  : m.unit && m.answer !== null
+                    ? `${unitPhrase(BigInt(m.answer), m.unit)}.`
+                    : m.outcome !== null
+                      ? outcomeLine(d, m.outcome === 1)
+                      : null
                 : m.state === "voided"
                   ? "Nobody could tell."
                   : m.state === "expired"
                     ? "Never settled."
                     : null;
-            const meta = [outcome?.replace(/\.$/, ""), m.calledBy ? `${m.calledBy} called it` : null].filter(Boolean).join(" · ");
+            // Who called it: on a pick-one question, whoever picked the answer that happened (3.25); otherwise the first to say.
+            const called = m.pickOne ? (m.pickOne.callers.length > 0 ? calledItLine(m.pickOne.callers, m.pickOne.callers.includes("You")).replace(" Nobody else did.", "").replace(/\.$/, "") : null) : m.calledBy ? `${m.calledBy} called it` : null;
+            const meta = [outcome?.replace(/\.$/, ""), called].filter(Boolean).join(" · ");
             const thumb = m.media[0];
             return (
               <Link prefetch={false} key={d.id} href={`/m/${d.id}`} className={`relative grid items-center gap-3 px-4 py-[14px] ${mark ? "grid-cols-[40px_minmax(0,1fr)_auto]" : "grid-cols-[minmax(0,1fr)_auto]"} ${divider}`}>

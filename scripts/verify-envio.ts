@@ -9,7 +9,7 @@ import { like } from "drizzle-orm";
 import { db, schema } from "../src/db";
 import { contracts } from "../src/lib/chain/contracts";
 import { relayer } from "../src/lib/chain/relayer";
-import { scoreBinary, scoreNumeric, settle } from "../src/lib/ledger/scoring";
+import { scoreBinary, scoreCategorical, scoreNumeric, settle } from "../src/lib/ledger/scoring";
 import { scaleAfterward } from "../src/lib/ledger/scale";
 import { z } from "zod";
 
@@ -120,29 +120,31 @@ async function verifyMarkets(): Promise<number> {
   const res = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ query: `{ Dare(limit: 500, order_by: { createdAt: asc }) { id status outcome kind range positions { participant stake value score } edges { id debtor creditor qty } } }` }),
+    body: JSON.stringify({ query: `{ Dare(limit: 500, order_by: { createdAt: asc }) { id status outcome kind range options positions { participant stake value confidenceBps score } edges { id debtor creditor qty } } }` }),
   });
   const parsed = z
-    .object({ data: z.object({ Dare: z.array(z.object({ id: z.string(), status: z.string(), outcome: z.string().nullable(), kind: z.number(), range: z.string(), positions: z.array(z.object({ participant: z.string(), stake: z.string(), value: z.string(), score: z.number().nullable() })), edges: z.array(z.object({ id: z.string(), debtor: z.string(), creditor: z.string(), qty: z.string() })) })) }) })
+    .object({ data: z.object({ Dare: z.array(z.object({ id: z.string(), status: z.string(), outcome: z.string().nullable(), kind: z.number(), range: z.string(), options: z.number(), positions: z.array(z.object({ participant: z.string(), stake: z.string(), value: z.string(), confidenceBps: z.number(), score: z.number().nullable() })), edges: z.array(z.object({ id: z.string(), debtor: z.string(), creditor: z.string(), qty: z.string() })) })) }) })
     .parse(await res.json());
 
   const STATUS = ["LOCKED", "RESOLVED", "VOIDED", "EXPIRED"];
   let bad = 0;
   let edgesChecked = 0;
   let numeric = 0;
+  let pickOne = 0;
   const fail = (m: string) => {
     bad++;
     console.error(`MARKET MISMATCH ${m}`);
   };
   for (const d of parsed.data.Dare) {
     const tag = d.id.slice(0, 12);
-    const onchain = (await publicClient.readContract({ address: dares.address, abi: dares.abi, functionName: "dareOf", args: [d.id as Hex] })) as { status: number; outcome: bigint; kind: number; range: bigint };
+    const onchain = (await publicClient.readContract({ address: dares.address, abi: dares.abi, functionName: "dareOf", args: [d.id as Hex] })) as { status: number; outcome: bigint; kind: number; range: bigint; options: number };
     if (onchain.kind !== d.kind || onchain.range !== BigInt(d.range)) fail(`${tag}: envio says kind ${d.kind} on a scale of ${d.range}, chain says ${onchain.kind} on ${onchain.range}`);
-    const ps = (await publicClient.readContract({ address: dares.address, abi: dares.abi, functionName: "positionsOf", args: [d.id as Hex] })) as ReadonlyArray<{ ledger: Address; stake: bigint; value: bigint }>;
+    if (onchain.options !== d.options) fail(`${tag}: envio says ${d.options} answers, chain says ${onchain.options}`);
+    const ps = (await publicClient.readContract({ address: dares.address, abi: dares.abi, functionName: "positionsOf", args: [d.id as Hex] })) as ReadonlyArray<{ ledger: Address; stake: bigint; value: bigint; confidenceBps: number }>;
     if (STATUS[onchain.status] !== d.status) fail(`${tag}: envio says ${d.status}, chain says ${STATUS[onchain.status]}`);
     if (d.status === "RESOLVED" && BigInt(d.outcome ?? "-1") !== onchain.outcome) fail(`${tag}: envio outcome ${d.outcome}, chain ${onchain.outcome}`);
-    const chainPositions = ps.map((p) => `${p.ledger.toLowerCase()}:${p.stake}:${p.value}`).sort();
-    const envioPositions = d.positions.map((p) => `${p.participant.toLowerCase()}:${p.stake}:${p.value}`).sort();
+    const chainPositions = ps.map((p) => `${p.ledger.toLowerCase()}:${p.stake}:${p.value}:${p.confidenceBps}`).sort();
+    const envioPositions = d.positions.map((p) => `${p.participant.toLowerCase()}:${p.stake}:${p.value}:${p.confidenceBps}`).sort();
     if (chainPositions.join() !== envioPositions.join()) fail(`${tag}: positions differ`);
 
     for (const e of d.edges) {
@@ -151,11 +153,16 @@ async function verifyMarkets(): Promise<number> {
       if (o.minted !== BigInt(e.qty) || o.creditor.toLowerCase() !== e.creditor.toLowerCase()) fail(`${tag}: edge ${e.id} is ${e.qty} to ${e.creditor} in envio, ${o.minted} to ${o.creditor} onchain`);
     }
 
-    if (d.kind !== 0 && d.kind !== 1) continue; // categorical markets are after submission; the mirror scores the other two
     const spell = (edges: Array<{ debtor: string; creditor: string; qty: bigint }>) => edges.map((e) => `${e.debtor.toLowerCase()}>${e.creditor.toLowerCase()}:${e.qty}`).sort().join();
     if (d.status === "RESOLVED") {
-      // positionsOf is in entry order, which is the order the contract pairs people in.
-      const scored = ps.map((p) => ({ id: p.ledger.toLowerCase(), stake: p.stake, score: d.kind === 1 ? scoreNumeric(p.value, onchain.outcome, onchain.range) : scoreBinary(p.value, onchain.outcome) }));
+      // positionsOf is in entry order, which is the order the contract pairs people in. A pick-one market scores each pick
+      // with the confidence it signed (everything, on a pick) over the market's own count of answers.
+      const scored = ps.map((p) => ({ id: p.ledger.toLowerCase(), stake: p.stake, score: d.kind === 2 ? scoreCategorical(p.value, BigInt(p.confidenceBps), BigInt(onchain.options), onchain.outcome) : d.kind === 1 ? scoreNumeric(p.value, onchain.outcome, onchain.range) : scoreBinary(p.value, onchain.outcome) }));
+      if (d.kind === 2) {
+        pickOne++;
+        const right = scored.filter((p) => p.score === 10000n).length;
+        console.log(`[verify-envio] pick-one market ${tag}: ${onchain.options} answers, answer ${onchain.outcome}, picks ${ps.map((p) => `${p.value}@${p.confidenceBps}`).join(" ")}; ${right} of ${ps.length} called it${right === 0 || right === ps.length ? " (a tie: nothing changed hands)" : ""}`);
+      }
       if (d.kind === 1) {
         // The scale and the answer, together, so a scale that turned out wrong is visible afterward (src/lib/ledger/scale.ts).
         numeric++;
@@ -173,7 +180,7 @@ async function verifyMarkets(): Promise<number> {
       fail(`${tag}: a market that is ${d.status} minted ${d.edges.length} edges`);
     }
   }
-  console.log(`[verify-envio] ${parsed.data.Dare.length} markets (${numeric} of them number markets) and ${edgesChecked} minted edges checked against the chain and against the scoring rule; ${bad} mismatches`);
+  console.log(`[verify-envio] ${parsed.data.Dare.length} markets (${numeric} of them number markets, ${pickOne} pick-one) and ${edgesChecked} minted edges checked against the chain and against the scoring rule; ${bad} mismatches`);
   return bad;
 }
 

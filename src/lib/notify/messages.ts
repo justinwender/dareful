@@ -11,10 +11,11 @@ const short = (title: string) => {
 };
 
 /**
- * "Yes", "No", "Nobody could tell", or, for a number question, "Decided": a notice never carries a number
- * (the rule for notices and relay text), and the answer waits on the screen the notice opens.
+ * "Yes", "No", "Nobody could tell", or, for a number question or a pick-one question, "Decided": a notice never
+ * carries a number (the rule for notices and relay text), and an answer somebody listed is theirs to read on the
+ * screen; the answer waits on the screen the notice opens.
  */
-const LABEL = { yes: "Yes", no: "No", void: "Nobody could tell", number: "Decided" } as const;
+const LABEL = { yes: "Yes", no: "No", void: "Nobody could tell", number: "Decided", answer: "Decided" } as const;
 export type OutcomeWord = keyof typeof LABEL;
 
 /**

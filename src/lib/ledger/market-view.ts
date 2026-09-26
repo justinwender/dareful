@@ -11,7 +11,8 @@ import { db, schema } from "@/db";
 import { frameOnMarkets } from "@/lib/media";
 import { denominationsByIds, type DenominationRow } from "./denominations";
 import { inkOf, type InkName } from "@/lib/ui/ink";
-import { stateOf, unitOf, VOID_OUTCOME, type DareRow, type MarketState, type PositionRow, type Unit } from "./markets";
+import { answersOf, stateOf, unitOf, VOID_OUTCOME, type DareRow, type MarketState, type PositionRow, type Unit } from "./markets";
+import { answerShares, type Answer } from "./pick-one";
 
 export type MarketPerson = { id: string; displayName: string };
 export type MarketCardData = {
@@ -25,12 +26,14 @@ export type MarketCardData = {
   groupName: string | null;
   groupSize: number;
   denomination: DenominationRow;
-  /** Percents on a yes-or-no question; on a number question `percent` is null and `number` carries the entry, as text. Both null when numbers may not be shown. */
-  people: Array<{ id: string; name: string; percent: number | null; number: string | null }>;
+  /** Percents on a yes-or-no question; on a number question `percent` is null and `number` carries the entry, as text; on a pick-one question `pick` is the answer's index. All null when numbers may not be shown. */
+  people: Array<{ id: string; name: string; percent: number | null; number: string | null; pick: number | null }>;
   outcome: 0 | 1 | null;
   /** A number question: its unit, and the answer once it has one. */
   unit: Unit | null;
   answer: string | null;
+  /** A pick-one question (docs/design.md 3.25): its answers, the answer that happened as an index, each answer's share of what rode, and who called it (the pickers of that answer) by first name. */
+  pickOne: { answers: Answer[]; outcome: number | null; shares: number[]; callers: string[] } | null;
   consequences: Array<{ id: string; from: MarketPerson; to: MarketPerson; quantity: bigint }>;
   needsYou: string | null;
   /** How many of the group have called it, and who first said what happened. For the "Needs you" context line. */
@@ -95,6 +98,9 @@ export async function marketCards(input: { viewerId: string; groupId?: string; w
     const show = numbersVisible(d, iAmIn);
     const between = (e: (typeof edges)[number]) => !input.withUserId || ((e.fromUser === input.viewerId || e.toUser === input.viewerId) && (e.fromUser === input.withUserId || e.toUser === input.withUserId));
     const unit = unitOf(d);
+    const answers = answersOf(d);
+    const pickedIndex = answers && state === "resolved" && d.resolvedOutcome !== null && d.resolvedOutcome !== VOID_OUTCOME ? Number(d.resolvedOutcome) : null;
+    const firstOf = (id: string) => (id === input.viewerId ? "You" : (nameOf.get(id) ?? "Someone").split(/\s+/)[0] ?? "Someone");
     out.push({
       dare: d,
       state,
@@ -104,8 +110,9 @@ export async function marketCards(input: { viewerId: string; groupId?: string; w
       groupName: groups.find((g) => g.id === d.groupId)?.name ?? null,
       groupSize: seats.filter((s) => s.groupId === d.groupId).length,
       denomination,
-      people: ps.map((p) => ({ id: p.userId as string, name: nameOf.get(p.userId as string) ?? "Someone", percent: show && !unit ? percentOf(p) : null, number: show && unit ? p.value.toString() : null })),
-      outcome: state === "resolved" && !unit && d.resolvedOutcome !== null && d.resolvedOutcome !== VOID_OUTCOME ? (Number(d.resolvedOutcome) as 0 | 1) : null,
+      people: ps.map((p) => ({ id: p.userId as string, name: nameOf.get(p.userId as string) ?? "Someone", percent: show && !unit && !answers ? percentOf(p) : null, number: show && unit ? p.value.toString() : null, pick: show && answers ? Number(p.value) : null })),
+      outcome: state === "resolved" && !unit && !answers && d.resolvedOutcome !== null && d.resolvedOutcome !== VOID_OUTCOME ? (Number(d.resolvedOutcome) as 0 | 1) : null,
+      pickOne: answers ? { answers, outcome: pickedIndex, shares: answerShares(answers.map((a) => ps.filter((p) => Number(p.value) === a.index).reduce((sum, p) => sum + p.stake, 0n))), callers: pickedIndex === null ? [] : ps.filter((p) => Number(p.value) === pickedIndex).map((p) => firstOf(p.userId as string)) } : null,
       unit,
       answer: state === "resolved" && unit && d.resolvedOutcome !== null && d.resolvedOutcome !== VOID_OUTCOME ? d.resolvedOutcome.toString() : null,
       consequences: edges

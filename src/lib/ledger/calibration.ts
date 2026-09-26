@@ -35,7 +35,12 @@ export type CalibrationBin = {
 
 export type BinaryRecord = { resolved: number; enough: boolean; bins: CalibrationBin[]; meanScore: number | null };
 export type NumericRecord = { resolved: number; meanMissBps: number | null };
-export type CalibrationRecord = { binary: BinaryRecord; numeric: NumericRecord };
+/**
+ * Pick-one markets are counted and never plotted (docs/design.md 3.34): a single choice says nothing about how
+ * sure someone was, so it has no place on a confidence axis. "You called 5 of the 9 you were in."
+ */
+export type PickOneRecord = { resolved: number; called: number };
+export type CalibrationRecord = { binary: BinaryRecord; numeric: NumericRecord; pickOne: PickOneRecord };
 
 /** Pure: the bins from a list of resolved yes-or-no positions. Exported so the rule has tests. */
 export function binaryBins(rows: Array<{ valueBps: bigint; outcome: 0 | 1; score: number }>): BinaryRecord {
@@ -60,6 +65,11 @@ export function numericMiss(scores: readonly number[]): NumericRecord {
   return { resolved: scores.length, meanMissBps: Math.round(total / scores.length) };
 }
 
+/** Pure: how many pick-one questions this person was in that ended with an answer, and how many they called (a full score is the pick that happened). */
+export function pickOneCalls(scores: readonly number[]): PickOneRecord {
+  return { resolved: scores.length, called: scores.filter((s) => s === Number(BPS)).length };
+}
+
 /** This person's record: every scored position on a question that ended with an answer (a void scores nobody). */
 export async function calibrationFor(userId: string): Promise<CalibrationRecord> {
   const rows = await db
@@ -69,5 +79,7 @@ export async function calibrationFor(userId: string): Promise<CalibrationRecord>
     .where(and(eq(schema.darePositions.userId, userId), isNotNull(schema.darePositions.score), isNotNull(schema.dares.resolvedAt), inArray(schema.dares.resolvedBy, ["quorum", "arbitration"]), sql`${schema.dares.resolvedOutcome} <> ${VOID_OUTCOME}`));
   const binary = rows.filter((r) => r.kind === "binary" && r.score !== null && r.outcome !== null).map((r) => ({ valueBps: r.value, outcome: (r.outcome === 1n ? 1 : 0) as 0 | 1, score: r.score as number }));
   const numeric = rows.filter((r) => r.kind === "numeric" && r.score !== null).map((r) => r.score as number);
-  return { binary: binaryBins(binary), numeric: numericMiss(numeric) };
+  // A pick says nothing about how sure (3.34): pick-one questions are counted here and never join the bins above.
+  const pickOne = rows.filter((r) => r.kind === "categorical" && r.score !== null).map((r) => r.score as number);
+  return { binary: binaryBins(binary), numeric: numericMiss(numeric), pickOne: pickOneCalls(pickOne) };
 }

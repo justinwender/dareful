@@ -1,0 +1,41 @@
+{
+  "model": "claude-sonnet-5",
+  "id": "msg_011CfSYXcRPK8FSWf1523Cnc",
+  "type": "message",
+  "role": "assistant",
+  "content": [
+    {
+      "type": "tool_use",
+      "id": "toolu_01MWpJATnVatrrSv74muK9ie",
+      "name": "write_pick_one_terms",
+      "input": {
+        "title": "Who falls asleep first on movie night?",
+        "terms": "Whoever is spotted asleep (eyes closed, out for the count) first during movie night wins, judged by whoever's still awake watching. If everyone stays awake through the whole movie, it's \"Nobody.\" If it turns out to be someone not on this list, the question can't be settled.",
+        "resolvesInHours": 5
+      },
+      "caller": {
+        "type": "direct"
+      }
+    }
+  ],
+  "container": null,
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "stop_details": null,
+  "usage": {
+    "input_tokens": 1014,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "cache_creation": {
+      "ephemeral_5m_input_tokens": 0,
+      "ephemeral_1h_input_tokens": 0
+    },
+    "output_tokens": 181,
+    "output_tokens_details": {
+      "thinking_tokens": 0
+    },
+    "service_tier": "standard",
+    "inference_geo": "global"
+  },
+  "diagnostics": null
+}

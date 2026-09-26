@@ -11,14 +11,14 @@
 import { and, asc, eq, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
 import { keccak256, stringToHex, type Hex } from "viem";
 import { db, schema } from "@/db";
-import { arbitrate as askArbitrator, arbitrateNumber, ruleClaim } from "@/lib/ai/settler";
+import { arbitrate as askArbitrator, arbitrateAnswer, arbitrateNumber, ruleClaim } from "@/lib/ai/settler";
 import { contracts } from "@/lib/chain/contracts";
 import { gasFor } from "@/lib/chain/gas";
 import { submit } from "@/lib/chain/relayer";
 import { evidenceFor } from "@/lib/media/evidence";
 import { bufferToHex } from "./ids";
 import { isMember } from "./groups";
-import { lockMarket, marketById, MarketError, mirrorSettlement, positionsOf, reconcileFromIndexer, settlementFromReceipt, stateOf, toChainOutcome, unitOf, VOID_OUTCOME, votesOf, type DareRow } from "./markets";
+import { answersOf, lockMarket, marketById, MarketError, mirrorSettlement, positionsOf, reconcileFromIndexer, settlementFromReceipt, stateOf, toChainOutcome, unitOf, VOID_OUTCOME, votesOf, type DareRow } from "./markets";
 
 /** If nobody presses, the scheduler hears a deadlock this long after the question was due (or locked, if later). */
 export const ARBITRATION_BACKSTOP_MS = 24 * 3_600_000;
@@ -89,7 +89,7 @@ export function rulingHash(rulingText: string): Hex {
  * One transaction, which is this market's resolution and nobody else's. The written ruling is stored exactly as
  * hashed; a finding that the terms cannot decide it voids, and that void carries the toll.
  */
-export async function arbitrateMarket(dareId: string, byUserId: string | null, now: Date = new Date()): Promise<{ outcome: "yes" | "no" | "void" | "number"; number?: bigint; txHash: Hex }> {
+export async function arbitrateMarket(dareId: string, byUserId: string | null, now: Date = new Date()): Promise<{ outcome: "yes" | "no" | "void" | "number" | "answer"; number?: bigint; txHash: Hex }> {
   const d = await marketById(dareId);
   if (!d) throw new MarketError("That one doesn't exist.", "not_found");
   if (d.resolvedAt) throw new MarketError("It's already decided.", "wrong_state");
@@ -105,9 +105,13 @@ export async function arbitrateMarket(dareId: string, byUserId: string | null, n
   const updates = said.filter((s) => s.kind === "update").map((s) => ({ name: nameOf(s.userId), said: s.statement }));
   const statements = said.filter((s) => s.kind === "statement").map((s) => ({ name: nameOf(s.userId), said: s.statement }));
   const unit = unitOf(d);
+  const answers = answersOf(d);
   // Screenshots attached to what happened, each labelled with who supplied it: a claim by that person, weighed as one.
   const evidence = await evidenceFor(d.id).catch(() => []);
-  const heard = await (unit
+  const heard = await (answers
+    ? // A pick-one question (3.30): the answer that happened, from the list the asker wrote, or that the terms do not decide it.
+      arbitrateAnswer({ title: d.title, terms: d.termsText, answers: answers.map((a) => a.text), positions: positions.map((p) => ({ name: nameOf(p.userId as string), answer: answers[Number(p.value)]?.text ?? "?" })), updates, statements, evidence }).then((r) => ({ voided: r.outcome === "cannot_decide" || r.answer === null || r.answer >= answers.length, outcome: r.outcome === "answer" && r.answer !== null && r.answer < answers.length ? BigInt(r.answer) : VOID_OUTCOME, ruling: r.ruling, word: "answer" as const }))
+    : unit
     ? arbitrateNumber({ title: d.title, terms: d.termsText, unit, positions: positions.map((p) => ({ name: nameOf(p.userId as string), number: p.value.toString() })), updates, statements, evidence }).then((r) => ({ voided: r.outcome === "cannot_decide" || r.number === null, outcome: r.outcome === "number" && r.number !== null ? BigInt(r.number) : VOID_OUTCOME, ruling: r.ruling, word: "number" as const }))
     : askArbitrator({ title: d.title, terms: d.termsText, positions: positions.map((p) => ({ name: nameOf(p.userId as string), percent: Math.round(Number(p.value) / 100) })), updates, statements, evidence }).then((r) => ({ voided: r.outcome === "cannot_decide", outcome: r.outcome === "cannot_decide" ? VOID_OUTCOME : r.outcome === "yes" ? 1n : 0n, ruling: r.ruling, word: r.outcome === "yes" ? ("yes" as const) : ("no" as const) }))
   ).catch((err: unknown) => {
@@ -135,7 +139,7 @@ export async function arbitrateMarket(dareId: string, byUserId: string | null, n
     throw new MarketError(`The ruling is written, but recording it didn't go through. Nothing changed. (${err instanceof Error ? (err.message.split("\n")[0] ?? "") : "unknown"})`, "chain");
   }
   await mirrorSettlement(d, settlementFromReceipt(result, outcome), { by: "arbitration", rulingText: ruling.ruling, rulingHash: hash });
-  return { outcome: voided ? "void" : heard.word, number: voided || heard.word !== "number" ? undefined : outcome, txHash: result.hash };
+  return { outcome: voided ? "void" : heard.word, number: voided || (heard.word !== "number" && heard.word !== "answer") ? undefined : outcome, txHash: result.hash };
 }
 
 // --------------------------------------------------------------------------------------------------- expiry
@@ -165,6 +169,15 @@ export async function cleanResolution(creatorId: string): Promise<{ ended: numbe
     .select({ outcome: schema.dares.resolvedOutcome, by: schema.dares.resolvedBy })
     .from(schema.dares)
     .where(and(eq(schema.dares.creatorId, creatorId), isNotNull(schema.dares.resolvedAt), inArray(schema.dares.resolvedBy, ["quorum", "arbitration"])));
+  return cleanResolutionOf(rows);
+}
+
+/**
+ * Pure: of the questions that ended by a quorum or by the tiebreaker, how many ended with an answer. A tie is a
+ * fine question with no loser (docs/decisions.md 2026-09-16; a pick-one question everyone called, or nobody did,
+ * moves nothing and is still clean): only a void counts against whoever wrote the terms.
+ */
+export function cleanResolutionOf(rows: ReadonlyArray<{ outcome: bigint | null }>): { ended: number; clean: number } {
   return { ended: rows.length, clean: rows.filter((r) => r.outcome !== VOID_OUTCOME).length };
 }
 

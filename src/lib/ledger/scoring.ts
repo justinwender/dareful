@@ -39,6 +39,28 @@ export function scoreNumeric(value: bigint, outcome: bigint, range: bigint): big
   return BPS - (miss * BPS) / range;
 }
 
+/**
+ * Categorical: Brier over a distribution, all in basis points: S = 10000 - sum_k (p_k - o_k)^2 / 20000, where
+ * the pick carries `confidenceBps` and every other answer shares what is left evenly, in integer division with
+ * the remainder dropped (docs/decisions.md 2026-09-16). Pick one (docs/design.md 3.30) is the one-hot case: the
+ * pick carries 10000, so the answer that happened scores 10000, any other 0, and everyone who called it scores
+ * the same, which is why there is nothing to rank among them.
+ */
+export function scoreCategorical(pick: bigint, confidenceBps: bigint, options: bigint, outcome: bigint): bigint {
+  if (options < 2n) throw new RangeError("a pick-one question has at least two answers");
+  if (pick < 0n || pick >= options) throw new RangeError("a pick names one of the answers");
+  if (confidenceBps < 0n || confidenceBps > BPS) throw new RangeError("confidence is 0 to 10000 basis points");
+  if (outcome < 0n || outcome >= options) throw new RangeError("the outcome is one of the answers");
+  const other = (BPS - confidenceBps) / (options - 1n);
+  let sum = 0n;
+  for (let k = 0n; k < options; k += 1n) {
+    const p = k === pick ? confidenceBps : other;
+    const o = k === outcome ? BPS : 0n;
+    sum += (p - o) * (p - o);
+  }
+  return BPS - sum / (2n * BPS);
+}
+
 /** BigInt division already truncates toward zero, for either sign. Named so the rule is visible at the call. */
 export function truncDiv(x: bigint, d: bigint): bigint {
   return x / d;

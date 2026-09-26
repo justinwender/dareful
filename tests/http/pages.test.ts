@@ -55,6 +55,7 @@ let asker: Signer, friend: Signer, stranger: Signer, cAsker: string, cFriend: st
 let numberId: string, aiScaleId: string, blindNumberId: string, answeredId: string;
 let memoryIds: string[] = [], evidenceOnSettledId: string, evidenceId: string, evidenceMarketId: string, stickerId: string, stickerMarketId: string;
 let nia: Signer, cNia: string, calledId: string, calledClipId: string, voidedId: string, memoryId: string;
+let pickOpenId: string, pickBlindId: string, pickLockedId: string, pickVotingId: string, pickSettledId: string;
 const bucketKeys: string[] = [];
 
 before(async () => {
@@ -197,6 +198,58 @@ before(async () => {
   await db.update(schema.dares).set({ lockedAt: new Date(Date.now() - 3 * 86_400_000 - 7_200_000), resolvedAt: new Date(Date.now() - 3 * 86_400_000), resolvedOutcome: 1n, resolvedBy: "quorum" }).where(eq(schema.dares.id, recall.id));
   await db.insert(schema.media).values({ dareId: recall.id, kind: "photo", role: "memory", storageKey: "frames/check.jpg", width: 810, height: 1080, authorId: asker.user.id });
   memoryId = recall.id;
+
+  // Pick-one questions (docs/design.md 3.29 to 3.31, 3.25): a set of three (the asker, the friend as a person answer, Nia), one open with the
+  // asker in on John, one blind, one locked with nothing said, one being called with the asker's claim for Dev, and one settled on Dev.
+  const pg = await createGroup({ name: "Pick one check", createdBy: asker.user.id });
+  track.group(pg.id);
+  await db.insert(schema.groupMembers).values([{ groupId: pg.id, userId: friend.user.id }, { groupId: pg.id, userId: nia.user.id }]);
+  const pgUsd = await ensureUsd(pg.id, asker.user.id);
+  const askPick = (title: string, revealMode: "open" | "blind" = "open") => markets.draftMarket({ creatorId: asker.user.id, groupId: pg.id, denomId: pgUsd.id, title, termsText: "Whoever is asleep first once the movie starts. If everyone makes it, Nobody.", resolvesBy: new Date(Date.now() + 86_400_000), kind: "categorical", revealMode, answers: [{ text: "John" }, { text: "Dev", userId: friend.user.id }, { text: "Nobody" }] });
+  const enterPick = async (d: markets.DareRow, who: Signer, stake: bigint, pick: bigint) => markets.enterMarket({ dareId: d.id, userId: who.user.id, stake, value: pick, signature: await who.ledger.signTypedData(markets.enterTypedData(d, stake, pick)) });
+  const pOpen = await markets.openMarket((await askPick("Who falls asleep first?")).id, asker.user.id, await asker.ledger.signTypedData(markets.createTypedData(await askPick("Who falls asleep first?"))))
+    .catch(() => null);
+  void pOpen;
+  const pOpenDraft = await askPick("Who falls asleep first?");
+  const pOpenRow = await markets.openMarket(pOpenDraft.id, asker.user.id, await asker.ledger.signTypedData(markets.createTypedData(pOpenDraft)));
+  await enterPick(pOpenRow, asker, 500n, 0n);
+  pickOpenId = pOpenRow.id;
+  const pBlindDraft = await askPick("Who gets there first?", "blind");
+  const pBlind = await markets.openMarket(pBlindDraft.id, asker.user.id, await asker.ledger.signTypedData(markets.createTypedData(pBlindDraft)));
+  await enterPick(pBlind, asker, 500n, 2n);
+  pickBlindId = pBlind.id;
+  // Locked with nothing said, in a set of Nia and the friend: a locked question with a clock waits on everyone in its set who has not
+  // called it, and the asker's Now is checked elsewhere for having nothing time-bound on it.
+  const pl = await createGroup({ name: "Pick one, locked", createdBy: nia.user.id });
+  track.group(pl.id);
+  await db.insert(schema.groupMembers).values({ groupId: pl.id, userId: friend.user.id });
+  const plUsd = await ensureUsd(pl.id, nia.user.id);
+  const pLockedDraft = await markets.draftMarket({ creatorId: nia.user.id, groupId: pl.id, denomId: plUsd.id, title: "Who orders dessert?", termsText: "Whoever asks for the dessert menu first. If nobody does, Nobody.", resolvesBy: new Date(Date.now() + 86_400_000), kind: "categorical", answers: [{ text: "John" }, { text: "Dev", userId: friend.user.id }, { text: "Nobody" }] });
+  const pLocked = await markets.openMarket(pLockedDraft.id, nia.user.id, await nia.ledger.signTypedData(markets.createTypedData(pLockedDraft)));
+  await enterPick(pLocked, nia, 500n, 1n);
+  await enterPick(pLocked, friend, 500n, 0n);
+  await db.update(schema.dares).set({ lockedAt: new Date(Date.now() - 600_000) }).where(eq(schema.dares.id, pLocked.id));
+  pickLockedId = pLocked.id;
+  const pVotingDraft = await askPick("Who picks the movie?");
+  const pVoting = await markets.openMarket(pVotingDraft.id, asker.user.id, await asker.ledger.signTypedData(markets.createTypedData(pVotingDraft)));
+  await enterPick(pVoting, asker, 600n, 1n);
+  await enterPick(pVoting, friend, 600n, 0n);
+  await db.update(schema.dares).set({ lockedAt: new Date(Date.now() - 600_000), aiOutcome: 1n, aiConfidenceBps: 8000, aiRationale: "Priya says Dev picked it, and nobody has said otherwise.", aiProposedAt: new Date() }).where(eq(schema.dares.id, pVoting.id));
+  await db.insert(schema.dareStatements).values({ dareId: pVoting.id, userId: asker.user.id, kind: "update", statement: "Dev had the remote the whole time." });
+  await db.insert(schema.dareVotes).values({ dareId: pVoting.id, userId: asker.user.id, outcome: 1n, signature: Buffer.alloc(65) });
+  pickVotingId = pVoting.id;
+  const pSettledDraft = await askPick("Who fell asleep first?");
+  const pSettled = await markets.openMarket(pSettledDraft.id, asker.user.id, await asker.ledger.signTypedData(markets.createTypedData(pSettledDraft)));
+  await enterPick(pSettled, asker, 600n, 1n);
+  await enterPick(pSettled, friend, 600n, 0n);
+  // The friend is the first to say what happened and votes for Dev; the asker picked Dev, so the asker called it and the friend, who spoke first, did not (3.25).
+  await db.insert(schema.dareStatements).values({ dareId: pSettled.id, userId: friend.user.id, kind: "update", statement: "Twenty minutes in" });
+  await db.insert(schema.dareVotes).values({ dareId: pSettled.id, userId: friend.user.id, outcome: 1n, signature: Buffer.alloc(65) });
+  await db.update(schema.dares).set({ lockedAt: new Date(Date.now() - 7_200_000), resolvedAt: new Date(Date.now() - 3_600_000), resolvedOutcome: 1n, resolvedBy: "quorum" }).where(eq(schema.dares.id, pSettled.id));
+  await db.update(schema.darePositions).set({ score: 10000, net: 600n }).where(and(eq(schema.darePositions.dareId, pSettled.id), eq(schema.darePositions.userId, asker.user.id)));
+  await db.update(schema.darePositions).set({ score: 0, net: -600n }).where(and(eq(schema.darePositions.dareId, pSettled.id), eq(schema.darePositions.userId, friend.user.id)));
+  await db.insert(schema.obligations).values({ ...row(friend, asker, 600n, true, null, 0), groupId: pg.id, denomId: pgUsd.id, origin: "dare", originId: pSettled.id });
+  pickSettledId = pSettled.id;
 
   // A sticker of the asker's, worn by a question in the group (docs/design.md 3.28).
   const [sticker] = await db.insert(schema.pictureMarks).values({ ownerId: asker.user.id, kind: "sticker", sourceKey: "stickers/check.png", stampKey: "stamps/check.png", width: 512, height: 512, ink: "sea" }).returning({ id: schema.pictureMarks.id });
@@ -939,3 +992,81 @@ for (const [name, path, who] of [
     assert.equal(m, null, m ? `found "${m[0]}" in: ...${r.text.slice(Math.max(0, m.index - 40), m.index + 40)}...` : "");
   });
 }
+
+// --------------------------------------------------------------------------------------------- pick one
+
+test("a pick-one question's sheet holds the answers as rows for someone not in, and the entry line names the answer for someone who is", async () => {
+  const r = await get(`/m/${pickOpenId}`, cFriend);
+  assert.equal(r.status, 200);
+  assert.ok(r.html.includes("data-pick-one-entry") && r.text.includes("Pick one") && r.text.includes("Pick an answer"), "the rows in the sheet and the disabled primary (3.30)");
+  for (const a of ["John", "Nobody"]) assert.ok(r.text.includes(a), `the answer ${a}, in the asker's order`);
+  assert.ok(r.text.includes("You"), "the friend is one of the answers, and reads as You");
+  assert.ok(!r.text.includes("What are the odds") && !r.html.includes("What are the odds, in percent"), "no odds line on a pick-one question (3.30): neither its header nor its slider");
+  const mine = await get(`/m/${pickOpenId}`, cAsker);
+  assert.ok(mine.text.includes("You’re in: John") && mine.text.includes("Where the stake sits"), "the entry line names the answer and nothing else (4.6)");
+  assert.ok(mine.text.includes("Dev"), "a person answer reads by their name to everyone else");
+  assert.ok(!/\b\d+%/.test(mine.text.replace(/100% of|0%/g, "")), "shares print from the third entry (3.31)");
+  assert.ok(!mine.html.includes("data-pick-one-entry"), "once in, the sheet is the link, not the rows");
+});
+
+test("a blind pick-one question shows the count, your own pick and the lock, and nothing more before lock", async () => {
+  const r = await get(`/m/${pickBlindId}`, cAsker);
+  assert.equal(r.status, 200);
+  assert.ok(r.text.includes("You’re in: Nobody") && r.text.includes("Numbers show when everyone’s in") && r.text.includes("1 of 3 in."), "the entry line, the lock chip and the count (3.31)");
+  assert.ok(!r.html.includes('"kind":"picks"'), "no bars sent before lock: nothing of where anyone landed leaves the server");
+});
+
+test("a locked pick-one question offers the answers as equal wells, and voting names the claimed answer in the count line", async () => {
+  const locked = await get(`/m/${pickLockedId}`, cFriend);
+  assert.equal(locked.status, 200);
+  assert.ok(locked.text.includes("When it’s clear, say what happened.") && locked.text.includes("Nobody can tell"), "closed, not yet known (3.24)");
+  assert.ok(!/\bYes\b/.test(locked.text) && !/\bNo\b/.test(locked.text), "the wells are the answers, never Yes and No (3.24)");
+  assert.ok(locked.text.includes("Where everyone landed") && locked.text.includes("John") && locked.text.includes("You"), "the picks, once locked, with the friend's own answer reading as You (3.30)");
+  const lockedToNia = await get(`/m/${pickLockedId}`, cNia);
+  assert.ok(lockedToNia.text.includes("Dev") && !lockedToNia.text.includes("You’re in: You"), "to the other person the person answer is their name");
+  assert.ok(!locked.text.includes("What was it") && !locked.text.includes("Type what it was"), "never the number field");
+  const voting = await get(`/m/${pickVotingId}`, cFriend);
+  assert.equal(voting.status, 200);
+  assert.ok(voting.text.includes("1 of 3 says You. One more and it settles.") || voting.text.includes("1 of 3 says Dev."), "the count line names the claimed answer (3.24)");
+  assert.ok(voting.text.includes("That’s right, You") || voting.text.includes("That’s right, Dev"), "the chalk repeats the answer");
+  assert.ok(voting.text.includes("Not how I saw it"));
+  assert.ok(voting.text.includes("Priya says you") || voting.text.includes("Priya says Dev"), "the claim card names the answer");
+  const asNia = await get(`/m/${pickVotingId}`, cNia);
+  assert.ok(asNia.text.includes("1 of 3 says Dev. One more and it settles.") && asNia.text.includes("Priya says Dev"), "to someone else the person answer is their name");
+});
+
+test("a settled pick-one question says the answer and who called it, shows everyone's pick with the called row washed, and never ranks", async () => {
+  const r = await get(`/m/${pickSettledId}`, cAsker);
+  assert.equal(r.status, 200);
+  assert.ok(r.text.includes("Dev, twenty minutes in.") || r.text.includes("Dev."), "the outcome names the answer (3.25)");
+  assert.ok(r.text.includes("You called it. Nobody else did."), "who called it: everyone who picked the answer that happened");
+  assert.ok(r.text.includes("Everyone’s pick") && r.html.includes("data-pick-one-rows"), "the rows replace closest first");
+  assert.ok(!r.text.includes("Closest first"), "nothing to rank: everyone who called it scores the same");
+  const rows = r.html.split("data-pick-one-rows")[1] ?? "";
+  assert.ok(rows.includes("bg-market-wash") && rows.includes("bg-chalk"), "the answer that happened takes the wash and the cream cap");
+  assert.ok(r.text.includes("Who’s got who"), "then who's got who");
+  const outsider = await get(`/m/${pickSettledId}`, cNia);
+  assert.equal(outsider.status, 200);
+  assert.ok(outsider.text.includes("Priya called it. Nobody else did.") && outsider.text.includes("Send how it ended"), "the same screen to someone who wasn't in, with sending alone");
+  assert.ok(!outsider.html.includes("data-empty-slot"));
+});
+
+test("a pick-one question's tiles carry the answers and who called it, and never a share", async () => {
+  const asking = await marketTile(pickOpenId);
+  assert.ok(asking?.kind === "ask" && asking.frame === "Pick one." && asking.answers?.length === 3, "the asking tile's frame line and the answers themselves (3.27)");
+  assert.ok(asking?.kind === "ask" && asking.answers?.[1]?.person !== null && asking.answers?.[0]?.person === null, "a person answer wears their avatar, words wear none");
+  const result = await marketTile(pickSettledId);
+  assert.ok(result?.kind === "pick" && result.outcomeLine === "Dev." && result.rows.length === 3 && result.rows[1]?.called === true && result.rows[1]?.pickers.length === 1, "the result tile: the answer, the rows with their pickers, the called one washed");
+  assert.ok(result?.kind === "pick" && result.line === "Priya called it. Nobody else did.");
+  assert.ok(result?.kind === "pick" && result.rows.every((row) => !("share" in row)), "neither tile shows a share (3.27)");
+  const png = await get(`/m/${pickSettledId}/opengraph-image`);
+  assert.equal(png.status, 200);
+  assert.equal(png.type, "image/png");
+  const ask = await get(`/m/${pickOpenId}/opengraph-image`);
+  assert.ok(ask.status === 200 && !ask.bytes.equals(png.bytes));
+});
+
+test("asking offers pick one beside yes or no and a number", async () => {
+  const r = await get("/m/new", cAsker);
+  assert.ok(r.text.includes("Pick one"), "the third chip (3.29)");
+});

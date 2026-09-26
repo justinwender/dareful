@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { contracts } from "@/lib/chain/contracts";
 import { relayer } from "@/lib/chain/relayer";
-import { pairwiseTransfer, scoreBinary, scoreNumeric } from "@/lib/ledger/scoring";
+import { pairwiseTransfer, scoreBinary, scoreCategorical, scoreNumeric } from "@/lib/ledger/scoring";
 
 test("scores agree with the deployed contract across the whole probability range", async () => {
   const { dares } = contracts();
@@ -66,5 +66,38 @@ test("number scores agree with the deployed contract, across the shirts example,
   for (const [value, outcome, range] of cases) {
     const onchain = await publicClient.readContract({ address: dares.address, abi: dares.abi, functionName: "scoreNumeric", args: [value, outcome, range] });
     assert.equal(BigInt(onchain), scoreNumeric(value, outcome, range), `value ${value}, outcome ${outcome}, scale ${range}`);
+  }
+});
+
+test("pick-one scores agree with the deployed contract: a pick carrying everything scores full or nothing, and the formula holds short of everything", async () => {
+  const { dares } = contracts();
+  const { publicClient } = relayer();
+  const cases: Array<[bigint, number, number, bigint]> = [
+    // Who falls asleep first (tests/unit/pick-one.test.ts): five answers, John (0) does, every pick at 10000.
+    [0n, 10000, 5, 0n],
+    [2n, 10000, 5, 0n],
+    [4n, 10000, 5, 0n],
+    [1n, 10000, 5, 0n],
+    // The edges of the answer count the design allows (3.29): two and six.
+    [0n, 10000, 2, 0n],
+    [1n, 10000, 2, 0n],
+    [5n, 10000, 6, 5n],
+    [0n, 10000, 6, 5n],
+    // Short of everything: the contract's own table (contracts/test/DarefulDares.t.sol), where the dropped remainder shows.
+    [0n, 7000, 3, 0n],
+    [0n, 7000, 3, 1n],
+    [2n, 5000, 4, 2n],
+    [0n, 5000, 2, 1n],
+    [0n, 0, 5, 0n],
+    [1n, 5000, 5, 0n],
+  ];
+  for (const [pick, conf, options, outcome] of cases) {
+    const onchain = await publicClient.readContract({ address: dares.address, abi: dares.abi, functionName: "scoreCategorical", args: [pick, conf, options, outcome] });
+    assert.equal(BigInt(onchain), scoreCategorical(pick, BigInt(conf), BigInt(options), outcome), `pick ${pick} at ${conf} of ${options}, outcome ${outcome}`);
+  }
+  // What the contract refuses, the mirror refuses: more than everything, a pick or an outcome past the last answer, one answer.
+  for (const [pick, conf, options, outcome] of [[0n, 10001, 5, 0n], [5n, 10000, 5, 0n], [0n, 10000, 5, 5n], [0n, 10000, 1, 0n]] as Array<[bigint, number, number, bigint]>) {
+    await assert.rejects(publicClient.readContract({ address: dares.address, abi: dares.abi, functionName: "scoreCategorical", args: [pick, conf, options, outcome] }), `the contract takes pick ${pick} at ${conf} of ${options}, outcome ${outcome}`);
+    assert.throws(() => scoreCategorical(pick, BigInt(conf), BigInt(options), outcome), RangeError);
   }
 });

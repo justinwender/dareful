@@ -8,7 +8,7 @@ import { and, eq, gte, inArray, isNotNull, lte, ne, or } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { frameOnMarkets } from "@/lib/media";
 import { outcomeLine } from "@/lib/ui/outcome-words";
-import { stateOf, unitOf, VOID_OUTCOME } from "./markets";
+import { answersOf, stateOf, unitOf, VOID_OUTCOME } from "./markets";
 import { unitPhrase } from "./number-axis";
 
 export const NIGHT_HOURS = 6;
@@ -63,14 +63,17 @@ export async function restOfThatNight(input: { dareId: string; groupIds: string[
   for (const d of shared) {
     const state = stateOf(d);
     const unit = unitOf(d);
+    const answers = answersOf(d);
     const caller = [...votes.filter((v) => v.dareId === d.id)].sort((a, b) => a.signedAt.getTime() - b.signedAt.getTime())[0];
     const caption =
       state === "resolved" && d.resolvedOutcome !== null && d.resolvedOutcome !== VOID_OUTCOME
         ? d.pace === "argument" && caller
           ? `Ruled for ${first(caller.userId)}.`
-          : unit
-            ? `${unitPhrase(d.resolvedOutcome, unit)}.`
-            : outcomeLine(d, d.resolvedOutcome === 1n)
+          : answers
+            ? `${answers[Number(d.resolvedOutcome)]?.text ?? "Decided"}.`
+            : unit
+              ? `${unitPhrase(d.resolvedOutcome, unit)}.`
+              : outcomeLine(d, d.resolvedOutcome === 1n)
         : state === "voided"
           ? "Nobody could tell."
           : state === "expired"

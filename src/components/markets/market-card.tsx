@@ -15,6 +15,8 @@ import { hueFor } from "@/lib/ui/hue";
 import type { InkName } from "@/lib/ui/ink";
 import type { MarkRef } from "@/lib/ui/mark";
 import { CallLine, Ruler, type Pin, type RulerData } from "./call-line";
+import type { PickOneAnswer } from "./pick-one-bars";
+import { PickOneRows, type Picker } from "./pick-one-rows";
 
 export type MarketCardProps = {
   id: string;
@@ -40,6 +42,8 @@ export type MarketCardProps = {
   outcomeLine?: string | null;
   /** A number question: the ruler (3.5) where the call line would be, and the answer as a sentence once it has one. */
   number?: { ruler: RulerData | null; answerLine: string | null } | null;
+  /** A pick-one question: the rows (3.25) where the call line would be, washed on the answer that happened, and the answer as a sentence once it has one. */
+  pickOne?: { answers: PickOneAnswer[]; pickers: Picker[][]; shares: number[]; outcome: number | null; answerLine: string | null; showRows: boolean } | null;
   denomination: DenominationRow;
   /** What this market left between the people in view: the whole market on a group page, one pair on a person page. */
   consequences: Array<{ id?: string; from: { id: string; displayName: string }; to: { id: string; displayName: string }; quantity: bigint }>;
@@ -96,7 +100,12 @@ export function MarketCard(p: MarketCardProps) {
         ) : p.state === "voided" ? (
           <p className="text-body-sm text-ink-2">Nobody could tell, so it’s void.</p>
         ) : (
-          p.number ? (
+          p.pickOne ? (
+            <>
+              {p.state === "resolved" && p.pickOne.answerLine ? <p className="text-serif-l text-ink">{p.pickOne.answerLine}</p> : null}
+              {p.pickOne.showRows ? <PickOneRows answers={p.pickOne.answers} pickers={p.pickOne.pickers} shares={p.pickOne.shares} outcome={p.state === "resolved" ? p.pickOne.outcome : null} /> : null}
+            </>
+          ) : p.number ? (
             <>
               {p.state === "resolved" && p.number.answerLine ? <p className="text-serif-l text-ink">{p.number.answerLine}</p> : null}
               {p.number.ruler ? <Ruler ruler={p.number.ruler} state={p.state === "resolved" ? "resolved" : "in"} /> : <Ruler ruler={{ leftLabel: "", rightLabel: "", pins: [], answer: null }} state="hidden" />}

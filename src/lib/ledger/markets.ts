@@ -28,9 +28,10 @@ import { relayer, submit } from "@/lib/chain/relayer";
 import { daresDomain, daresTypes, Kind, Pace, Stalemate, VOID } from "@/lib/chain/typed-data";
 import { denominationById } from "./denominations";
 import { dareByOnchainId } from "./envio";
-import { isMember } from "./groups";
+import { isMember, peopleForUser } from "./groups";
 import { groupsNumberBps } from "./weight";
 import { MAX_NUMBER } from "./scoring";
+import { MAX_ANSWER_LENGTH, MAX_ANSWERS, MIN_ANSWERS, PICK_ONE_CONFIDENCE, type Answer } from "./pick-one";
 import { scaleAfterward } from "./scale";
 import { bufferToHex, bytes16ToUuid, dareOnchainId, denomOnchainId, groupOnchainId, hexToBuffer } from "./ids";
 import { ensureDenomOnchain, ensureGroupOnchain } from "./registry";
@@ -44,32 +45,50 @@ export const VOID_OUTCOME = -1n;
 export const toChainOutcome = (o: bigint): bigint => (o === VOID_OUTCOME ? VOID : o);
 export const MAX_POSITIONS = 12;
 
-export type MarketKind = "binary" | "numeric";
+export type MarketKind = "binary" | "numeric" | "categorical";
 export type Unit = { singular: string; plural: string };
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/**
+ * A pick-one market's answers, in the asker's order (docs/design.md 3.29): the words in `outcome_labels`, the
+ * person where one is a person. The column holds a real null where an answer is words; the driver reads that
+ * element back as the string "NULL", so only an id that is one counts as a person.
+ */
+export function answersOf(d: Pick<DareRow, "kind" | "outcomeLabels" | "answerPeople">): Answer[] | null {
+  if (d.kind !== "categorical") return null;
+  return d.outcomeLabels.map((text, index) => {
+    const who = d.answerPeople?.[index] ?? null;
+    return { index, text, userId: who && UUID.test(who) ? who.toLowerCase() : null };
+  });
+}
+/** The confidence a position carries: everything on the pick on a pick-one market (3.30), nothing on the other two kinds, which score a number. */
+export function confidenceFor(d: Pick<DareRow, "kind">): number {
+  return d.kind === "categorical" ? PICK_ONE_CONFIDENCE : 0;
+}
 /** A number market's unit, kept as [singular, plural] in `outcome_labels` (PLANNING.md 5b: "unit name for numeric"). */
 export function unitOf(d: Pick<DareRow, "kind" | "outcomeLabels">): Unit | null {
   if (d.kind !== "numeric") return null;
   const [singular, plural] = d.outcomeLabels;
   return { singular: singular ?? "", plural: plural ?? singular ?? "" };
 }
-/** A value a position may carry: a probability in basis points, or a whole number up to nine digits. */
-export function valueAllowed(kind: string, value: bigint): boolean {
+/** A value a position may carry: a probability in basis points, a whole number up to nine digits, or, on a pick-one market, the index of one of its `options` answers. */
+export function valueAllowed(kind: string, value: bigint, options = 0): boolean {
   if (kind === "numeric") return value >= 0n && value <= MAX_NUMBER;
+  if (kind === "categorical") return value >= 0n && value < BigInt(options);
   return value >= 0n && value <= 10_000n;
 }
-/** What a vote names, from the browser: yes, no, nobody can tell, or, on a number question, "n:" and the whole number. */
-export type Call = "yes" | "no" | "void" | `n:${string}`;
+/** What a vote names, from the browser: yes, no, nobody can tell, "n:" and the whole number on a number question, or "a:" and the answer's index on a pick-one question. */
+export type Call = "yes" | "no" | "void" | `n:${string}` | `a:${string}`;
 export function callToOutcome(call: string): bigint | null {
   if (call === "yes") return 1n;
   if (call === "no") return 0n;
   if (call === "void") return VOID_OUTCOME;
-  const m = /^n:(\d{1,9})$/.exec(call);
-  return m ? BigInt(m[1] as string) : null;
+  const m = /^(n|a):(\d{1,9})$/.exec(call);
+  return m ? BigInt(m[2] as string) : null;
 }
-/** An outcome a vote may name: yes, no, or nobody can tell; or, on a number market, any whole number or nobody can tell. */
-export function outcomeAllowed(kind: string, outcome: bigint): boolean {
+/** An outcome a vote may name: yes, no, or nobody can tell; on a number market, any whole number or nobody can tell; on a pick-one market, one of its answers or nobody can tell. */
+export function outcomeAllowed(kind: string, outcome: bigint, options = 0): boolean {
   if (outcome === VOID_OUTCOME) return true;
-  return valueAllowed(kind, outcome) && (kind === "numeric" || outcome === 0n || outcome === 1n);
+  return valueAllowed(kind, outcome, options) && (kind !== "binary" || outcome === 0n || outcome === 1n);
 }
 
 export class MarketError extends Error {
@@ -139,27 +158,28 @@ export function createTypedData(d: DareRow) {
     message: {
       dareId: dareOnchainId(d.id),
       groupId: groupOnchainId(d.groupId),
-      kind: d.kind === "numeric" ? Kind.Numeric : Kind.Binary,
+      kind: d.kind === "numeric" ? Kind.Numeric : d.kind === "categorical" ? Kind.Categorical : Kind.Binary,
       pace: d.pace === "argument" ? Pace.Argument : Pace.Dare,
       termsHash: termsHash(d.termsText),
       denomId: denomOnchainId(d.denomId),
       // The scoring scale of a number market, fixed here and signed by the asker; zero for yes-or-no.
       range: d.kind === "numeric" ? (d.range ?? 0n) : 0n,
-      options: 0,
+      // How many answers a pick-one market has, signed by the asker; zero for the other two kinds.
+      options: d.kind === "categorical" ? d.outcomeLabels.length : 0,
       stalemate: d.stalemate === "void" ? Stalemate.Void : Stalemate.Arbitrate,
       resolvesBy: requireResolvesBy(d),
     },
   };
 }
 
-/** What a participant signs: their stake, their number (basis points, or the whole number on a number market), and their consent to the stalemate rule, in one signature. */
+/** What a participant signs: their stake, their number (basis points, the whole number on a number market, or the answer's index on a pick-one market, with everything on it), and their consent to the stalemate rule, in one signature. */
 export function enterTypedData(d: DareRow, stake: bigint, value: bigint) {
   const { chainId, dares } = contracts();
   return {
     domain: daresDomain(chainId, dares.address),
     types: daresTypes,
     primaryType: "Enter" as const,
-    message: { dareId: dareOnchainId(d.id), stake, value, confidenceBps: 0, stalemate: d.stalemate === "void" ? Stalemate.Void : Stalemate.Arbitrate },
+    message: { dareId: dareOnchainId(d.id), stake, value, confidenceBps: confidenceFor(d), stalemate: d.stalemate === "void" ? Stalemate.Void : Stalemate.Arbitrate },
   };
 }
 
@@ -202,6 +222,8 @@ export type DraftInput = {
   scale?: { range: bigint; source: "asker" | "ai" } | null;
   /** The model's most likely answer, when it scoped the question: the far-off check's reference, never shown. */
   typical?: bigint | null;
+  /** A pick-one market's answers (docs/design.md 3.29), two to six in the asker's order; a person answer names someone the asker knows, or the asker. */
+  answers?: Array<{ text: string; userId?: string | null }> | null;
 };
 
 /** A draft: terms the creator can read and has not yet signed. Nobody else can see it. */
@@ -216,7 +238,17 @@ export async function draftMarket(input: DraftInput): Promise<DareRow> {
   if (input.criterion && !termsText.includes(input.criterion.trim())) throw new MarketError("The terms have to say how it's being decided.", "bad_input");
   if (!(await isMember(input.groupId, input.creatorId))) throw new MarketError("You're not in that group.", "not_member");
   const kind: MarketKind = input.kind ?? "binary";
-  if (kind === "numeric" && pace === "argument") throw new MarketError("An argument is yes or no.", "bad_input");
+  if (kind !== "binary" && pace === "argument") throw new MarketError("An argument is yes or no.", "bad_input");
+  // The answers (3.29): two to six, each a few words or a person; a person is someone the asker already knows in the app, or the asker.
+  const answers = kind === "categorical" ? (input.answers ?? []).map((a) => ({ text: a.text.trim().replace(/\s+/g, " "), userId: a.userId ?? null })) : [];
+  if (kind === "categorical" && (answers.length < MIN_ANSWERS || answers.length > MAX_ANSWERS)) throw new MarketError(`Two to ${MAX_ANSWERS} answers.`, "bad_input");
+  if (answers.some((a) => a.text.length < 1 || a.text.length > MAX_ANSWER_LENGTH)) throw new MarketError("Each answer is a few words.", "bad_input");
+  if (new Set(answers.map((a) => a.text.toLowerCase())).size !== answers.length) throw new MarketError("Two answers say the same thing.", "bad_input");
+  if (answers.some((a) => a.userId)) {
+    const known = new Set([input.creatorId, ...(await peopleForUser(input.creatorId)).map((p) => p.user.id)]);
+    if (answers.some((a) => a.userId && !known.has(a.userId))) throw new MarketError("One of those people isn’t someone you know here.", "bad_input");
+    if (new Set(answers.filter((a) => a.userId).map((a) => a.userId)).size !== answers.filter((a) => a.userId).length) throw new MarketError("Someone is listed twice.", "bad_input");
+  }
   const unit = kind === "numeric" ? { singular: input.unit?.singular.trim() ?? "", plural: input.unit?.plural.trim() || input.unit?.singular.trim() || "" } : null;
   if (kind === "numeric" && (!unit || unit.singular.length < 1 || unit.singular.length > 24 || unit.plural.length > 24)) throw new MarketError("Say what the number counts, like shirts.", "bad_input");
   // The scale is a scoring rule (docs/decisions.md 2026-09-24): fixed now, signed by the asker in `Create`, never derived from entries.
@@ -260,7 +292,8 @@ export async function draftMarket(input: DraftInput): Promise<DareRow> {
       creatorId: input.creatorId,
       title,
       termsText,
-      outcomeLabels: unit ? [unit.singular, unit.plural] : ["no", "yes"],
+      outcomeLabels: unit ? [unit.singular, unit.plural] : kind === "categorical" ? answers.map((a) => a.text) : ["no", "yes"],
+      answerPeople: kind === "categorical" && answers.some((a) => a.userId) ? answers.map((a) => a.userId) : null,
       range: kind === "numeric" && input.scale ? input.scale.range : null,
       rangeSource: kind === "numeric" && input.scale ? input.scale.source : null,
       typical: kind === "numeric" && input.typical !== undefined && input.typical !== null && input.typical >= 0n && input.typical <= MAX_NUMBER ? input.typical : null,
@@ -304,7 +337,7 @@ export async function enterMarket(input: { dareId: string; userId: string; stake
   if (!d) throw new MarketError("That one doesn't exist.", "not_found");
   if (stateOf(d) !== "open") throw new MarketError(stateOf(d) === "draft" ? "It isn't open yet." : "Numbers are locked.", "wrong_state");
   if (!(await isMember(d.groupId, input.userId))) throw new MarketError("This one is for the people in its group.", "not_member");
-  if (!valueAllowed(d.kind, input.value)) throw new MarketError(d.kind === "numeric" ? "Any whole number, up to nine digits." : "A number from 0 to 100.", "bad_input");
+  if (!valueAllowed(d.kind, input.value, d.outcomeLabels.length)) throw new MarketError(d.kind === "numeric" ? "Any whole number, up to nine digits." : d.kind === "categorical" ? "Pick one of the answers." : "A number from 0 to 100.", "bad_input");
   const denom = await denominationById(d.denomId);
   if (!denom) throw new MarketError("unknown unit", "not_found");
   // An unquantifiable unit ("a next time") forces every stake to 1; the contract refuses anything else.
@@ -324,14 +357,15 @@ export async function enterMarket(input: { dareId: string; userId: string; stake
   const now = new Date();
   const [row] = await db
     .insert(schema.darePositions)
-    .values({ dareId: d.id, userId: input.userId, stake: input.stake, value: input.value, enterSignature: hexToBuffer(input.signature), enteredBy: input.userId, acknowledgedAt: now })
-    .onConflictDoUpdate({ target: [schema.darePositions.dareId, schema.darePositions.userId], set: { stake: input.stake, value: input.value, enterSignature: hexToBuffer(input.signature) } })
+    .values({ dareId: d.id, userId: input.userId, stake: input.stake, value: input.value, confidenceBps: d.kind === "categorical" ? confidenceFor(d) : null, enterSignature: hexToBuffer(input.signature), enteredBy: input.userId, acknowledgedAt: now })
+    .onConflictDoUpdate({ target: [schema.darePositions.dareId, schema.darePositions.userId], set: { stake: input.stake, value: input.value, confidenceBps: d.kind === "categorical" ? confidenceFor(d) : null, enterSignature: hexToBuffer(input.signature) } })
     .returning();
   if (!row) throw new MarketError("Couldn't save that.", "chain");
   // The group's number at this moment, for the line a slow question gets. The aggregate and a headcount only:
   // never whose entry moved it (docs/design.md 3.22). Best effort; a missing point is a gap in a sparkline.
-  // A number market's aggregate is not in basis points and the series column is, so it keeps no series yet (docs/decisions.md, Phase 5).
-  if (d.kind === "numeric") return row;
+  // A number market's aggregate is not in basis points and the series column is, so it keeps no series yet (docs/decisions.md, Phase 5);
+  // a pick-one market has no aggregate at all: a pick is a choice, not a number (3.30).
+  if (d.kind !== "binary") return row;
   try {
     const all = await positionsOf(d.id);
     const number = groupsNumberBps(all.map((p) => ({ id: p.userId ?? "", stake: p.stake, valueBps: p.value })));
@@ -382,7 +416,7 @@ export async function lockMarket(dareId: string, byUserId: string | null): Promi
     termsHash: typed.message.termsHash,
     denomId: typed.message.denomId,
     range: typed.message.range,
-    options: 0,
+    options: typed.message.options,
     stalemate: typed.message.stalemate,
     quorum: [] as Address[], // ignored by the contract, which reads the ledger
     threshold: 0,
@@ -393,7 +427,8 @@ export async function lockMarket(dareId: string, byUserId: string | null): Promi
   const ps = positions.map((p) => {
     const ledger = ledgerOf.get(p.userId as string);
     if (!ledger) throw new MarketError("someone in it has no account", "wrong_state");
-    return { ledger, stake: p.stake, value: p.value, confidenceBps: 0 };
+    // A pick carries everything on it (3.30); a number carries no confidence. The same figure each person signed.
+    return { ledger, stake: p.stake, value: p.value, confidenceBps: confidenceFor(d) };
   });
   const sigs = positions.map((p) => bufferToHex(p.enterSignature as Buffer));
 
@@ -470,7 +505,7 @@ export async function castVote(input: { dareId: string; userId: string; outcome:
   const d = await marketById(input.dareId);
   if (!d) throw new MarketError("That one doesn't exist.", "not_found");
   if (stateOf(d) !== "locked") throw new MarketError(d.resolvedAt ? "It's already decided." : "It isn't locked yet.", "wrong_state");
-  if (!outcomeAllowed(d.kind, input.outcome)) throw new MarketError(d.kind === "numeric" ? "A whole number, or nobody can tell." : "Yes, no, or nobody can tell.", "bad_input");
+  if (!outcomeAllowed(d.kind, input.outcome, d.outcomeLabels.length)) throw new MarketError(d.kind === "numeric" ? "A whole number, or nobody can tell." : d.kind === "categorical" ? "One of the answers, or nobody can tell." : "Yes, no, or nobody can tell.", "bad_input");
 
   const [user] = await db.select().from(schema.users).where(eq(schema.users.id, input.userId)).limit(1);
   if (!user) throw new MarketError("unknown user", "not_found");
@@ -632,6 +667,22 @@ export async function openInksByGroup(groupIds: string[]): Promise<Map<string, I
   const rows = await db.select({ id: schema.dares.id, groupId: schema.dares.groupId, ink: schema.dares.ink }).from(schema.dares).where(and(inArray(schema.dares.groupId, groupIds), isNotNull(schema.dares.creatorSignature), isNull(schema.dares.resolvedAt)));
   for (const r of rows) out.get(r.groupId)?.push(inkOf(r));
   return out;
+}
+
+/**
+ * The people this person has shared a market with, most recent first (docs/design.md 3.29, "Add a person"): the
+ * order the answers editor offers them in. Only ids; the caller has the names. Whoever they share a group with but
+ * have never been in a question with comes after, and the editor still offers them (3.29: anyone the asker knows).
+ */
+export async function recentCompanions(userId: string): Promise<string[]> {
+  const mine = db.select({ dareId: schema.darePositions.dareId }).from(schema.darePositions).where(eq(schema.darePositions.userId, userId));
+  const rows = await db
+    .select({ userId: schema.darePositions.userId, last: sql<string>`max(${schema.darePositions.enteredAt})` })
+    .from(schema.darePositions)
+    .where(and(inArray(schema.darePositions.dareId, mine), isNotNull(schema.darePositions.userId), sql`${schema.darePositions.userId} <> ${userId}`))
+    .groupBy(schema.darePositions.userId)
+    .orderBy(sql`max(${schema.darePositions.enteredAt}) desc`);
+  return rows.map((r) => r.userId as string);
 }
 
 /** The creator's ink pick (docs/design.md 1.8, rule 1): one tap from the market's own screen, never a step in creating it. */

@@ -1,0 +1,3 @@
+ALTER TABLE "dares" ADD COLUMN "answer_people" uuid[];--> statement-breakpoint
+ALTER TABLE "dares" ADD CONSTRAINT "dares_answers_two_to_six" CHECK ("dares"."kind" <> 'categorical' or array_length("dares"."outcome_labels", 1) between 2 and 6);--> statement-breakpoint
+ALTER TABLE "dares" ADD CONSTRAINT "dares_answer_people_aligned" CHECK ("dares"."answer_people" is null or array_length("dares"."answer_people", 1) = array_length("dares"."outcome_labels", 1));

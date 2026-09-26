@@ -3,8 +3,11 @@ import { ruler, unitPhrase } from "@/lib/ledger/number-axis";
 import { closesLabel } from "@/lib/ui/copy";
 import { markRefOf } from "@/lib/ui/mark";
 import { outcomeLine } from "@/lib/ui/outcome-words";
+import { answerLine } from "@/lib/ledger/pick-one";
+import { hueFor } from "@/lib/ui/hue";
 import { MarketCard, type MarketCardProps } from "./market-card";
 import type { RulerData } from "./call-line";
+import type { PickOneAnswer } from "./pick-one-bars";
 
 /** A number question's ruler for a card (3.5): everyone's number and the answer, where numbers may be shown. */
 export function rulerFor(m: Pick<MarketCardData, "people" | "unit" | "answer">): RulerData | null {
@@ -15,6 +18,16 @@ export function rulerFor(m: Pick<MarketCardData, "people" | "unit" | "answer">):
   if (!r) return null;
   const nameOf = new Map(pins.map((p) => [p.id, p.name]));
   return { leftLabel: r.leftLabel, rightLabel: r.rightLabel, pins: r.pins.map((p) => ({ id: p.id, name: nameOf.get(p.id) ?? "Someone", value: p.value.toLocaleString("en-US"), xPermille: p.xPermille, off: p.off })), answer: r.answer ? { value: r.answer.value.toString(), xPermille: r.answer.xPermille } : null };
+}
+
+/** A pick-one question's rows for a card (3.25): the answers with whoever picked each, where picks may be shown; the viewer reads as "You". */
+export function pickOneFor(m: Pick<MarketCardData, "people" | "pickOne">, viewerId: string): MarketCardProps["pickOne"] {
+  if (!m.pickOne) return null;
+  // The words say "You" for the viewer; every avatar keeps the person's own initial.
+  const answers: PickOneAnswer[] = m.pickOne.answers.map((a) => ({ index: a.index, text: a.userId === viewerId ? "You" : a.text, person: a.userId ? { name: a.text, hue: hueFor(a.userId) } : null }));
+  const shown = m.people.filter((p) => p.pick !== null);
+  const pickers = m.pickOne.answers.map((a) => shown.filter((p) => p.pick === a.index).map((p) => ({ name: p.name, hue: hueFor(p.id) })));
+  return { answers, pickers, shares: m.pickOne.shares, outcome: m.pickOne.outcome, answerLine: m.pickOne.outcome === null ? null : answerLine(m.pickOne.answers[m.pickOne.outcome]?.text ?? "Decided", null), showRows: shown.length > 0 };
 }
 
 /** The view model from `marketCards()` as a timeline card. */
@@ -42,6 +55,7 @@ export function MarketCardFrom({ m, viewerId, clock, consequenceStates, close }:
       outcome={m.outcome}
       outcomeLine={m.outcome === null ? null : outcomeLine(m.dare, m.outcome === 1)}
       number={m.unit ? { ruler: rulerFor(m), answerLine: m.answer === null ? null : `${unitPhrase(BigInt(m.answer), m.unit)}.` } : null}
+      pickOne={pickOneFor(m, viewerId)}
       denomination={m.denomination}
       consequences={m.consequences}
     />

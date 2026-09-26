@@ -30,6 +30,9 @@ import { When } from "@/components/ledger/when";
 import { CallLine, Ruler } from "@/components/markets/call-line";
 import { CallSheet, type Word } from "@/components/markets/call-sheet";
 import { Leaderboard, NumberLeaderboard, WhoHasWho } from "@/components/markets/leaderboard";
+import type { PickOneAnswer, PickOneBar } from "@/components/markets/pick-one-bars";
+import { PickOneRows } from "@/components/markets/pick-one-rows";
+import { answerLine as pickAnswerLine, answerShares, calledItLine, pickOneCaption, saidAnswer } from "@/lib/ledger/pick-one";
 import { rulerFor } from "@/components/markets/market-card-from";
 import { VotePoll } from "@/components/markets/vote-poll";
 import { numberAxis, serialiseAxis, unitPhrase, withSeparators } from "@/lib/ledger/number-axis";
@@ -72,6 +75,8 @@ import { isMember } from "@/lib/ledger/groups";
 import { dareOnchainId } from "@/lib/ledger/ids";
 import { numbersVisible } from "@/lib/ledger/market-view";
 import {
+  answersOf,
+  confidenceFor,
   createTypedData,
   marketById,
   positionsOf,
@@ -115,11 +120,11 @@ export async function generateMetadata({
   };
 }
 
-/** An outcome as the sheet's word: yes, no, nobody can tell, or "n:" and the number on a number question. */
+/** An outcome as the sheet's word: yes, no, nobody can tell, "n:" and the number on a number question, or "a:" and the answer's index on a pick-one question. */
 const wordFor =
-  (numeric: boolean) =>
+  (numeric: boolean, pickOne: boolean) =>
   (o: bigint | null): Word | null =>
-    o === null ? null : o === VOID_OUTCOME ? "void" : numeric ? `n:${o.toString()}` : o === 1n ? "yes" : "no";
+    o === null ? null : o === VOID_OUTCOME ? "void" : pickOne ? `a:${o.toString()}` : numeric ? `n:${o.toString()}` : o === 1n ? "yes" : "no";
 
 export default async function MarketPage({
   params,
@@ -189,9 +194,20 @@ export default async function MarketPage({
   if (state === "draft" && d.creatorId !== me.id) notFound();
   const ink = inkOf(d);
   const numberUnit = unitOf(d);
-  const word = wordFor(numberUnit !== null);
-  /** "14 shirts", "he fell asleep", "yes", "no", "nobody can tell": an outcome in the middle of a sentence, in the market's words where it has them (3.25). */
-  const SAID = (w: Word): string => (w === "yes" || w === "no" ? saidWord(d, w === "yes") : w === "void" ? "nobody can tell" : numberUnit ? unitPhrase(BigInt(w.slice(2)), numberUnit) : w.slice(2));
+  const answers = answersOf(d);
+  const word = wordFor(numberUnit !== null, answers !== null);
+  /** A pick-one answer's words for the viewer: a person answer reads as their current first name, the viewer as "You" (3.30). Filled once the people are read. */
+  let pickAnswers: PickOneAnswer[] | null = null;
+  /** "14 shirts", "he fell asleep", "yes", "no", "nobody can tell", "Priya", "a field goal": an outcome in the middle of a sentence, in the market's words where it has them (3.25). */
+  const SAID = (w: Word): string => {
+    if (w === "yes" || w === "no") return saidWord(d, w === "yes");
+    if (w === "void") return "nobody can tell";
+    if (w.startsWith("a:")) {
+      const a = pickAnswers?.find((x) => x.index === Number(w.slice(2)));
+      return a ? (a.text === "You" ? "you" : saidAnswer({ text: a.text, userId: a.person ? "person" : null })) : "that one";
+    }
+    return numberUnit ? unitPhrase(BigInt(w.slice(2)), numberUnit) : w.slice(2);
+  };
   const wells = ((w) => (w ? { yes: w.yesWell, no: w.noWell } : null))(outcomeWordsOf(d));
 
   const [group] = await db
@@ -292,6 +308,7 @@ export default async function MarketPage({
       ...positions.map((p) => p.userId as string),
       ...votes.map((v) => v.userId),
       ...statements.map((s) => s.userId),
+      ...(answers?.flatMap((a) => (a.userId ? [a.userId] : [])) ?? []),
     ]),
   );
   const users = await db
@@ -306,6 +323,9 @@ export default async function MarketPage({
       ? "You"
       : firstName(person.get(uid)?.displayName ?? "Someone");
 
+  // The answers as this viewer reads them (3.30, 3.31): a person by their current first name, the viewer as "You".
+  // The words say "You"; the avatar keeps the person's own initial (found in the real session: a "Y" avatar).
+  pickAnswers = answers ? answers.map((a) => ({ index: a.index, text: a.userId ? first(a.userId) : a.text, person: a.userId ? { name: person.get(a.userId)?.displayName ?? a.text, hue: hueFor(a.userId) } : null })) : null;
   const mine = positions.find((p) => p.userId === me.id) ?? null;
   const show = numbersVisible(d, mine !== null);
   const others = positions.filter((p) => p.userId !== me.id);
@@ -316,9 +336,12 @@ export default async function MarketPage({
   }));
   // A number question's ruler (3.5): everyone's number and, once there is one, the answer.
   const answerNumber = numberUnit && d.resolvedOutcome !== null && d.resolvedOutcome !== VOID_OUTCOME && state === "resolved" ? d.resolvedOutcome : null;
-  const rulerData = numberUnit && show ? rulerFor({ unit: numberUnit, answer: answerNumber === null ? null : answerNumber.toString(), people: positions.map((p) => ({ id: p.userId as string, name: person.get(p.userId as string)?.displayName ?? "Someone", percent: null, number: p.value.toString() })) }) : null;
-  /** "14 shirts · $5", "70% · $5": a person's number and what they put on it. */
-  const numberWords = (v: bigint) => (numberUnit ? unitPhrase(v, numberUnit) : `${Number(v) / 100}%`);
+  const rulerData = numberUnit && show ? rulerFor({ unit: numberUnit, answer: answerNumber === null ? null : answerNumber.toString(), people: positions.map((p) => ({ id: p.userId as string, name: person.get(p.userId as string)?.displayName ?? "Someone", percent: null, number: p.value.toString(), pick: null })) }) : null;
+  /** "14 shirts · $5", "70% · $5", "John · $5": a person's number, or their pick, and what they put on it. */
+  const numberWords = (v: bigint) => (pickAnswers ? (pickAnswers.find((a) => a.index === Number(v))?.text ?? "?") : numberUnit ? unitPhrase(v, numberUnit) : `${Number(v) / 100}%`);
+  // The pick-one picture (3.25, 3.31): who picked each answer, and each answer's share of everything riding.
+  const pickers = pickAnswers ? pickAnswers.map((a) => positions.filter((p) => Number(p.value) === a.index).map((p) => ({ name: person.get(p.userId as string)?.displayName ?? "Someone", hue: hueFor(p.userId as string) }))) : [];
+  const pickShares = pickAnswers ? answerShares(pickAnswers.map((a) => positions.filter((p) => Number(p.value) === a.index).reduce((sum, p) => sum + p.stake, 0n))) : [];
 
   const { chainId, dares } = contracts();
   const signing: Signing = {
@@ -327,6 +350,7 @@ export default async function MarketPage({
     stalemate: d.stalemate === "void" ? Stalemate.Void : Stalemate.Arbitrate,
     ledgerWallet: me.ledgerWallet,
     governanceWallet: me.governanceWallet,
+    confidenceBps: confidenceFor(d),
   };
   if (state === "draft") {
     const c = createTypedData(d).message;
@@ -337,7 +361,7 @@ export default async function MarketPage({
       termsHash: c.termsHash,
       denomId: c.denomId,
       range: c.range.toString(),
-      options: 0,
+      options: c.options,
       resolvesBy: c.resolvesBy.toString(),
     };
   }
@@ -367,8 +391,11 @@ export default async function MarketPage({
   }));
   const number = groupsNumberBps(entries);
   const axis = numberUnit && show && mine ? numberAxis(positions.map((p) => ({ id: p.userId as string, stake: p.stake, value: p.value })), numberUnit) : null;
+  const pickBars: PickOneBar[] = pickAnswers ? pickAnswers.map((a) => ({ stake: positions.filter((p) => Number(p.value) === a.index).reduce((sum, p) => sum + (p.stake > 0n ? p.stake : 0n), 0n).toString(), noStake: positions.filter((p) => Number(p.value) === a.index && p.stake <= 0n).length })) : [];
   const picture: StagePicture | null = !mine
     ? null
+    : show && pickAnswers
+      ? { kind: "picks", bars: pickBars, entries: positions.length, caption: pickOneCaption({ entries: positions.map((p) => ({ id: p.userId as string, stake: p.stake, pick: Number(p.value) })), answers: pickAnswers.map((a) => a.text), viewerId: me.id, nameOf: (id) => firstName(person.get(id)?.displayName ?? "Someone"), stakeWords }) }
     : show && numberUnit
       ? axis
         ? { kind: "numbers", axis: serialiseAxis(axis), caption: positions.length <= 1 ? "You’re first in. Height is how much is riding on each number, not how many people picked it." : axis.offHigh || axis.offLow ? "Height is how much is riding on each number, not how many people picked it. One number sits past the end so the rest can be read." : "Height is how much is riding on each number, not how many people picked it." }
@@ -413,6 +440,7 @@ export default async function MarketPage({
     show &&
     mine &&
     !numberUnit &&
+    !pickAnswers &&
     number !== null &&
     sparkEligible({
       openedAt: d.createdAt,
@@ -475,8 +503,9 @@ export default async function MarketPage({
       mine={
         mine
           ? {
-              percent: numberUnit ? 0 : Number(mine.value) / 100,
+              percent: numberUnit || pickAnswers ? 0 : Number(mine.value) / 100,
               ...(numberUnit ? { number: mine.value.toString() } : {}),
+              ...(pickAnswers ? { pick: Number(mine.value) } : {}),
               stake: mine.stake.toString(),
               stakeWords: stakeWords(mine.stake),
             }
@@ -484,6 +513,7 @@ export default async function MarketPage({
       }
       picture={picture}
       numberUnit={numberUnit}
+      pickOne={pickAnswers ? { answers: pickAnswers } : null}
       mark={d.markKind === "emoji" ? d.markValue : null}
       argument={argument}
       lockedLine={lockedLine}
@@ -519,7 +549,7 @@ export default async function MarketPage({
         {denomination.monetary ? "dollars" : unit.plural}, the same for
         everyone, so it can be weighed.
       </p>
-      {show && !numberUnit && number !== null && showsMarker(entries) ? (
+      {show && !numberUnit && !pickAnswers && number !== null && showsMarker(entries) ? (
         <p className="text-body-sm text-ink-2">
           The group’s number, exactly: {(Number(number) / 100).toFixed(1)}%.
         </p>
@@ -772,6 +802,7 @@ export default async function MarketPage({
         }))}
         evidence={media.evidence.map((e) => ({ id: e.id, by: first(e.author.id) }))}
         wells={wells}
+        answers={pickAnswers}
         myNote={myVote === null && statements.some((s) => s.userId === me.id)}
         proposal={
           d.aiRationale
@@ -818,11 +849,15 @@ export default async function MarketPage({
           null,
         )
       : null;
-  // The answer as a sentence (3.25): "14 shirts, then a seam gave out." when the claimant said what happened in a few words, else "14 shirts."
+  // The answer as a sentence (3.25): "14 shirts, then a seam gave out." when the claimant said what happened in a few words, else "14 shirts."; on a pick-one question "Priya, 40 minutes in." or "Priya.".
   const claimantSaid = state === "resolved" ? (statements.find((s) => s.userId === orderedVotes[0]?.userId)?.statement ?? null) : null;
-  const answerLine = answerNumber !== null && numberUnit ? `${unitPhrase(answerNumber, numberUnit)}${claimantSaid && claimantSaid.length <= 60 ? `, ${claimantSaid.charAt(0).toLowerCase()}${claimantSaid.slice(1).replace(/[.!]+$/, "")}.` : "."}` : outcomeLine(d, outcome === "yes");
+  // The answer that happened on a pick-one question, as an index, and who called it: everyone who picked it (3.25), never a ranking among them.
+  const pickedIndex = pickAnswers && state === "resolved" && d.resolvedOutcome !== null && d.resolvedOutcome !== VOID_OUTCOME ? Number(d.resolvedOutcome) : null;
+  const pickCallers = pickedIndex === null ? [] : positions.filter((p) => Number(p.value) === pickedIndex).map((p) => first(p.userId as string));
+  const calledLine = pickAnswers ? calledItLine(pickCallers, pickCallers.includes("You")) : "";
+  const answerLine = pickAnswers && pickedIndex !== null ? pickAnswerLine(pickAnswers.find((a) => a.index === pickedIndex)?.text ?? "Decided", claimantSaid) : answerNumber !== null && numberUnit ? `${unitPhrase(answerNumber, numberUnit)}${claimantSaid && claimantSaid.length <= 60 ? `, ${claimantSaid.charAt(0).toLowerCase()}${claimantSaid.slice(1).replace(/[.!]+$/, "")}.` : "."}` : outcomeLine(d, outcome === "yes");
   const offBy = (p: (typeof positions)[number]) => (answerNumber === null ? 0n : p.value > answerNumber ? p.value - answerNumber : answerNumber - p.value);
-  const closestLine = closest ? (numberUnit ? `${first(closest.userId as string)} ${closest.userId === me.id ? "were" : "was"} closest, ${offBy(closest) === 0n ? "dead on" : `off by ${withSeparators(offBy(closest))}`}.` : `${first(closest.userId as string)} ${closest.userId === me.id ? "were" : "was"} closest, at ${Number(closest.value) / 100}%.`) : "";
+  const closestLine = pickAnswers ? calledLine : closest ? (numberUnit ? `${first(closest.userId as string)} ${closest.userId === me.id ? "were" : "was"} closest, ${offBy(closest) === 0n ? "dead on" : `off by ${withSeparators(offBy(closest))}`}.` : `${first(closest.userId as string)} ${closest.userId === me.id ? "were" : "was"} closest, at ${Number(closest.value) / 100}%.`) : "";
   const ending: "settled" | "void" | "expired" = state === "voided" ? "void" : state === "expired" ? "expired" : "settled";
   const settledSheet = ended ? (
     <SettledSheet
@@ -843,12 +878,15 @@ export default async function MarketPage({
         : "Nothing changes hands."
       : state === "expired"
         ? "Nobody said what happened before it closed for good."
-        : numberUnit
+        : numberUnit || pickAnswers
           ? closestLine
           : (claimantSaid ?? "");
   const endedOutcome = state === "voided" ? "Nobody could tell." : state === "expired" ? "Never settled." : answerLine;
   const lineOrRuler = (resolved: boolean) =>
-    numberUnit ? (
+    pickAnswers ? (
+      // The pick-one rows (3.25) where the call line would be: washed on the answer that happened, and on a void nothing washed.
+      <PickOneRows answers={pickAnswers} pickers={pickers} shares={pickShares} outcome={resolved ? pickedIndex : null} />
+    ) : numberUnit ? (
       rulerData ? <Ruler ruler={rulerData} state={resolved ? "resolved" : undefined} size="screen" surface="var(--ground)" /> : null
     ) : (
       <CallLine pins={pins} state={resolved ? "resolved" : "in"} outcome={resolved && outcome ? (outcome === "yes" ? 1 : 0) : undefined} size="screen" surface="var(--ground)" />
@@ -867,8 +905,8 @@ export default async function MarketPage({
       </section>
       <section className="flex flex-col gap-2">
         <p className="text-serif-l text-ink">{endedOutcome}</p>
-        {[state === "resolved" && !numberUnit ? claimantSaid : null, state === "resolved" ? closestLine || null : endedCaption].filter(Boolean).length > 0 ? (
-          <p className="text-body text-ink-2">{[state === "resolved" && !numberUnit ? claimantSaid : null, state === "resolved" ? closestLine || null : endedCaption].filter(Boolean).join(" ")}</p>
+        {[state === "resolved" && !numberUnit && !pickAnswers ? claimantSaid : null, state === "resolved" ? closestLine || null : endedCaption].filter(Boolean).length > 0 ? (
+          <p className="text-body text-ink-2">{[state === "resolved" && !numberUnit && !pickAnswers ? claimantSaid : null, state === "resolved" ? closestLine || null : endedCaption].filter(Boolean).join(" ")}</p>
         ) : null}
       </section>
       <section className="flex flex-col gap-3">{lineOrRuler(settledOutcome)}</section>
@@ -908,9 +946,21 @@ export default async function MarketPage({
         <p className="text-serif-l text-ink">{endedOutcome}</p>
         {endedCaption ? <p className="text-caption text-ink-2">{endedCaption}</p> : null}
         {frameOrSlot(200)}
-        {lineOrRuler(settledOutcome)}
+        {pickAnswers && settledOutcome ? null : lineOrRuler(settledOutcome)}
       </section>
-      {settledOutcome ? (
+      {settledOutcome && pickAnswers ? (
+        // A pick-one market's settled screen (3.25): "Everyone's pick" replaces the call line and closest first, and who's got who follows.
+        <>
+          <section className="flex flex-col gap-3">
+            <SectionLabel>Everyone’s pick</SectionLabel>
+            <PickOneRows answers={pickAnswers} pickers={pickers} shares={pickShares} outcome={pickedIndex} />
+          </section>
+          <section className="flex flex-col gap-2">
+            <SectionLabel>Who’s got who</SectionLabel>
+            {transfers.length === 0 ? <p className="text-body-sm text-ink-2">Nothing changes hands.</p> : <WhoHasWho transfers={transfers} people={people} participants={participants} denomination={denomination} viewerId={me.id} />}
+          </section>
+        </>
+      ) : settledOutcome ? (
         <>
           <section className="flex flex-col gap-3">
             <SectionLabel>Closest first</SectionLabel>
@@ -1024,7 +1074,9 @@ export default async function MarketPage({
                     ? "Where each of you stands"
                     : "Everyone’s in, and numbers are locked"}
                 </SectionLabel>
-                {mine ? null : numberUnit ? (
+                {mine ? null : pickAnswers ? (
+                  <PickOneRows answers={pickAnswers} pickers={pickers} shares={pickShares} outcome={null} />
+                ) : numberUnit ? (
                   rulerData ? <Ruler ruler={rulerData} size="screen" surface="var(--ground)" /> : null
                 ) : (
                   <CallLine

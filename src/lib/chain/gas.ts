@@ -26,7 +26,14 @@
  * and 924,879 for five, which is 368k plus 111k a position; `resolve` 274,309 for one edge and 1,232,630 for ten,
  * which is 168k plus 106k an edge; VOID 74k to 82k. Within three percent of the yes-or-no figures, since the
  * struct is the same size and scoring by distance costs no more than Brier, so the limits below cover both kinds
- * with the same room (about 25 percent at five positions). Monad receipts report
+ * with the same room (about 25 percent at five positions).
+ *
+ * A pick-one market (the categorical phase, the same survey with `pickone`, five answers, every pick carrying a
+ * confidence of exactly 10000, quorum of five): `create` 608,257 for two positions and 938,602 for five, which is
+ * 388k plus 110k a position, and `resolve` 261,550 for one edge and 853,615 for six (half right, half wrong, the
+ * most a pick-one market can mint), which is 143k plus 118k an edge; VOID 74k. Within six percent of the other two
+ * kinds on `create` and under the per-edge figure the limit already carries, so the limits below cover all three
+ * kinds. Monad receipts report
  * `gasUsed` equal to the declared limit, so receipts cannot calibrate anything; `RELAYER_LOG_GAS=1` only
  * shows whether a limit was enough. Re-measure with the survey whenever a contract changes and record the
  * change in docs/decisions.md.

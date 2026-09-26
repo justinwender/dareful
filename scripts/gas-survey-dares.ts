@@ -27,6 +27,13 @@ const toHex = (b: Buffer): Hex => `0x${b.toString("hex")}`;
 
 /** `number` surveys a number market instead (Phase 5): the same struct with Kind.Numeric and a scale, entries as whole numbers. */
 const NUMERIC = process.argv.includes("number");
+/**
+ * `pickone` surveys a pick-one market (the categorical phase): Kind.Categorical with five answers, every entry a pick
+ * carrying a confidence of exactly 10000, which is also the first real `create` that carries that figure. The worst
+ * case for `resolve` is half right and half wrong, since two right picks or two wrong ones move nothing between them.
+ */
+const PICK_ONE = process.argv.includes("pickone");
+const OPTIONS = 5;
 
 async function main(): Promise<void> {
   const { dares, ledger, chainId } = contracts();
@@ -60,19 +67,21 @@ async function main(): Promise<void> {
 
   const rows: Array<{ n: number; create: bigint; resolve: bigint | null; resolveVoid: bigint | null; edges: number }> = [];
   // A number survey sends two markets, the smallest and the largest, which is enough for the per-position slope.
-  const sizes = NUMERIC ? [2, Math.min(6, best.members.length)] : Array.from({ length: Math.min(6, best.members.length) - 1 }, (_, i) => i + 2);
+  const sizes = NUMERIC || PICK_ONE ? [2, Math.min(6, best.members.length)] : Array.from({ length: Math.min(6, best.members.length) - 1 }, (_, i) => i + 2);
   for (const n of sizes) {
     const people = best.members.slice(0, n).map((id) => keys.get(id)!);
     const creator = people[0]!;
     const dareId = keccak256(stringToHex(`dareful:gas-survey:${randomUUID()}`));
     const resolvesBy = BigInt(Math.floor(Date.now() / 1000) + 3600);
-    const create = { dareId, groupId: best.groupId, kind: NUMERIC ? Kind.Numeric : Kind.Binary, pace: Pace.Dare, termsHash: keccak256(stringToHex("gas survey")), denomId: best.denomId, range: NUMERIC ? 20n : 0n, options: 0, stalemate: Stalemate.Arbitrate, resolvesBy };
+    const create = { dareId, groupId: best.groupId, kind: PICK_ONE ? Kind.Categorical : NUMERIC ? Kind.Numeric : Kind.Binary, pace: Pace.Dare, termsHash: keccak256(stringToHex("gas survey")), denomId: best.denomId, range: NUMERIC ? 20n : 0n, options: PICK_ONE ? OPTIONS : 0, stalemate: Stalemate.Arbitrate, resolvesBy };
     const creatorSig = await creator.ledger.signTypedData({ domain, types: daresTypes, primaryType: "Create", message: create });
     // Distinct probabilities and distinct, large stakes: every pair differs, so every pair mints.
     // Distinct numbers on a scale of 20 (every score distinct, so every pair mints), or distinct probabilities.
-    const positions = people.map((p, i) => ({ ledger: p.ledger.address, stake: BigInt(5000 + 1000 * i), value: NUMERIC ? BigInt(10 + 3 * i) : BigInt(Math.round((10000 * (i + 1)) / (n + 1))), confidenceBps: 0 }));
-    const sigs = await Promise.all(people.map((p, i) => p.ledger.signTypedData({ domain, types: daresTypes, primaryType: "Enter", message: { dareId, stake: positions[i]!.stake, value: positions[i]!.value, confidenceBps: 0, stalemate: Stalemate.Arbitrate } })));
-    const struct = { id: dareId, groupId: best.groupId, kind: create.kind, pace: Pace.Dare, creator: creator.ledger.address, termsHash: create.termsHash, denomId: best.denomId, range: create.range, options: 0, stalemate: Stalemate.Arbitrate, quorum: [] as Address[], threshold: 0, resolvesBy, status: 0, outcome: 0n };
+    // A pick-one survey: the first half pick answer 0 and the rest pick 1, 2, 3 and 4 in turn, so resolving at 0 mints every right-wrong pair.
+    const confidence = PICK_ONE ? 10000 : 0;
+    const positions = people.map((p, i) => ({ ledger: p.ledger.address, stake: BigInt(5000 + 1000 * i), value: PICK_ONE ? BigInt(i < Math.ceil(n / 2) ? 0 : 1 + ((i - Math.ceil(n / 2)) % (OPTIONS - 1))) : NUMERIC ? BigInt(10 + 3 * i) : BigInt(Math.round((10000 * (i + 1)) / (n + 1))), confidenceBps: confidence }));
+    const sigs = await Promise.all(people.map((p, i) => p.ledger.signTypedData({ domain, types: daresTypes, primaryType: "Enter", message: { dareId, stake: positions[i]!.stake, value: positions[i]!.value, confidenceBps: confidence, stalemate: Stalemate.Arbitrate } })));
+    const struct = { id: dareId, groupId: best.groupId, kind: create.kind, pace: Pace.Dare, creator: creator.ledger.address, termsHash: create.termsHash, denomId: best.denomId, range: create.range, options: create.options, stalemate: Stalemate.Arbitrate, quorum: [] as Address[], threshold: 0, resolvesBy, status: 0, outcome: 0n };
     const args = [struct, positions, sigs, creatorSig] as const;
 
     const createGas = await publicClient.estimateContractGas({ account: relayerAccount, address: dares.address, abi: dares.abi, functionName: "create", args });
@@ -88,9 +97,10 @@ async function main(): Promise<void> {
         console.log(`  resolve(${outcome === VOID ? "VOID" : outcome}) with ${n}: could not estimate (${e instanceof Error ? e.message.split("\n")[0] : e})`);
         return null;
       });
-    // A number market resolves at 10: every entry a different distance from it.
-    rows.push({ n, create: createGas, resolve: await est(NUMERIC ? 10n : 1n), resolveVoid: await est(VOID), edges: (n * (n - 1)) / 2 });
-    console.log(`n=${n}  create ${createGas}   resolve(yes, ${(n * (n - 1)) / 2} edges, ${threshold} votes) ${rows.at(-1)!.resolve}   resolve(VOID) ${rows.at(-1)!.resolveVoid}`);
+    // A number market resolves at 10: every entry a different distance from it. A pick-one market resolves at 0: half right, half wrong.
+    const edges = PICK_ONE ? Math.ceil(n / 2) * Math.floor(n / 2) : (n * (n - 1)) / 2;
+    rows.push({ n, create: createGas, resolve: await est(PICK_ONE ? 0n : NUMERIC ? 10n : 1n), resolveVoid: await est(VOID), edges });
+    console.log(`n=${n}  create ${createGas}   resolve(${PICK_ONE ? "answer 0" : "yes"}, ${edges} edges, ${threshold} votes) ${rows.at(-1)!.resolve}   resolve(VOID) ${rows.at(-1)!.resolveVoid}`);
   }
 
   // Least-squares-free fit: per-position and per-edge increments from the ends of the range.

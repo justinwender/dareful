@@ -14,6 +14,8 @@ export type Signing = {
   stalemate: 0 | 1;
   ledgerWallet: string;
   governanceWallet: string;
+  /** What an entry carries as confidence: everything on a pick-one market (3.30), nothing on the other two kinds. The same figure the server signs against. */
+  confidenceBps: number;
   /** Present only for the creator of a draft: the Create message, every field final. */
   create?: { groupId: `0x${string}`; kind: number; pace: number; termsHash: `0x${string}`; denomId: `0x${string}`; range: string; options: number; resolvesBy: string };
 };

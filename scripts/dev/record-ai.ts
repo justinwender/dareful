@@ -7,8 +7,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { MODELS } from "@/lib/ai/client";
-import { proposeNumber, proposeOutcome, scopeMarket, scopeNumber } from "@/lib/ai/markets";
-import { arbitrate, arbitrateNumber } from "@/lib/ai/settler";
+import { proposeAnswer, proposeNumber, proposeOutcome, scopeMarket, scopeNumber, scopePickOne } from "@/lib/ai/markets";
+import { arbitrate, arbitrateAnswer, arbitrateNumber } from "@/lib/ai/settler";
 import sharp from "sharp";
 
 /** An invented scoreboard, drawn here: the evidence recordings need an image, and no real screenshot belongs in the repository. */
@@ -22,6 +22,15 @@ async function main(): Promise<void> {
   if (!dir) throw new Error("set AI_RECORD_TO");
   mkdirSync(dir, { recursive: true });
   const now = new Date();
+  // `pickone` records only the pick-one calls (the categorical phase), leaving the earlier recordings as they are.
+  if (process.argv.includes("pickone")) {
+    const answers = ["John", "Priya", "Gabe", "Theo", "Nobody"];
+    await scopePickOne({ line: "who falls asleep first on movie night", answers, now });
+    const terms = "Whoever is first to be asleep on the couch, eyes shut and not answering, once the movie starts on Friday. If everyone makes it to the credits, Nobody.";
+    await proposeAnswer({ title: "Who falls asleep first?", terms, answers, statements: [{ name: "Sam", said: "John was out twenty minutes in, snoring" }], now });
+    await arbitrateAnswer({ title: "Who falls asleep first?", terms, answers, positions: [{ name: "Sam", answer: "John" }, { name: "Theo", answer: "Gabe" }, { name: "Maya", answer: "Nobody" }], updates: [{ name: "Sam", said: "John was out twenty minutes in, snoring" }, { name: "Theo", said: "Gabe had his eyes shut before John did" }], statements: [{ name: "Theo", said: "Gabe was not answering when I asked him about the popcorn" }, { name: "Sam", said: "Gabe answered the popcorn question, he was resting his eyes" }] });
+    return;
+  }
   // `outcomes` records the write-up alone, now that it returns the outcomes in the question's own words (3.25).
   if (process.argv.includes("outcomes")) {
     await scopeMarket({ line: "does John fall asleep during the movie on Friday", now });

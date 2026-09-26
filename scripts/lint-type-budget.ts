@@ -95,6 +95,8 @@ const CONTROLS = new Set([
   // picker's cells, chips and search field (3.29): every piece of text in them is inside a control.
   "src/components/markets/number-entry.tsx",
   "src/components/markets/mark-picker.tsx",
+  // The pick-one entry's rows (3.30): every word in them is inside a control, the answers as radio rows.
+  "src/components/markets/pick-one-entry.tsx",
 ]);
 /** Rendered to an image, never to the screen. */
 const RENDERERS = [/opengraph-image\.tsx$/, /^src\/app\/icons\//];

@@ -17,6 +17,8 @@ import { inkFor, inkVars, type InkName } from "@/lib/ui/ink";
 import { cn } from "@/lib/utils";
 import { MarkPicker, type Sticker } from "./mark-picker";
 import { refOfPicked, type PickedMark } from "@/lib/ui/mark";
+import { firstName } from "@/lib/ui/copy";
+import { MAX_ANSWER_LENGTH, MAX_ANSWERS, MIN_ANSWERS } from "@/lib/ledger/pick-one";
 
 type SetOption = { groupId: string; label: string; caption: string; avatars: Array<{ name: string; hue: Hue }>; offerName: boolean; size: number; units: Array<{ id: string; label: string; template: string | null }>; /** The inks of the questions still open in this set, for balance (1.8, rule 4). */ takenInks: InkName[] };
 type Person = { id: string; name: string; hue: Hue };
@@ -42,13 +44,18 @@ const COUNT = ["", "", "two", "three", "four", "five", "six", "seven", "eight", 
  * screen says so. The last set of people is preselected: the common case is the same people as last time, and
  * it should cost one tap in total.
  */
-export function AskForm({ sets, people, initialLine = "", initialPace = "dare", me, chrome, stickers = [], canPaste = false }: { sets: SetOption[]; people: Person[]; initialLine?: string; initialPace?: "dare" | "argument"; me: { hue: Hue }; /** The screen's top bar, rendered by the page; the form owns the screen so a picked mark can retint all of it (3.29). */ chrome: ReactNode; /** This person's stickers for the picker (3.28), and whether a cutout can be pasted at all. */ stickers?: Sticker[]; canPaste?: boolean }) {
+/** One answer in the editor (3.29): a few words, or a person the asker knows (their id), with the words being their first name. */
+type Choice = { text: string; userId: string | null };
+
+export function AskForm({ sets, people, initialLine = "", initialPace = "dare", me, chrome, stickers = [], canPaste = false }: { sets: SetOption[]; people: Person[]; initialLine?: string; initialPace?: "dare" | "argument"; me: { id: string; name: string; hue: Hue }; /** The screen's top bar, rendered by the page; the form owns the screen so a picked mark can retint all of it (3.29). */ chrome: ReactNode; /** This person's stickers for the picker (3.28), and whether a cutout can be pasted at all. */ stickers?: Sticker[]; canPaste?: boolean }) {
   const router = useRouter();
   const [step, setStep] = useState<"question" | "declined" | "criterion" | "careful" | "who" | "terms">("question");
   // Two paces, one object (PLANNING.md 8a): something that will happen, or a claim to settle now.
   const [pace, setPace] = useState<"dare" | "argument">(initialPace);
-  // Yes or no, or a number (docs/design.md 3.26). Chosen before the write-up, since the terms say how the answer is counted.
-  const [kind, setKind] = useState<"binary" | "numeric">("binary");
+  // Yes or no, a number, or pick one (docs/design.md 3.26, 3.29). Chosen before the write-up, since the terms say how the answer is counted.
+  const [kind, setKind] = useState<"binary" | "numeric" | "categorical">("binary");
+  // The answers (3.29): two to six, in the asker's order; a person answer is anyone the asker knows here, or the asker.
+  const [choices, setChoices] = useState<Choice[]>([{ text: "", userId: null }, { text: "", userId: null }]);
   // The mark (3.29), and the id the market will have, made here so the ink previewed is the ink stored.
   const [mark, setMark] = useState<PickedMark | null>(null);
   const markName = mark ? (mark.kind === "emoji" ? (mark.name ? mark.name.charAt(0).toUpperCase() + mark.name.slice(1) : "Your mark") : "Your sticker") : null;
@@ -84,6 +91,8 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
   const [namingBusy, startNaming] = useTransition();
   const selectedSet = who.kind === "set" ? sets.find((s) => s.groupId === who.groupId) : undefined;
   const numeric = pace === "dare" && kind === "numeric";
+  const pickOne = pace === "dare" && kind === "categorical";
+  const filledChoices = choices.filter((c) => c.text.trim().length > 0);
   // The ink this market would get (1.8, 3.29): the mark's from the table, or a hash of the id for a hueless mark, balanced on the
   // who's-in step against the questions still open between the same people. The server computes it again the same way and stores that.
   const previewInk = useMemo<InkName | null>(() => {
@@ -95,7 +104,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
   function writeUp(chosen?: string, source?: string) {
     scoping.current = (async () => {
       const asked = questions.map((question, i) => ({ question, yes: answers[i] ?? false })).filter((_, i) => i in answers);
-      const r = await scopeMarketAction(source ?? line, chosen, mode === "careful" && pace === "dare" ? asked : undefined, numeric ? "numeric" : "binary");
+      const r = await scopeMarketAction(source ?? line, chosen, mode === "careful" && pace === "dare" ? asked : undefined, pickOne ? "categorical" : numeric ? "numeric" : "binary", pickOne ? filledChoices.map((c) => c.text.trim()) : undefined);
       if ("error" in r) return setProblem(r.error);
       setScope(r);
       setTitle(r.title);
@@ -108,7 +117,12 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
   function toWho() {
     setFieldProblem(null);
     setProblem(null);
-    if (line.trim().length < 3) return setFieldProblem(pace === "argument" ? "Say what you two disagree about, in a line." : numeric ? "Ask it in a line, like “How many shirts can Gabe wear at once.”" : "Ask it in a line, like “John falls asleep during the movie.”");
+    if (line.trim().length < 3) return setFieldProblem(pace === "argument" ? "Say what you two disagree about, in a line." : numeric ? "Ask it in a line, like “How many shirts can Gabe wear at once.”" : pickOne ? "Ask it in a line, like “Who falls asleep first.”" : "Ask it in a line, like “John falls asleep during the movie.”");
+    if (pickOne) {
+      if (filledChoices.length < MIN_ANSWERS) return setProblem("It takes at least two answers.");
+      if (filledChoices.some((c) => c.text.trim().length > MAX_ANSWER_LENGTH)) return setProblem("Each answer is a few words.");
+      if (new Set(filledChoices.map((c) => c.text.trim().toLowerCase())).size !== filledChoices.length) return setProblem("Two answers say the same thing.");
+    }
     setScope(null);
     if (pace === "argument") {
       // The triage comes before anything else, and it matters more than the ruling: some things are not the app's to call.
@@ -171,7 +185,8 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
         title,
         terms: finalTerms,
         mark: mark ? (mark.kind === "emoji" ? { kind: "emoji", value: mark.value } : { kind: "sticker", id: mark.id }) : undefined,
-        outcomeWords: !numeric && !arguing && scope?.outcomes ? scope.outcomes : undefined,
+        outcomeWords: !numeric && !pickOne && !arguing && scope?.outcomes ? scope.outcomes : undefined,
+        answers: pickOne ? filledChoices.map((c) => ({ text: c.text.trim(), userId: c.userId })) : undefined,
         number: numeric ? { unit: { singular: unitWords.singular.trim().toLowerCase(), plural: unitWords.plural.trim().toLowerCase() || unitWords.singular.trim().toLowerCase() }, scale: scale.trim(), model: scope?.number?.model ?? null } : undefined,
         resolvesBy: arguing ? null : new Date(Date.now() + hours * 3_600_000).toISOString(),
         blind: arguing ? false : blind,
@@ -263,8 +278,80 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
                   A number
                 </Chip>
               </button>
+              <button type="button" aria-pressed={kind === "categorical"} onClick={() => setKind("categorical")} className="rounded-pill">
+                <Chip size={36} selected={kind === "categorical"}>
+                  Pick one
+                </Chip>
+              </button>
             </div>
-            <p className="text-caption text-ink-3">{kind === "numeric" ? "Everyone names a number, and closest wins." : "Everyone puts their odds on it."}</p>
+            <p className="text-caption text-ink-3">{kind === "numeric" ? "Everyone names a number, and closest wins." : kind === "categorical" ? "Everyone picks one answer, and whoever's right is paid by whoever isn't." : "Everyone puts their odds on it."}</p>
+          </div>
+        ) : null}
+        {pickOne ? (
+          // The answers editor (3.29): one 44px row per answer, a dashed row to add one while there are fewer than six, and the people the
+          // asker knows as a row of avatars, one tap each. "If none of them might happen, add that too." is the one piece of advice the step gives.
+          <div className="flex flex-col gap-3" data-answers-editor="">
+            <h2 className="text-label text-ink-3">The answers</h2>
+            <ul className="flex flex-col gap-2">
+              {choices.map((c, i) => (
+                <li key={i} className="flex h-11 items-center gap-2 rounded-button border border-line bg-surface pl-2">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center">{c.userId ? <Avatar name={c.userId === me.id ? me.name : c.text} hue={c.userId === me.id ? me.hue : (people.find((p) => p.id === c.userId)?.hue ?? "stone")} size={28} /> : null}</span>
+                  <input
+                    value={c.text}
+                    readOnly={c.userId !== null}
+                    maxLength={MAX_ANSWER_LENGTH}
+                    placeholder={i === 0 ? "John" : i === 1 ? "Nobody" : "Another answer"}
+                    aria-label={`Answer ${i + 1}`}
+                    onChange={(e) => setChoices((cs) => cs.map((x, k) => (k === i ? { text: e.target.value, userId: null } : x)))}
+                    className="h-full min-w-0 flex-1 bg-transparent text-body-strong text-ink placeholder:text-ink-3 outline-none"
+                  />
+                  <button type="button" aria-label={`Remove answer ${i + 1}`} disabled={choices.length <= MIN_ANSWERS} onClick={() => setChoices((cs) => cs.filter((_, k) => k !== i))} className="flex h-11 w-11 shrink-0 items-center justify-center text-ink-2 disabled:text-ink-3">
+                    <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                      <path d="M6 6l12 12M18 6L6 18" />
+                    </svg>
+                  </button>
+                </li>
+              ))}
+              {choices.length < MAX_ANSWERS ? (
+                <li>
+                  <button type="button" onClick={() => setChoices((cs) => [...cs, { text: "", userId: null }])} className="flex h-11 w-full items-center gap-3 rounded-button border border-dashed border-line-strong px-3 text-body-sm font-semibold text-ink-2">
+                    <span aria-hidden="true" className="flex h-7 w-7 items-center justify-center">+</span>
+                    Add an answer
+                  </button>
+                </li>
+              ) : null}
+            </ul>
+            {choices.length < MAX_ANSWERS ? (
+              <div className="flex flex-col gap-2">
+                <p className="text-caption text-ink-3">Add a person</p>
+                <ul className="flex flex-wrap gap-1" aria-label="People you know here">
+                  {[...people, { id: me.id, name: me.name, hue: me.hue }].map((p) => {
+                    const added = choices.some((c) => c.userId === p.id);
+                    const label = p.id === me.id ? "You" : firstName(p.name);
+                    return (
+                      <li key={p.id}>
+                        <button
+                          type="button"
+                          aria-label={added ? `${label}, already an answer` : `Add ${label} as an answer`}
+                          aria-pressed={added}
+                          disabled={added}
+                          onClick={() => setChoices((cs) => {
+                            const empty = cs.findIndex((c) => c.text.trim().length === 0 && c.userId === null);
+                            const next = { text: label, userId: p.id };
+                            return empty >= 0 ? cs.map((c, k) => (k === empty ? next : c)) : cs.length < MAX_ANSWERS ? [...cs, next] : cs;
+                          })}
+                          className="flex h-11 w-11 items-center justify-center rounded-pill"
+                          style={added ? { opacity: 0.35 } : undefined}
+                        >
+                          <Avatar name={p.id === me.id ? me.name : p.name} hue={p.hue} size={32} />
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : null}
+            <p className="text-caption text-ink-3">If none of them might happen, add that too.</p>
           </div>
         ) : null}
         {pace === "dare" ? (
@@ -292,7 +379,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
           low={
             <>
               <ProblemSummary messages={[fieldProblem, problem]} />
-              <Button type="submit" form="ask-question" variant="primary" loading={thinking}>
+              <Button type="submit" form="ask-question" variant="primary" loading={thinking} disabled={pickOne && filledChoices.length < MIN_ANSWERS}>
                 {pace === "argument" ? "Weigh it up" : mode === "careful" ? "Ask me" : "Next: who’s in"}
               </Button>
             </>

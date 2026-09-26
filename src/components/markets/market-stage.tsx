@@ -16,6 +16,8 @@ import { OddsHeader, OddsLine } from "./odds-line";
 import { WeightLine, bucketOfPercent, type WeightBucket } from "./weight-line";
 import { NumberEntry } from "./number-entry";
 import { NumberLine } from "./number-line";
+import { PickOneBars, type PickOneAnswer, type PickOneBar } from "./pick-one-bars";
+import { PickOneEntry } from "./pick-one-entry";
 import { numberAxis, serialiseAxis, unitPhrase, withSeparators, type NumberLineAxis } from "@/lib/ledger/number-axis";
 import { LockButton, type Signing, type StakeUnit } from "./market-actions";
 
@@ -28,6 +30,8 @@ export type StagePicture =
     }
   /** A number market's axis, from what people entered (3.22). */
   | { kind: "numbers"; axis: NumberLineAxis; caption: string }
+  /** A pick-one market's bars (3.31): what is riding on each answer, and the caption only when one stake is more than half. */
+  | { kind: "picks"; bars: PickOneBar[]; entries: number; caption: string | null }
   /** Blind until lock: who is in, never where. No heights and no group's number, since an aggregate leaks the shape. */
   | { kind: "blind"; inCount: number; ofCount: number };
 
@@ -51,12 +55,14 @@ export function MarketStage(props: {
   unit: StakeUnit;
   state: "draft" | "open" | "locked";
   me: { name: string; hue: Hue };
-  /** This person's position: a percent on a yes-or-no question, the whole number (as text) on a number question. */
-  mine: { percent: number; number?: string; stake: string; stakeWords: string } | null;
+  /** This person's position: a percent on a yes-or-no question, the whole number (as text) on a number question, the answer's index on a pick-one question. */
+  mine: { percent: number; number?: string; pick?: number; stake: string; stakeWords: string } | null;
   picture: StagePicture | null;
   mark: string | null;
   /** A number question: what the number counts. Absent on a yes-or-no question. */
   numberUnit?: { singular: string; plural: string } | null;
+  /** A pick-one question (3.30): its answers, in the asker's order, for the sheet's rows and the bars. */
+  pickOne?: { answers: PickOneAnswer[] } | null;
   /** An argument: which side this person starts on, all the way, and which side is already taken. */
   argument?: {
     defaultPercent: number;
@@ -78,6 +84,9 @@ export function MarketStage(props: {
 }) {
   const { dareId, signing, unit, state, me, mine, picture, mark } = props;
   const numberUnit = props.numberUnit ?? null;
+  const pickOne = props.pickOne ?? null;
+  // The pick, on a pick-one question (3.30): one answer and nothing else. Nothing is picked until a tap.
+  const [pick, setPick] = useState<number | null>(mine?.pick ?? null);
   const router = useRouter();
   const sign = useSigner();
   const [changing, setChanging] = useState(false);
@@ -103,6 +112,7 @@ export function MarketStage(props: {
   const [justIn, setJustIn] = useState<{
     percent: number;
     number?: string;
+    pick?: number;
     stake: string;
     stakeWords: string;
   } | null>(null);
@@ -127,10 +137,14 @@ export function MarketStage(props: {
         ? money(units)
         : `${units} ${units === "1" ? unit.singular : unit.plural}`;
 
-  // What this person is saying, as a picture and as words: "70%" or "17 shirts".
-  const picked = numberUnit ? number !== null : value !== null;
-  const sayNumber = (n: bigint) => (numberUnit ? unitPhrase(n, numberUnit) : `${n}%`);
-  const mineWords = (m: { percent: number; number?: string }) => (numberUnit && m.number !== undefined ? unitPhrase(BigInt(m.number), numberUnit) : `${m.percent}%`);
+  // What this person is saying, as a picture and as words: "70%", "17 shirts", or the answer they picked ("John").
+  const answerText = (i: number | null | undefined) => (i === null || i === undefined ? "…" : (pickOne?.answers.find((a) => a.index === i)?.text ?? "…"));
+  const picked = pickOne ? pick !== null : numberUnit ? number !== null : value !== null;
+  const sayNumber = (n: bigint) => (pickOne ? answerText(Number(n)) : numberUnit ? unitPhrase(n, numberUnit) : `${n}%`);
+  const mineWords = (m: { percent: number; number?: string; pick?: number }) => (pickOne ? answerText(m.pick) : numberUnit && m.number !== undefined ? unitPhrase(BigInt(m.number), numberUnit) : `${m.percent}%`);
+  /** The pick-one entry line names the answer and nothing else (4.6): "You're in: John". The other two kinds say "You're in at 70%". */
+  const entryLine = (m: { percent: number; number?: string; pick?: number }) => (pickOne ? `You’re in: ${mineWords(m)}` : `You’re in at ${mineWords(m)}`);
+  const pickWords = (i: number | null) => (pickOne ? `${answerText(i)}, ${stakeWords(stakeUnits) || "…"}` : `${sayNumber(numberUnit ? (number ?? 0n) : BigInt(value ?? 0))}, ${stakeWords(stakeUnits) || "…"}`);
 
   /** A number at or past the limit (src/lib/ledger/scale.ts): blocked, never kept, because a slipped finger would lose the stake (3.26). */
   const farOff = (n: bigint | null) => numberUnit !== null && props.farOff !== null && props.farOff !== undefined && n !== null && n >= BigInt(props.farOff.threshold);
@@ -155,7 +169,7 @@ export function MarketStage(props: {
           : "Put at least one on it.",
       );
     const valueBps = (value ?? 0) * 100;
-    const signedValue = numberUnit ? (number ?? 0n) : BigInt(valueBps);
+    const signedValue = pickOne ? BigInt(pick ?? 0) : numberUnit ? (number ?? 0n) : BigInt(valueBps);
     try {
       setStep("approving");
       let createSignature: `0x${string}` | null = null;
@@ -194,14 +208,15 @@ export function MarketStage(props: {
             dareId: signing.dareOnchainId,
             stake: BigInt(stakeUnits),
             value: signedValue,
-            confidenceBps: 0,
+            // Everything on the pick on a pick-one question (3.30); no confidence on a number.
+            confidenceBps: signing.confidenceBps,
             stalemate: signing.stalemate,
           },
         },
         "approve number",
       );
       setStep("sending");
-      const position = numberUnit ? { stake: stakeUnits, number: signedValue.toString() } : { stake: stakeUnits, valueBps };
+      const position = pickOne ? { stake: stakeUnits, answer: Number(signedValue) } : numberUnit ? { stake: stakeUnits, number: signedValue.toString() } : { stake: stakeUnits, valueBps };
       const r = createSignature
         ? await openMarketAction(
             dareId,
@@ -219,6 +234,7 @@ export function MarketStage(props: {
       setJustIn({
         percent: value ?? 0,
         ...(numberUnit ? { number: signedValue.toString() } : {}),
+        ...(pickOne ? { pick: Number(signedValue) } : {}),
         stake: stakeUnits,
         stakeWords: stakeWords(stakeUnits),
       });
@@ -236,7 +252,10 @@ export function MarketStage(props: {
   // The picture: the server's, or, for the seconds before it arrives, this person's column alone.
   const weights = picture?.kind === "weights" ? picture : null;
   const numbers = picture?.kind === "numbers" ? picture : null;
+  const picks = picture?.kind === "picks" ? picture : null;
   const blind = picture?.kind === "blind" ? picture : null;
+  // A pick-one question's bars before the server's copy arrives: this person's stake on their pick alone.
+  const ownBars: PickOneBar[] = (pickOne?.answers ?? []).map((a) => ({ stake: shown?.pick !== undefined && a.index === shown.pick ? shown.stake : "0", noStake: 0 }));
   const ownAxis = numberUnit && shown?.number !== undefined && !numbers ? numberAxis([{ id: "me", stake: BigInt(shown.stake), value: BigInt(shown.number) }], numberUnit) : null;
   const own: WeightBucket[] = Array.from({ length: 10 }, (_, i) => ({
     n: i + 1,
@@ -256,7 +275,7 @@ export function MarketStage(props: {
           <Avatar name={me.name} hue={me.hue} size={36} />
           <div className="flex min-w-0 flex-1 flex-col">
             <p className="text-body-strong text-ink">
-              You’re in at {mineWords(shown)}
+              {entryLine(shown)}
             </p>
             <p className="text-caption text-ink-3">
               {[
@@ -275,6 +294,7 @@ export function MarketStage(props: {
               onClick={() => {
                 setValue(shown.percent);
                 if (shown.number !== undefined) setNumber(BigInt(shown.number));
+                if (shown.pick !== undefined) setPick(shown.pick);
                 setChanging(true);
                 setRaised(true);
               }}
@@ -283,7 +303,19 @@ export function MarketStage(props: {
             </Button>
           ) : null}
         </div>
-        {numberUnit ? (
+        {pickOne ? (
+          <PickOneBars
+            answers={pickOne.answers}
+            bars={picks ? picks.bars : ownBars}
+            entries={picks ? picks.entries : 1}
+            me={shown.pick !== undefined ? { name: me.name, hue: me.hue, stake: shown.stake, pick: shown.pick } : null}
+            livePick={changing ? pick : null}
+            blind={blind ? { inCount: blind.inCount, ofCount: blind.ofCount } : null}
+            heading={state === "locked" ? "Where everyone landed" : "Where the stake sits"}
+            caption={picks ? picks.caption : null}
+            rise={justIn !== null && mine === null}
+          />
+        ) : numberUnit ? (
           blind ? (
             // A blind number market draws no axis before the reveal (3.22): the ends alone would say what range everyone else picked.
             <div className="flex flex-col gap-3">
@@ -343,9 +375,21 @@ export function MarketStage(props: {
       label="Your number"
       raised={raised}
       onRaise={setRaised}
-      header={numberUnit ? <p className="text-body-strong text-ink">What’s your number?</p> : <OddsHeader value={value} />}
+      header={pickOne ? <p className="text-body-strong text-ink">Pick one</p> : numberUnit ? <p className="text-body-strong text-ink">What’s your number?</p> : <OddsHeader value={value} />}
       low={
         <>
+          {pickOne ? (
+            <PickOneEntry
+              answers={pickOne.answers}
+              value={pick}
+              hue={me.hue}
+              disabled={phase === "entering" && !changing && reading}
+              onChange={(i) => {
+                setPick(i);
+                if (!raised) setRaised(true);
+              }}
+            />
+          ) : null}
           {numberUnit ? (
             <>
               <NumberEntry
@@ -403,7 +447,7 @@ export function MarketStage(props: {
               </div>
             </div>
           ) : null}
-          {numberUnit ? null : (
+          {numberUnit || pickOne ? null : (
           <OddsLine
             value={value}
             mark={mark}
@@ -490,7 +534,7 @@ export function MarketStage(props: {
                 loading={step !== "idle"}
                 disabled={!picked || blocked}
               >
-                Save: {sayNumber(numberUnit ? (number ?? 0n) : BigInt(value ?? 0))}, {stakeWords(stakeUnits) || "…"}
+                Save: {pickWords(pick)}
               </Button>
               <Button
                 variant="secondary"
@@ -501,6 +545,7 @@ export function MarketStage(props: {
                   setRaised(false);
                   setValue(shown?.percent ?? null);
                   setNumber(shown?.number !== undefined ? BigInt(shown.number) : null);
+                  setPick(shown?.pick ?? null);
                 }}
               >
                 Never mind
@@ -514,12 +559,14 @@ export function MarketStage(props: {
               disabled={!picked || blocked || (phase === "entering" && reading)}
             >
               {!picked
-                ? numberUnit
-                  ? "Type your number"
-                  : "Slide to pick your odds"
+                ? pickOne
+                  ? "Pick an answer"
+                  : numberUnit
+                    ? "Type your number"
+                    : "Slide to pick your odds"
                 : state === "draft"
-                  ? `Looks right. I’m in at ${sayNumber(numberUnit ? (number ?? 0n) : BigInt(value ?? 0))}, ${stakeWords(stakeUnits) || "…"}`
-                  : `I’m in at ${sayNumber(numberUnit ? (number ?? 0n) : BigInt(value ?? 0))}, ${stakeWords(stakeUnits) || "…"}`}
+                  ? `Looks right. I’m in${pickOne ? ":" : " at"} ${pickWords(pick)}`
+                  : `I’m in${pickOne ? ":" : " at"} ${pickWords(pick)}`}
             </Button>
           )}
         </>

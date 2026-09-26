@@ -7,7 +7,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { answerFrom } from "@/lib/ai/client";
-import { Proposal, Scope, plainScope } from "@/lib/ai/markets";
+import { AnswerProposal, PickOneScope, Proposal, Scope, plainPickOneScope, plainScope } from "@/lib/ai/markets";
+import { AnswerArbitration } from "@/lib/ai/settler";
 
 type Recorded = { content: Array<{ type: string; name?: string; input?: Record<string, unknown> }> };
 const load = (name: string): Recorded => JSON.parse(readFileSync(new URL(`../fixtures/anthropic/${name}.json`, import.meta.url), "utf8")) as Recorded;
@@ -49,4 +50,28 @@ test("with no model, a line that ends in a full stop still reads as a question",
 test("with no model, the question is the line as typed, tidied", () => {
   const plain = plainScope("  does riley   finish ");
   assert.equal(plain.title, "does riley finish?");
+});
+
+// The pick-one calls (docs/design.md 3.29, 3.30), recorded with the same recorder: the write-up leaves the answers as the asker wrote
+// them, the proposal names one by its number, and the arbitration does too or says the terms do not decide it.
+test("a recorded pick-one write-up reads as a question and terms that say an unlisted answer cannot settle it, and leaves the answers alone", () => {
+  const scope = answerFrom(load("scope-pick-one"), "write_pick_one_terms", PickOneScope, "t");
+  assert.match(scope.title, /\?$/);
+  assert.ok(scope.terms.length > 10);
+  assert.equal("answers" in scope, false, "the answers are the asker's and the write-up does not return its own");
+  assert.equal("outcomes" in scope, false, "no wells: a pick-one question has answers, not yes and no");
+  const plain = plainPickOneScope("who falls asleep first");
+  assert.equal(plain.title, "who falls asleep first?");
+  assert.match(plain.terms, /none of them, it can’t be settled/);
+});
+
+test("a recorded answer proposal names one of the answers by its number, and a recorded answer arbitration does too", () => {
+  const p = answerFrom(load("propose-answer"), "propose_answer", AnswerProposal, "t");
+  assert.equal(p.outcome, "answer");
+  assert.ok(p.answer !== null && p.answer >= 0 && p.answer < 5, "the answer's number in the asker's list");
+  assert.ok(p.rationale.length > 3);
+  const a = answerFrom(load("arbitrate-answer"), "arbitrate_answer", AnswerArbitration, "t");
+  assert.ok(a.outcome === "cannot_decide" ? a.answer === null || true : a.answer !== null && a.answer >= 0 && a.answer < 5, "an answer, or that the terms do not decide it");
+  assert.ok(a.ruling.length >= 20);
+  assert.throws(() => answerFrom(load("propose-answer"), "propose_outcome", Proposal, "t"), /did not answer/, "an answer proposal is not a yes-or-no one");
 });

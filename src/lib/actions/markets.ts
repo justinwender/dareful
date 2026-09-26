@@ -9,7 +9,7 @@ import { isHex, type Hex } from "viem";
 import { z } from "zod";
 import { isInkName } from "@/lib/ui/ink";
 import { outcomeWordsFrom } from "@/lib/ui/outcome-words";
-import { plainNumberScope, plainScope, proposeNumber, proposeOutcome, scopeMarket, scopeNumber } from "@/lib/ai/markets";
+import { plainNumberScope, plainPickOneScope, plainScope, proposeAnswer, proposeNumber, proposeOutcome, scopeMarket, scopeNumber, scopePickOne } from "@/lib/ai/markets";
 import { addMarketPhoto, MediaError } from "@/lib/media";
 import { evidenceFor } from "@/lib/media/evidence";
 import { MAX_UPLOAD_BYTES } from "@/lib/media/pipeline";
@@ -23,7 +23,8 @@ import { db, schema } from "@/db";
 import { and, asc, eq } from "drizzle-orm";
 import { denominationById, ensureUnitInGroup, ensureUsd } from "@/lib/ledger/denominations";
 import { createOccasionGroup, isMember, setForPeople } from "@/lib/ledger/groups";
-import { callToOutcome, castVote, draftMarket, enterMarket, lockMarket, MarketError, marketById, openMarket, sayWhatHappened, stateOf, unitOf, VOID_OUTCOME, pickInk } from "@/lib/ledger/markets";
+import { answersOf, callToOutcome, castVote, draftMarket, enterMarket, lockMarket, MarketError, marketById, openMarket, sayWhatHappened, stateOf, unitOf, VOID_OUTCOME, pickInk } from "@/lib/ledger/markets";
+import { MAX_ANSWER_LENGTH, MAX_ANSWERS, MIN_ANSWERS } from "@/lib/ledger/pick-one";
 
 const uuid = z.string().uuid();
 const say = (err: unknown, fallback: string) => (err instanceof MarketError ? err.message : fallback);
@@ -52,11 +53,24 @@ function scaleTokenValid(userId: string, range: string | null, typical: string, 
  * Quick mode: one line in, terms out. The model drafts; if it is slow, down, or answers in the wrong shape, the
  * line is used as typed and the screen says so, because a market must never wait on a model.
  */
-export async function scopeMarketAction(rawLine: string, rawCriterion?: string, rawAnswers?: Array<{ question: string; yes: boolean }>, rawKind?: "binary" | "numeric"): Promise<ScopeResult | { error: string }> {
+export async function scopeMarketAction(rawLine: string, rawCriterion?: string, rawAnswers?: Array<{ question: string; yes: boolean }>, rawKind?: "binary" | "numeric" | "categorical", rawChoices?: string[]): Promise<ScopeResult | { error: string }> {
   const user = await requireUser();
   const line = z.string().trim().min(3).max(280).safeParse(rawLine);
   if (!line.success) return { error: "Ask it in a line." };
   const criterion = rawCriterion ? z.string().trim().min(3).max(120).safeParse(rawCriterion) : null;
+  if (rawKind === "categorical") {
+    // A pick-one question (3.29): the write-up is given the answers and leaves them exactly as the asker wrote them.
+    const choices = z.array(z.string().trim().min(1).max(MAX_ANSWER_LENGTH)).min(MIN_ANSWERS).max(MAX_ANSWERS).safeParse(rawChoices ?? []);
+    if (!choices.success) return { error: `Two to ${MAX_ANSWERS} answers, a few words each.` };
+    try {
+      const s = await scopePickOne({ line: line.data, answers: choices.data, now: new Date() });
+      return { title: s.title, terms: s.terms, ambiguous: false, criteria: [], resolvesInHours: s.resolvesInHours, plain: false, number: null, outcomes: null };
+    } catch (err) {
+      console.error("scoping a pick-one question failed; using the line as typed", err);
+      const p = plainPickOneScope(line.data);
+      return { ...p, ambiguous: false, criteria: [], resolvesInHours: 24, plain: true, number: null, outcomes: null };
+    }
+  }
   if (rawKind === "numeric") {
     try {
       const s = await scopeNumber({ line: line.data, now: new Date() });
@@ -113,6 +127,8 @@ const Draft = z.object({
   mark: z.discriminatedUnion("kind", [z.object({ kind: z.literal("emoji"), value: z.string().trim().min(1).max(16) }), z.object({ kind: z.literal("sticker"), id: uuid })]).optional(),
   /** The id the client made up front, so the ink it previewed on the question step is the ink that is stored (docs/design.md 3.29). */
   id: z.string().uuid().optional(),
+  /** A pick-one question's answers (3.29): two to six, in the asker's order, a person's id where one is a person. */
+  answers: z.array(z.object({ text: z.string().trim().min(1).max(MAX_ANSWER_LENGTH), userId: uuid.nullable().optional() })).min(MIN_ANSWERS).max(MAX_ANSWERS).optional(),
   /** A number question: its unit, the asker's scale as typed (blank for the model's), and what the model said under its token. */
   number: z
     .object({
@@ -131,6 +147,7 @@ export async function draftMarketAction(input: z.infer<typeof Draft>): Promise<{
   const d = parsed.data;
   try {
     if (d.argument?.tier === "contestable" && !d.argument.criterion) return { error: "Pick how it's being decided first." };
+    if (d.answers && (d.argument || d.number)) return { error: "Something in that is off." };
     if (d.who.kind === "set" && !(await isMember(d.who.groupId, user.id))) return { error: "You're not one of those people." };
     if (d.who.kind !== "set" && d.unit.kind === "existing") return { error: "That unit isn't around any more. Pick another." };
     const groupId = d.who.kind === "set" ? d.who.groupId : d.who.kind === "people" ? (await setForPeople(user.id, d.who.userIds)).id : (await createOccasionGroup(user.id)).id;
@@ -160,7 +177,8 @@ export async function draftMarketAction(input: z.infer<typeof Draft>): Promise<{
       denomId: denom.id,
       title: d.title,
       termsText: d.terms,
-      kind: d.number ? "numeric" : "binary",
+      kind: d.answers ? "categorical" : d.number ? "numeric" : "binary",
+      answers: d.answers?.map((a) => ({ text: a.text, userId: a.userId ?? null })) ?? null,
       unit: d.number?.unit ?? null,
       scale,
       typical,
@@ -171,7 +189,7 @@ export async function draftMarketAction(input: z.infer<typeof Draft>): Promise<{
       mode: d.mode,
       stalemate: d.stalemate,
       mark: d.mark ?? null,
-      outcomeWords: d.number || d.argument ? null : (d.outcomeWords ?? null),
+      outcomeWords: d.number || d.argument || d.answers ? null : (d.outcomeWords ?? null),
       revealMode: d.blind ? "blind" : "open",
       zone: await viewerZone(),
     });
@@ -181,9 +199,11 @@ export async function draftMarketAction(input: z.infer<typeof Draft>): Promise<{
   }
 }
 
-/** A position's number: a probability in whole percent on a yes-or-no question, or the whole number on a number question. */
-const Position = z.object({ stake: z.string().regex(/^\d{1,15}$/), valueBps: z.number().int().min(0).max(10_000).optional(), number: z.string().regex(/^\d{1,9}$/).optional() }).refine((p) => (p.valueBps === undefined) !== (p.number === undefined), "one number");
-const valueOf = (p: z.infer<typeof Position>): bigint => (p.number !== undefined ? BigInt(p.number) : BigInt(p.valueBps ?? 0));
+/** A position's number: a probability in whole percent on a yes-or-no question, the whole number on a number question, or the answer's index on a pick-one question. */
+const Position = z
+  .object({ stake: z.string().regex(/^\d{1,15}$/), valueBps: z.number().int().min(0).max(10_000).optional(), number: z.string().regex(/^\d{1,9}$/).optional(), answer: z.number().int().min(0).max(MAX_ANSWERS - 1).optional() })
+  .refine((p) => [p.valueBps, p.number, p.answer].filter((x) => x !== undefined).length === 1, "one number");
+const valueOf = (p: z.infer<typeof Position>): bigint => (p.number !== undefined ? BigInt(p.number) : p.answer !== undefined ? BigInt(p.answer) : BigInt(p.valueBps ?? 0));
 
 /** The creator's two signatures: one opens the market, one is their own position. Either failing leaves it a draft or open with nobody in. */
 export async function openMarketAction(rawId: string, createSignature: string, rawPosition: z.infer<typeof Position>, enterSignature: string): Promise<{ ok: true } | { error: string }> {
@@ -302,8 +322,12 @@ async function refreshProposal(dareId: string): Promise<void> {
     .orderBy(asc(schema.dareStatements.statedAt));
   try {
     const unit = unitOf(d);
+    const answers = answersOf(d);
     const evidence = await evidenceFor(dareId).catch(() => []);
-    const p = unit
+    const p = answers
+      ? // A pick-one question: which of the asker's answers happened, by its index (3.30).
+        await proposeAnswer({ title: d.title, terms: d.termsText, answers: answers.map((a) => a.text), statements: said, now: new Date(), evidence }).then((r) => ({ outcome: r.outcome === "answer" && r.answer !== null && r.answer < answers.length ? BigInt(r.answer) : r.outcome === "cannot_be_decided" ? VOID_OUTCOME : null, confidencePercent: r.confidencePercent, rationale: r.rationale }))
+      : unit
       ? await proposeNumber({ title: d.title, terms: d.termsText, unit, statements: said, now: new Date(), evidence }).then((r) => ({ outcome: r.outcome === "number" && r.number !== null ? BigInt(r.number) : r.outcome === "cannot_be_decided" ? VOID_OUTCOME : null, confidencePercent: r.confidencePercent, rationale: r.rationale }))
       : await proposeOutcome({ title: d.title, terms: d.termsText, statements: said, now: new Date(), evidence }).then((r) => ({ outcome: r.outcome === "yes" ? 1n : r.outcome === "no" ? 0n : r.outcome === "cannot_be_decided" ? VOID_OUTCOME : null, confidencePercent: r.confidencePercent, rationale: r.rationale }));
     const outcome = p.outcome;
@@ -387,7 +411,7 @@ export async function stateCaseAction(rawId: string, rawText: string): Promise<{
 }
 
 /** "Let the app call it": someone who is in it asks for the arbitration everyone agreed to going in. */
-export async function arbitrateAction(rawId: string): Promise<{ ok: true; outcome: "yes" | "no" | "void" | "number" } | { error: string }> {
+export async function arbitrateAction(rawId: string): Promise<{ ok: true; outcome: "yes" | "no" | "void" | "number" | "answer" } | { error: string }> {
   const user = await requireUser();
   const id = uuid.safeParse(rawId);
   if (!id.success) return { error: "That one doesn't exist." };
