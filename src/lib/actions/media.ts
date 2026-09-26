@@ -81,21 +81,24 @@ export async function addStickerAction(form: FormData): Promise<{ ok: true; id: 
 }
 
 /**
- * A screenshot on its own, attached while a question is being called (with a case for the tiebreaker, or after
- * the claim): evidence by whoever attached it, weighed as their claim when the arbitrator reads it. Nothing is
- * proposed again here; the arbitrator reads evidence when it is asked.
+ * Photos or screenshots on their own, attached while a question is being called (by anyone voting, or with a
+ * case for the tiebreaker): evidence by whoever attached them, shown to everyone voting and weighed as their claim
+ * when the arbitrator reads them. Nothing is proposed again here; the arbitrator reads evidence when it is asked.
  */
-export async function attachEvidenceAction(form: FormData): Promise<{ ok: true; mediaId: string } | { error: string }> {
+export async function attachEvidenceAction(form: FormData): Promise<{ ok: true; mediaIds: string[] } | { error: string }> {
   const user = await requireUser();
   const dareId = z.string().uuid().safeParse(form.get("dareId"));
-  const file = form.get("screenshot");
-  if (!dareId.success || !(file instanceof File)) return { error: "That didn't come through. Try again." };
-  if (file.size === 0) return { error: "That doesn't look like a screenshot." };
-  if (file.size > MAX_UPLOAD_BYTES) return { error: "That screenshot is too big to send." };
+  const files = form.getAll("attachment").filter((f): f is File => f instanceof File && f.size > 0);
+  if (!dareId.success || files.length === 0) return { error: "That didn't come through. Try again." };
+  if (files.some((f) => f.size > MAX_UPLOAD_BYTES)) return { error: "One of those is too big to send." };
   try {
-    const bytes = Buffer.from(await file.arrayBuffer());
-    const row = await addMarketPhoto({ dareId: dareId.data, authorId: user.id, bytes, viewerZone: await viewerZone(), role: "evidence" });
-    return { ok: true, mediaId: row.id };
+    const mediaIds: string[] = [];
+    const zone = await viewerZone();
+    for (const file of files) {
+      const row = await addMarketPhoto({ dareId: dareId.data, authorId: user.id, bytes: Buffer.from(await file.arrayBuffer()), viewerZone: zone, role: "evidence" });
+      mediaIds.push(row.id);
+    }
+    return { ok: true, mediaIds };
   } catch (err) {
     if (err instanceof MediaError) return { error: err.message };
     if (err instanceof StorageUnavailable) return { error: "Screenshots are off right now." };

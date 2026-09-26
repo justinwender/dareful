@@ -191,6 +191,8 @@ export type DraftInput = {
   revealMode?: "open" | "blind";
   /** An emoji (drawable by the tile renderer) or one of the creator's own stickers. */
   mark?: MarkInput | null;
+  /** A yes-or-no market's outcomes in its own words (docs/design.md 3.25), or null for "Yes" and "No". */
+  outcomeWords?: [string, string, string, string] | null;
   /** The asker's IANA zone, for the absolute close time on the link tile (docs/design.md 3.27). */
   zone?: string | null;
   /** Yes-or-no by default. A number market carries its unit and its scoring scale (docs/design.md 3.26). */
@@ -269,6 +271,7 @@ export async function draftMarket(input: DraftInput): Promise<DareRow> {
       threshold: Math.floor(n / 2) + 1,
       markKind: emoji ? "emoji" : sticker ? "sticker" : null,
       markValue: emoji ?? sticker?.id ?? null,
+      outcomeWords: kind === "binary" && input.outcomeWords ? input.outcomeWords.map((w) => w.trim()) : null,
     })
     .returning();
   if (!row) throw new MarketError("Couldn't save that.", "chain");

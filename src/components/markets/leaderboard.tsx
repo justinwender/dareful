@@ -1,7 +1,7 @@
 import { Avatar } from "@/components/ledger/avatar";
 import { ObligationToken } from "@/components/ledger/obligation-token";
 import type { DenominationRow } from "@/lib/ledger/denominations";
-import { gotSentence } from "@/lib/ui/copy";
+import { gotSentence, possessive } from "@/lib/ui/copy";
 import { hueBar, hueFor, hueRing, hueVar } from "@/lib/ui/hue";
 
 export type Standing = { userId: string; name: string; percent: number; score: number };
@@ -125,5 +125,53 @@ export function Transfers({ transfers, people, denomination, viewerId }: { trans
         );
       })}
     </ul>
+  );
+}
+
+/**
+ * "Who's got who" (docs/design.md 3.37, item 7): grouped by owner, the person who picks up next. The owner's
+ * 28px avatar and "John's got" in `body` 600, then the people they have got as tokens under it, in the owner's
+ * hue as everywhere else. Then one caption naming the pairs between whom nothing changed hands ("Called it even:
+ * you and Priya, John and Gabe."). A market that moved nothing says so in one line.
+ */
+export function WhoHasWho({ transfers, people, participants, denomination, viewerId }: { transfers: Transfer[]; people: Map<string, { id: string; displayName: string }>; participants: string[]; denomination: DenominationRow; viewerId: string }) {
+  if (transfers.length === 0) return <p className="text-body-sm text-ink-2">Nothing changes hands. Everyone was about as close as everyone else.</p>;
+  const first = (id: string) => (id === viewerId ? "you" : (people.get(id)?.displayName ?? "Someone").split(/\s+/)[0] ?? "Someone");
+  const owners = Array.from(new Set(transfers.map((t) => t.fromId))).sort((a, b) => (a === viewerId ? -1 : b === viewerId ? 1 : first(a).localeCompare(first(b))));
+  const even: string[] = [];
+  for (let i = 0; i < participants.length; i++)
+    for (let j = i + 1; j < participants.length; j++) {
+      const a = participants[i] as string;
+      const b = participants[j] as string;
+      if (!transfers.some((t) => (t.fromId === a && t.toId === b) || (t.fromId === b && t.toId === a))) even.push(a === viewerId || b === viewerId ? `you and ${first(a === viewerId ? b : a)}` : `${first(a)} and ${first(b)}`);
+    }
+  return (
+    <div className="flex flex-col gap-4">
+      {owners.map((ownerId) => {
+        const owner = people.get(ownerId);
+        if (!owner) return null;
+        return (
+          <div key={ownerId} className="flex flex-col gap-2">
+            <p className="flex items-center gap-2 text-body-strong text-ink">
+              <Avatar name={owner.displayName} hue={hueFor(ownerId)} size={28} />
+              {ownerId === viewerId ? "You’ve got" : `${possessive(owner.displayName.split(/\s+/)[0] ?? owner.displayName)} got`}
+            </p>
+            <ul className="flex flex-wrap gap-2 pl-9">
+              {transfers
+                .filter((t) => t.fromId === ownerId)
+                .map((t) => {
+                  const to = people.get(t.toId);
+                  return to ? (
+                    <li key={t.toId}>
+                      <ObligationToken owner={{ id: owner.id, displayName: owner.displayName, hue: hueFor(owner.id) }} other={to} viewerId={viewerId} denomination={denomination} quantity={t.quantity} />
+                    </li>
+                  ) : null;
+                })}
+            </ul>
+          </div>
+        );
+      })}
+      {even.length > 0 ? <p className="text-caption text-ink-3">Called it even: {even.join(", ")}.</p> : null}
+    </div>
   );
 }

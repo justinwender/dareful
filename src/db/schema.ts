@@ -456,8 +456,16 @@ export const dares = pgTable(
     markKind: text("mark_kind"),
     /** The emoji, or a `picture_marks` id as text for a picture or a sticker (docs/decisions.md 2026-09-18). */
     markValue: text("mark_value"),
+    /**
+     * A yes-or-no market's outcomes in the question's own words (docs/design.md 3.25), written with the terms:
+     * the two wells and the two outcome lines, in the order yes well, no well, yes line, no line ("He fell
+     * asleep", "He stayed up", "He did.", "He didn't."). Null on markets made before, and when the write-up
+     * returned none; those say "Yes" and "No".
+     */
+    outcomeWords: text("outcome_words").array(),
   },
   (t) => [
+    check("dares_outcome_words_four", sql`${t.outcomeWords} is null or array_length(${t.outcomeWords}, 1) = 4`),
     check("dares_mark_kind_known", sql`${t.markKind} is null or ${t.markKind} in ('emoji', 'image', 'sticker')`),
     check("dares_mark_both_or_neither", sql`(${t.markKind} is null) = (${t.markValue} is null)`),
     check("dares_kind_known", sql`${t.kind} in ('binary', 'numeric', 'categorical')`),

@@ -32,6 +32,13 @@ export const Scope = z.object({
   criteria: z.preprocess(listOfStrings, z.array(z.string().trim().min(3).max(90)).max(3)),
   /** How long until the group could know, in hours from now. */
   resolvesInHours: z.number().int().min(1).max(24 * 120),
+  /**
+   * The outcomes in the question's own words (docs/design.md 3.25): the two wells and the two settled lines. Each
+   * short; any missing and the market says "Yes" and "No" instead. Never a reason to refuse the write-up.
+   */
+  outcomes: z
+    .object({ yesWell: z.string().trim().max(60).default(""), noWell: z.string().trim().max(60).default(""), yesLine: z.string().trim().max(60).default(""), noLine: z.string().trim().max(60).default("") })
+    .default({ yesWell: "", noWell: "", yesLine: "", noLine: "" }),
 });
 export type MarketScope = z.infer<typeof Scope>;
 
@@ -45,6 +52,7 @@ Write:
 - ambiguous: true only if reasonable friends would disagree about what counts, so that the question cannot be settled as written. Most lines about a future event are not ambiguous: pick the obvious reading and state it in the terms. Set it sparingly.
 - criteria: only when ambiguous, up to three different measurable ways to decide it, each a short phrase. Otherwise an empty list.
 - resolvesInHours: how long until they could know.
+- outcomes: the two answers in the question's own words, as four short phrasings. yesWell and noWell are what someone taps to say what happened, two to five words, no full stop ("He fell asleep", "He stayed up"). yesLine and noLine are the settled headline, a short sentence with its full stop ("He did.", "He didn't."). Use the people and things in the question, never "yes" or "no" as the whole phrase.
 
 Never mention odds, prices, markets, wagers, or money. These are friends.`;
 
@@ -65,8 +73,9 @@ export async function scopeMarket(input: { line: string; criterion?: string; ans
         ambiguous: { type: "boolean" },
         criteria: { type: "array", items: { type: "string" }, maxItems: 3 },
         resolvesInHours: { type: "integer", minimum: 1 },
+        outcomes: { type: "object", properties: { yesWell: { type: "string" }, noWell: { type: "string" }, yesLine: { type: "string" }, noLine: { type: "string" } }, required: ["yesWell", "noWell", "yesLine", "noLine"] },
       },
-      required: ["title", "terms", "ambiguous", "criteria", "resolvesInHours"],
+      required: ["title", "terms", "ambiguous", "criteria", "resolvesInHours", "outcomes"],
     },
     shape: Scope,
     timeoutMs: 12_000,

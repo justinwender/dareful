@@ -8,7 +8,7 @@
  */
 import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { memoriesOnMarkets } from "@/lib/media";
+import { frameOnMarkets } from "@/lib/media";
 import { denominationsByIds, type DenominationRow } from "./denominations";
 import { inkOf, type InkName } from "@/lib/ui/ink";
 import { stateOf, unitOf, VOID_OUTCOME, type DareRow, type MarketState, type PositionRow, type Unit } from "./markets";
@@ -36,8 +36,10 @@ export type MarketCardData = {
   /** How many of the group have called it, and who first said what happened. For the "Needs you" context line. */
   votesCast: number;
   saidBy: string | null;
-  /** The memories on a settled market (docs/marks-and-memories.md), oldest first, for the frame on its story (3.4). Never evidence. */
+  /** The frame of an ended market (docs/design.md 3.8): the claim's clip first, then the memories, for its story card (3.4). */
   media: Array<{ id: string; author: { id: string; displayName: string } }>;
+  /** Who called it, by first name: the first voter on a settled market. For the Just happened row (4.7). */
+  calledBy: string | null;
 };
 
 const percentOf = (p: PositionRow) => Number(p.value) / 100;
@@ -72,11 +74,14 @@ export async function marketCards(input: { viewerId: string; groupId?: string; w
     db.select({ groupId: schema.groupMembers.groupId, userId: schema.groupMembers.userId }).from(schema.groupMembers).where(and(inArray(schema.groupMembers.groupId, groupIds), isNotNull(schema.groupMembers.userId), isNull(schema.groupMembers.leftAt))),
     db.select({ dareId: schema.dareStatements.dareId, userId: schema.dareStatements.userId }).from(schema.dareStatements).where(and(inArray(schema.dareStatements.dareId, ids), eq(schema.dareStatements.kind, "update"))).orderBy(schema.dareStatements.statedAt),
   ]);
-  const userIds = Array.from(new Set([...positions.map((p) => p.userId), ...said.map((x) => x.userId), ...edges.flatMap((e) => [e.fromUser, e.toUser])].filter((x): x is string => Boolean(x))));
+  const userIds = Array.from(new Set([...positions.map((p) => p.userId), ...said.map((x) => x.userId), ...edges.flatMap((e) => [e.fromUser, e.toUser]), ...votes.map((v) => v.userId)].filter((x): x is string => Boolean(x))));
   const users = userIds.length ? await db.select({ id: schema.users.id, displayName: schema.users.displayName }).from(schema.users).where(inArray(schema.users.id, userIds)) : [];
   const nameOf = new Map(users.map((u) => [u.id, u.displayName]));
   const denoms = await denominationsByIds(Array.from(new Set(dares.map((d) => d.denomId))));
-  const memories = await memoriesOnMarkets(dares.filter((d) => stateOf(d) === "resolved").map((d) => d.id));
+  const memories = await frameOnMarkets(dares.filter((d) => ["resolved", "voided", "expired"].includes(stateOf(d))).map((d) => d.id));
+  const firstVotes = await db.select({ dareId: schema.dareVotes.dareId, userId: schema.dareVotes.userId, signedAt: schema.dareVotes.signedAt }).from(schema.dareVotes).where(inArray(schema.dareVotes.dareId, ids));
+  const callerOf = new Map<string, string>();
+  for (const v of [...firstVotes].sort((a, b) => a.signedAt.getTime() - b.signedAt.getTime())) if (!callerOf.has(v.dareId)) callerOf.set(v.dareId, v.userId);
 
   const out: MarketCardData[] = [];
   for (const d of dares) {
@@ -110,6 +115,7 @@ export async function marketCards(input: { viewerId: string; groupId?: string; w
       saidBy: ((u) => (u ? (nameOf.get(u) ?? null) : null))(said.find((x) => x.dareId === d.id)?.userId),
       needsYou: state === "open" && !iAmIn ? "Put your number in" : state === "locked" && !votes.some((v) => v.dareId === d.id && v.userId === input.viewerId) ? "Say how it came out" : null,
       media: (memories.get(d.id) ?? []).map((m) => ({ id: m.id, author: m.author })),
+      calledBy: state === "resolved" && callerOf.get(d.id) ? ((id) => (id === input.viewerId ? "You" : (nameOf.get(id) ?? "Someone").split(/\s+/)[0] ?? "Someone"))(callerOf.get(d.id) as string) : null,
     });
   }
   return out;

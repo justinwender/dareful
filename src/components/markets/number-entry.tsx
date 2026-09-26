@@ -25,7 +25,7 @@ export function numeralSize(digits: number): { px: number; unitBelow: boolean } 
  *
  * The field is a control, so its sizes are literal here and do not count toward the screen's budget (1.2).
  */
-export function NumberEntry({ value, onChange, unit, hue, disabled = false, header = "What’s your number?", label }: { value: bigint | null; onChange: (v: bigint | null) => void; unit: { singular: string; plural: string }; hue: Hue; disabled?: boolean; header?: string | null; label?: string }) {
+export function NumberEntry({ value, onChange, unit, hue, disabled = false, header = "What’s your number?", label, problem = false }: { value: bigint | null; onChange: (v: bigint | null) => void; unit: { singular: string; plural: string }; hue: Hue; disabled?: boolean; header?: string | null; label?: string; /** A number past the limit (3.26): the ring becomes `--ink` and the field says so. */ problem?: boolean }) {
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
   const hold = useRef<{ start: ReturnType<typeof setTimeout> | null; every: ReturnType<typeof setInterval> | null }>({ start: null, every: null });
@@ -100,7 +100,7 @@ export function NumberEntry({ value, onChange, unit, hue, disabled = false, head
       ) : null}
       <div className="flex items-center gap-3">
         {stepper(-1n)}
-        <div className={`flex min-h-[84px] min-w-0 flex-1 items-baseline gap-2 rounded-button bg-ground px-4 py-3 ${unitBelow ? "flex-col gap-0" : ""}`} style={{ boxShadow: `inset 0 0 0 1.5px ${hueVar(hue)}` }}>
+        <div className={`flex min-h-[84px] min-w-0 flex-1 items-baseline gap-2 rounded-button bg-ground px-4 py-3 ${unitBelow ? "flex-col gap-0" : ""}`} style={{ boxShadow: `inset 0 0 0 1.5px ${problem ? "var(--ink)" : hueVar(hue)}` }} data-problem={problem || undefined}>
           <div className="relative min-w-0 flex-1">
             {/* What is seen: the number with its separators. The input beneath carries the digits and the caret. */}
             <span aria-hidden="true" className="pointer-events-none block truncate font-serif tabular-nums text-ink" style={{ fontSize: px, lineHeight: 1, minHeight: px }}>

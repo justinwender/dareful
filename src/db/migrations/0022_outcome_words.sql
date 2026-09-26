@@ -1,0 +1,2 @@
+ALTER TABLE "dares" ADD COLUMN "outcome_words" text[];--> statement-breakpoint
+ALTER TABLE "dares" ADD CONSTRAINT "dares_outcome_words_four" CHECK ("dares"."outcome_words" is null or array_length("dares"."outcome_words", 1) = 4);

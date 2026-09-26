@@ -1,14 +1,1 @@
-{
-  "src/app/c/[token]/page.tsx": {
-    "sizes": 5,
-    "serifs": 2
-  },
-  "src/app/m/new/page.tsx": {
-    "sizes": 5,
-    "serifs": 2
-  },
-  "src/app/page.tsx": {
-    "sizes": 6,
-    "serifs": 3
-  }
-}
+{}

@@ -36,6 +36,8 @@ export type MarketCardProps = {
   people: Array<{ id: string; name: string; percent: number | null }>;
   groupSize: number;
   outcome: 0 | 1 | null;
+  /** The outcome in the market's words ("He did."), or "Yes." and "No." (3.25). */
+  outcomeLine?: string | null;
   /** A number question: the ruler (3.5) where the call line would be, and the answer as a sentence once it has one. */
   number?: { ruler: RulerData | null; answerLine: string | null } | null;
   denomination: DenominationRow;
@@ -101,7 +103,7 @@ export function MarketCard(p: MarketCardProps) {
             </>
           ) : (
           <>
-            {p.state === "resolved" && p.outcome !== null ? <p className="text-serif-l text-ink">{p.outcome === 1 ? "Yes." : "No."}</p> : null}
+            {p.state === "resolved" && p.outcome !== null ? <p className="text-serif-l text-ink">{p.outcomeLine ?? (p.outcome === 1 ? "Yes." : "No.")}</p> : null}
             <CallLine pins={pins} state={p.state === "resolved" ? "resolved" : pins.length > 0 ? "in" : "hidden"} outcome={p.outcome ?? undefined} />
           </>
           )

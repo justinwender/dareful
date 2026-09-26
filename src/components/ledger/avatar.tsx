@@ -5,7 +5,7 @@ import { hueVar, type Hue } from "@/lib/ui/hue";
 export type AvatarProps = {
   name: string;
   hue: Hue;
-  size?: 20 | 22 | 24 | 26 | 28 | 32 | 36 | 44 | 52 | 56 | 76;
+  size?: 20 | 22 | 24 | 26 | 28 | 32 | 36 | 40 | 44 | 52 | 56 | 76;
   /** Unknown or unclaimed person: stone hue and a dashed ring (docs/design.md 3.1). */
   ghost?: boolean;
   /** The surface behind it, for the overlap ring when stacked. */

@@ -24,6 +24,7 @@ import { daresTypes } from "@/lib/chain/typed-data";
 import { shrinkPhoto } from "@/lib/ui/shrink-photo";
 import { countWord } from "@/lib/ledger/weight";
 import { unitPhrase } from "@/lib/ledger/number-axis";
+import { lowerFirst } from "@/lib/ui/outcome-words";
 import type { Hue } from "@/lib/ui/hue";
 import { cn } from "@/lib/utils";
 import type { Signing } from "./market-actions";
@@ -32,14 +33,16 @@ import { NumberEntry } from "./number-entry";
 /** What a vote names: yes, no, nobody can tell, or, on a number question, "n:" and the whole number. */
 export type Word = "yes" | "no" | "void" | `n:${string}`;
 type Unit = { singular: string; plural: string } | null;
+/** The market's outcomes in its own words (3.25): the wells, or null for "Yes" and "No". */
+export type Wells = { yes: string; no: string } | null;
 const isNumber = (w: Word): w is `n:${string}` => w.startsWith("n:");
 const numberOf = (w: Word): bigint => BigInt(w.slice(2));
-/** "Yes", "No", "Nobody can tell", "14 shirts". */
-const label = (w: Word, unit: Unit): string => (w === "yes" ? "Yes" : w === "no" ? "No" : w === "void" ? "Nobody can tell" : unit ? unitPhrase(numberOf(w), unit) : w.slice(2));
-/** "yes", "no", "nobody can tell", "14 shirts", for the middle of a sentence. */
-const said = (w: Word, unit: Unit): string => (w === "yes" ? "yes" : w === "no" ? "no" : w === "void" ? "nobody can tell" : unit ? unitPhrase(numberOf(w), unit) : w.slice(2));
+/** "He fell asleep", "Yes", "No", "Nobody can tell", "14 shirts". */
+const labelWith = (w: Word, unit: Unit, wells: Wells): string => (w === "yes" ? (wells?.yes ?? "Yes") : w === "no" ? (wells?.no ?? "No") : w === "void" ? "Nobody can tell" : unit ? unitPhrase(numberOf(w), unit) : w.slice(2));
+/** "he fell asleep", "yes", "no", "nobody can tell", "14 shirts", for the middle of a sentence. */
+const saidWith = (w: Word, unit: Unit, wells: Wells): string => (w === "yes" ? (wells ? lowerFirst(wells.yes) : "yes") : w === "no" ? (wells ? lowerFirst(wells.no) : "no") : w === "void" ? "nobody can tell" : unit ? unitPhrase(numberOf(w), unit) : w.slice(2));
 /** The bare number in a count line ("3 of 6 have said 14."), the unit having been said once already. */
-const bare = (w: Word, unit: Unit): string => (isNumber(w) ? numberOf(w).toLocaleString("en-US") : said(w, unit));
+const bareWith = (w: Word, unit: Unit, wells: Wells): string => (isNumber(w) ? numberOf(w).toLocaleString("en-US") : saidWith(w, unit, wells));
 const WORDS: Word[] = ["yes", "no", "void"];
 const VOID = (1n << 256n) - 1n;
 const outcomeOf = (w: Word): bigint => (w === "yes" ? 1n : w === "no" ? 0n : w === "void" ? VOID : numberOf(w));
@@ -55,8 +58,12 @@ export type CallSheetProps = {
   votes: Array<{ name: string; hue: Hue; outcome: Word }>;
   /** What happened, in each person's words. */
   statements: Array<{ name: string; said: string }>;
-  /** Screenshots attached to what happened, each with who supplied it: a claim by that person, shown as one (docs/decisions.md, the media phase). */
+  /** Everything attached while it is being called, each with who supplied it: everyone voting sees it (3.24). */
   evidence?: Array<{ id: string; by: string }>;
+  /** The outcomes in the market's own words (3.25), or null for "Yes" and "No". */
+  wells?: Wells;
+  /** Whether this person has a line on the record with no vote yet ("You added a note", 3.24). */
+  myNote?: boolean;
   /** The app's read of it, where there is one: the claim when nobody has said anything yet, a caption otherwise. */
   proposal: {
     outcome: Word | null;
@@ -87,6 +94,10 @@ export type CallSheetProps = {
 export function CallSheet(props: CallSheetProps) {
   const { dareId, signing, threshold, quorum, votes, myVote, proposal } = props;
   const unit = props.numberUnit ?? null;
+  const wells = props.wells ?? null;
+  const label = (w: Word, u: Unit) => labelWith(w, u, wells);
+  const said = (w: Word, u: Unit) => saidWith(w, u, wells);
+  const bare = (w: Word, u: Unit) => bareWith(w, u, wells);
   const router = useRouter();
   const sign = useSigner();
   const [pick, setPick] = useState<Word | null>(null);
@@ -95,8 +106,8 @@ export function CallSheet(props: CallSheetProps) {
   const [picking, setPicking] = useState(false);
   const [raised, setRaised] = useState(false);
   const [line, setLine] = useState("");
-  // A screenshot to go with the line (PLANNING.md open question 14): evidence, read by the proposal and the arbitrator, never a memory.
-  const [shot, setShot] = useState<{ file: File; preview: string } | null>(null);
+  // Up to three photos or screenshots with the claim (3.24): evidence, seen by everyone voting, read by the model as this person's claim.
+  const [shots, setShots] = useState<Array<{ file: File; preview: string }>>([]);
   const [choice, setChoice] = useState<Word | null>(null);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -152,16 +163,16 @@ export function CallSheet(props: CallSheetProps) {
   async function say() {
     const call: Word | null = unit ? (typed !== null ? `n:${typed.toString()}` : null) : pick;
     setProblem(null);
-    if (line.trim().length >= 2 || shot) {
+    if (line.trim().length >= 2 || shots.length > 0) {
       setBusy(true);
       const form = new FormData();
       form.set("dareId", dareId);
       form.set("text", line);
-      if (shot) form.set("screenshot", await shrinkPhoto(shot.file), "screenshot.jpg");
+      for (const s of shots) form.append("attachment", await shrinkPhoto(s.file), "attachment.jpg");
       const r = await sayWhatHappenedAction(form);
       setBusy(false);
       if ("error" in r) return setProblem(r.error);
-      setShot(null);
+      setShots([]);
     }
     // On a number question the number a dissenter saw is optional (3.24): words alone go on the record and cast nothing.
     if (!call) {
@@ -177,7 +188,6 @@ export function CallSheet(props: CallSheetProps) {
   const numberPanel = unit ? (
     <NumberEntry header={null} label="What it was" value={typed} unit={unit} hue={props.me.hue} disabled={busy} onChange={(v) => setTyped(v)} />
   ) : null;
-  const numberPrimary = unit ? (typed !== null ? `That’s how I saw it: ${unitPhrase(typed, unit)}` : line.trim().length >= 2 ? "Say what happened" : "Say what you saw") : "";
 
   const modal = (
     <Sheet
@@ -208,7 +218,7 @@ export function CallSheet(props: CallSheetProps) {
               onClick={() => cast(choice)}
               loading={busy}
             >
-              Call it {said(choice, unit)}
+              {wells && (choice === "yes" || choice === "no") ? `Say it: ${said(choice, unit)}` : `Call it ${said(choice, unit)}`}
             </Button>
             <Button
               variant="tertiary"
@@ -235,9 +245,18 @@ export function CallSheet(props: CallSheetProps) {
           <input id="what-happened-2" value={line} onChange={(e) => setLine(e.target.value)} maxLength={280} placeholder="I counted 15 with the torn one" className="h-12 rounded-button border border-line bg-ground px-4 text-body text-ink placeholder:text-ink-3" />
         </div>
         <ProblemSummary messages={[choice === null ? problem : null]} />
-        <Button variant="primary" onClick={say} loading={busy && choice === null} disabled={typed === null && line.trim().length < 2}>
-          {numberPrimary}
+        <Button variant="primary" onClick={say} loading={busy && choice === null} disabled={typed === null}>
+          {typed !== null ? `It was ${unitPhrase(typed, unit)}` : "Type what it was"}
         </Button>
+        {typed === null ? (
+          // A dissent without a number is a note on the record and never a vote (3.24).
+          <>
+            <Button variant="tertiary" onClick={say} loading={busy && choice === null} disabled={line.trim().length < 2}>
+              Add a note instead
+            </Button>
+            <p className="text-caption text-ink-3">A note goes on the record. Only a number counts toward settling it.</p>
+          </>
+        ) : null}
         <Button variant="tertiary" onClick={() => setChoice("void")}>
           Nobody can tell
         </Button>
@@ -274,6 +293,7 @@ export function CallSheet(props: CallSheetProps) {
         </p>
       ))}
       {props.evidence?.length ? <Attached evidence={props.evidence} /> : null}
+      {myVote !== null || claim !== null ? <AttachMore dareId={dareId} /> : null}
       {proposal?.rationale ? (
         <p className="text-caption text-ink-3">
           {proposal.line} {proposal.rationale}
@@ -346,7 +366,7 @@ export function CallSheet(props: CallSheetProps) {
                 placeholder="Out cold by the second act"
                 className="h-12 rounded-button border border-line bg-ground px-4 text-body text-ink placeholder:text-ink-3"
               />
-              <ScreenshotRow shot={shot} disabled={busy} onPick={(f) => setShot(f)} />
+              <AttachRow shots={shots} disabled={busy} onChange={setShots} />
             </div>
           }
           foot={
@@ -387,6 +407,7 @@ export function CallSheet(props: CallSheetProps) {
             ) : (
               <>
                 <ProblemSummary messages={[choice === null ? problem : null]} />
+                {props.myNote ? <p className="text-caption text-ink-3">You added a note. Only a number counts toward settling it.</p> : null}
                 <Button variant="primary" onClick={() => setChoice(claim)}>
                   {claim === "void" ? `${label(claim, unit)}, that’s right` : unit ? `That’s right, ${bare(claim, unit)}` : `${label(claim, unit)}, that’s right`}
                 </Button>
@@ -484,47 +505,110 @@ export function CallSheet(props: CallSheetProps) {
   );
 }
 
+type Shot = { file: File; preview: string };
+const SHOTS_MAX = 3;
+
 /**
- * The screenshot row under "what happened" and under a case: the phone's library, never the camera (a screenshot
- * already exists), shown back at 44px before it goes anywhere. Words on it are a control's, so the budget does
- * not count them (4.8).
+ * The row to attach proof with the claim or a case (3.24): "Add a photo or a screenshot", the phone's library
+ * first, up to three per person, each shown as a 44px square with a remove control before it goes anywhere.
+ * Words on it are a control's, so the budget does not count them (4.8).
  */
-function ScreenshotRow({ shot, disabled, onPick }: { shot: { file: File; preview: string } | null; disabled: boolean; onPick: (shot: { file: File; preview: string } | null) => void }) {
+function AttachRow({ shots, disabled, onChange }: { shots: Shot[]; disabled: boolean; onChange: (shots: Shot[]) => void }) {
   return (
-    <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-button bg-surface-2 px-3 py-1 text-body-sm font-semibold text-ink">
-      {shot ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={shot.preview} alt="" width={44} height={44} className="h-11 w-11 shrink-0 rounded-stamp-28 object-cover" />
-      ) : (
-        <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-ink-2">
-          <rect x="5" y="3" width="14" height="18" rx="2" />
-          <path d="M9 7h6M9 11h6M9 15h3" />
-        </svg>
-      )}
-      <span className="min-w-0 flex-1">{shot ? "Change the screenshot" : "Attach a screenshot"}</span>
-      <input
-        type="file"
-        accept="image/*"
-        className="sr-only"
-        disabled={disabled}
-        onChange={(e) => {
-          const f = e.target.files?.[0] ?? null;
-          if (shot) URL.revokeObjectURL(shot.preview);
-          onPick(f ? { file: f, preview: URL.createObjectURL(f) } : null);
-        }}
-      />
-    </label>
+    <div className="flex flex-col gap-2" data-attach-row="">
+      {shots.length > 0 ? (
+        <ul className="flex flex-wrap gap-2" aria-label="Attached, not yet sent">
+          {shots.map((s, i) => (
+            <li key={s.preview} className="relative">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={s.preview} alt="" width={44} height={44} className="h-11 w-11 rounded-stamp-28 object-cover" />
+              <button
+                type="button"
+                aria-label={`Remove attachment ${i + 1}`}
+                disabled={disabled}
+                onClick={() => {
+                  URL.revokeObjectURL(s.preview);
+                  onChange(shots.filter((x) => x !== s));
+                }}
+                className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-pill bg-ink text-ground"
+              >
+                <svg aria-hidden="true" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+                  <path d="M6 6l12 12M18 6L6 18" />
+                </svg>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {shots.length < SHOTS_MAX ? (
+        <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-button bg-surface-2 px-3 py-1 text-body-sm font-semibold text-ink">
+          <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-ink-2">
+            <path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2.2l1.2-2h6.2l1.2 2h2.2A1.5 1.5 0 0 1 20 8.5v9A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5z" />
+            <circle cx="12" cy="13" r="3.4" />
+          </svg>
+          <span className="min-w-0 flex-1">{shots.length === 0 ? "Add a photo or a screenshot" : "Add another"}</span>
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            className="sr-only"
+            disabled={disabled}
+            onChange={(e) => {
+              const files = Array.from(e.target.files ?? []).slice(0, SHOTS_MAX - shots.length);
+              e.target.value = "";
+              onChange([...shots, ...files.map((f) => ({ file: f, preview: URL.createObjectURL(f) }))]);
+            }}
+          />
+        </label>
+      ) : null}
+    </div>
+  );
+}
+
+/** Anyone voting may attach too (3.24): the same row in the raised sheet, sending at once, with nothing else to say. */
+function AttachMore({ dareId }: { dareId: string }) {
+  const router = useRouter();
+  const [shots, setShots] = useState<Shot[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  async function send() {
+    setProblem(null);
+    setBusy(true);
+    try {
+      const form = new FormData();
+      form.set("dareId", dareId);
+      for (const s of shots) form.append("attachment", await shrinkPhoto(s.file), "attachment.jpg");
+      const r = await attachEvidenceAction(form);
+      if ("error" in r) return setProblem(r.error);
+      setShots([]);
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      <AttachRow shots={shots} disabled={busy} onChange={setShots} />
+      {shots.length > 0 ? (
+        <>
+          <ProblemSummary messages={[problem]} />
+          <Button variant="secondary" onClick={send} loading={busy}>
+            {shots.length === 1 ? "Attach it" : `Attach these ${shots.length}`}
+          </Button>
+        </>
+      ) : null}
+    </div>
   );
 }
 
 /** What has been attached so far, 44px each, with who supplied it: the thing the arbitrator will be told too. */
 function Attached({ evidence }: { evidence: Array<{ id: string; by: string }> }) {
   return (
-    <ul className="flex flex-wrap gap-2" aria-label="Screenshots attached">
+    <ul className="flex flex-wrap gap-2" aria-label="Attached">
       {evidence.map((e) => (
         <li key={e.id} className="flex items-center gap-2 text-caption text-ink-3">
           {/* eslint-disable-next-line @next/next/no-img-element -- behind the door, a signed URL that expires */}
-          <img src={`/api/media/${e.id}?size=thumb`} alt={`A screenshot ${e.by} attached`} width={44} height={44} loading="lazy" data-evidence={e.id} className="h-11 w-11 rounded-stamp-28 bg-surface-2 object-cover" />
+          <img src={`/api/media/${e.id}?size=thumb`} alt={`What ${e.by} attached`} width={44} height={44} loading="lazy" data-evidence={e.id} className="h-11 w-11 rounded-stamp-28 bg-surface-2 object-cover" />
           <span>{e.by}</span>
         </li>
       ))}
@@ -537,7 +621,7 @@ function CaseForm({ dareId, mine }: { dareId: string; mine: string | null }) {
   const router = useRouter();
   const [text, setText] = useState(mine ?? "");
   const [saved, setSaved] = useState(Boolean(mine));
-  const [shot, setShot] = useState<{ file: File; preview: string } | null>(null);
+  const [shots, setShots] = useState<Shot[]>([]);
   const [field, setField] = useState<string | null>(null);
   const [saving, start] = useTransition();
   return (
@@ -551,13 +635,13 @@ function CaseForm({ dareId, mine }: { dareId: string; mine: string | null }) {
         start(async () => {
           const r = await stateCaseAction(dareId, text);
           if ("error" in r) return setField(r.error);
-          if (shot) {
+          if (shots.length > 0) {
             const form = new FormData();
             form.set("dareId", dareId);
-            form.set("screenshot", await shrinkPhoto(shot.file), "screenshot.jpg");
+            for (const s of shots) form.append("attachment", await shrinkPhoto(s.file), "attachment.jpg");
             const a = await attachEvidenceAction(form);
             if ("error" in a) return setField(a.error);
-            setShot(null);
+            setShots([]);
           }
           setSaved(true);
           router.refresh();
@@ -590,7 +674,7 @@ function CaseForm({ dareId, mine }: { dareId: string; mine: string | null }) {
           {saved ? "Saved" : "Save"}
         </Button>
       </div>
-      <ScreenshotRow shot={shot} disabled={saving} onPick={(f) => (setShot(f), setSaved(false))} />
+      <AttachRow shots={shots} disabled={saving} onChange={(x) => (setShots(x), setSaved(false))} />
       <Problem id="my-case-problem" message={field} />
     </form>
   );

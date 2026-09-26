@@ -54,6 +54,7 @@ let gabe: string, linkToken: string, inviteToken: string, groupId: string, bound
 let asker: Signer, friend: Signer, stranger: Signer, cAsker: string, cFriend: string, cStranger: string, marketId: string, draftId: string, owedId: string, photoId: string, settledMarketId: string, mintedId: string;
 let numberId: string, aiScaleId: string, blindNumberId: string, answeredId: string;
 let memoryIds: string[] = [], evidenceOnSettledId: string, evidenceId: string, evidenceMarketId: string, stickerId: string, stickerMarketId: string;
+let nia: Signer, cNia: string, calledId: string, calledClipId: string, voidedId: string, memoryId: string;
 const bucketKeys: string[] = [];
 
 before(async () => {
@@ -156,11 +157,46 @@ before(async () => {
   const ev = await markets.openMarket(evDraft.id, asker.user.id, await asker.ledger.signTypedData(markets.createTypedData(evDraft)));
   await markets.enterMarket({ dareId: ev.id, userId: asker.user.id, stake: 600n, value: 8000n, signature: await asker.ledger.signTypedData(markets.enterTypedData(ev, 600n, 8000n)) });
   await markets.enterMarket({ dareId: ev.id, userId: friend.user.id, stake: 600n, value: 3000n, signature: await friend.ledger.signTypedData(markets.enterTypedData(ev, 600n, 3000n)) });
-  await db.update(schema.dares).set({ lockedAt: new Date(Date.now() - 600_000), aiOutcome: 1n, aiConfidenceBps: 8000, aiRationale: "The screenshot Priya supplied shows the kettle's base scorched.", aiProposedAt: new Date() }).where(eq(schema.dares.id, ev.id));
+  await db.update(schema.dares).set({ lockedAt: new Date(Date.now() - 600_000), aiOutcome: 1n, aiConfidenceBps: 8000, aiRationale: "The screenshot Priya supplied shows the kettle's base scorched.", aiProposedAt: new Date(), outcomeWords: ["The kettle boiled dry", "The kettle held", "It boiled dry.", "It held."] }).where(eq(schema.dares.id, ev.id));
   await db.insert(schema.dareStatements).values({ dareId: ev.id, userId: asker.user.id, kind: "update", statement: "Scorched the base. Photo attached." });
   await db.insert(schema.dareVotes).values({ dareId: ev.id, userId: asker.user.id, outcome: 1n, signature: Buffer.alloc(65) });
   evidenceId = ((await db.insert(schema.media).values({ dareId: ev.id, kind: "photo", role: "evidence", storageKey: "frames/check.jpg", width: 800, height: 500, authorId: asker.user.id }).returning({ id: schema.media.id }))[0] as { id: string }).id;
   evidenceMarketId = ev.id;
+
+  // A set of three for what has ended (3.37): the asker, the friend, and Nia, who is in the group and in none of these questions (frame B).
+  nia = await tempSigner("Nia");
+  cNia = await cookieFor(nia.user.id);
+  const eg = await createGroup({ name: "Ended check", createdBy: asker.user.id });
+  track.group(eg.id);
+  await db.insert(schema.groupMembers).values([{ groupId: eg.id, userId: friend.user.id }, { groupId: eg.id, userId: nia.user.id }]);
+  const egUsd = await ensureUsd(eg.id, asker.user.id);
+  const askEnded = (title: string) => markets.draftMarket({ creatorId: asker.user.id, groupId: eg.id, denomId: egUsd.id, title, termsText: "Yes if the kettle is descaled by Friday.", resolvesBy: new Date(Date.now() + 86_400_000) });
+  // Called and settled, with the claimant's clip: the resolving clip leads the frame (3.8, 4.3), in the market's own words.
+  const calledDraft = await askEnded("Did the kettle boil dry on Tuesday?");
+  const called = await markets.openMarket(calledDraft.id, asker.user.id, await asker.ledger.signTypedData(markets.createTypedData(calledDraft)));
+  await markets.enterMarket({ dareId: called.id, userId: asker.user.id, stake: 600n, value: 8000n, signature: await asker.ledger.signTypedData(markets.enterTypedData(called, 600n, 8000n)) });
+  await markets.enterMarket({ dareId: called.id, userId: friend.user.id, stake: 600n, value: 3000n, signature: await friend.ledger.signTypedData(markets.enterTypedData(called, 600n, 3000n)) });
+  await db.insert(schema.dareVotes).values({ dareId: called.id, userId: asker.user.id, outcome: 1n, signature: Buffer.alloc(65) });
+  calledClipId = ((await db.insert(schema.media).values({ dareId: called.id, kind: "photo", role: "evidence", storageKey: "frames/check.jpg", width: 800, height: 500, authorId: asker.user.id }).returning({ id: schema.media.id }))[0] as { id: string }).id;
+  await db.update(schema.dares).set({ lockedAt: new Date(Date.now() - 7_200_000), resolvedAt: new Date(Date.now() - 3_600_000), resolvedOutcome: 1n, resolvedBy: "quorum", outcomeWords: ["The kettle boiled dry", "The kettle held", "It boiled dry.", "It held."] }).where(eq(schema.dares.id, called.id));
+  await db.update(schema.darePositions).set({ score: 9600 }).where(and(eq(schema.darePositions.dareId, called.id), eq(schema.darePositions.userId, asker.user.id)));
+  await db.update(schema.darePositions).set({ score: 5100 }).where(and(eq(schema.darePositions.dareId, called.id), eq(schema.darePositions.userId, friend.user.id)));
+  calledId = called.id;
+  // Voided: a void was still a night, so it takes photos (3.8).
+  const voidDraft = await askEnded("Did anyone see the kettle at all?");
+  const voided = await markets.openMarket(voidDraft.id, asker.user.id, await asker.ledger.signTypedData(markets.createTypedData(voidDraft)));
+  await markets.enterMarket({ dareId: voided.id, userId: asker.user.id, stake: 600n, value: 8000n, signature: await asker.ledger.signTypedData(markets.enterTypedData(voided, 600n, 8000n)) });
+  await markets.enterMarket({ dareId: voided.id, userId: friend.user.id, stake: 600n, value: 3000n, signature: await friend.ledger.signTypedData(markets.enterTypedData(voided, 600n, 3000n)) });
+  await db.update(schema.dares).set({ lockedAt: new Date(Date.now() - 7_200_000), resolvedAt: new Date(Date.now() - 3_600_000), resolvedOutcome: -1n, resolvedBy: "quorum" }).where(eq(schema.dares.id, voided.id));
+  voidedId = voided.id;
+  // The memory it leaves (3.37): the same screen from the second calendar day, here three days on, with one photo.
+  const recallDraft = await askEnded("Did the kettle survive the week?");
+  const recall = await markets.openMarket(recallDraft.id, asker.user.id, await asker.ledger.signTypedData(markets.createTypedData(recallDraft)));
+  await markets.enterMarket({ dareId: recall.id, userId: asker.user.id, stake: 600n, value: 8000n, signature: await asker.ledger.signTypedData(markets.enterTypedData(recall, 600n, 8000n)) });
+  await markets.enterMarket({ dareId: recall.id, userId: friend.user.id, stake: 600n, value: 3000n, signature: await friend.ledger.signTypedData(markets.enterTypedData(recall, 600n, 3000n)) });
+  await db.update(schema.dares).set({ lockedAt: new Date(Date.now() - 3 * 86_400_000 - 7_200_000), resolvedAt: new Date(Date.now() - 3 * 86_400_000), resolvedOutcome: 1n, resolvedBy: "quorum" }).where(eq(schema.dares.id, recall.id));
+  await db.insert(schema.media).values({ dareId: recall.id, kind: "photo", role: "memory", storageKey: "frames/check.jpg", width: 810, height: 1080, authorId: asker.user.id });
+  memoryId = recall.id;
 
   // A sticker of the asker's, worn by a question in the group (docs/design.md 3.28).
   const [sticker] = await db.insert(schema.pictureMarks).values({ ownerId: asker.user.id, kind: "sticker", sourceKey: "stickers/check.png", stampKey: "stamps/check.png", width: 512, height: 512, ink: "sea" }).returning({ id: schema.pictureMarks.id });
@@ -372,16 +408,21 @@ test("someone in the group who has not picked sees who is in and no number; some
   const mine = await get(`/m/${marketId}`, cFriend);
   assert.equal(mine.status, 200);
   // The count is the whole message (4.9): the captions that restated it are gone.
-  assert.ok(mine.text.includes("1 of 2 in") && !mine.text.includes("shows once you pick") && !mine.text.includes("One friend is in."));
+  assert.ok(mine.text.includes("1 of 2 in"), "the count");
+  assert.ok(!mine.text.includes("shows once you pick") && !mine.text.includes("One friend is in."), "the captions that restated it are gone");
   // Sent, not merely shown: the page's data travels in the HTML, so a number hidden by a component is still leaked.
   for (const s of ["83%", "You’re in at", "8300", "\"stake\":\"1700\"", "buckets"]) assert.ok(!mine.html.includes(s), `someone who has not picked is sent "${s}"`);
   // The asker is in: the receipt is on the screen every time it opens, not for a second after the tap.
   const asked = await get(`/m/${marketId}`, cAsker);
-  assert.ok(asked.text.includes("You’re in at 83%") && asked.text.includes("yours to change until") && asked.text.includes("Where the stake sits"));
+  assert.ok(asked.text.includes("You’re in at 83%"), "the receipt");
+  assert.ok(asked.text.includes("yours to change until"), "the caption");
+  assert.ok(asked.text.includes("Where the stake sits"), "the weight line's heading");
   const outside = await get(`/m/${marketId}`, cStranger);
   assert.equal(outside.status, 200);
   // The invitation (docs/design.md 3.17): what it is and who asked, by first name, and nothing it could cost.
-  assert.ok(outside.text.includes("Priya invited you") && outside.text.includes("One friend is in") && outside.text.includes("Join as"));
+  assert.ok(outside.text.includes("Priya invited you"), "who asked, by first name");
+  assert.ok(outside.text.includes("One friend is in"), "the count in words");
+  assert.ok(outside.text.includes("Join as"), "the way in");
   for (const s of ["Priya Raman", "Raman", "83%", "8300", "17.00", "Kettles rarely", "kettle is descaled", "1 of 2 in"]) assert.ok(!outside.html.includes(s), `someone outside the group is sent "${s}"`);
 });
 
@@ -403,7 +444,10 @@ async function send(path: string, method: string, body: unknown, cookie?: string
 test("Now holds what needs this person, then what is running, then what just happened, and nothing that starts something", async () => {
   const r = await get("/", cFriend);
   assert.equal(r.status, 200);
-  assert.ok(r.text.includes("Needs you") && r.text.includes("Does the kettle get descaled by Friday?") && /1 of 2 in/.test(r.text) && r.text.includes("Enter"));
+  assert.ok(r.text.includes("Needs you"), "the heading");
+  assert.ok(r.text.includes("Does the kettle get descaled by Friday?"), "the question the friend has not entered");
+  assert.ok(/1 of 2 in/.test(r.text), "how many are in, on the row");
+  assert.ok(r.text.includes("Enter"), "the verb");
   // Creating things lives behind Start (design 6.1): nothing on Now asks, joins or logs, and the one chalk control is the button.
   assert.ok(!r.text.includes("Ask something") && !r.text.includes("I got this one"), "Now starts nothing itself");
   assert.ok(/aria-label="Start something"/.test(r.html), "the Start button");
@@ -457,8 +501,11 @@ test("a closed obligation sits in Just happened at the moment it closed, with th
   assert.equal(r.status, 200);
   const happened = r.text.indexOf("Just happened");
   assert.ok(happened >= 0 && r.text.indexOf("Cab home") > happened, "the settled cover is under Just happened");
-  const card = r.html.slice(r.html.indexOf("Cab home") - 1500, r.html.indexOf("Cab home"));
+  // A row (3.15): the subject, then the meta line with the mark; so the mark follows the memo in the markup.
+  const at = r.html.indexOf("Cab home");
+  const card = r.html.slice(Math.max(0, at - 600), at + 1200);
   assert.match(card, /aria-label="Settled"/, "its state mark reads settled (3.23), derived from the chain, never stored");
+  assert.ok(!card.includes("<article"), "a row, never a story card (4.7)");
 });
 
 test("an obligation a market minted is settleable and forgivable from its story, the same way a cover is", async () => {
@@ -680,7 +727,7 @@ test("a blind number question draws no axis before the reveal, because the ends 
 test("an answered number question says the answer as a sentence, stands the ruler where the call line was, and ranks closest first by distance", async () => {
   const r = await get(`/m/${answeredId}`, cAsker);
   assert.ok(r.text.includes("14 shirts.") && r.text.includes("You were closest, dead on."), "the outcome sentence and the caption (3.25)");
-  assert.ok(r.text.includes("Who was closest") && r.text.includes("said 12") && r.text.includes("off by 2"), "the leaderboard in the unit's numbers (3.7)");
+  assert.ok(r.text.includes("Closest first") && r.text.includes("said 12") && r.text.includes("off by 2"), "the leaderboard in the unit's numbers (3.7)");
   assert.ok(r.text.includes("14 shirts") && r.text.includes("12") && !r.text.includes("Said no"), "the ruler's ends, never No and Yes");
   // The story on a timeline (the person view lists every question both are in) carries the answer as its sentence and the ruler, never a side.
   const story = await get(`/p/${asker.user.id}`, cFriend);
@@ -735,17 +782,63 @@ test("a number question's asking tile is drawn, and differs from a yes-or-no que
 
 // ------------------------------------------------------------------------------------------------ media
 
-test("a settled question shows its memories in the frame with the credit and the counter, its evidence nowhere, and Add yours only to someone who was in it", async () => {
+test("a settled question shows its frame with the credit and the counter, a voter's screenshot behind More only, and the sheet's chalk to someone who was in it", async () => {
   const r = await get(`/m/${answeredId}`, cAsker);
   assert.equal(r.status, 200);
-  assert.ok(r.html.includes("data-media-frame"), "the frame (3.8, 3.25)");
+  assert.ok(r.html.includes("data-media-frame"), "the frame (3.8, 3.37)");
   assert.ok(r.html.includes(`/api/media/${memoryIds[0]}"`) && r.html.includes("Photo 1 of 2, added by Priya"), "the first photo added is the frame, credited by first name");
   assert.ok(r.html.includes(`/api/media/${memoryIds[1]}?size=thumb`), "the second is a square in the strip");
   assert.ok(r.text.includes("1 / 2"), "the counter");
-  assert.ok(!r.html.includes(evidenceOnSettledId), "a screenshot that was attached to what happened is not a memory of the night, and never in the frame");
-  assert.ok(r.text.includes("Add yours from"), "the tertiary under the outcome, for someone who was in it");
+  assert.ok(!r.html.includes(`/api/media/${evidenceOnSettledId}"`), "a screenshot nobody's claim carried is not in the frame");
+  assert.ok(r.html.includes("data-add-photos") && r.text.includes("Add yours from"), "the sheet's chalk, for someone who was in it (3.24)");
+  assert.ok(r.text.includes("Send how it ended"), "sending stays, as the secondary");
+  assert.ok(r.text.includes("Closest first") && r.text.includes("Who’s got who"), "the settled screen's order (3.37)");
   const outsider = await get(`/m/${answeredId}`, cStranger);
   assert.ok(!outsider.html.includes(memoryIds[0] ?? "x"), "someone outside the group gets neither the story nor its photos");
+});
+
+test("a settled question with no photos shows the empty slot as the move, for someone who was in it, with sending still available", async () => {
+  const r = await get(`/m/${settledMarketId}`, cAsker);
+  assert.equal(r.status, 200);
+  assert.ok(r.html.includes("data-empty-slot") && r.html.includes("Add the first photo from"), "the empty slot is itself the button (3.8)");
+  assert.ok(!r.html.includes("data-media-frame"), "no empty frame");
+  assert.ok(r.text.includes("Add a photo from"), "the chalk while there are none (3.24)");
+  assert.ok(r.text.includes("Send how it ended"));
+  assert.ok(r.html.includes("Yes.") || r.text.includes("Yes."), "a market made before the outcome words says Yes.");
+});
+
+test("once it is called, the claimant's clip leads the frame on the settled screen, in the market's own words; a voided market takes a photo too", async () => {
+  const r = await get(`/m/${calledId}`, cFriend);
+  assert.equal(r.status, 200);
+  assert.ok(r.html.includes(`/api/media/${calledClipId}"`) && r.html.includes("Photo 1 of 1, added by Priya"), "the resolving clip leads the frame, credited to the claimant (3.8, 4.3)");
+  assert.ok(r.text.includes("It boiled dry."), "the outcome in the market's own words (3.25)");
+  assert.ok(r.text.includes("Closest first"));
+  const voided = await get(`/m/${voidedId}`, cAsker);
+  assert.equal(voided.status, 200);
+  assert.ok(voided.text.includes("Nobody could tell.") && voided.text.includes("Nothing changes hands."), "the voided screen (3.37)");
+  assert.ok(voided.html.includes("data-empty-slot") && voided.text.includes("Add a photo from"), "a void was still a night: the slot and the chalk");
+  assert.ok(!voided.text.includes("Send how it ended"), "no tile tells a void");
+  assert.ok(!voided.text.includes("Closest first"));
+});
+
+test("someone who wasn't in sees the frame and never an add: no empty slot, and the sheet is sending alone", async () => {
+  const r = await get(`/m/${calledId}`, cNia);
+  assert.equal(r.status, 200);
+  assert.ok(!r.html.includes("data-empty-slot") && !r.html.includes("data-add-photos"), "no add anywhere (3.37, frame B)");
+  assert.ok(r.text.includes("Send how it ended"), "the sheet is sending alone");
+  const v = await get(`/m/${voidedId}`, cNia);
+  assert.equal(v.status, 200);
+  assert.ok(v.text.includes("Nobody could tell."), "the story is the whole screen");
+  assert.ok(!v.text.includes("Send how it ended") && !v.html.includes("data-empty-slot") && !v.html.includes("data-add-photos"), "a void for someone who wasn't in: no sheet at all");
+});
+
+test("the day after it ended, the same market opens as the memory: the photos first at 260, no ranking, the date where the clock was", async () => {
+  const r = await get(`/m/${memoryId}`, cAsker);
+  assert.equal(r.status, 200);
+  assert.ok(r.html.includes("height:260px") || r.html.includes("height: 260px"), "the frame at 260 (3.37)");
+  assert.ok(!r.text.includes("Closest first"), "closest first leaves the memory screen");
+  assert.ok(r.text.includes("Nothing changed hands.") || r.text.includes("got"), "what it left");
+  assert.ok(r.html.includes("data-add-photos"), "the sheet still says add, weeks later included");
 });
 
 test("a market's photo is served to its participants and reads as nothing to anyone else; the story on a person view carries the frame", async () => {
@@ -764,13 +857,14 @@ test("a market's photo is served to its participants and reads as nothing to any
   assert.ok(timeline.html.includes("data-media-frame") && timeline.html.includes(`/api/media/${id}"`) && timeline.html.includes("data-media-counter"), "the story in a timeline carries the frame at 180 (3.4)");
 });
 
-test("a screenshot attached to what happened sits on the claim card and in the sheet, and the app's read of it says who supplied it", async () => {
+test("a photo attached with what happened sits on the claim card and in the sheet, and the app's read of it says who supplied it", async () => {
   const r = await get(`/m/${evidenceMarketId}`, cFriend);
   assert.equal(r.status, 200);
   const shots = r.html.match(new RegExp(`data-evidence="${evidenceId}"`, "g")) ?? [];
-  assert.ok(shots.length >= 2, `the claim card's 72px clip and the sheet's attached list (3.25): found ${shots.length}`);
+  assert.ok(shots.length >= 2, `the claim card's 72px clip and the sheet's attached list (3.37): found ${shots.length}`);
   assert.ok(r.html.includes(`width="72"`), "the clip on the claim card is 72px");
-  assert.ok(!r.html.includes("data-media-frame"), "no frame on a question being called: evidence is not a memory");
+  assert.ok(r.text.includes("Priya says the kettle boiled dry"), "the claim in the market's own words (3.25)");
+  assert.ok(!r.html.includes("data-media-frame"), "no frame while it is being called: the clip is on the claim card");
   assert.ok(r.text.includes("The screenshot Priya supplied"), "the read names who supplied what");
 });
 

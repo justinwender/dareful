@@ -16,7 +16,7 @@ import { OddsHeader, OddsLine } from "./odds-line";
 import { WeightLine, bucketOfPercent, type WeightBucket } from "./weight-line";
 import { NumberEntry } from "./number-entry";
 import { NumberLine } from "./number-line";
-import { numberAxis, serialiseAxis, unitPhrase, type NumberLineAxis } from "@/lib/ledger/number-axis";
+import { numberAxis, serialiseAxis, unitPhrase, withSeparators, type NumberLineAxis } from "@/lib/ledger/number-axis";
 import { LockButton, type Signing, type StakeUnit } from "./market-actions";
 
 export type StagePicture =
@@ -97,8 +97,8 @@ export function MarketStage(props: {
   const [step, setStep] = useState<"idle" | "approving" | "sending">("idle");
   const [problem, setProblem] = useState<string | null>(null);
   /** The number the far-off check is asking about, and the one it has been confirmed for. */
-  const [farAsk, setFarAsk] = useState<bigint | null>(null);
-  const [farOk, setFarOk] = useState<bigint | null>(null);
+  /** The far-off block (3.26): shown when the primary is tapped at or past the limit, and gone the moment the number is under it. */
+  const [farBlocked, setFarBlocked] = useState(false);
   /** Set the moment an entry lands, so the picture exists before the server's copy of it arrives. */
   const [justIn, setJustIn] = useState<{
     percent: number;
@@ -132,21 +132,20 @@ export function MarketStage(props: {
   const sayNumber = (n: bigint) => (numberUnit ? unitPhrase(n, numberUnit) : `${n}%`);
   const mineWords = (m: { percent: number; number?: string }) => (numberUnit && m.number !== undefined ? unitPhrase(BigInt(m.number), numberUnit) : `${m.percent}%`);
 
-  /** The far-off check (src/lib/ledger/scale.ts): whether this number needs asking about before it is signed. */
-  const farOffAsks = (n: bigint | null) => numberUnit !== null && props.farOff !== null && props.farOff !== undefined && n !== null && n >= BigInt(props.farOff.threshold);
+  /** A number at or past the limit (src/lib/ledger/scale.ts): blocked, never kept, because a slipped finger would lose the stake (3.26). */
+  const farOff = (n: bigint | null) => numberUnit !== null && props.farOff !== null && props.farOff !== undefined && n !== null && n >= BigInt(props.farOff.threshold);
+  const blocked = farBlocked && farOff(number);
   async function submit() {
     if (!picked) return;
     setProblem(null);
-    // A far-off number (a slipped finger, or a bold one): ask once, and go on when the person says so.
-    if (farOffAsks(number) && farOk !== number) {
-      setFarAsk(number);
+    if (farOff(number)) {
+      setFarBlocked(true);
       return;
     }
     await submitConfirmed(number);
   }
   async function submitConfirmed(confirmed: bigint | null) {
     void confirmed;
-    setFarAsk(null);
     // The contract refuses a stake of nothing, and one refused position fails the whole lock for everyone, so
     // the least anyone can put on it is one (docs/decisions.md 2026-09-20).
     if (!stakeUnits || BigInt(stakeUnits) <= 0n)
@@ -348,17 +347,32 @@ export function MarketStage(props: {
       low={
         <>
           {numberUnit ? (
-            <NumberEntry
-              header={null}
-              value={number}
-              unit={numberUnit}
-              hue={me.hue}
-              disabled={phase === "entering" && !changing && reading}
-              onChange={(v) => {
-                setNumber(v);
-                if (!raised && v !== null) setRaised(true);
-              }}
-            />
+            <>
+              <NumberEntry
+                header={null}
+                value={number}
+                unit={numberUnit}
+                hue={me.hue}
+                problem={blocked}
+                disabled={phase === "entering" && !changing && reading}
+                onChange={(v) => {
+                  setNumber(v);
+                  if (!raised && v !== null) setRaised(true);
+                }}
+              />
+              {blocked && number !== null && props.farOff ? (
+                // The far-off block (3.26): a field error, never a way to keep the number. It names the limit, which is not the scoring scale.
+                <p role="alert" data-far-off="" className="flex items-start gap-2 text-body-sm text-ink">
+                  <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="mt-[2px] shrink-0">
+                    <path d="M12 8v5M12 16.5v.5" />
+                    <path d="M10.3 3.9 2.6 17.2A2 2 0 0 0 4.3 20h15.4a2 2 0 0 0 1.7-2.8L13.7 3.9a2 2 0 0 0-3.4 0z" />
+                  </svg>
+                  <span>
+                    {unitPhrase(number, numberUnit)} is past the limit here. Try something under {withSeparators(BigInt(props.farOff.threshold))}.
+                  </span>
+                </p>
+              ) : null}
+            </>
           ) : null}
           {props.argument && !reading ? (
             <div className="flex flex-col gap-2">
@@ -460,32 +474,6 @@ export function MarketStage(props: {
       foot={
         <>
           <ProblemSummary messages={[problem]} />
-          {farAsk !== null && numberUnit ? (
-            // The far-off check. Wording flagged for the next design pass (docs/decisions.md, Phase 5).
-            <div className="flex flex-col gap-3 rounded-button border border-line-strong bg-surface-2 px-[14px] py-3">
-              <p className="text-body-sm text-ink">
-                {unitPhrase(farAsk, numberUnit)} is a lot of {numberUnit.plural}.
-                {props.farOff?.scale ? ` This one is scored within ${unitPhrase(BigInt(props.farOff.scale), numberUnit)}.` : ""}
-              </p>
-              <div className="grid grid-cols-[1fr_auto] gap-2">
-                <Button
-                  variant="primary"
-                  size="inline"
-                  onClick={() => {
-                    // Confirmed: the entry goes on from here with this number, as the primary would have.
-                    setFarOk(farAsk);
-                    setFarAsk(null);
-                    void submitConfirmed(farAsk);
-                  }}
-                >
-                  It’s {unitPhrase(farAsk, numberUnit)}
-                </Button>
-                <Button variant="tertiary" onClick={() => setFarAsk(null)}>
-                  Not quite
-                </Button>
-              </div>
-            </div>
-          ) : null}
           {problem && !problem.startsWith("Put") ? (
             <Button
               variant="tertiary"
@@ -500,7 +488,7 @@ export function MarketStage(props: {
                 variant="primary"
                 onClick={submit}
                 loading={step !== "idle"}
-                disabled={!picked}
+                disabled={!picked || blocked}
               >
                 Save: {sayNumber(numberUnit ? (number ?? 0n) : BigInt(value ?? 0))}, {stakeWords(stakeUnits) || "…"}
               </Button>
@@ -523,7 +511,7 @@ export function MarketStage(props: {
               variant="primary"
               onClick={submit}
               loading={step !== "idle"}
-              disabled={!picked || (phase === "entering" && reading)}
+              disabled={!picked || blocked || (phase === "entering" && reading)}
             >
               {!picked
                 ? numberUnit

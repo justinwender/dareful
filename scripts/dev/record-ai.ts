@@ -22,6 +22,11 @@ async function main(): Promise<void> {
   if (!dir) throw new Error("set AI_RECORD_TO");
   mkdirSync(dir, { recursive: true });
   const now = new Date();
+  // `outcomes` records the write-up alone, now that it returns the outcomes in the question's own words (3.25).
+  if (process.argv.includes("outcomes")) {
+    await scopeMarket({ line: "does John fall asleep during the movie on Friday", now });
+    return;
+  }
   // `evidence` records only the calls that carry a screenshot (the media phase), leaving the earlier recordings as they are.
   if (process.argv.includes("evidence")) {
     const evidence = [{ by: "Sam", mediaType: "image/jpeg" as const, base64: await scoreboard() }];

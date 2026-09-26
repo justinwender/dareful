@@ -287,6 +287,7 @@ function called(t: CalledTile) {
         {t.outcomeLine}
       </div>
     </div>,
+    ...photosLine(t, layers.hi),
     <div
       key="line"
       style={{
@@ -393,16 +394,22 @@ function called(t: CalledTile) {
     >
       {t.line}
     </div>,
-    ...photosLine(t, layers.hi),
   ]);
 }
 
-/** The line that says there are photos, on a result tile only; the photo itself never leaves the door (docs/decisions.md, the media phase). */
+/**
+ * The line that says there are photos (3.27): directly under the outcome, a 32px camera glyph and the words at
+ * 30px 600 in ink-hi, with no count. The photo itself never leaves the door.
+ */
 function photosLine(t: { photos: boolean }, color: string): React.ReactNode[] {
   if (!t.photos) return [];
   return [
-    <div key="photos" style={{ display: "flex", fontSize: 30, fontWeight: 600, color, justifyContent: "center", width: SAFE.w }}>
-      {PHOTOS_LINE}
+    <div key="photos" style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 30, fontWeight: 600, color, justifyContent: "center", width: SAFE.w }}>
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2.2l1.2-2h6.2l1.2 2h2.2A1.5 1.5 0 0 1 20 8.5v9A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5z" />
+        <circle cx="12" cy="13" r="3.4" />
+      </svg>
+      <div style={{ display: "flex" }}>{PHOTOS_LINE}</div>
     </div>,
   ];
 }
@@ -418,6 +425,7 @@ function numberTile(t: NumberTile) {
       {markBox(t, 88, 56, layers.ground)}
       <div style={{ display: "flex", fontFamily: "Young Serif", fontSize: 72 }}>{t.outcomeLine}</div>
     </div>,
+    ...photosLine(t, layers.hi),
     <div key="ruler" style={{ display: "flex", flexDirection: "column", width: SAFE.w, gap: 14 }}>
       <div style={{ position: "relative", display: "flex", height: pin + 16, width: SAFE.w }}>
         <div style={{ position: "absolute", left: inset, right: inset, top: (pin + 16) / 2 - 6, height: 12, borderRadius: 6, background: layers.ground, display: "flex" }} />
@@ -436,7 +444,6 @@ function numberTile(t: NumberTile) {
     <div key="who" style={{ display: "flex", fontSize: 34, fontWeight: 600, textAlign: "center", justifyContent: "center", width: SAFE.w }}>
       {t.line}
     </div>,
-    ...photosLine(t, layers.hi),
   ]);
 }
 

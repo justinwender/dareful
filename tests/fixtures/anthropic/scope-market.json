@@ -1,19 +1,25 @@
 {
   "model": "claude-sonnet-5",
-  "id": "msg_011CfPSAKrSD12SGiGCiYUaz",
+  "id": "msg_011CfSTC5wDB52K6E1ps8QED",
   "type": "message",
   "role": "assistant",
   "content": [
     {
       "type": "tool_use",
-      "id": "toolu_01PwuYTUMD5w8BB9GSyt2Nck",
+      "id": "toolu_01NP1m7T1TW86aXjbN3pirES",
       "name": "write_terms",
       "input": {
-        "title": "Does Riley finish the half marathon on Sunday?",
-        "terms": "Yes if Riley crosses the finish line of the half marathon on Sunday, no matter the time. No if Riley doesn't start, drops out, or doesn't cross the finish line. We'll know by Sunday night.",
+        "title": "Does John fall asleep during the movie on Friday?",
+        "terms": "If John dozes off at any point while the movie is playing on Friday, it's a yes. If he stays awake the whole time, it's a no. We'll know by the time the movie ends Friday night.",
         "ambiguous": false,
         "criteria": [],
-        "resolvesInHours": 120
+        "resolvesInHours": 55,
+        "outcomes": {
+          "yesWell": "John fell asleep",
+          "noWell": "John stayed awake",
+          "yesLine": "John fell asleep during the movie.",
+          "noLine": "John stayed awake the whole movie."
+        }
       },
       "caller": {
         "type": "direct"
@@ -25,14 +31,14 @@
   "stop_sequence": null,
   "stop_details": null,
   "usage": {
-    "input_tokens": 1063,
+    "input_tokens": 1311,
     "cache_creation_input_tokens": 0,
     "cache_read_input_tokens": 0,
     "cache_creation": {
       "ephemeral_5m_input_tokens": 0,
       "ephemeral_1h_input_tokens": 0
     },
-    "output_tokens": 216,
+    "output_tokens": 294,
     "output_tokens_details": {
       "thinking_tokens": 0
     },

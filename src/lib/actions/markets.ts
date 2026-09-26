@@ -8,6 +8,7 @@ import { afterEntry, arbitrateMarket, proposeForArgument, stateCase } from "@/li
 import { isHex, type Hex } from "viem";
 import { z } from "zod";
 import { isInkName } from "@/lib/ui/ink";
+import { outcomeWordsFrom } from "@/lib/ui/outcome-words";
 import { plainNumberScope, plainScope, proposeNumber, proposeOutcome, scopeMarket, scopeNumber } from "@/lib/ai/markets";
 import { addMarketPhoto, MediaError } from "@/lib/media";
 import { evidenceFor } from "@/lib/media/evidence";
@@ -27,7 +28,7 @@ import { callToOutcome, castVote, draftMarket, enterMarket, lockMarket, MarketEr
 const uuid = z.string().uuid();
 const say = (err: unknown, fallback: string) => (err instanceof MarketError ? err.message : fallback);
 
-export type ScopeResult = { title: string; terms: string; ambiguous: boolean; criteria: string[]; resolvesInHours: number; plain: boolean; number: NumberScopeResult | null };
+export type ScopeResult = { title: string; terms: string; ambiguous: boolean; criteria: string[]; resolvesInHours: number; plain: boolean; number: NumberScopeResult | null; /** The outcomes in the question's own words (3.25), when the write-up gave four usable phrasings. */ outcomes: [string, string, string, string] | null };
 /**
  * A number question's write-up carries its unit and, when the model's scale passed the check, that scale under a
  * token only this server can mint for this person: the draft that comes back with it is stored as the model's
@@ -65,21 +66,21 @@ export async function scopeMarketAction(rawLine: string, rawCriterion?: string, 
       if (!checked.ok) console.warn("number scale proposal refused", { why: checked.why, low: s.low, high: s.high, typical: s.typical });
       const range = checked.ok ? checked.range.toString() : null;
       const typical = Number.isInteger(s.typical) && s.typical >= 0 ? String(s.typical) : "0";
-      return { title: s.title, terms: s.terms, ambiguous: false, criteria: [], resolvesInHours: s.resolvesInHours, plain: false, number: { unit, model: { range, typical, token: scaleToken(user.id, range, typical) } } };
+      return { title: s.title, terms: s.terms, ambiguous: false, criteria: [], resolvesInHours: s.resolvesInHours, plain: false, number: { unit, model: { range, typical, token: scaleToken(user.id, range, typical) } }, outcomes: null };
     } catch (err) {
       console.error("scoping a number question failed; using the line as typed", err);
       const p = plainNumberScope(line.data);
-      return { ...p, ambiguous: false, criteria: [], resolvesInHours: 24, plain: true, number: { unit: { singular: "", plural: "" }, model: null } };
+      return { ...p, ambiguous: false, criteria: [], resolvesInHours: 24, plain: true, number: { unit: { singular: "", plural: "" }, model: null }, outcomes: null };
     }
   }
   try {
     const answers = z.array(z.object({ question: z.string().trim().min(3).max(160), yes: z.boolean() })).max(3).safeParse(rawAnswers ?? []);
     const s = await scopeMarket({ line: line.data, criterion: criterion?.success ? criterion.data : undefined, answers: answers.success ? answers.data : undefined, now: new Date() });
-    return { title: s.title, terms: s.terms, ambiguous: s.ambiguous && s.criteria.length > 0, criteria: s.criteria, resolvesInHours: s.resolvesInHours, plain: false, number: null };
+    return { title: s.title, terms: s.terms, ambiguous: s.ambiguous && s.criteria.length > 0, criteria: s.criteria, resolvesInHours: s.resolvesInHours, plain: false, number: null, outcomes: outcomeWordsFrom(s.outcomes) };
   } catch (err) {
     console.error("scoping failed; using the line as typed", err);
     const p = plainScope(line.data);
-    return { ...p, ambiguous: false, criteria: [], resolvesInHours: 24, plain: true, number: null };
+    return { ...p, ambiguous: false, criteria: [], resolvesInHours: 24, plain: true, number: null, outcomes: null };
   }
 }
 
@@ -106,6 +107,8 @@ const Draft = z.object({
   title: z.string().trim().min(3).max(140),
   terms: z.string().trim().min(3).max(800),
   resolvesBy: z.string().datetime().nullable(),
+  /** A yes-or-no market's outcomes in its own words (3.25), from the write-up: yes well, no well, yes line, no line. */
+  outcomeWords: z.tuple([z.string().trim().min(2).max(48), z.string().trim().min(2).max(48), z.string().trim().min(2).max(48), z.string().trim().min(2).max(48)]).optional(),
   /** The mark (3.29): an emoji, or one of this person's stickers (3.28) by its id. */
   mark: z.discriminatedUnion("kind", [z.object({ kind: z.literal("emoji"), value: z.string().trim().min(1).max(16) }), z.object({ kind: z.literal("sticker"), id: uuid })]).optional(),
   /** The id the client made up front, so the ink it previewed on the question step is the ink that is stored (docs/design.md 3.29). */
@@ -168,6 +171,7 @@ export async function draftMarketAction(input: z.infer<typeof Draft>): Promise<{
       mode: d.mode,
       stalemate: d.stalemate,
       mark: d.mark ?? null,
+      outcomeWords: d.number || d.argument ? null : (d.outcomeWords ?? null),
       revealMode: d.blind ? "blind" : "open",
       zone: await viewerZone(),
     });
@@ -256,25 +260,25 @@ export async function lockMarketAction(rawId: string): Promise<{ ok: true } | { 
 }
 
 /**
- * Someone says what happened, in a line, and may attach a screenshot to it (PLANNING.md open question 14; a
- * scoreboard, a message). That is what the outcome proposal reads: the model was not there, so with nothing
- * said it proposes nothing, and the ballot opens with nothing picked. The screenshot is evidence, never a
- * memory: it goes through the same pipeline with its role on the row, and never into the frame. One proposal
- * is written after both have landed.
+ * Someone says what happened, in a line, with up to three photos or screenshots (docs/design.md 3.24; PLANNING.md
+ * open question 14). That is what the outcome proposal reads: the model was not there, so with nothing said it
+ * proposes nothing, and the ballot opens with nothing picked. What is attached is evidence: everyone voting sees
+ * it, the model reads it as this person's claim, and once the market ends the claimant's attachments lead the
+ * frame (3.8). One proposal is written after everything has landed.
  */
 export async function sayWhatHappenedAction(form: FormData): Promise<{ ok: true } | { error: string }> {
   const user = await requireUser();
   const id = uuid.safeParse(form.get("dareId"));
   const raw = form.get("text");
   const text = z.string().trim().max(280).safeParse(typeof raw === "string" ? raw : "");
-  const file = form.get("screenshot");
-  const screenshot = file instanceof File && file.size > 0 ? file : null;
+  const attachments = form.getAll("attachment").filter((f): f is File => f instanceof File && f.size > 0).slice(0, 3);
   if (!id.success || !text.success) return { error: "Say what happened in a line." };
-  if (text.data.length < 2 && !screenshot) return { error: "Say what happened in a line." };
-  if (screenshot && screenshot.size > MAX_UPLOAD_BYTES) return { error: "That screenshot is too big to send." };
+  if (text.data.length < 2 && attachments.length === 0) return { error: "Say what happened in a line." };
+  if (attachments.some((f) => f.size > MAX_UPLOAD_BYTES)) return { error: "One of those is too big to send." };
   try {
     if (text.data.length >= 2) await sayWhatHappened(id.data, user.id, text.data);
-    if (screenshot) await addMarketPhoto({ dareId: id.data, authorId: user.id, bytes: Buffer.from(await screenshot.arrayBuffer()), viewerZone: await viewerZone(), role: "evidence" });
+    const zone = await viewerZone();
+    for (const file of attachments) await addMarketPhoto({ dareId: id.data, authorId: user.id, bytes: Buffer.from(await file.arrayBuffer()), viewerZone: zone, role: "evidence" });
     await refreshProposal(id.data);
   } catch (err) {
     if (err instanceof MediaError) return { error: err.message };

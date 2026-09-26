@@ -171,6 +171,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
         title,
         terms: finalTerms,
         mark: mark ? (mark.kind === "emoji" ? { kind: "emoji", value: mark.value } : { kind: "sticker", id: mark.id }) : undefined,
+        outcomeWords: !numeric && !arguing && scope?.outcomes ? scope.outcomes : undefined,
         number: numeric ? { unit: { singular: unitWords.singular.trim().toLowerCase(), plural: unitWords.plural.trim().toLowerCase() || unitWords.singular.trim().toLowerCase() }, scale: scale.trim(), model: scope?.number?.model ?? null } : undefined,
         resolvesBy: arguing ? null : new Date(Date.now() + hours * 3_600_000).toISOString(),
         blind: arguing ? false : blind,
@@ -313,7 +314,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
         {instead ? (
           <div className="flex flex-col gap-3 rounded-card border border-dashed border-line-strong px-4 py-3">
             <p className="text-caption text-ink-3">It could be a dare instead</p>
-            <p className="text-serif-m text-ink">{instead}</p>
+            <p className="text-body-strong text-ink">{instead}</p>
           </div>
         ) : null}
         <Button variant="tertiary" className="self-start" onClick={() => setStep("question")}>
@@ -375,7 +376,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
     return wrap(
       <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-2">
-          <h1 className="text-serif-l text-ink">Three quick ones</h1>
+          <h1 className="text-body-strong text-ink">Three quick ones</h1>
           <p className="text-body-sm text-ink-2">Only you see these. Everyone else just sees the terms they turn into.</p>
         </div>
         <ol className="flex flex-col gap-4">
@@ -419,7 +420,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
     <div className="flex items-start justify-between gap-3 rounded-card border border-line bg-surface px-4 py-3">
       <div className="flex min-w-0 flex-col gap-1">
         <span className="text-caption text-ink-3">Your question</span>
-        <span className="text-serif-m text-ink">{step === "terms" && title ? title : verdict?.kind === "ok" && pace === "argument" ? verdict.claim : line}</span>
+        <span className="text-serif-l text-ink">{step === "terms" && title ? title : verdict?.kind === "ok" && pace === "argument" ? verdict.claim : line}</span>
         {criterion && pace === "argument" ? <span className="text-caption text-ink-3">Decided {criterion}</span> : null}
       </div>
       <Button variant="tertiary" onClick={() => setStep("question")}>
@@ -442,7 +443,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
       <div className="flex flex-col gap-6">
         {question}
         <div className="flex flex-col gap-2">
-          <h1 className="text-serif-l text-ink">{pace === "argument" ? "Who’s on the other side?" : "Who’s in?"}</h1>
+          <h1 className="text-body-strong text-ink">{pace === "argument" ? "Who’s on the other side?" : "Who’s in?"}</h1>
           <p className="text-body-sm text-ink-2">{pace === "argument" ? "An argument is between two of you. Anyone else in the set can watch, and helps call it." : "Everyone you pick hears about it. Nobody needs an account to look."}</p>
         </div>
         <div role="group" aria-label="Who's in" className="flex flex-col gap-2">

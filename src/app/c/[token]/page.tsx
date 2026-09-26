@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import { claimShareCard } from "@/lib/ledger/share";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { inArray } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { Avatar } from "@/components/ledger/avatar";
 import { ClaimChoice, ConcedeButton } from "@/components/ledger/claim-landing";
-import { CoveredCard } from "@/components/ledger/covered-card";
+import { ClaimGone } from "@/components/ledger/claim-gone";
+import { ObligationToken } from "@/components/ledger/obligation-token";
 import { Screen, TopBar } from "@/components/ledger/screen";
+import { coveredSentence, dayLabel, gotSentence } from "@/lib/ui/copy";
 import { readClaimTokens } from "@/lib/auth/claim-cookie";
 import { currentUser } from "@/lib/auth/session";
 import { claimsForBrowserTokens, pendingForClaim, readClaimLink } from "@/lib/ledger/claims";
@@ -43,50 +44,12 @@ export default async function ClaimLinkPage({ params }: { params: Promise<{ toke
   const link = await readClaimLink(token);
   const me = await currentUser();
 
-  if (!link) {
-    return (
-      <Screen>
-        <TopBar title="Dareful" back={Boolean(me)} />
-        <div className="flex flex-1 flex-col justify-center gap-6 py-10">
-          <h1 className="text-serif-l text-ink">That link has expired.</h1>
-          <p className="text-body text-ink-2">Ask whoever sent it for a fresh one.</p>
-        </div>
-      </Screen>
-    );
-  }
+  if (!link) return <ClaimGone state="expired" signedIn={Boolean(me)} />;
 
   const { claim, creatorName } = link;
   if (me && claim.claimedBy === me.id) redirect("/welcome");
-  if (me && claim.createdBy === me.id) {
-    return (
-      <Screen>
-        <TopBar title="Dareful" back />
-        <div className="flex flex-1 flex-col justify-center gap-6 py-10">
-          <h1 className="text-serif-l text-ink">This is the link you made for {claim.displayName}.</h1>
-          <p className="text-body text-ink-2">Send it to them from your own messages. It does nothing for you.</p>
-          <Link prefetch={false} href={`/p/c/${claim.id}`} className="link-tertiary">
-            Back to {claim.displayName}
-          </Link>
-        </div>
-      </Screen>
-    );
-  }
-  if (claim.claimedBy) {
-    return (
-      <Screen>
-        <TopBar title="Dareful" back={Boolean(me)} />
-        <div className="flex flex-1 flex-col justify-center gap-6 py-10">
-          <h1 className="text-serif-l text-ink">Someone already said this was them.</h1>
-          <p className="text-body text-ink-2">If that was you, sign in and it’s all there. If it wasn’t, tell {creatorName}.</p>
-          {me ? (
-            <Link prefetch={false} href="/" className="link-tertiary">
-              Go home
-            </Link>
-          ) : null}
-        </div>
-      </Screen>
-    );
-  }
+  if (me && claim.createdBy === me.id) return <ClaimGone state="own" signedIn name={claim.displayName} claimId={claim.id} />;
+  if (claim.claimedBy) return <ClaimGone state="used" signedIn={Boolean(me)} creatorName={creatorName} />;
 
   const rows = await pendingForClaim(claim.id);
   const denoms = await denominationsByIds(Array.from(new Set(rows.map((r) => r.denomId))));
@@ -109,31 +72,28 @@ export default async function ClaimLinkPage({ params }: { params: Promise<{ toke
         </div>
         <h1 className="text-serif-xl text-ink">{rows.length === 1 ? `${creatorName} got this one.` : rows.length === 0 ? `${creatorName} added you.` : `${creatorName} got these.`}</h1>
         {rows.length > 0 ? (
-          <div className="flex flex-col gap-3">
+          // Claim rows (docs/design.md 3.38, 4.8): a 13px 600 kicker with the date, the subject in body 600 whatever kind of
+          // event it is, and one body-sm line carrying the token. Never an event card: that would put serif 26 beside the serif 40 headline.
+          <div className="flex flex-col divide-y divide-line rounded-card border border-line bg-surface">
             {rows.map((r) => {
               const denomination = denoms.get(r.denomId);
               const creditor = r.toUser ? creditorById.get(r.toUser) : undefined;
               if (!denomination || !creditor) return null;
               return (
-                <div key={r.id} className="flex flex-col gap-1">
-                  <CoveredCard
-                    clock={clock}
-                    viewerId={claim.id}
-                    creditor={creditor}
-                    debtor={you}
-                    denomination={denomination}
-                    quantity={r.quantity ?? 1n}
-                    amountCents={r.amountCents}
-                    memo={r.memo}
-                    at={r.createdAt}
-                    groupName={null}
-                    state="pending"
-                    pendingHint="Nothing counts until you say so"
-                  />
+                <div key={r.id} className="flex flex-col gap-1 px-4 py-3">
+                  <p className="text-label text-ink-3">
+                    Covered · {dayLabel(r.createdAt, clock.zone)}
+                  </p>
+                  <p className="text-body-strong text-ink">{r.memo ?? coveredSentence(creditor, claim.id)}</p>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-body-sm text-ink-2">{gotSentence(you, creditor, claim.id)}</span>
+                    <ObligationToken owner={{ id: you.id, displayName: you.displayName, hue: "stone", ghost: true }} other={creditor} viewerId={claim.id} denomination={denomination} quantity={r.quantity ?? 1n} pending />
+                  </div>
                   {held ? <ConcedeButton proposalId={r.id} conceded={r.concededAt !== null} /> : null}
                 </div>
               );
             })}
+            <p className="px-4 py-3 text-caption text-ink-3">Nothing counts until you say so.</p>
           </div>
         ) : (
           <p className="text-body text-ink-2">Nothing is waiting on you. They just wanted you in.</p>

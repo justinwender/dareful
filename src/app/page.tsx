@@ -1,15 +1,13 @@
 import Link from "next/link";
 import { LinkPending } from "@/components/ui/link-pending";
-import { MarketCardFrom } from "@/components/markets/market-card-from";
-import { SignInButton } from "@/components/auth/sign-in-button";
-import { CoveredCard } from "@/components/ledger/covered-card";
-import { Screen, SectionLabel, TopBar } from "@/components/ledger/screen";
-import { CodeJoinCompact } from "@/components/home/code-join";
+import { Screen, SectionLabel } from "@/components/ledger/screen";
+import { FirstRun } from "@/components/home/first-run";
+import { JustHappened } from "@/components/home/just-happened";
 import { NeedsYou } from "@/components/home/needs-you";
 import { Running } from "@/components/home/running";
+import { SignedOut } from "@/components/home/signed-out";
 import { nowFor, timeBound } from "@/lib/ledger/home";
 import { closesLabel, todayLabel } from "@/lib/ui/copy";
-import { ButtonLink } from "@/components/ui/button";
 import { TabBar } from "@/components/ui/tab-bar";
 import { SuggestedGhost } from "@/components/ledger/suggested-ghost";
 import { currentUser } from "@/lib/auth/session";
@@ -34,40 +32,7 @@ export default async function Now({ searchParams }: { searchParams: Promise<{ al
   const empty = !home.hasAnything && suggested.length === 0 && waiting.length === 0;
   const today = <h2 className="pt-5 text-label text-ink-3">{todayLabel(now, clock.zone)}</h2>;
 
-  if (empty) {
-    return (
-      <Screen>
-        {today}
-        <div className="flex flex-1 flex-col gap-7 py-6">
-          <div className="flex flex-col gap-3">
-            <h1 className="text-serif-xl text-ink">Nothing happens here until somebody else is in it.</h1>
-            <p className="text-body text-ink-2">Ask your group chat something, or join something one of them already asked.</p>
-          </div>
-          {/* Before anything (3.14): asking is the one chalk control, so Start stays hidden, and the code field sits under it. */}
-          <div className="flex flex-col gap-3">
-            <ButtonLink prefetch href="/m/new" variant="primary">
-              Ask something
-            </ButtonLink>
-            <CodeJoinCompact label="Someone sent you a code?" />
-          </div>
-          <section className="flex flex-col gap-[10px]">
-            <h2 className="text-label text-ink-2">Or start from one of these</h2>
-            <ul className="flex flex-col gap-1.5">
-              {STARTERS.map((line) => (
-                <li key={line}>
-                  <Link prefetch={false} href={`/m/new?line=${encodeURIComponent(line)}`} className="relative flex min-h-14 items-center rounded-button bg-surface px-4 py-3 text-body-strong text-ink">
-                    <LinkPending />
-                    {line}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </section>
-        </div>
-        <TabBar active="/" live={false} start={false} />
-      </Screen>
-    );
-  }
+  if (empty) return <FirstRun today={todayLabel(now, clock.zone)} />;
 
   return (
     <Screen>
@@ -94,53 +59,10 @@ export default async function Now({ searchParams }: { searchParams: Promise<{ al
 
         <Running rows={home.running} viewerId={user.id} />
 
-        {home.happened.length > 0 ? (
-          <section className="flex flex-col gap-[10px]">
-            <h2 className="text-label text-ink-2">Just happened</h2>
-            <div className="flex flex-col gap-3">
-              {home.happened.map((e) =>
-                e.kind === "market" ? (
-                  <MarketCardFrom key={e.market.dare.id} m={e.market} viewerId={user.id} clock={clock} />
-                ) : (
-                  <CoveredCard
-                    key={`${e.kind}-${e.obligation.id}`}
-                    clock={clock}
-                    viewerId={user.id}
-                    creditor={e.to}
-                    debtor={e.from}
-                    denomination={e.denomination}
-                    quantity={e.obligation.quantity ?? 1n}
-                    amountCents={e.obligation.amountCents}
-                    memo={e.obligation.memo}
-                    at={e.at}
-                    groupName={e.groupLabel}
-                    state={e.kind === "closed" ? e.state : "open"}
-                    photo={e.kind === "closed" && e.obligation.mediaId ? { thumb: `/api/media/${e.obligation.mediaId}?size=thumb`, full: `/api/media/${e.obligation.mediaId}` } : undefined}
-                    href={`/p/${e.from.id === user.id ? e.to.id : e.from.id}`}
-                  />
-                ),
-              )}
-            </div>
-          </section>
-        ) : null}
+        <JustHappened rows={home.happened} viewerId={user.id} clock={clock} />
       </div>
       <TabBar active="/" live={timeBound(home.needs)} start />
     </Screen>
   );
 }
 
-const STARTERS = ["Does John fall asleep during the movie?", "Does anyone actually show up on time Friday?", "Who gets to the bar first?"];
-
-function SignedOut() {
-  return (
-    <Screen>
-      <TopBar title="Dareful" />
-      <div className="flex flex-1 flex-col justify-center gap-6 py-10">
-        <h1 className="text-serif-xl text-ink">Who’s got the next one?</h1>
-        <p className="text-body text-ink-2">The bets, the rounds, and the “I got this one” between friends, kept where you can find them. No spreadsheet, no nagging.</p>
-        <SignInButton />
-        <p className="text-caption text-ink-3">An email or a phone number is all it takes.</p>
-      </div>
-    </Screen>
-  );
-}

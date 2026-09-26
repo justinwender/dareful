@@ -9,16 +9,18 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { evidenceBlocks } from "@/lib/ai/client";
 import { pulseOf } from "@/lib/ledger/pulse";
-import { EVIDENCE_PER_PERSON, evidenceAllowed, evidenceItems, frameItems, MEMORIES_PER_MARKET, memoryAllowed, strip } from "@/lib/media/roles";
+import { EVIDENCE_PER_PERSON, evidenceAllowed, evidenceItems, frameItems, MEMORIES_PER_MARKET, memoryAllowed, recordItems, strip } from "@/lib/media/roles";
 import { fromThatNight } from "@/lib/ui/copy";
 import { PHOTOS_LINE } from "@/lib/ui/tiles";
 
-test("a memory goes on a settled market, by someone who was in it, while there is room", () => {
+test("a memory goes on a market once it has ended, whatever the ending, by someone who was in it, while there is room", () => {
   assert.deepEqual(memoryAllowed({ state: "resolved", inIt: true, count: 0 }), { ok: true });
   assert.deepEqual(memoryAllowed({ state: "resolved", inIt: true, count: MEMORIES_PER_MARKET - 1 }), { ok: true }, "weeks later included: nothing about time is checked");
-  assert.deepEqual(memoryAllowed({ state: "locked", inIt: true, count: 0 }), { ok: false, why: "not_settled" }, "photos go on once it is settled");
-  assert.deepEqual(memoryAllowed({ state: "open", inIt: true, count: 0 }), { ok: false, why: "not_settled" });
-  assert.deepEqual(memoryAllowed({ state: "voided", inIt: true, count: 0 }), { ok: false, why: "not_settled" }, "a void is not a settled night");
+  assert.deepEqual(memoryAllowed({ state: "voided", inIt: true, count: 0 }), { ok: true }, "a void was still a night (3.8)");
+  assert.deepEqual(memoryAllowed({ state: "expired", inIt: true, count: 0 }), { ok: true });
+  assert.deepEqual(memoryAllowed({ state: "locked", inIt: true, count: 0 }), { ok: false, why: "not_ended" }, "not while it is being called");
+  assert.deepEqual(memoryAllowed({ state: "open", inIt: true, count: 0 }), { ok: false, why: "not_ended" });
+  assert.deepEqual(memoryAllowed({ state: "draft", inIt: true, count: 0 }), { ok: false, why: "not_ended" });
   assert.deepEqual(memoryAllowed({ state: "resolved", inIt: false, count: 0 }), { ok: false, why: "not_in" }, "someone in the group who was not in it may see the frame and not add to it");
   assert.deepEqual(memoryAllowed({ state: "resolved", inIt: true, count: MEMORIES_PER_MARKET }), { ok: false, why: "full" });
 });
@@ -32,17 +34,21 @@ test("a screenshot goes with what happened while it is being called, by anyone w
   assert.deepEqual(evidenceAllowed({ state: "locked", member: false, mine: 0 }), { ok: false, why: "not_member" });
 });
 
-test("the frame shows memories only, oldest first, and the model reads evidence only", () => {
+test("the frame leads with what the claim carried, then the memories in order; everything attached is evidence; the rest stays on the record", () => {
   const t = (n: number) => new Date(1_700_000_000_000 + n * 1000);
   const rows = [
-    { id: "m2", role: "memory", createdAt: t(5) },
-    { id: "e1", role: "evidence", createdAt: t(1) },
-    { id: "m1", role: "memory", createdAt: t(2) },
-    { id: "e2", role: "evidence", createdAt: t(3) },
+    { id: "m2", role: "memory", createdAt: t(5), authorId: "theo" },
+    { id: "e1", role: "evidence", createdAt: t(1), authorId: "priya" },
+    { id: "m1", role: "memory", createdAt: t(2), authorId: "gabe" },
+    { id: "e2", role: "evidence", createdAt: t(3), authorId: "theo" },
+    { id: "e0", role: "evidence", createdAt: t(4), authorId: "priya" },
   ];
-  assert.deepEqual(frameItems(rows).map((r) => r.id), ["m1", "m2"], "a scoreboard is not a memory of the night, and the first photo added stays the frame");
-  assert.deepEqual(evidenceItems(rows).map((r) => r.id), ["e1", "e2"]);
-  assert.deepEqual(frameItems([]), []);
+  assert.deepEqual(frameItems(rows, "priya").map((r) => r.id), ["e1", "e0", "m1", "m2"], "the claimant's attachments lead, oldest first, then the memories (3.8)");
+  assert.deepEqual(frameItems(rows, null).map((r) => r.id), ["m1", "m2"], "with nobody having called it, the memories alone");
+  assert.deepEqual(frameItems(rows, "gabe").map((r) => r.id), ["m1", "m2"], "a claimant who attached nothing leads with nothing");
+  assert.deepEqual(evidenceItems(rows).map((r) => r.id), ["e1", "e2", "e0"], "everyone voting sees everything attached, oldest first");
+  assert.deepEqual(recordItems(rows, "priya").map((r) => r.id), ["e2"], "evidence that was not the claimant's stays on the record behind More");
+  assert.deepEqual(frameItems([], "priya"), []);
 });
 
 test("the strip under the frame shows four and then +N", () => {

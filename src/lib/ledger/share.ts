@@ -14,7 +14,8 @@ import { clockOf, firstName } from "@/lib/ui/copy";
 import { hueFor } from "@/lib/ui/hue";
 import { inkOf } from "@/lib/ui/ink";
 import type { Tile } from "@/lib/ui/tiles";
-import { memoriesOnMarkets } from "@/lib/media";
+import { frameOnMarkets } from "@/lib/media";
+import { outcomeLine } from "@/lib/ui/outcome-words";
 import { pictureMarkById } from "@/lib/media/marks";
 import { getObject } from "@/lib/media/storage";
 import { ruler, unitPhrase, withSeparators } from "./number-axis";
@@ -154,6 +155,7 @@ export async function marketTile(rawId: string): Promise<Tile | null> {
       markKind: schema.dares.markKind,
       markValue: schema.dares.markValue,
       outcomeLabels: schema.dares.outcomeLabels,
+      outcomeWords: schema.dares.outcomeWords,
     })
     .from(schema.dares)
     .where(eq(schema.dares.id, id.data))
@@ -217,7 +219,7 @@ export async function marketTile(rawId: string): Promise<Tile | null> {
     null,
   );
   // Whether there are photos: the tile says so as a reason to tap through, and never carries one (docs/decisions.md, the media phase).
-  const photos = (await memoriesOnMarkets([d.id])).get(d.id)?.length ? true : false;
+  const photos = (await frameOnMarkets([d.id])).get(d.id)?.length ? true : false;
   if (unit && d.resolvedOutcome !== null) {
     // The number tile (3.27): the answer as the outcome, the ruler with the cream tick, whoever was closest ringed. The scale is not on it.
     const answer = d.resolvedOutcome;
@@ -250,7 +252,8 @@ export async function marketTile(rawId: string): Promise<Tile | null> {
     ink,
     photos,
     outcome: outcome ?? 0,
-    outcomeLine: outcome === 1 ? "Yes." : "No.",
+    // In the market's words when it has them ("He did."), else "Yes." or "No." (3.25).
+    outcomeLine: outcomeLine(d, outcome === 1),
     pins: positions.map((p) => ({
       name: p.name,
       hue: hueFor(p.userId ?? ""),

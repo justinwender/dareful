@@ -2,6 +2,7 @@ import type { MarketCardData } from "@/lib/ledger/market-view";
 import { ruler, unitPhrase } from "@/lib/ledger/number-axis";
 import { closesLabel } from "@/lib/ui/copy";
 import { markRefOf } from "@/lib/ui/mark";
+import { outcomeLine } from "@/lib/ui/outcome-words";
 import { MarketCard, type MarketCardProps } from "./market-card";
 import type { RulerData } from "./call-line";
 
@@ -39,6 +40,7 @@ export function MarketCardFrom({ m, viewerId, clock, consequenceStates, close }:
       people={m.people}
       groupSize={m.groupSize}
       outcome={m.outcome}
+      outcomeLine={m.outcome === null ? null : outcomeLine(m.dare, m.outcome === 1)}
       number={m.unit ? { ruler: rulerFor(m), answerLine: m.answer === null ? null : `${unitPhrase(BigInt(m.answer), m.unit)}.` } : null}
       denomination={m.denomination}
       consequences={m.consequences}

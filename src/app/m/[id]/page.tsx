@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
+import { LinkPending } from "@/components/ui/link-pending";
 import { after } from "next/server";
 import { asc, and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
@@ -8,10 +10,13 @@ import { Avatar } from "@/components/ledger/avatar";
 import { Chip } from "@/components/ledger/chip";
 import { MarkRefStamp } from "@/components/ledger/mark-stamp";
 import { MediaFrame } from "@/components/ledger/media-frame";
-import { AddPhoto } from "@/components/markets/add-photo";
+import { EmptySlot } from "@/components/markets/empty-slot";
+import { PhotoAdding } from "@/components/markets/photo-adding";
 import { mediaOnMarket } from "@/lib/media";
 import { storageConfigured } from "@/lib/media/storage";
+import { nightHeading, restOfThatNight } from "@/lib/ledger/night";
 import { markRefOf } from "@/lib/ui/mark";
+import { outcomeLine, outcomeWordsOf, saidWord } from "@/lib/ui/outcome-words";
 import {
   LiveDot,
   StateMark,
@@ -24,7 +29,7 @@ import { Screen, SectionLabel, TopBar } from "@/components/ledger/screen";
 import { When } from "@/components/ledger/when";
 import { CallLine, Ruler } from "@/components/markets/call-line";
 import { CallSheet, type Word } from "@/components/markets/call-sheet";
-import { Leaderboard, NumberLeaderboard, Transfers } from "@/components/markets/leaderboard";
+import { Leaderboard, NumberLeaderboard, WhoHasWho } from "@/components/markets/leaderboard";
 import { rulerFor } from "@/components/markets/market-card-from";
 import { VotePoll } from "@/components/markets/vote-poll";
 import { numberAxis, serialiseAxis, unitPhrase, withSeparators } from "@/lib/ledger/number-axis";
@@ -79,8 +84,11 @@ import {
 } from "@/lib/ledger/markets";
 import { marketShare } from "@/lib/ledger/share";
 import {
+  clockOf,
   closesLabel,
+  dateLabel,
   dayLabel,
+  daysBetween,
   firstName,
   fromThatNight,
   lockedLabel,
@@ -182,8 +190,9 @@ export default async function MarketPage({
   const ink = inkOf(d);
   const numberUnit = unitOf(d);
   const word = wordFor(numberUnit !== null);
-  /** "14 shirts", "yes", "no", "nobody can tell": an outcome in the middle of a sentence. */
-  const SAID = (w: Word): string => (w === "yes" ? "yes" : w === "no" ? "no" : w === "void" ? "nobody can tell" : numberUnit ? unitPhrase(BigInt(w.slice(2)), numberUnit) : w.slice(2));
+  /** "14 shirts", "he fell asleep", "yes", "no", "nobody can tell": an outcome in the middle of a sentence, in the market's words where it has them (3.25). */
+  const SAID = (w: Word): string => (w === "yes" || w === "no" ? saidWord(d, w === "yes") : w === "void" ? "nobody can tell" : numberUnit ? unitPhrase(BigInt(w.slice(2)), numberUnit) : w.slice(2));
+  const wells = ((w) => (w ? { yes: w.yesWell, no: w.noWell } : null))(outcomeWordsOf(d));
 
   const [group] = await db
     .select()
@@ -343,6 +352,12 @@ export default async function MarketPage({
     denomination.monetary ? formatMoney(s) : unitWords(denomination, s);
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://dareful.app";
   const now = new Date(clock.now);
+  // After it ends (3.37): settled, voided or expired. The memory view is the same screen from the second calendar day.
+  const ended = state === "resolved" || state === "voided" || state === "expired";
+  const endedAt = d.resolvedAt ?? d.lockedAt ?? d.createdAt;
+  const memoryView = ended && daysBetween(endedAt, now, clock.zone) >= 1;
+  const night = fromThatNight(endedAt, now, clock.zone);
+  const canAdd = ended && mine !== null && storageConfigured();
   // The picture of where everyone landed, for someone who is in. Weights when numbers may be seen (an open
   // question once you have picked, or any question once locked); otherwise who is in and nothing about where.
   const entries = positions.map((p) => ({
@@ -514,6 +529,28 @@ export default async function MarketPage({
           The group’s number is {unitPhrase(BigInt(axis.marker.chip.replace(/,/g, "")), numberUnit)}: half of what’s riding sits at or below it.
         </p>
       ) : null}
+      {ended && (statements.length > 0 || media.record.length > 0) ? (
+        // On the record once it has ended (3.24): what people said happened, and what was attached by anyone but the claimant.
+        <div className="flex flex-col gap-2">
+          <p className="text-label text-ink-3">How it was called</p>
+          {statements.map((s) => (
+            <p key={s.userId} className="text-body-sm text-ink-2">
+              <span className="text-ink">{first(s.userId)}:</span> {s.statement}
+            </p>
+          ))}
+          {media.record.length > 0 ? (
+            <ul className="flex flex-wrap gap-2" aria-label="Also attached">
+              {media.record.map((e) => (
+                <li key={e.id} className="flex items-center gap-2 text-caption text-ink-3">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- behind the door */}
+                  <img src={`/api/media/${e.id}?size=thumb`} alt={`What ${first(e.author.id)} attached`} width={44} height={44} loading="lazy" data-record={e.id} className="h-11 w-11 rounded-stamp-28 bg-surface-2 object-cover" />
+                  <span>{first(e.author.id)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ) : null}
       {d.creatorId === me.id &&
       state !== "resolved" &&
       state !== "voided" &&
@@ -664,7 +701,7 @@ export default async function MarketPage({
             hue={bandState === "in" ? hueFor(me.id) : undefined}
             ink={INKS[ink].ink}
           />
-          {bandClock ? <span>{bandClock}</span> : null}
+          {memoryView ? <span>{dateLabel(endedAt, clock.zone)}</span> : bandClock ? <span>{bandClock}</span> : null}
         </span>
       </div>
       <h1 className="text-serif-l text-ink">{d.title}</h1>
@@ -686,34 +723,30 @@ export default async function MarketPage({
   const claimSaid = claimant
     ? (statements.find((s) => s.userId === claimant.userId)?.statement ?? null)
     : null;
+  // The claim card (3.37): the clip on the left, the claimant and their words on the right, the line and when the clip was shot under them.
+  const claimClips = claimant ? media.evidence.filter((e) => e.author.id === claimant.userId) : [];
+  const clip = claimClips[0] ?? null;
   const claim =
     claimant && claimWord ? (
-      <section className="flex items-start gap-3 rounded-card border border-line bg-surface px-4 py-3">
-        <Avatar
-          name={person.get(claimant.userId)?.displayName ?? "?"}
-          hue={hueFor(claimant.userId)}
-          size={28}
-        />
+      <section className="flex items-start gap-3 rounded-card border border-line bg-surface p-3">
+        {clip ? (
+          <a href={`/api/media/${clip.id}`} target="_blank" rel="noreferrer" className="relative shrink-0" aria-label={`What ${first(claimant.userId)} attached, full size`}>
+            {/* eslint-disable-next-line @next/next/no-img-element -- behind the door, a signed URL that expires */}
+            <img src={`/api/media/${clip.id}?size=thumb`} alt="" width={72} height={72} data-evidence={clip.id} className="h-[72px] w-[72px] rounded-button bg-surface-2 object-cover" />
+            {claimClips.length > 1 ? <span className="absolute right-1 bottom-1 rounded-pill bg-scrim px-1.5 text-caption text-ink">+{claimClips.length - 1}</span> : null}
+          </a>
+        ) : null}
         <div className="flex min-w-0 flex-col gap-1">
-          <p className="text-body-strong text-ink">
-            {first(claimant.userId)}{" "}
-            {claimant.userId === me.id ? "say" : "says"} {SAID(claimWord)}
+          <p className="flex items-center gap-2 text-body-strong text-ink">
+            <Avatar name={person.get(claimant.userId)?.displayName ?? "?"} hue={hueFor(claimant.userId)} size={22} />
+            <span>
+              {first(claimant.userId)} {claimant.userId === me.id ? "say" : "says"} {SAID(claimWord)}
+            </span>
           </p>
-          {claimSaid ? (
-            <p className="text-body-sm text-ink-2">{claimSaid}</p>
-          ) : null}
-          {media.evidence.some((e) => e.author.id === claimant.userId) ? (
-            // What they attached (3.25: the 72px clip on the claim card): evidence, by them, and never the frame's.
-            <ul className="flex flex-wrap gap-2" aria-label={`What ${first(claimant.userId)} attached`}>
-              {media.evidence
-                .filter((e) => e.author.id === claimant.userId)
-                .map((e) => (
-                  <li key={e.id}>
-                    {/* eslint-disable-next-line @next/next/no-img-element -- behind the door, a signed URL that expires */}
-                    <img src={`/api/media/${e.id}?size=thumb`} alt={`A screenshot ${first(claimant.userId)} attached`} width={72} height={72} data-evidence={e.id} className="h-[72px] w-[72px] rounded-button bg-surface-2 object-cover" />
-                  </li>
-                ))}
-            </ul>
+          {claimSaid || clip?.capturedAt ? (
+            <p className="text-caption text-ink-3">
+              {[claimSaid, clip?.capturedAt ? `shot ${clockOf(clip.capturedAt, clock.zone)}` : null].filter(Boolean).join(" · ")}
+            </p>
           ) : null}
         </div>
       </section>
@@ -738,6 +771,8 @@ export default async function MarketPage({
           said: s.statement,
         }))}
         evidence={media.evidence.map((e) => ({ id: e.id, by: first(e.author.id) }))}
+        wells={wells}
+        myNote={myVote === null && statements.some((s) => s.userId === me.id)}
         proposal={
           d.aiRationale
             ? {
@@ -785,110 +820,146 @@ export default async function MarketPage({
       : null;
   // The answer as a sentence (3.25): "14 shirts, then a seam gave out." when the claimant said what happened in a few words, else "14 shirts."
   const claimantSaid = state === "resolved" ? (statements.find((s) => s.userId === orderedVotes[0]?.userId)?.statement ?? null) : null;
-  const answerLine = answerNumber !== null && numberUnit ? `${unitPhrase(answerNumber, numberUnit)}${claimantSaid && claimantSaid.length <= 60 ? `, ${claimantSaid.charAt(0).toLowerCase()}${claimantSaid.slice(1).replace(/[.!]+$/, "")}.` : "."}` : outcome === "yes" ? "Yes." : "No.";
+  const answerLine = answerNumber !== null && numberUnit ? `${unitPhrase(answerNumber, numberUnit)}${claimantSaid && claimantSaid.length <= 60 ? `, ${claimantSaid.charAt(0).toLowerCase()}${claimantSaid.slice(1).replace(/[.!]+$/, "")}.` : "."}` : outcomeLine(d, outcome === "yes");
   const offBy = (p: (typeof positions)[number]) => (answerNumber === null ? 0n : p.value > answerNumber ? p.value - answerNumber : answerNumber - p.value);
   const closestLine = closest ? (numberUnit ? `${first(closest.userId as string)} ${closest.userId === me.id ? "were" : "was"} closest, ${offBy(closest) === 0n ? "dead on" : `off by ${withSeparators(offBy(closest))}`}.` : `${first(closest.userId as string)} ${closest.userId === me.id ? "were" : "was"} closest, at ${Number(closest.value) / 100}%.`) : "";
-  const settledSheet =
-    state === "resolved" && outcome && outcome !== "void" ? (
-      <SettledSheet
-        dareId={d.id}
-        tileUrl={`/m/${d.id}/opengraph-image`}
-        caption={`${answerLine}${closestLine ? ` ${closestLine}` : ""}`}
-        url={`${appUrl}/m/${d.id}`}
-        text={`How it ended: ${d.title}`}
-      />
-    ) : null;
+  const ending: "settled" | "void" | "expired" = state === "voided" ? "void" : state === "expired" ? "expired" : "settled";
+  const settledSheet = ended ? (
+    <SettledSheet
+      dareId={d.id}
+      inIt={mine !== null}
+      ending={ending}
+      hasPhotos={media.frame.length > 0}
+      tile={ending === "settled" && outcome && outcome !== "void" ? { tileUrl: `/m/${d.id}/opengraph-image`, caption: `${answerLine}${closestLine ? ` ${closestLine}` : ""}`, url: `${appUrl}/m/${d.id}`, text: `How it ended: ${d.title}` } : null}
+    />
+  ) : null;
+  const frameItems = media.frame.map((m) => ({ id: m.id, author: { name: m.author.displayName, hue: hueFor(m.author.id) } }));
+  // The frame, or the empty slot for someone who can add, or nothing (3.8): never an empty frame.
+  const frameOrSlot = (height: 200 | 260) => (frameItems.length > 0 ? <MediaFrame items={frameItems} height={height} inset /> : canAdd ? <EmptySlot /> : null);
+  const endedCaption =
+    state === "voided"
+      ? d.resolvedBy === "arbitration"
+        ? "The terms didn’t decide it. Nothing changes hands."
+        : "Nothing changes hands."
+      : state === "expired"
+        ? "Nobody said what happened before it closed for good."
+        : numberUnit
+          ? closestLine
+          : (claimantSaid ?? "");
+  const endedOutcome = state === "voided" ? "Nobody could tell." : state === "expired" ? "Never settled." : answerLine;
+  const lineOrRuler = (resolved: boolean) =>
+    numberUnit ? (
+      rulerData ? <Ruler ruler={rulerData} state={resolved ? "resolved" : undefined} size="screen" surface="var(--ground)" /> : null
+    ) : (
+      <CallLine pins={pins} state={resolved ? "resolved" : "in"} outcome={resolved && outcome ? (outcome === "yes" ? 1 : 0) : undefined} size="screen" surface="var(--ground)" />
+    );
+  const settledOutcome = state === "resolved" && outcome !== null && outcome !== "void";
+  const participants = positions.map((p) => p.userId as string);
+  const people = new Map(users.map((u) => [u.id, u]));
+  const transfers = edges.map((e) => ({ fromId: e.fromUser, toId: e.toUser, quantity: e.quantity ?? 1n, closed: e.closedAt !== null }));
+  // "The rest of that night" (3.37), on the memory view only: other events that shared this night with the viewer.
+  const restOfNight = memoryView && d.lockedAt && d.resolvedAt ? await restOfThatNight({ dareId: d.id, groupIds: [d.groupId], people: participants, viewerId: me.id, closedAt: d.lockedAt, endedAt: d.resolvedAt }).catch(() => []) : [];
+  const endedBody = !ended ? null : memoryView ? (
+    // The memory it leaves: the photos first, the outcome and one line, the line or ruler, what it left, the rest of that night. No ranking.
+    <>
+      <section className="flex flex-col gap-3">
+        {frameOrSlot(260)}
+      </section>
+      <section className="flex flex-col gap-2">
+        <p className="text-serif-l text-ink">{endedOutcome}</p>
+        {[state === "resolved" && !numberUnit ? claimantSaid : null, state === "resolved" ? closestLine || null : endedCaption].filter(Boolean).length > 0 ? (
+          <p className="text-body text-ink-2">{[state === "resolved" && !numberUnit ? claimantSaid : null, state === "resolved" ? closestLine || null : endedCaption].filter(Boolean).join(" ")}</p>
+        ) : null}
+      </section>
+      <section className="flex flex-col gap-3">{lineOrRuler(settledOutcome)}</section>
+      {settledOutcome ? (
+        <section className="flex flex-col gap-2 rounded-card border border-line bg-surface px-4 py-[14px]">
+          {transfers.length === 0 ? <p className="text-body-sm text-ink-2">Nothing changed hands.</p> : <WhoHasWho transfers={transfers} people={people} participants={participants} denomination={denomination} viewerId={me.id} />}
+        </section>
+      ) : null}
+      {restOfNight.length > 0 && d.lockedAt ? (
+        <section className="flex flex-col gap-3">
+          <SectionLabel>{nightHeading(d.lockedAt, clock.zone)}</SectionLabel>
+          <div className="overflow-hidden rounded-card border border-line bg-surface">
+            {restOfNight.map((r, i) => (
+              <Link prefetch={false} key={r.key} href={r.href} className={`relative grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 ${i > 0 ? "border-t border-line" : ""}`}>
+                <LinkPending />
+                <span className="flex min-w-0 flex-col gap-1">
+                  <span className="text-label text-ink-3">{r.kindLabel}</span>
+                  <span className="text-body-strong text-ink">{r.subject}</span>
+                  {r.caption ? <span className="text-caption text-ink-3">{r.caption}</span> : null}
+                </span>
+                {r.thumb ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- behind the door
+                  <img src={r.thumb} alt="" width={60} height={60} loading="lazy" className="h-[60px] w-[60px] shrink-0 rounded-button bg-surface-2 object-cover" />
+                ) : (
+                  <span />
+                )}
+              </Link>
+            ))}
+          </div>
+        </section>
+      ) : null}
+    </>
+  ) : (
+    // The settled screen (3.37): the outcome is the news, so it comes first; then the frame; the line; closest first; who's got who.
+    <>
+      <section className="flex flex-col gap-4">
+        <p className="text-serif-l text-ink">{endedOutcome}</p>
+        {endedCaption ? <p className="text-caption text-ink-2">{endedCaption}</p> : null}
+        {frameOrSlot(200)}
+        {lineOrRuler(settledOutcome)}
+      </section>
+      {settledOutcome ? (
+        <>
+          <section className="flex flex-col gap-3">
+            <SectionLabel>Closest first</SectionLabel>
+            {numberUnit && rulerData && rulerData.answer ? (
+              <NumberLeaderboard
+                viewerId={me.id}
+                answer={rulerData.answer}
+                standings={positions.map((p) => ({
+                  userId: p.userId as string,
+                  name: person.get(p.userId as string)?.displayName ?? "Someone",
+                  value: p.value.toString(),
+                  xPermille: rulerData.pins.find((x) => x.id === p.userId)?.xPermille ?? 0,
+                  score: p.score ?? 0,
+                }))}
+              />
+            ) : (
+              <Leaderboard
+                viewerId={me.id}
+                outcome={outcome === "yes" ? 1 : 0}
+                standings={positions.map((p) => ({
+                  userId: p.userId as string,
+                  name: person.get(p.userId as string)?.displayName ?? "Someone",
+                  percent: Number(p.value) / 100,
+                  score: p.score ?? 0,
+                }))}
+              />
+            )}
+          </section>
+          <section className="flex flex-col gap-2">
+            <SectionLabel>Who’s got who</SectionLabel>
+            <WhoHasWho transfers={transfers} people={people} participants={participants} denomination={denomination} viewerId={me.id} />
+          </section>
+        </>
+      ) : null}
+    </>
+  );
 
   return (
     <div
       className="grain flex flex-1 flex-col"
       style={inkVars(ink) as CSSProperties}
     >
+      <PhotoAdding dareId={d.id} night={night} canAdd={canAdd} viewer={{ name: me.displayName, hue: hueFor(me.id) }}>
       <Screen>
         <TopBar back right={group?.name ? <Chip>{group.name}</Chip> : null} />
         <div className="flex flex-col gap-7 py-2">
           {band}
 
-          {state === "resolved" && outcome && outcome !== "void" ? (
-            <>
-              <section className="flex flex-col gap-4">
-                <p className="text-serif-l text-ink">{answerLine}</p>
-                {numberUnit && closestLine ? <p className="text-caption text-ink-2">{closestLine}</p> : null}
-                {/* The memory it leaves (3.25, 3.8): the frame at 200px with its credit and counter, only when there is one; then "Add yours" for anyone who was in it. */}
-                {media.memories.length > 0 ? <MediaFrame items={media.memories.map((m) => ({ id: m.id, author: { name: m.author.displayName, hue: hueFor(m.author.id) } }))} height={200} inset /> : null}
-                {mine && storageConfigured() && d.resolvedAt ? <AddPhoto dareId={d.id} label={`Add yours from ${fromThatNight(d.resolvedAt, now, clock.zone)}`} /> : null}
-                {numberUnit && rulerData ? (
-                  <Ruler ruler={rulerData} state="resolved" size="screen" surface="var(--ground)" />
-                ) : (
-                <CallLine
-                  pins={pins}
-                  state="resolved"
-                  outcome={outcome === "yes" ? 1 : 0}
-                  size="screen"
-                  surface="var(--ground)"
-                />
-                )}
-              </section>
-              <section className="flex flex-col gap-3">
-                <SectionLabel>Who was closest</SectionLabel>
-                {numberUnit && rulerData && rulerData.answer ? (
-                  <NumberLeaderboard
-                    viewerId={me.id}
-                    answer={rulerData.answer}
-                    standings={positions.map((p) => ({
-                      userId: p.userId as string,
-                      name: person.get(p.userId as string)?.displayName ?? "Someone",
-                      value: p.value.toString(),
-                      xPermille: rulerData.pins.find((x) => x.id === p.userId)?.xPermille ?? 0,
-                      score: p.score ?? 0,
-                    }))}
-                  />
-                ) : (
-                <Leaderboard
-                  viewerId={me.id}
-                  outcome={outcome === "yes" ? 1 : 0}
-                  standings={positions.map((p) => ({
-                    userId: p.userId as string,
-                    name:
-                      person.get(p.userId as string)?.displayName ?? "Someone",
-                    percent: Number(p.value) / 100,
-                    score: p.score ?? 0,
-                  }))}
-                />
-                )}
-              </section>
-              <section className="flex flex-col gap-2">
-                <SectionLabel>What changes hands</SectionLabel>
-                <Transfers
-                  viewerId={me.id}
-                  denomination={denomination}
-                  people={new Map(users.map((u) => [u.id, u]))}
-                  transfers={edges.map((e) => ({
-                    fromId: e.fromUser,
-                    toId: e.toUser,
-                    quantity: e.quantity ?? 1n,
-                  }))}
-                />
-              </section>
-            </>
-          ) : null}
-
-          {state === "voided" ? (
-            <section className="flex flex-col gap-3">
-              <p className="text-serif-l text-ink">No answer.</p>
-              <p className="text-body text-ink-2">
-                Nobody could tell, so it’s void. Nothing changes hands.
-              </p>
-              {numberUnit ? (rulerData ? <Ruler ruler={rulerData} size="screen" surface="var(--ground)" /> : null) : (
-              <CallLine
-                pins={pins}
-                state="in"
-                size="screen"
-                surface="var(--ground)"
-              />
-              )}
-            </section>
-          ) : null}
+          {endedBody}
 
           {state === "draft" ? (
             <section className="flex flex-col gap-4">
@@ -989,24 +1060,6 @@ export default async function MarketPage({
             </>
           ) : null}
 
-          {state === "expired" ? (
-            <section className="flex flex-col gap-3">
-              <p className="text-serif-l text-ink">Never settled.</p>
-              <p className="text-body text-ink-2">
-                Nobody called it in time, and it was set up to go unsettled if
-                that happened. Nothing changes hands, and it counts against
-                nobody.
-              </p>
-              {numberUnit ? (rulerData ? <Ruler ruler={rulerData} size="screen" surface="var(--ground)" /> : null) : (
-              <CallLine
-                pins={pins}
-                state="in"
-                size="screen"
-                surface="var(--ground)"
-              />
-              )}
-            </section>
-          ) : null}
 
           {state !== "draft" ? details : null}
           {mine || state !== "open" ? more : null}
@@ -1049,6 +1102,7 @@ export default async function MarketPage({
           {state === "locked" ? <VotePoll dareId={d.id} pulse={pulseOf({ votes, statements, resolvedAt: d.resolvedAt, aiProposedAt: d.aiProposedAt, evidence: media.evidence.map((e) => e.id) })} /> : null}
         </div>
       </Screen>
+      </PhotoAdding>
     </div>
   );
 }

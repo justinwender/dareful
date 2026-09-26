@@ -139,3 +139,13 @@ export function fromThatNight(settledAt: Date, now: Date, timeZone: string): str
   if (days < 7) return settledAt.toLocaleDateString("en-US", { timeZone, weekday: "long" });
   return "that night";
 }
+
+/** Whole calendar days from `from` to `to` in a zone, the way "yesterday" is counted: one from the moment the day turns. */
+export function daysBetween(from: Date, to: Date, timeZone: string): number {
+  return dayNumber(to, timeZone) - dayNumber(from, timeZone);
+}
+
+/** "Sat, Aug 22": the date where a clock was, on a market opened as a memory (docs/design.md 3.37). */
+export function dateLabel(at: Date, timeZone: string): string {
+  return at.toLocaleDateString("en-US", { timeZone, weekday: "short", month: "short", day: "numeric" });
+}

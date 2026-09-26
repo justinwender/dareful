@@ -12,7 +12,7 @@ import { db, schema } from "@/db";
 import { marketById, stateOf } from "@/lib/ledger/markets";
 import { isMember } from "@/lib/ledger/groups";
 import { NotAPhoto, processPhoto } from "./pipeline";
-import { evidenceAllowed, evidenceItems, frameItems, memoryAllowed, type MediaRole, type Refusal } from "./roles";
+import { evidenceAllowed, evidenceItems, frameItems, memoryAllowed, recordItems, type MediaRole, type Refusal } from "./roles";
 import { putObject, removeObjects, signedUrl } from "./storage";
 
 export type MediaRow = typeof schema.media.$inferSelect;
@@ -115,7 +115,7 @@ async function storePhoto(bytes: Buffer, viewerZone: string | null): Promise<{ i
 }
 
 const REFUSED: Record<Refusal, string> = {
-  not_settled: "Photos go on once it’s settled.",
+  not_ended: "Photos go on once it’s over.",
   not_in: "This one is for the people who were in it.",
   full: "This one has all the photos it can hold.",
   not_voting: "It isn’t being called right now.",
@@ -157,19 +157,39 @@ export async function addMarketPhoto(input: { dareId: string; authorId: string; 
 
 export type MarketMedia = { id: string; role: MediaRole; author: { id: string; displayName: string }; capturedAt: Date | null; createdAt: Date };
 
-/** Every photo on a market with its author, for the frame (memories) and the claim (evidence), split by `frameItems` and `evidenceItems`. */
-export async function mediaOnMarket(dareId: string): Promise<{ memories: MarketMedia[]; evidence: MarketMedia[] }> {
-  const rows = await db.select({ id: schema.media.id, role: schema.media.role, authorId: schema.media.authorId, capturedAt: schema.media.capturedAt, createdAt: schema.media.createdAt }).from(schema.media).where(eq(schema.media.dareId, dareId));
-  return splitMedia(rows, await namesOf(rows.map((r) => r.authorId)));
+/**
+ * Every photo on a market with its author, split three ways (roles.ts): the frame (the claimant's attachments,
+ * then the memories), the evidence (everything attached while it was being called, for the raised sheet and the
+ * model) and the record (evidence that was not the claimant's, behind More once it has ended). The claimant is
+ * the first voter, which is what the claim card shows.
+ */
+export async function mediaOnMarket(dareId: string): Promise<{ frame: MarketMedia[]; memories: MarketMedia[]; evidence: MarketMedia[]; record: MarketMedia[]; claimantId: string | null }> {
+  const [rows, claimantId] = await Promise.all([
+    db.select({ id: schema.media.id, role: schema.media.role, authorId: schema.media.authorId, capturedAt: schema.media.capturedAt, createdAt: schema.media.createdAt }).from(schema.media).where(eq(schema.media.dareId, dareId)),
+    claimantsOf([dareId]).then((m) => m.get(dareId) ?? null),
+  ]);
+  return splitMedia(rows, await namesOf(rows.map((r) => r.authorId)), claimantId);
 }
 
-/** The same, for many markets at once (a timeline): only memories are needed there, and only settled markets have them. */
-export async function memoriesOnMarkets(dareIds: string[]): Promise<Map<string, MarketMedia[]>> {
+/** The frame of many markets at once (a timeline, a tile): the claim's clip first, then the memories. */
+export async function frameOnMarkets(dareIds: string[]): Promise<Map<string, MarketMedia[]>> {
   const out = new Map<string, MarketMedia[]>();
   if (dareIds.length === 0) return out;
-  const rows = await db.select({ id: schema.media.id, dareId: schema.media.dareId, role: schema.media.role, authorId: schema.media.authorId, capturedAt: schema.media.capturedAt, createdAt: schema.media.createdAt }).from(schema.media).where(inArray(schema.media.dareId, dareIds));
+  const [rows, claimants] = await Promise.all([
+    db.select({ id: schema.media.id, dareId: schema.media.dareId, role: schema.media.role, authorId: schema.media.authorId, capturedAt: schema.media.capturedAt, createdAt: schema.media.createdAt }).from(schema.media).where(inArray(schema.media.dareId, dareIds)),
+    claimantsOf(dareIds),
+  ]);
   const names = await namesOf(rows.map((r) => r.authorId));
-  for (const dareId of dareIds) out.set(dareId, splitMedia(rows.filter((r) => r.dareId === dareId), names).memories);
+  for (const dareId of dareIds) out.set(dareId, splitMedia(rows.filter((r) => r.dareId === dareId), names, claimants.get(dareId) ?? null).frame);
+  return out;
+}
+
+/** Who called each market first: the earliest vote's owner, or null where nobody has voted. */
+export async function claimantsOf(dareIds: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (dareIds.length === 0) return out;
+  const votes = await db.select({ dareId: schema.dareVotes.dareId, userId: schema.dareVotes.userId, signedAt: schema.dareVotes.signedAt }).from(schema.dareVotes).where(inArray(schema.dareVotes.dareId, dareIds));
+  for (const v of [...votes].sort((a, b) => a.signedAt.getTime() - b.signedAt.getTime())) if (!out.has(v.dareId)) out.set(v.dareId, v.userId);
   return out;
 }
 
@@ -180,7 +200,7 @@ async function namesOf(ids: string[]): Promise<Map<string, string>> {
   return new Map(users.map((u) => [u.id, u.displayName]));
 }
 
-function splitMedia(rows: Array<{ id: string; role: string; authorId: string; capturedAt: Date | null; createdAt: Date }>, names: Map<string, string>): { memories: MarketMedia[]; evidence: MarketMedia[] } {
+function splitMedia(rows: Array<{ id: string; role: string; authorId: string; capturedAt: Date | null; createdAt: Date }>, names: Map<string, string>, claimantId: string | null): { frame: MarketMedia[]; memories: MarketMedia[]; evidence: MarketMedia[]; record: MarketMedia[]; claimantId: string | null } {
   const shape = (r: (typeof rows)[number]): MarketMedia => ({ id: r.id, role: r.role === "evidence" ? "evidence" : "memory", author: { id: r.authorId, displayName: names.get(r.authorId) ?? "Someone" }, capturedAt: r.capturedAt, createdAt: r.createdAt });
-  return { memories: frameItems(rows).map(shape), evidence: evidenceItems(rows).map(shape) };
+  return { frame: frameItems(rows, claimantId).map(shape), memories: frameItems(rows, null).map(shape), evidence: evidenceItems(rows).map(shape), record: recordItems(rows, claimantId).map(shape), claimantId };
 }

@@ -100,6 +100,14 @@ const CONTROLS = new Set([
 const RENDERERS = [/opengraph-image\.tsx$/, /^src\/app\/icons\//];
 /** A modal screen of its own, mounted from the layout: counted as a screen, not against every page. */
 const OWN_SCREENS = ["src/components/auth/wallet-bootstrap.tsx"];
+/**
+ * One state of a screen, in its own file, counted as its own screen (docs/design.md 4.8: "run it per state").
+ * A page renders exactly one of its states at a time, so a static sum of two states' sizes counts text that is
+ * never on one screen together: the signed-out and empty states of Now beside its live one, the claimant's dead,
+ * used and own-link states beside the live one. Each is listed here, left out of its page's closure, and held to
+ * the budget on its own.
+ */
+const STATE_SCREENS = ["src/components/home/first-run.tsx", "src/components/home/signed-out.tsx", "src/components/ledger/claim-gone.tsx"];
 
 const SCREEN_MAX = 4;
 
@@ -253,11 +261,11 @@ for (const file of walk(SRC)) {
 const pages = walk(join(SRC, "app")).filter((p) => /[/\\]page\.tsx$/.test(p));
 const screens = [
   ...pages,
-  ...OWN_SCREENS.map((p) => join(ROOT, p)).filter((p) => existsSync(p)),
+  ...[...OWN_SCREENS, ...STATE_SCREENS].map((p) => join(ROOT, p)).filter((p) => existsSync(p)),
 ];
-const skipForPages = new Set([...CONTROLS, ...OWN_SCREENS]);
+const skipForPages = new Set([...CONTROLS, ...OWN_SCREENS, ...STATE_SCREENS]);
 for (const screen of screens) {
-  const isOwn = OWN_SCREENS.includes(rel(screen));
+  const isOwn = OWN_SCREENS.includes(rel(screen)) || STATE_SCREENS.includes(rel(screen));
   const files = closure(
     screen,
     isOwn ? new Set(CONTROLS) : skipForPages,

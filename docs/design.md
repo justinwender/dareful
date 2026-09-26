@@ -13,13 +13,24 @@ below match the artboards:
 - Screens row, in flow order: `Now`, `FirstRun`, `Main` (person view), `Story`, `MarkPicker`
   (the question step, interactive), `MarkPickerFrames` (the picker in four moments), `Ask`
   (who's in), `JoinLink`, `Join`, `Claim`, `MarketDock` (the interactive market screen),
-  `BlindSlow`, `Voting`, `Split`, `Leaderboard` (settled), `Memory`.
+  `BlindSlow`, `Voting`, `Split`, `Leaderboard` (settled), `Memory` (the memory it leaves), and
+  to their right `SettledPhotos` (after it ends: adding photos) and `FarOff` (a number past the
+  limit).
 - `DockStates` (the sheet through a market's life), the link tiles (`TileAsk`, `TileAskRange`,
   `TilePhoto`, `TileCalled`, `TileInChat`), and the ink boards (`Inks`, `InkCompare`).
+- New rows under the inks: pick-one markets (`PickOneMarket`, interactive; `PickOneEntry`;
+  `PickOneResolve`), What's on (`WhatsOn`; `WhatsOnFlow`; `WhatsOnStates`; `FeedBallot`), You
+  (`You`; `YouEarly`), and a last row for the contract redeploy only (`SpreadRedeploy`), which
+  must not be built before it.
 
 Market colours on boards other than `Inks` and `MarkPicker` are illustrative and were drawn
-before the emoji ink table existed (1.8). Where a board and `src/lib/ui/emoji-inks.json` disagree, the
-table wins.
+before the emoji ink table existed (1.8). Where a board and `src/lib/ui/emoji-inks.json`
+disagree, the table wins.
+
+The developer builds from this text, and a board export has come out blank before, so every
+screen that matters is specified here in words: the market screen and its sheet (3.24, 3.25),
+what happens after a market ends and the memory it leaves (3.37), and the rest of the screens
+(3.38). Where a board is older than its text, 3.38 says so, and the text wins.
 
 Target: mobile web, installable as a PWA, 390px reference width. Tailwind plus shadcn/ui. Dark
 is the default and only shipped theme for v1; light values are given so nothing has to be
@@ -27,39 +38,187 @@ re-derived later.
 
 ### What changed in this revision
 
-This revision covers the fifth design session only. Everything not listed here is unchanged from
-what is built. Each item says what, if anything, it asks of existing code.
+This revision reconciles everything since the copy in the repository, which is the fifth
+session's. It covers three design sessions: the sixth and seventh, which never reached the
+repository, and the eighth, which is mostly this reconciliation. From here on this file is the
+single copy: it replaces the repository's `docs/design.md`, and `docs/decisions.md` keeps the
+reasoning. Every dated developer amendment is laid on top of the newest design work and listed
+below, so it is visible that nothing was lost. Each item says what it asks of existing code.
 
-1. The type budget counts sizes, not tokens (1.2, 4.8). A size is a family at a pixel size, and
-   weight is free inside it. The cap stays at four a screen, one of them serif. Text inside
-   controls and obligation tokens is not counted, and the separate cap for a card is gone. Built
-   code: the lint, and one property on one screen. The leaderboard rank on the settled screen
-   drops from `numeral` 20 to 17px 600 (3.7). No other built screen changes.
-2. `numeral-hero` now lives only in the number field, and Hanken 20 only inside controls (1.2).
-   A settled number is written as a `serif-l` sentence ("14 shirts, then a seam gave out.")
-   instead of a 60px numeral (3.25, 3.26), and the roll call's numbers drop to 17px 600 (3.6).
-   Both are number-market displays. If they were built ahead of number entry, these are the two
-   properties to change.
-3. The mark picker is designed: the question step and the picker sheet (new 3.29, boards
-   `MarkPicker` and `MarkPickerFrames`). Emoji only. Stickers have a reserved slot and no
-   design. New code.
-4. The emoji ink table ships as data, `src/lib/ui/emoji-inks.json`, with the script that made it,
-   `scripts/emoji-inks.py`, and a lookup rule (1.8). Built code: the ink function gains a table
-   lookup ahead of the id hash. No market has a mark yet, so nothing on screen changes colour
-   until the picker ships.
-5. A unit's mark has no stamp fill inside a token and sits on `--surface-2` everywhere else,
-   never on an ink (1.7, 3.2). Built code: the interim neutral field is already right outside
-   tokens. Inside a token, make it transparent.
-6. Number markets are fully specified for display (3.5, 3.22, 3.24, 3.25, 3.26, 3.27). The
-   asker's bounds are gone from the entry and the axis, and the scoring scale is kept out of the
-   display entirely. New: a column per value for narrow spreads, the off-axis rule for one
-   far-off entry, no axis at all on a blind number market, the padding rule for one entry or
-   total agreement, the empty field, singular and plural units, the closed and voting sheet
-   rows, and the result tile. Built code: none, since number entry has not shipped.
-7. Canvas: `Inks` is corrected, because 👕 measures Sea in the reference font rather than Slate.
-   `Tokens`, `System2`, `Story` and `Leaderboard` carry items 1 and 2, and `WeightSpec` carries
-   item 6. The screens from `Ask` onward are renumbered in their board titles to make room for
-   the two picker boards.
+**The eighth session.**
+
+1. Photos (3.8, 3.24, 3.25, 3.37, 4.3). What someone attaches while saying what happened is
+   evidence, and everyone voting sees it: the claim card's clip and the raised sheet's list. The
+   claim's attachment becomes the first memory: once the market ends it leads the frame,
+   credited to whoever attached it. After a market ends, adding a photo is the sheet's chalk,
+   and sending the tile is the secondary, since the tile then says there are photos. With no
+   photos yet, the screen shows an empty slot that is itself a button, so adding the first one
+   plainly reads as an action. Voided and expired markets take photos too. Built code:
+   `media.role` stays and the frame reads the claim's evidence ahead of the memories;
+   `addMarketPhoto` accepts a voided or expired market; the settled sheet swaps its primary;
+   `SettledSheet`'s rule of going once sent or left applies only to someone who wasn't in the
+   market.
+2. A far-off number is blocked (3.26). There is no "Keep". The block is a field error that names
+   the limit ("Try something under 1,000."), never the scoring scale, and the limit stays
+   `farOffThreshold`. Built code: the entry sheet's check becomes the block, with its wording.
+3. The screens in text (3.37, 3.38). The memory screen is specified in full, and so is every
+   other screen whose board carried something the text didn't. Nothing needs the export to be
+   built.
+4. Outcome words (3.25). A yes-or-no market carries its outcomes in the question's own words,
+   written with the terms, so the wells, the claim card and the settled line can say "He fell
+   asleep" and "He did." rather than "Yes". "Yes" and "No" stay as the fallback. Built code: the
+   write-up returns four short phrasings, stored with the terms.
+5. Wording (4.6). A line may open with a number when the number is what it is about: a count, or
+   the number someone just typed. "Your odds" is allowed for what a person puts in. A ruling is
+   credited to the tiebreaker everyone agreed to.
+6. Canvas. `Leaderboard` (14) takes the photo move; new `SettledPhotos` (the empty slot, someone
+   who wasn't in, voided, expired) and `FarOff` (the block, then fixed); `Memory` (15) gets the
+   settled sheet; `Voting` (12) draws the claim card in its current layout; `TilePhoto` is
+   redrawn as the result tile with photos, which carries no photo; `DockStates`' settled frame,
+   `Story` and `Split` lose controls that no longer exist; `You` and `YouEarly` plot the tenths
+   (amendment 33). The export at `docs/design/reference/design.html` is regenerated and draws
+   every board without scripts.
+
+**The sixth and seventh sessions, new to the repository.**
+
+1. Pick one is a single choice (3.29, 3.30, 3.31, 3.25, 3.7, 3.27): two to six answers, a tap
+   and a stake are the whole entry, each person's whole stake sits on their pick, and the
+   settled screen says who called it, with no ranking. New components; the question step gains
+   "Pick one" and the answers editor under the band.
+2. What's on (3.32, 3.33, 3.35): a fourth tab, "Most asked" over a schedule by day, and a
+   question a final score answers opening its ballot on a source card. Built code: the tab bar
+   gains a fourth item; first run's starters come from What's on.
+3. You (3.34): calibration, distance on number markets and the clean-resolution rate, each with
+   its thin-data state, now on the build's bins (amendment 33).
+4. The type budget (4.7, 4.8): Now's Just happened uses rows, the claimant's list is claim rows,
+   and the ask flow is counted per step and per sheet state.
+5. A dissent without a number is a note on the record and never a vote (3.24).
+6. Multi-choice spreading, for the contract redeploy only (3.36, `SpreadRedeploy`). Do not build
+   it before the redeploy.
+
+**Developer amendments folded in.** Each is authoritative unless this revision says otherwise,
+and each names where it now lives.
+
+From the repository's `docs/design.md`:
+
+1. 2026-09-25, file paths: the emoji ink table is `src/lib/ui/emoji-inks.json`, made by
+   `scripts/emoji-inks.py`; the planning note is `docs/marks-and-memories.md`; the export is
+   `docs/design/reference/design.html`. Intro, 1.8, 3.29.
+2. 2026-09-25, 3.22: the group's number on a number market is the stake-weighted median as
+   implemented, the smallest value with at least half the stake at or below it, the lower value
+   on a tie at a boundary, and a far-off entry holding more than half the stake is the median,
+   with the marker over its column. The details sheet says it in a sentence. The no-stake case
+   stays, marked as waiting for the redeploy. 3.22.
+3. 2026-09-25, 3.27: the photo never rides a link tile; a result tile for a market with photos
+   says "With photos from that night." instead. 3.27. The hackathon list's "the frame in the
+   share card" in `docs/marks-and-memories.md` is superseded by it.
+
+From `docs/decisions.md`:
+
+4. 2026-09-18, applied 2026-09-25: picture marks get their own table, `picture_marks`, and
+   `media` keeps exactly two parents, `dare_id` and `obligation_id`. 1.7, 3.28.
+5. 2026-09-25, stickers by paste: `mark_kind` gains `sticker` with `mark_value` the row's id;
+   every stamp reads a `MarkRef`; paste is built, and tap-to-cut and "Make a sticker" wait; the
+   owner and anyone in a group where a question wears it can see one, through `/api/mark/[id]`;
+   the bucket admits PNG. 3.28.
+6. 2026-09-25, stickers are drawn into link tiles. The owner's decision, recorded beside the
+   photo rule so the difference reads as intended. 3.27.
+7. 2026-09-25, the sticker edge is baked at one width, sized for the 40px stamp (1.4px at 28,
+   3.2px at 64, the bare source at 20). 1.7.
+8. 2026-09-25, a sticker's ink is measured on its own pixels with the 1.8 rule, `nearestInk`
+   mirroring the three folds. 1.8.
+9. 2026-09-25, "Your stickers" sits above Recent: the paste cell first, then this person's
+   stickers newest first, and one caption while there are none. 3.29.
+10. 2026-09-25, one emoji table: a mark the tile font cannot draw is refused when a market is
+    drafted, and the picker's catalog (`src/lib/ui/emoji-catalog.json`) is exactly the table's
+    keys, in English. 3.29.
+11. 2026-09-25, the mark picker as built: the pace and mode chips stay under the band; Done sits
+    in the close position; recents and tones are kept per device; a long press or right click
+    opens tones; the draft's id is made on the question step, so the ink previewed is the ink
+    stored; the retint is 200ms; the number field and the picker are controls for the type
+    budget. 3.29, 4.8.
+12. 2026-09-25, a unit's mark has no entry point until a screen makes a unit with a label of its
+    own. 1.7, 3.29.
+13. 2026-09-25, the kind is chosen with chips under the band before the write-up; an argument is
+    always yes or no; the unit is proposed by the model and editable on the terms step. 3.29.
+14. 2026-09-25, the scale is a scoring rule: fixed at asking, set on the terms step as a
+    whole-number span in the question's unit, stored with whose it is (`range_source`), shown
+    once in the details only when the asker set it ("Off by 20 shirts or more scores nothing.
+    Closer scores more."), and a model's scale used only when it passes its check. The flagged
+    reading of "in the asker's own words" (their unit and figure) is confirmed. 3.26.
+15. 2026-09-25, a vote on a number market is a vote on a proposed number, and a dissent with no
+    number is words on the record. 3.24, where the seventh session's "note" wording stands.
+16. 2026-09-25, the settled answer on a number market is the number followed by the claimant's
+    words when they run to 60 characters or fewer, else the number alone. 3.25, 3.26.
+17. 2026-09-25, a notice about a number market carries no number, and the result tile carries
+    the answer. The recorded tension is resolved here: a notice goes out on its own, and a tile
+    is sent by a person. 3.27.
+18. 2026-09-25, the far-off threshold: a hundred times the model's most likely answer
+    (`dares.typical`), rounded to one significant figure; fifty times the asker's scale when
+    there is no most likely answer; nothing for a hidden scale with nothing to measure against.
+    The check that asked "It's 2,400 shirts" is not folded in: it becomes a block (item 2 of the
+    eighth session). 3.26.
+19. 2026-09-25, photos on a market (`addMarketPhoto`): anyone with a position adds, weeks later
+    included; someone in the group who wasn't in it sees and can't add; forty-eight a market,
+    never counted on screen; the frame's credit, counter, strip, loading and failed states;
+    `fromThatNight`; the phone's picker with no `capture`. Its "settled only" is not folded in:
+    voided and expired markets take photos. 3.8, 3.24, 3.37.
+20. 2026-09-25, argument evidence: screenshots attach through saying what happened and through a
+    case for the tiebreaker; `media.role` tells evidence from a memory; three a person a
+    question; the claim card's 72px clip and the raised sheet's 44px list with the supplier's
+    first name; the model reads each tagged with who supplied it. Its rule that the frame reads
+    memories only and that evidence reaches the model alone is not folded in: this revision
+    replaces it (item 1 of the eighth session). 3.8, 3.24, 3.37.
+21. 2026-09-25, the call sheet: "Nobody can tell" as a tertiary; a well raises the sheet to an
+    optional line and "Say it"; the vote opens as a modal; the claimant is the first voter; the
+    app's read sits on the claim only until someone votes, then in the raised sheet. The wells'
+    "Yes" and "No" become the fallback for outcome words. 3.24, 3.25.
+22. 2026-09-25, the link tiles as built: one route serves the asking tile until the market
+    settles and the result tile after; the close time is in the asker's zone (`dares.zone`), and
+    in UTC, saying so, for older markets. 3.27.
+23. 2026-09-25, a ruling is credited to "the tiebreaker everyone agreed to", never to the app.
+    4.6.
+24. 2026-09-25, the pinned sheet: only the grabber and the header row drag; it is not modal; a
+    moment that binds other people opens the modal sheet over it; its room is paid through
+    `--sheet-room`. 3.24.
+25. 2026-09-25, the odds line: while changing, your own share moves with your finger and the
+    group's marker waits for the save; every number is a whole percent. 3.13.
+26. 2026-09-25, the stake chips: three across at 44px, "$5", "$10", "$20" or 1, 2, 3 of the
+    unit, with "Something else" for a field. 3.3.
+27. 2026-09-20, a stake of nothing is drawn and tested but cannot be entered until the contract
+    redeploy, so "Just pride" waits for it. 3.3, 3.13, 3.22, 3.30, 7.
+28. 2026-09-25, settling and forgiving from the row: the chalk "Settled" and a secondary "Call
+    it even" at the same size, the photo row above them, and "Try the photo again" when a photo
+    fails after the close; notices for settled, forgiven and netted never carry the unit or an
+    amount. 3.10.
+29. 2026-09-25, cancelling out stays as placed and worded: a row under the person-view header,
+    "Cancel out the $10 each way", and a sheet that asks once. 3.10.
+30. 2026-09-25, `obligations.closed_at`: Just happened orders closed obligations by it, and
+    cancelling out appears in nobody's Just happened. 4.7.
+31. 2026-09-25, a market-minted obligation closes from its story on the person view, and the
+    story card is restructured: the story is the link, and the consequences sit under it outside
+    the link. 3.4.
+32. 2026-09-25, refresh: pull to refresh, a re-read on return to the foreground, and a light
+    poll on a locked market. New 5.5.
+33. 2026-09-25, profile stats: yes-or-no calls binned by the tenths of the weight line, a plot
+    from ten resolved questions, no floor per bin, and numbers as the average miss over the
+    scale. This replaces the sixth session's folding and its floor of five per band. 3.34.
+34. 2026-09-25, the type budget as built: sizes counted, controls and tokens left out by
+    element, by `data-type-exempt` or by file, and the three baselines with their causes. 4.8.
+35. 2026-09-24, Start offers only what is built, since a row that leads nowhere is a broken
+    control. 6.1.
+36. 2026-09-24, beside a state mark: a clock, or on a needs-you row the reason the row exists,
+    including how many are in. 3.23.
+37. 2026-09-25, the app's read on a number proposal names the number with its unit ("14
+    shirts"). 3.24.
+38. 2026-09-25, the viewport probe: a tertiary "Measure the screen" on You until the installed
+    app's bottom band has a cause. 3.34.
+
+Confirmed, with nothing to change: the rally strip as drawn; reds folding into Rose, now in the
+table itself; a unit's mark as a bare glyph inside a token and on `--surface-2` elsewhere; the
+leaderboard rank at 17px 600; and closing the books, cut as superseded, which this file never
+drew (all 2026-09-25).
+
 ---
 
 ## 1. Tokens
@@ -167,12 +326,12 @@ are one size. A screen may use at most four sizes, and at most one of them may b
 same serif size may appear twice (a screen's question and its outcome are both `serif-l`). At
 any one size, use at most two weights, 400 and 600.
 
-Not counted: text inside a control (buttons, chips, inputs and textareas, the odds line's riding
-percent, the code boxes, the number field), text inside an obligation token (its quoted serif
-words and its dollars included), and the wordmark, which is a logo. Controls and tokens carry
-fixed type of their own and read as objects on the page rather than as more of its text. This is
-also why `numeral-hero` no longer needs an exception: it lives inside the number field. Counting
-is mechanical, so it is a lint rule (4.8).
+Not counted: text inside a control (buttons, chips, inputs and textareas other than the ask
+flow's question, the odds line's riding percent, the code boxes, the number field), text inside
+an obligation token (its quoted serif words and its dollars included), and the wordmark, which
+is a logo. Controls and tokens carry fixed type of their own and read as objects on the page
+rather than as more of its text. This is also why `numeral-hero` no longer needs an exception:
+it lives inside the number field. Counting is mechanical, so it is a lint rule (4.8).
 
 A consequence worth knowing: a screen whose headline is `serif-xl` (the claimant screen, first
 run) sets any questions it lists in `body` 600 rather than `serif-m`.
@@ -270,11 +429,14 @@ It always sits in a stamp:
 | A unit's mark anywhere else (unit lists, the unit editor, You) | 28px | 8px | 16px | `--surface-2`, never an ink |
 
 A picture mark fills the stamp, cropped square, served at 256px. A sticker is fit to 80% of the
-stamp with its transparency kept, and carries a cream (`#F2EDE3`) die-cut edge: 2px at 40px and
-up, 1.5px at 28px, none at 20px. Render the edge into the asset (dilate the alpha mask, fill it
-cream, composite under) rather than chaining CSS drop-shadows, so the app and the tile renderer
-draw it the same way. No mark renders nothing in app surfaces; the dashed empty stamp exists
-only on the question step and as the picker's None cell (3.29).
+stamp with its transparency kept, and carries a cream (`#F2EDE3`) die-cut edge baked into its
+256px derivative (dilate the alpha, fill it cream, composite the sticker over it), so the app
+and the tile renderer draw one edge and no CSS shadow is involved. One derivative can't be 2px
+at every size, so the edge is sized for the 40px stamp, where it is 2px; the same derivative
+reads 1.4px at 28px and 3.2px on the 64px question step, and the 20px stamp draws the bare 512px
+source with no edge. Stickers are rows in their own table, `picture_marks` (3.28). No mark
+renders nothing in app surfaces; the dashed empty stamp exists only on the question step and as
+the picker's None cell (3.29).
 
 A market's mark also decides its ink (1.8), and it rides the odds line (3.13).
 
@@ -282,8 +444,9 @@ A unit is not a place, so a unit's mark never takes an ink. A market's stamp is 
 is a small window into that market's screen; a unit has no screen, and an inked stamp inside a
 token would put one market's colour on an obligation that outlives the market. Inside a token
 there is no stamp at all: a filled square inside a 32px capsule is a box in a box, and the glyph
-reads on its own. Emoji only for now. Picture and sticker marks for units arrive with the upload
-pipeline and use the same two rows.
+reads on its own. Emoji only for now, and not yet reachable: no screen makes a unit with a label
+of its own, so the picker has nowhere to open from for a unit (3.29). Picture and sticker marks
+for units use the same two rows once that screen exists.
 
 ### 1.8 Market inks
 
@@ -320,16 +483,19 @@ How a mark picks its ink, in order:
 
 1. The creator's pick, if they made one: one tap from the market screen, never a step in
    creating it.
-2. Otherwise the mark's dominant hue. For emoji this is a lookup in `src/lib/ui/emoji-inks.json`,
-   computed once by `scripts/emoji-inks.py` from Noto Color Emoji, the font the tile renderer
-   loads, so a market's ink never depends on which phone made it. The measurement: render at
-   109px, keep pixels with alpha over 0.5, ignore pixels under OKLCH chroma 0.04, build a 10°
-   hue histogram weighted by chroma, and take the chroma-weighted circular mean within 15° of
-   the heaviest bin. That hue snaps to the nearest of the eight, and the mark's own lightness
-   and chroma are thrown away. The folds: hues from 345° round to 20° go to Rose, as do hues
-   from 20° to 40° when their mean chroma is 0.14 or more (the lower-chroma browns in that band
-   go to Clay), and greens from 120° to 165° go to Olive. Pictures and stickers get the same
-   measurement at upload, once that pipeline exists.
+2. Otherwise the mark's dominant hue. For emoji this is a lookup in
+   `src/lib/ui/emoji-inks.json`, computed once by `scripts/emoji-inks.py` from Noto Color Emoji,
+   the font the tile renderer loads, so a market's ink never depends on which phone made it. The
+   measurement: render at 109px, keep pixels with alpha over 0.5, ignore pixels under OKLCH
+   chroma 0.04, build a 10° hue histogram weighted by chroma, and take the chroma-weighted
+   circular mean within 15° of the heaviest bin. That hue snaps to the nearest of the eight, and
+   the mark's own lightness and chroma are thrown away. The folds: hues from 345° round to 20°
+   go to Rose, as do hues from 20° to 40° when their mean chroma is 0.14 or more (the
+   lower-chroma browns in that band go to Clay), and greens from 120° to 165° go to Olive. A
+   sticker gets the same measurement on its own pixels when it is pasted (`nearestInk` mirrors
+   the three folds), which is why a cutout picks a truer ink than the photo it came from: the
+   background no longer votes. A square picture mark, when there is one, is measured the same
+   way.
 3. Hueless marks fall through to a hash of the market id. The table stores them as `null`. Two
    kinds: marks where fewer than a quarter of the opaque pixels carry colour (🍸 🏁 ⚽ ☕ 🐺), and
    marks whose colour is a template rather than a choice, which is every smiley and cat face and
@@ -499,9 +665,21 @@ States:
 ### 3.3 Chip
 
 Height 24 (metadata, group label) or 28-36 (interactive). Border 1px `--line-strong`,
-transparent background, `--ink-2` text at 13px 500, radius 999. Selected state for a stake or
-filter chip: background `--ink`, text `--ground`, border `--ink`. Disabled: text `--ink-3`,
-border `--line`, no fill, `aria-disabled`.
+transparent background, `--ink-2` text at 13px 500, radius 999. Selected state for a filter
+chip: background `--ink`, text `--ground`, border `--ink`. Selected state for a choice among
+words (the kind chips under the band, the picker's categories): `--surface-2` fill, a 1px
+`--ink-3` border and `--ink` text. Disabled: text `--ink-3`, border `--line`, no fill,
+`aria-disabled`.
+
+**Stake chips** are a different control with the same name: three across, 44px, radius 10, 17px
+600 `--ink`, a 1px `--line-strong` border, and the selected one filled `--chalk` with
+`--on-chalk` text. For dollars they read "$5", "$10", "$20"; for any other unit, one, two and
+three of it ("1 beer", "2 beers", "3 beers"). A 44px tertiary "Something else" under them swaps
+the row for a whole-number field in the same unit. Chips never offer more than the terms' Stakes
+row allows, so a smaller cap drops the chips above it. The smallest is selected when the sheet
+raises, never the largest. "Just pride", no stake at all, becomes the first chip after the
+contract redeploy: the deployed contract refuses a stake of zero, so until then the smallest
+stake is one unit, and boards that draw "Just pride" are showing the redeploy.
 
 ### 3.4 Event card
 
@@ -512,6 +690,9 @@ Anatomy: kicker row (a 20px mark stamp for a market, otherwise the 16px structur
 market or argument question), supporting line (`body-sm`, `--ink-2`), optional media, then a
 divider and the consequence rows.
 
+The kicker label names the kind: "Market · asked by Priya", "Argument", "Covered", or "Covered a
+round" for a round.
+
 Kinds and states:
 
 - **Covered**: subject line, amount line, one consequence token. Optional 84px thumbnail.
@@ -520,14 +701,22 @@ Kinds and states:
 - **Argument, clean**: question, ruling sentence, one consequence.
 - **Argument, split**: question, the 60/40 bar, the ruling sentence, and either a consequence or
   "Nothing changes hands. It goes on the rally."
-- **Market, resolved**: question, media frame if there is media, outcome line, call line or
-  ruler, consequences between the two people in view, then a link to the full table.
+- **Market, resolved**: the story is one link and its consequences sit under it, outside it,
+  because a control inside a link is not a control. The link: the kicker, the question, the
+  media frame at 180 when there is media (with no controls on it), the outcome line in
+  `serif-l`, the call line, ruler or pick-one rows (3.25), and when it happened. Tapping it
+  opens the market's own screen (3.37). Under the link: the consequences between the two people
+  in view. On a person view, a consequence the viewer is owed that is still open is its own
+  move, the settle row (3.10); a closed one carries the settled or forgiven mark (3.23) before
+  its sentence. Then a 44px tertiary to the full table ("The whole table, and 7 more between
+  others").
 - **Market, open**: question, participant stack with "4 of 6 in", the close time. The action
   lives on the market's screen, never on the card.
 - **Upcoming**: 1px dashed `--line-strong` border, no fill, calendar icon, and at most one soft
   line tying an open obligation to the plan.
 - **Voided**: subject line, "Nobody could tell, so it's void," no consequences, no toll, and no
-  explanation of who failed to resolve it.
+  explanation of who failed to resolve it. **Expired** reads "Never settled." the same way.
+  Either can carry a frame, since an ended market takes photos whatever its ending (3.37).
 - **Loading**: only when the card is loading into a screen that is already on display (5.3); the
   card shape with 8px and 12px `--line`/`--line-strong` bars in place of text, hatched block in
   place of media, no shimmer, minimum 200ms on screen. A navigation never renders this.
@@ -596,23 +785,64 @@ screen: "Only 20%, and still closer than Gabe and John."); **tie** (same rank nu
 prefix, order alphabetically); **long name** (truncate at one line); **nine rows** (8px vertical
 padding, nothing else changes); **number market** ("said 17" under the name and "off by 3" on
 the right; the gap bar runs on the ruler's scale (3.5) from their number to a 3px cream tick at
-the answer, and there is no 50% tick).
+the answer, and there is no 50% tick); **pick one** (no closest-first list: everyone who called
+it scores the same, so 3.25 shows who called it instead); **multi-choice, for the redeploy
+only** (3.36: "spread it" or "picked Priya" under the name, and "gave it 30%" or "picked it" on
+the right; the gap bar runs from what they gave the answer that happened to a 3px cream tick at
+100%, and the 1px tick sits at the even split).
 
 ### 3.8 Media frame
 
-Full card width, no radius when it is edge to edge inside a card, radius 12 when it is inset on
-a screen (12px from the edges). Heights: 180 in a timeline, 240 in an opened story, 260 on the
-memory screen, 200 on the settled screen, full-bleed on a result tile.
+Where a market's photos live: its own screen once it has ended, and its story card in a
+timeline. Never on a link tile (3.27).
 
-Always: a credit chip bottom left (`--scrim`, 28px tall, avatar 20 plus name, plus duration for
-video) and a counter bottom right (`1 / 7`, `--scrim`, tabular).
+Full card width with no radius when it is edge to edge inside a card; radius 12 when it is inset
+on a screen, 12px from the edges. Heights: 180 in a timeline card, 200 on the settled screen,
+260 on the memory screen (3.37). The strip under it: 60px squares, radius 10, 6px gap, four and
+then a `+N` square.
+
+Always: a credit chip bottom left (`--scrim`, 28px tall, the 20px avatar and the first name of
+whoever added it, plus the duration for video) and a counter bottom right (`1 / 7`, `--scrim`,
+tabular). The counter counts position, never toward a limit.
+
+**Order.** What the claim carried comes first. The photo or screenshot someone attached while
+saying what happened is the resolving clip: it leads, credited to them (4.3). Then memories, in
+the order they were added. A tap on a strip square brings it into the frame, and `+N` opens the
+rest.
+
+**Who adds, and when.** Anyone who was in the market, from the moment it ends, weeks later
+included. Ended means settled, voided or expired: a void is not a night anyone won, and it was
+still a night. Someone in the group who wasn't in the market sees the frame and never gets an
+add. Adding sends nobody anything.
+
+**How.** The phone's own picker, opened with no `capture` attribute, so the library comes first:
+the night has already happened. Several at once. Each new photo lands at the end of the strip as
+the hatched placeholder with its credit chip, and the control that started it is pending (5.2)
+until the last one is stored. A photo that fails leaves the 5.1 block in the sheet, "That photo
+didn't go up.", with "Try again". Forty-eight memories a market is the limit and no screen
+counts toward it; past it, the sheet says "This one's full." and never how full.
+
+**Where the files go.** Two derivatives, re-encoded so that nothing of the EXIF survives except
+when it was taken: the frame at 1080px on its long edge and a 256px square. The bucket is
+private. `/api/media/[id]` answers someone who may see the market with a redirect to a
+one-minute signed address, and everyone else with 404, so nothing says whether a photo exists.
+Video waits until the pipeline takes it; a clip on a board stands for a photo until then.
 
 States: **photo**; **video** (56px `--scrim-play` circle with the play glyph, duration in the
 credit chip, plays inline muted on tap, never autoplays with sound, never loops in a timeline);
-**multiple** (the strip below: 60px squares, radius 10, 6px gap, video items carry a small play
-glyph, overflow becomes a `+N` tile); **loading** (the hatched placeholder, no spinner before
-300ms, then a 1.2s opacity pulse between 1 and 0.75); **failed** (hatched placeholder, camera
-glyph, "Couldn't load," 44px "Try again"); **none** (the frame is not rendered at all).
+**several** (the strip); **loading** (the hatched placeholder, no spinner before 300ms, then a
+1.2s opacity pulse between 1 and 0.75); **failed to load** (hatched placeholder, camera glyph,
+"Couldn't load," 44px "Try again"); **none, in a timeline card or for someone who can't add**
+(the frame is not rendered at all); **none, on the market's own screen for someone who can add**
+(the empty slot).
+
+**The empty slot.** Where the frame would be, a 120px `button`, radius 12, a 1.5px dashed
+`--line-strong` border and no fill. Centred in it, a 44px circle with a 1.5px `--ink` ring
+around a 20px plus, and under it "Add the first photo" in 17px 600. Its accessible name says the
+night ("Add the first photo from Friday"). It opens the same picker as the sheet's chalk, and
+once the first photo lands it becomes the frame. It is drawn as the place photos go, so it never
+reads as a heading; it is a control, so its words sit outside the type budget. Board:
+`SettledPhotos`, frames A and C.
 
 The hatched placeholder on a market's own screen uses its field and surface:
 `repeating-linear-gradient(135deg, field 0 10px, surface 10px 20px)`.
@@ -641,6 +871,24 @@ does not jump when it fills); **neither** (the header is replaced by a single 15
 line, "Nothing open between you," and the timeline starts immediately); **many units** (the
 token wraps to a second token under the first on the same side, dollars always in the last
 token); **large counts** (numerals, never repeated glyphs beyond three).
+
+**Cancelling out.** When the same unit runs both ways between the two of you, a row sits
+directly under the header, one per unit: "Cancel out the $10 each way" in `body` 600, what each
+has of the other under it in `caption` ("You've got Gabe $25. Gabe's got you $10."), and a 44px
+row action "Cancel out". It opens a sheet that asks once, because it can't be undone: the chalk
+"Cancel out $10 each way" and a tertiary "Not now". Either person can do it. An obligation the
+cancelling empties reads as settled on its card, since 3.23 has no mark for it, and it appears
+in nobody's Just happened. "Net" is never the word (2.1).
+
+**Settling and forgiving.** The creditor's own rows are the move; everyone else's are rows.
+Tapping one opens a modal sheet: first the photo row ("Add a photo of it", optional, with the
+camera glyph and a 44px row action), then two acts at the same size, 56px: the chalk "Settled"
+and a secondary "Call it even". Forgiving is a status move and is never hidden behind settling.
+Either closes everything still open on that obligation. A photo goes up after the close and
+never undoes it: if it fails, the sheet stays with "Try the photo again". The other person hears
+it by name ("Gabe settled up", "Gabe called it even"), with the cover's memo when it has one,
+and never the unit or an amount. A consequence a market minted closes the same way, from its
+story (3.4).
 
 ### 3.11 Rally strip
 
@@ -704,17 +952,20 @@ The plot, 120px tall inside the sheet's 16px sides plus 4px:
 - **Ends**: "0%" and "100%" in `caption` under the line.
 
 Under the plot, when the sheet is raised: the stake chips (3.3, three across, 44px) and the
-primary button, which carries the whole entry: "I'm in at 70%, 2 beers". A no-stake entry reads
-"I'm in at 70%, just pride".
+primary button, which carries the whole entry: "I'm in at 70%, 2 beers". After the contract
+redeploy, a no-stake entry reads "I'm in at 70%, just pride" (3.3). Every number is a whole
+percent wherever it appears ("45%", never "4 in 10").
 
 States: **untouched** (the legend, no thumb, the primary disabled and reading "Slide to pick
 your odds"); **touched** (thumb, rider, fill; the first touch raises the sheet); **changing**
 (reached from Change on the entry line: the sheet opens raised at your current value, a
-secondary "Never mind" sits beside the primary, which reads "Save: 60%, 2 beers", and the weight
-line above updates live as you drag); **locked** (the market closed: the line is gone from the
-sheet; your entry line reads "Locked at 10:40pm"); **failed to send** (the sheet stays raised
-with a 15px line "Your number didn't send" and a tertiary "Try again"; the number is never
-silently dropped).
+secondary "Never mind" sits beside the primary, which reads "Save: 60%, 2 beers", and your own
+share on the weight line above moves bucket with your finger, while the group's marker stays
+where it was until you save, because moving it would need everyone's numbers on your phone
+before lock); **locked** (the market closed: the line is gone from the sheet; your entry line
+keeps "You're in at 70%" and its caption reads "2 beers · locked at 10:40pm"); **failed to
+send** (the sheet stays raised with a 15px line "Your number didn't send" and a tertiary "Try
+again"; the number is never silently dropped).
 
 **Entering, as a moment.** Confirming lowers the sheet over 320ms, which carries the stake row
 away. Then every segment grows from 6px to its column height over 700ms, your share of your
@@ -727,13 +978,20 @@ the reveal as well as the receipt: other people's weight is never visible before
 ### 3.14 Empty and first-run states
 
 - **Now, before anything** (`FirstRun`): today's date as a label, the `serif-xl` headline
-  "Nothing happens here until somebody else is in it.", one `body` line, the chalk "Ask
-  something", the compact code field (3.16), and three starters as 40px-stamp rows in `body`
-  600. The Start button is hidden on this screen, because "Ask something" is already the chalk.
+  "Nothing happens here until somebody else is in it.", one `body` line in `--ink-2` ("Ask your
+  group chat something, or join something one of them already asked."), the chalk "Ask
+  something", the compact code field (3.16) under the `label` "Someone sent you a code?", and
+  three questions from What's on as 40px-stamp rows in `body` 600, under "Or start from
+  something everyone's watching" and followed by a tertiary "See everything on What's on"
+  (3.32). These were fixed starters: the row component is unchanged and only its label and
+  source are new. The three are the most asked, or the next to close while there is too little
+  to rank on (3.32). If nothing is curated, the old starters return. This is a bonus on the
+  empty state; What's on itself lives on its tab. The Start button is hidden on this screen,
+  because "Ask something" is already the chalk.
 - **A person with no shared history**: identity block, "Nothing between you two yet," and a
   single starter.
-- **A story with no media**: nothing. No frame, no prompt in the timeline. The "add" control
-  lives on the opened story only.
+- **A story with no media**: nothing. No frame, no prompt in the timeline. Adding lives on the
+  market's own screen once it has ended (3.8, 3.37).
 - **A claimant with nothing waiting**: the signup lands on Now, not on an empty inbox.
 - **A market with no other participants yet**: "You're first in" plus the send control, never a
   count of zero.
@@ -746,12 +1004,16 @@ One `--surface` card, radius 12, rows divided by 1px `--line`. Each row is a gri
 minmax(0,1fr) auto`, 12px gap, 14px padding. Left: the market's 40px stamp on its field colour,
 or the owner's 40px avatar for an obligation. Middle: the subject (`serif-m` for a question,
 `body` 600 otherwise, with the unit glyph inline for an obligation), then a meta line in
-`caption` `--ink-3` that starts with the citron dot when there is a clock, then the state mark,
-then the clock or the reason ("Voting ends at midnight", "From the tunnel argument"). Right: a
-44px row-action button whose label is the verb: Vote, Enter, Yep, Finish.
+`caption` `--ink-3` that starts with the citron dot on the one row whose clock is soonest (one
+citron element per viewport, 4.5; other rows with clocks keep the clock and lose the dot), then
+the state mark, then the clock or the reason ("Voting ends at midnight", "From the tunnel
+argument"). Right: a 44px row-action button whose label is the verb: Vote, Enter, Yep, Finish.
 
 Running and Just happened use the same row without the button; Just happened may carry a 44px
 media thumbnail on the right.
+
+A Running row's meta line is the state mark, then your entry and how many are in ("You're in at
+17 · six of you"); once the market locks, the mark and its clock ("Resolving tonight").
 
 Ordering: anything with a clock first, soonest first; then longest waiting; then whatever is
 fastest to finish.
@@ -925,9 +1187,9 @@ picture alone reads as agreement); **everyone on one number** (one full column, 
 caption "No spread at all."); **blind until lock** (outlined columns with no heights, your own
 bucket marked with your avatar and a 5px cap in your hue, a centred lock chip "Numbers show when
 everyone's in", a count of who is in, and no group's number); **locked** (unchanged picture,
-Change gone, the entry line reads "Locked at 10:40pm", nothing greyed); **settled** (replaced by
-the call line and closest first); **number market** (below); **nine or more entries**
-(unchanged).
+Change gone, the entry line keeps "You're in at 70%" and its caption reads "2 beers · locked at
+10:40pm", nothing greyed); **settled** (replaced by the call line and closest first); **number
+market** (below); **nine or more entries** (unchanged).
 
 **Number markets.** The same row of columns, on an axis taken from what people entered. The
 asker's scoring scale (3.26) never draws anything here: the display and the scoring are
@@ -951,15 +1213,20 @@ deliberately different, and the display does not try to reflect the scoring.
   so there is at most one per end. An off-axis entry becomes an overflow column one column wide,
   6px past the end, labelled with its value and an arrow ("200 →", "← 0"). Its height follows
   the same normalisation and it still counts toward the group's number.
-- **The marker.** `g` is the stake-weighted median: the smallest value with at least half the
-  stake at or below it (amended 2026-09-25; it was the mean). Absolute-error scoring rewards
-  each person for reporting their median, so the group's summary is the same statistic, and one
-  far-off entry cannot move it unless it holds half the stake. Across slices, `x = (g − lo) /
-  (hi − lo)`; across per-value columns, `x = (g − lo + 0.5) / n`. The chip shows `g` with
-  separators ("22", "1,240"); it is always one of the entries, so it is a whole number and the
-  details sheet says it in a sentence rather than to a decimal. It never sits past an end: an
-  off-axis entry that holds half the stake is the median, and the marker stands over that
-  entry's own column. There is no clamp and no arrow.
+- **The marker is the stake-weighted median**, as implemented: the smallest value with at least
+  half the stake at or below it, and a tie at a boundary takes the lower value. Absolute-error
+  scoring rewards each person for reporting their own median, so the group's summary is the same
+  statistic, and one far-off entry cannot move it unless it holds half the stake. The median is
+  always one of the entries, so the marker always stands on a column that has weight: across
+  slices at `x = (g − lo) / (hi − lo)`, and across per-value columns at the centre of `g`'s
+  column, `x = (g − lo + 0.5) / n`. When a far-off entry holds more than half the stake it is
+  the median, and the marker stands over that entry's own overflow column (a far-off entry at
+  the low end needs only half). There is no clamp and no arrow chip. The chip shows `g` with
+  separators ("22", "1,240"), and the details sheet says it in a sentence rather than to a
+  decimal. No-stake entries carry no weight, and if no entry carries stake the marker takes the
+  median of the entries counted one each, lower on a tie; zero stakes are refused by the current
+  contract, so this case cannot occur until the redeploy. Yes-or-no markets keep the
+  stake-weighted mean.
 - **Re-bucketing.** When a new entry moves `lo` or `hi`, the columns crossfade to the new layout
   over 200ms and the marker slides to its new place. With reduced motion, it swaps.
 - **Blind.** A blind number market draws no axis before the reveal: your entry line, the lock
@@ -1009,10 +1276,11 @@ to the thing; the dot is subjective and belongs to you. Either can appear alone.
 appears on something with no deadline, which is the distinction that separates a vote closing
 at midnight from a beer you could confirm next week.
 
-Words beside a mark: only a clock, and only when the state has one ("Voting ends at midnight",
-"Closes tonight", "Locked, resolving tonight"). Any other sentence about state is what the mark
-is replacing. Every mark carries an `aria-label` with the state name, because a screen reader
-cannot see a dashed ring.
+Words beside a mark: a clock, when the state has one ("Voting ends at midnight", "Closes
+tonight", "Resolving tonight"), or, on a needs-you row, the reason the row exists: who said what
+happened, or how many are in ("Priya says yes", "4 of 6 in"). Any other sentence about state is
+what the mark is replacing. Every mark carries an `aria-label` with the state name, because a
+screen reader cannot see a dashed ring.
 
 ### 3.24 The sheet
 
@@ -1023,7 +1291,11 @@ bottom padding equal to the sheet's resting height plus 20px so nothing is trapp
 Anatomy: the current place's surface (the market's on a market screen), a 1px line along the
 top, 12px top corners, no shadow, padding 16px sides and 24px bottom, 10px between rows. When it
 has a second height it also carries a grabber: 36 by 5px, radius 3, `--line-strong`, centred 8px
-from the top, and the header row under the grabber doubles as the drag handle.
+from the top, and the header row under the grabber doubles as the drag handle. Only those two
+drag, so the move itself (a slider, a field, a button) keeps its own gestures. The sheet is not
+modal: nothing behind it dims and the page still scrolls, with the room it takes paid as bottom
+padding on the screen (`--sheet-room`). A moment that binds other people (sending a vote, asking
+for the tiebreaker) opens the modal sheet (6.4) over it.
 
 Two heights, only when there is more to show. Low holds the move; high adds what the move needs.
 A swipe up or a touch on the move raises it; a swipe down lowers it so the market behind can be
@@ -1037,22 +1309,64 @@ Where it rests says whose move it is, and it never goes empty while the market r
 | --- | --- | --- | --- |
 | Open, not in | Yours | "What are the odds?" and the empty line (or the empty number field) | Stake and "I'm in at 70%, 2 beers" |
 | Open, you're in | Nobody's | "Send it to the chat" under "Anyone with the link can get in until 10:40pm." | No second height |
-| Closed, not yet known | Whoever saw it | "When it's clear, say what happened." and the outcomes as two equal wells ("He fell asleep", "He stayed up"); either opens the claim | No second height |
-| Voting, not said | Yours, with a clock | The count line ("3 of 6 have said yes. Two more and it settles."), chalk agree, secondary "Not how I saw it" | Who has said what; the clip full width |
+| Closed, not yet known | Whoever saw it | "When it's clear, say what happened." and the outcomes as two equal wells in the market's words ("He fell asleep", "He stayed up"; "Yes" and "No" without them, 3.25), with a tertiary "Nobody can tell" | The claim: an optional line, photos or screenshots, and "Say it" |
+| Voting, not said | Yours, with a clock | The count line ("3 of 6 have said yes. Two more and it settles."), chalk agree, secondary "Not how I saw it" | Who has said what; everything attached, as 44px squares with who supplied each; the app's read, once anyone has voted |
 | Voting, said | Theirs | One line: your avatar, "You said he was out", the count, Change | No second height |
 | Split | The arbiter's, or yours with proof | "Add what you saw" and the arbitration deadline | What each side said |
-| Settled | Nobody's | A thumbnail of the result tile, one caption, "Send how it ended" | The whole result tile, as the chat will get it |
-| Voided or expired | Nobody's | No sheet. The story is the whole screen. | |
+| Settled, you were in | Yours, no clock | Chalk "Add yours from Friday" ("Add a photo from Friday" while there are none), secondary "Send how it ended" | The whole result tile, as the chat will get it |
+| Settled, you weren't in | Nobody's | "Send how it ended" | The whole result tile |
+| Voided or expired, you were in | Yours, no clock | Chalk "Add a photo from Friday" ("Add yours" once there are some), and nothing else: no tile tells a void | No second height |
+| Voided or expired, you weren't in | Nobody's | No sheet. The story is the whole screen. | |
 
-Once the result has been sent, or once you leave the settled screen, the sheet is gone and the
-market is a story.
+After a market ends, adding a photo is the move for everyone who was in it, so their sheet stays
+on every visit, weeks later included. The night comes from `fromThatNight`: the weekday while it
+is under a week old ("from Friday"), "tonight" and "last night" as calendar days, and "that
+night" after a week. Sending is the secondary because it is worth doing more than once: once
+photos are added, the tile says so (3.27). For someone who wasn't in, the sheet holds "Send how
+it ended" alone and goes once they have sent it or left the screen, remembered on the device and
+never as a record.
+
+**Saying what happened.** A well raises the sheet to the claim: the outcome chosen, in the
+market's words, at the top; then an optional line, "What happened?"; then a row to attach proof,
+"Add a photo or a screenshot", up to three per person per question, each shown as a 44px square
+with a remove control. The chalk says it in the claimant's voice ("Say it: he fell asleep", or
+"Say it: yes" without the market's words) and opens the vote's modal (6.4), since it binds
+everyone: the claimant is the first vote. Whatever was attached is evidence, and everyone voting
+sees it: the first attachment is the claim card's clip (3.37) and the rest are in the raised
+sheet, each with the first name of whoever supplied it. Anyone voting may attach too, and a case
+for the tiebreaker may carry its own. Once the market ends, the claim's attachments lead the
+frame (3.8); the rest stay on the record behind More, under "How it was called". A tertiary
+"Nobody can tell" in the resting sheet is a vote to void. The app's read ("The app leans yes, 82
+to 18.") sits on the claim card only while nobody has voted, and after that as a caption in the
+raised sheet, because the group decides. On a number market it names the number with its unit
+("The app leans 14 shirts, 75 to 25.").
 
 Number markets use the same rows with their own words. **Open, not in** rests on "What's your
 number?" and the empty field (3.26). **Closed, not yet known** rests on "When it's clear, say
 what it was." with the number field, empty, and a chalk that reads "It was 14 shirts" once a
 number is typed; it opens the claim with the number filled in. **Voting, not said** carries the
 count line, a chalk "That's right, 14" and the secondary "Not how I saw it", which raises the
-sheet to the number field so the person can add the number they saw. That number is optional.
+sheet to "What was it?" and the number field. Sending a number is the vote, and the primary says
+so in the person's voice: "It was 12 shirts". Without a number there is nothing to count, so the
+raised sheet also offers a tertiary "Add a note instead": one line of text that goes on the
+market's record under the person's name, with one caption, "A note goes on the record. Only a
+number counts toward settling it." A note never appears in the count line, and the person's line
+afterwards reads "You added a note", never "You said". They can still send a number until voting
+ends.
+
+Questions a final score answers open voting on a source card instead of a claim card (3.35); the
+sheet is the same.
+
+Pick-one markets use the same rows too. **Open, not in** rests on "Pick one" with the answers
+(3.30). **Closed, not yet known** rests on "When it's clear, say what happened." with the
+answers as equal wells, two across, each with its avatar where it has one; any of them opens the
+claim. **Voting, not said** carries a count line that names the claimed answer ("3 of 6 say
+Priya. Two more and it settles."), a chalk "That's right, Priya" and the secondary "Not how I
+saw it", which raises the sheet to "What did you see?": the other answers as rows, a dashed "I
+couldn't tell" (a vote to void), and a tertiary "Never mind". One tap sends. When votes split,
+the count line names the answer nearest to settling ("3 say Priya, 1 says John. Two more for
+Priya and it settles."). A swipe up instead shows who has said what, one row per answer with its
+voters' avatars. **Voting, said** is one line: your avatar, "You said Priya", the count, Change.
 
 On task screens the sheet holds the flow's primary action and at most one caption: "Set the
 terms" on the ask flow, "Join" on the code screen (with the form-level error block above it when
@@ -1071,18 +1385,43 @@ ink for open and resolved, your hue for you're in, `--ink` otherwise) and the cl
 Friday crew" in `caption` `--ink-2`.
 
 Under the band, in this order and only when they apply: the entry line (3.22), the claim card
-while voting (the claimant's avatar and "Priya says he fell asleep", a 72px clip, "Out cold, 1h
-12m in" and when it was shot), the weight line or the call line, the participant stack with its
-count, and the details `dl` (96px labels, `body` values, the market's surface and line). The
-details carry: Counts if, Decided, Stakes, If it's unclear. Everything else the product needs to
-say about how it works goes behind More.
+while voting (3.37 gives its layout; it replaces the entry line once voting opens, and its clip
+is the evidence everyone voting sees), the weight line or the call line, the participant stack
+with its count, and the details `dl` (96px labels, `body` values, the market's surface and
+line). The details carry: Counts if, Decided, Stakes, If it's unclear. Everything else the
+product needs to say about how it works goes behind More.
 
-The settled screen adds, above the call line: the outcome in `serif-l` ("He did."), a caption
-("Out cold, 1h 12m in."), the media frame at 200px and a tertiary "Add yours from Friday". Under
-the call line: closest first (3.7) and who's got who, grouped by owner. On a number market the
-outcome is one `serif-l` sentence with the number in it ("14 shirts, then a seam gave out."),
-the caption says who was closest ("Theo was closest, off by 2."), and the ruler (3.5) stands
-where the call line would.
+The screen after a market ends, settled, voided or expired, is specified in full in 3.37, with
+the memory it becomes. In short: the outcome line in `serif-l` in the market's words ("He
+did."), the claim's line as its caption ("Out cold, 1h 12m in."), the frame at 200px led by the
+claim's clip or, for someone who can add, the empty slot; the call line; closest first (3.7);
+who's got who, grouped by owner; and the sheet whose move is adding a photo. On a number market
+the outcome is one `serif-l` sentence with the number in it ("14 shirts, then a seam gave
+out."), the caption says who was closest ("Theo was closest, off by 2."), and the ruler (3.5)
+stands where the call line would.
+
+**Outcome words.** A yes-or-no market says its outcomes in the question's own words. The
+write-up that writes the terms also writes four short phrasings, stored with them: the two wells
+("He fell asleep", "He stayed up") and the two outcome lines ("He did.", "He didn't."). The
+claim card and the count line use the well's words after the name ("Priya says he fell asleep"),
+and the agree chalk repeats them in the voter's voice ("That's right, he fell asleep"). A market
+without them, any made before or a write-up that returned none, uses "Yes" and "No" on the
+wells, "Priya says yes" on the claim card, and "Yes." or "No." as the outcome line, and nothing
+else changes. `outcome_labels`, which already carries a number market's unit, can hold them;
+otherwise they need a column beside it.
+
+A pick-one market's settled screen says who called it and who didn't. Everyone who picked the
+right answer scores the same, so there is nothing to rank and no closest-first list. The outcome
+in `serif-l` with the answer in it ("Priya, 40 minutes in."); a `body-sm` caption naming who
+called it ("Theo called it. Nobody else did.", "Theo and Maya called it.", "Four of you called
+it: Theo, Maya, Gabe and John.", "Nobody called it."); then "Everyone's pick": one 48px row per
+answer in the asker's order, with its avatar slot, the answer, the avatars of whoever picked it
+(24px, overlapping by 6px, a ring in the ground behind) and its final share. The answer that
+happened takes the wash across its row (the market's ink at 0.40), a 6px cream cap at its left
+edge and its name in `--ink`, and everyone in that row wears the extra cream ring: that row is
+who called it, and every other row is who didn't. Then who's got who: the people who picked
+wrong owe the people who picked right, pairwise and capped as usual. When nobody or everybody
+called it, nothing changes hands, and the section is the one line "Nothing changes hands."
 
 ### 3.26 Number entry
 
@@ -1113,7 +1452,30 @@ roll-call cells carry the bare number, except the axis's right end (3.22).
 **Changing, failing, locking.** Change on the entry line reopens the sheet raised at your number
 with "Never mind" beside the primary, which reads "Save: 18 shirts, $5". Failed to send and
 locked are the odds line's states word for word (3.13).
+**A number past the limit.** Entries are not clamped, and a far-off entry hurts nobody else: the
+scale is fixed when the market is made, so a number far outside it scores zero and moves no one
+else's score. It hurts the person who typed it, since a slipped finger (2400 for 24) would lose
+their stake. So the sheet blocks a number at or past a limit, and there is no way to keep it.
 
+- **The limit** is `farOffThreshold`: a hundred times the model's most likely answer
+  (`dares.typical`), rounded to one significant figure (1,000 for 10; 4,000 for 37). When the
+  asker set the scale and there is no most likely answer, it is fifty times that scale. With
+  neither, there is no limit and no block.
+- **It stays far out on purpose.** A hundredfold catches a slipped finger and never a bold
+  guess. A line close enough to catch bold guesses would also sit near enough to a hidden scale
+  to give it away.
+- **The block** is a field error (5.1), shown when the primary is tapped: the field's ring
+  becomes 1.5px `--ink`, and between the field and the stake chips one row in `--ink` at 15/20
+  with the 16px alert glyph: "2,400 shirts is past the limit here. Try something under 1,000."
+  The primary is disabled while the number is at or past the limit and live again the moment it
+  is under, and the line goes with it. Nothing is sent. Board: `FarOff`.
+- **What it names** is the limit, which is not the scoring scale. A scale the model set stays
+  hidden here as everywhere, and the line is the same when the asker set one. Naming the limit
+  says the model's most likely answer to one figure at a hundredfold remove, the same thing
+  anyone could find by trying numbers, which the build already accepts.
+- **The wording** opens with the number because the number is what the line is about: the person
+  sees what they typed, and a stray zero shows itself (4.6).
+- The limit applies to entries only. Saying what happened on a number market is never blocked.
 **Entering, as a moment.** The odds line's moment, unchanged: the sheet lowers, then the columns
 grow from the baseline over 700ms, your share fills in your hue, your avatar rises above your
 column and the marker draws last.
@@ -1122,15 +1484,21 @@ column and the marker draws last.
 clamps to one. Telling people to pick inside a range puts an answer in their mouths, and its
 ends become everyone's anchor. Scoring does use a scale, fixed when the market is made: the
 asker can set it, and when they leave it blank the AI sets one. It is never drawn, and the
-weight line's axis never uses it (3.22). If the asker set it, it appears once, as a row in the
-market's details `dl` labelled "Scored on", in the asker's own words. If the AI set it, it
-appears on no screen at all. This replaces the previous revision's bounds, which clamped the
-field and became the axis.
+weight line's axis never uses it (3.22). The asker sets it on the terms step as a whole-number
+span in the question's own unit, in one row, "20 shirts off scores nothing", where the number is
+a field and the words are fixed. If they leave it blank, the model's scale is used only when it
+passes its check (the span sits between a quarter of its most likely answer and four times it);
+otherwise the terms step asks the asker for one. Whose it is is stored (`range_source`). If the
+asker set it, it appears once, as a details row: "Scored on" over "Off by 20 shirts or more
+scores nothing. Closer scores more." If the model set it, it appears on no screen at all. This
+replaces the previous revision's bounds, which clamped the field and became the axis.
 
 The answer, when it lands, is a `serif-l` sentence with the number in it ("14 shirts, then a
-seam gave out."), with the ruler (3.5) under it. It was `numeral-hero` in the previous revision.
-A 60px numeral beside a 26px question put two serif sizes on one screen, and the sentence says
-the same thing in the size the screen already has.
+seam gave out."), with the ruler (3.5) under it. The sentence is the number and its unit
+followed by the claimant's words when they run to 60 characters or fewer, and the number and
+unit alone otherwise ("14 shirts."). It was `numeral-hero` in the previous revision. A 60px
+numeral beside a 26px question put two serif sizes on one screen, and the sentence says the same
+thing in the size the screen already has.
 
 ### 3.27 Link tiles
 
@@ -1155,60 +1523,90 @@ near 11pt and the line with its two marks reads because it is a picture of the m
 carries no count of who is in, no relative time and no numbers anyone picked, so it reads the
 same for one recipient or twelve.
 
-**The result tile** (`TilePhoto`, `TileCalled`), sent only when someone chooses "Send how it
-ended" from the settled sheet. With a photo: the photo full-bleed, the mark stamp top left of
-the safe square, and a bottom band on `rgba(<ground>, 0.9)` with the outcome in serif at 76px
-("He did.") and who called it with their avatar ("Priya called it. Out cold, 1h 12m in.").
-(Corrected 2026-09-25, the media phase: the photo never rides the tile. A tile is frozen into a
-chat that can include people outside the market and gets forwarded further, so the tile with
-photos is the tile without one plus a line under it, "With photos from that night."; tapping
-through is where visibility is enforced. See docs/decisions.md.) Without one: the market's field, the mark and the outcome on one line, the call line with 52px
-pins where the person who called it wears an extra cream ring, the No and Yes labels, and "John
-called it at 10%." at 34px 600.
+**The result tile** (`TileCalled`, and `TilePhoto` for a market with photos), sent when someone
+chooses "Send how it ended" from the settled sheet: the market's field, the mark and the outcome
+on one line, the call line with 52px pins where the person who called it wears an extra cream
+ring, the No and Yes labels, and "John called it at 10%." at 34px 600.
 
-A number market's result tile says the answer as its outcome. With a photo, the band carries "14
-shirts." at 76px and "Theo called it, off by 2." with his avatar. Without one: the market's
-field, the mark and "14 shirts." in serif at 72px on one line, the ruler (3.5) with 52px pins, a
-6px cream answer tick and its end labels, and "Theo called it, off by 2." at 34px 600. Whoever
-was closest wears the extra cream ring, as the person who called it does on a yes-or-no tile.
-The scoring scale is not on the tile.
+**A tile never carries a photo.** A tile is frozen into a chat that can include people outside
+the market, and it gets forwarded further, so a photo on it would reach people the visibility
+rule keeps out and show faces nobody chose for a wider chat. A result tile for a market with
+photos is the tile without one plus one line directly under the outcome: a 32px camera glyph and
+"With photos from that night." at 30px 600 in ink-hi, with no count. Tapping through is where
+visibility is enforced, and the tile's data carries no photo address.
 
-Rendering: server-side (Satori or equivalent) with Noto Color Emoji loaded for emoji marks and
-the 256px derivative reachable for picture marks and stickers. Both fail silently when
+**A sticker does ride the tiles.** A sticker is a mark, and a market's mark is on both tiles.
+Whoever chose a sticker as the mark chose to send it wherever the question is sent, so it is
+drawn like an emoji, read from the bucket on the server. The two rules differ on purpose: a
+photo belongs to the night and the people in it, and nobody chose to send it on; a mark is
+chosen to travel with the question.
+
+A number market's result tile says the answer as its outcome: the market's field, the mark and
+"14 shirts." in serif at 72px on one line, the ruler (3.5) with 52px pins, a 6px cream answer
+tick and its end labels, and "Theo called it, off by 2." at 34px 600. Whoever was closest wears
+the extra cream ring, as the person who called it does on a yes-or-no tile. The scoring scale is
+not on the tile.
+
+Pick-one tiles. The asking tile's frame line is "Pick one." and its empty answer is the answers
+themselves, all of them, up to six: one row each, a 44px avatar where the answer is a person,
+the answer at 40px 600, left-aligned in a 420px column centred in the safe square. At 0.23 scale
+that is about 9pt, the same as the asker line, and six rows still fit the square with the close
+time under them. The result tile without a photo carries the answer as its outcome at 72px
+("Priya."), the same rows with the pickers' 44px avatars beside each and the called answer
+washed, and "Theo called it." at 34px 600 ("Theo and Maya called it.", "Nobody called it.").
+Neither tile shows a share. The photos line works the same on every kind.
+
+Rendering: server-side (Satori or equivalent) with Noto Color Emoji loaded for emoji marks and a
+sticker's 256px derivative read from the bucket on the server. Both fail silently when
 forgotten.
+
+**Serving.** One route (`/m/[id]/opengraph-image`) serves the asking tile until the market
+settles and the result tile after, so a link sent by "Send how it ended" previews as the result
+while the first send stays frozen as the ask. The close time is in the asker's zone
+(`dares.zone`); a market from before that column says the time in UTC and says so.
+
+**Numbers on tiles and in notices.** A notice about a market never carries a number, a unit or
+an amount ("Decided." and the screen). The result tile carries the answer ("14 shirts."). The
+difference is intended: a notice goes out on its own to everyone, and a tile goes out because a
+person chose to send it, the same person who could have typed the number into the chat.
 
 ### 3.28 Making a sticker
 
-A sticker is a picture mark with transparency, so it goes through the same stamp, the same
-storage and the same ink rule. The loop worth building toward: when a market settles with a
-photo, the settled screen offers "Make a sticker", and John asleep on the couch becomes the mark
-on the next market about John. Only people who could see the photo can see a sticker made from
-it.
+A sticker is a picture mark with transparency: the same stamp, the same ink rule, and a table of
+its own.
 
-Three ways in, cheapest first:
+**Built: paste a cutout.** iOS 16 and later let people lift a subject out of a photo and copy
+it. The mark picker takes a paste anywhere in the sheet (the clipboard `paste` event) and
+through a "Paste a cutout" cell that asks the clipboard, which on iOS shows its own Paste
+prompt. The phone checks the image has at least one see-through pixel, bounds it to 1024px and
+sends a PNG. The server trims the transparent margins, pads to a 512px square, measures the ink
+(1.8) and bakes the 256px stamp with its edge (1.7). No model is involved.
 
-1. **Paste a cutout.** iOS 16 and later let people lift a subject out of a photo and copy it.
-   The mark picker accepts a paste (the clipboard `paste` event), keeps the alpha channel, trims
-   the transparent edges, pads to square and scales. No model involved; realistic for the
-   hackathon.
-2. **Tap-to-cut in the app.** MediaPipe's Interactive Segmenter runs in the browser: an image
-   plus the point the person tapped returns a per-pixel confidence mask. Threshold near 0.5,
-   feather the edge 1 to 2px, apply it as alpha, crop to the bounding box and pad square. All on
-   the phone.
-3. **Automatic background removal.** IMG.LY's in-browser remover works but is AGPL-3.0, which is
-   a problem for a closed-source app unless their commercial licence is bought.
+**Waiting, as ruled.** Tap-to-cut in the app: MediaPipe's Interactive Segmenter in the browser
+returns a confidence mask for the point tapped; threshold near 0.5, feather 1 to 2px, apply as
+alpha, crop and pad square. And "Make a sticker" from a photo on a market that has ended, which
+is the loop worth building toward: John asleep on the couch becomes the mark on the next market
+about John. Automatic background removal stays out, because IMG.LY's remover is AGPL-3.0.
 
-Storage: the 512px source with alpha, plus a 256px derivative with the die-cut edge baked in
-(1.7). Schema: `mark_kind` gains `'sticker'` beside `'emoji'` and `'image'`, and every mark row
-stores its derived `ink` so balance (1.8) can be checked without re-reading pixels.
+**Storage.** A sticker belongs to the person who made it and can mark any question they ask, so
+it is not a `media` row on one event. It is a row in `picture_marks` holding both keys (the
+512px source with alpha and the 256px derivative), the size and the ink. `media` keeps exactly
+two parents, `dare_id` and `obligation_id`. `dares.mark_kind` gains `sticker`, with `mark_value`
+the row's id, and every stamp reads a `MarkRef`, so a sticker never falls through a check that
+only knew emoji. The bucket admits PNG beside JPEG for it.
+
+**Who sees one.** Its owner, and anyone in a group where a question wears it, through
+`/api/mark/[id]`, which answers 404 to everyone else whether or not it exists. It is also drawn
+into that question's link tiles (3.27): choosing a sticker as a mark is choosing to send it
+where the question goes. A sticker made later from a market's photo is seen by the people who
+could see that photo, until someone chooses it as a mark.
 
 ### 3.29 The question step and the mark picker
 
 The first step of asking. Boards: `MarkPicker` (interactive: open the picker, try marks, search)
 and `MarkPickerFrames` (nothing picked, a mark with a colour, a hueless mark, done). Everything
 on it is an existing part: the question band (3.25), the stamp (1.7, 3.9), the sheet (3.24) and
-chips (3.3). No mark exists yet on any market, so every ink in the product is currently a hash;
-this step is what makes an ink mean something.
+chips (3.3). This step is what makes an ink mean something.
 
 **The step.** Header: the 48px back control and nothing on the right, matching the who's-in
 step, so there is no step counter. Then the question band on the market's field, which is the
@@ -1226,6 +1624,30 @@ padding (20 at the bottom), 16px between its two parts.
 The pinned sheet holds one chalk, "Next: who's in". "Optional" is said once, on the row, and
 never again.
 
+**How people answer.** Under the band: "How people answer" in `label`, then three chips in a
+`radiogroup`, 36px, sharing the width: "Yes or no" (the default), "A number" and "Pick one", in
+3.3's selected style for words. The kind is chosen here, before the write-up, because the terms
+say how the answer is counted and the write-up differs by kind. The chips show only for a dare:
+an argument is always yes or no. The pace and mode chips the step already has (dare or argument,
+quick or careful) sit under the band above these, as built. A number market's unit is proposed
+by the model with the terms and is editable on the terms step. "Pick one" opens the answers
+editor (`PickOneEntry`, frame 1):
+
+- "The answers" in `label`, then one 44px row per answer on the market's surface, radius 10, 1px
+  line: a 28px slot (the person's avatar, or empty for words), the answer as an inline text
+  field in `body` 600, and a 44px remove control.
+- A dashed 44px "Add an answer" row while there are fewer than six.
+- "Add a person" in `caption` `--ink-3`, then the people the asker has shared markets with, most
+  recent first, as 32px avatars in 44px targets. One tap adds that person as an answer; people
+  already added sit at 0.35 opacity. A person answer can be anyone the asker knows in the app,
+  whether or not they end up in the market.
+- One caption: "If none of them might happen, add that too." An outcome nobody listed forces a
+  void, and a void counts against the asker (3.34), so this is the one piece of advice the step
+  gives.
+- Two to six answers. "Next: who's in" stays disabled under two, and the add row disappears at
+  six. Six is what the entry sheet can hold (six rows, the stake and the primary) with the
+  band's question still in view; a longer field ends in "Someone else".
+
 **The picker** is a modal sheet (6.4) 560px tall, on the current place's surface with its 1px
 top line and the grabber, 16px sides. It is opened from the band, not from the pinned sheet, so
 no sheet opens another. It closes with Done, a 48px text button in the close position, or by
@@ -1235,10 +1657,14 @@ dragging down, and focus returns to the mark row. From the top:
    beside it.
 2. Only while the picked mark is hueless, one `caption` line in `--ink-2`: "Faces, people and
    grey marks don't set a colour, so this market gets one of its own."
-3. "Recent" in `label`, then one row of cells: a dashed None cell first (the no-mark option,
-   selected by default), then up to seven recent marks, most recent first, kept per device.
+3. "Recent" in `label`, then one row of cells: a dashed None cell first, reading "None" in 13px
+   600 `--ink-3` (the no-mark option, selected by default), then up to seven recent marks, most
+   recent first, kept per device.
 4. Category chips as words, no icons, scrolling sideways in a `tablist`: Smileys, People,
-   Animals, Food, Activities, Travel, Objects, Symbols, Flags. Choosing one shows that group.
+   Animals, Food, Activities, Travel, Objects, Symbols, Flags. Choosing one shows that group and
+   clears the search; while a search shows, no category is selected. The picker opens on Food,
+   because Smileys and People are hueless, and a first grid that never sets a colour teaches
+   nothing.
 5. The grid: 8 columns of 44px cells with a 2px gap, emoji at 28px, the group's name in `label`
    above it. A search replaces the group with "Matches".
 
@@ -1248,31 +1674,38 @@ sheet) retints to the mark's ink over 200ms, and so does the picker, since it si
 current place's surface. The picker stays open so the person can try another; seeing the colour
 arrive is how they learn what a mark does, which is why no sentence explains it. None returns
 everything to the neutral room. A hueless mark retints to the market's hashed ink and shows the
-one line in item 2.
+one line in item 2. The draft's id is made on this step, so the ink previewed for a hueless mark
+(a hash of the id) is the ink stored.
 
-**Search** runs over each emoji's CLDR name and tags (emojibase's `label` and `tags`, in the
-device's language) and matches any word that starts with what was typed. Nothing found: "Nothing
-called that. Try a plainer word." in `caption` `--ink-3` where the grid was.
+**Search** runs over each emoji's CLDR name and tags (emojibase's `label` and `tags`, in
+English) and matches any word that starts with what was typed. Nothing found: "Nothing called
+that. Try a plainer word." in `caption` `--ink-3` where the grid was.
 
-**Skin tones.** A long press on a cell that has them opens a one-row popover with the default
-and the five tones. The tone picked last is remembered per device and used for that emoji from
-then on. Tone never changes the ink (1.8).
+**Skin tones.** A long press (or a right click) on a cell that has them opens a one-row popover
+with the default and the five tones. The tone picked last is remembered per device and used for
+that emoji from then on. Tone never changes the ink (1.8).
 
-**What it offers.** Only emoji present in `src/lib/ui/emoji-inks.json`, which is exactly the set the
-tile renderer can draw, so a mark can never turn into a blank box in a group chat. The grid
-draws them with the phone's own emoji font; the ink always comes from the table, so an iPhone's
-👕 and the tile's 👕 share one ink even though the two fonts colour it differently.
+**What it offers.** Exactly the emoji in `src/lib/ui/emoji-inks.json`, which is exactly the set
+the tile renderer can draw, so a mark can never turn into a blank box in a group chat. The
+picker's catalog (`src/lib/ui/emoji-catalog.json`, made from emojibase by
+`scripts/emoji-catalog.mjs`, names and tags in English) holds the table's keys and nothing else,
+a test holds the two files to each other, and it loads when the picker opens. A mark the font
+cannot draw is refused when the market is drafted. The grid draws emoji with the phone's own
+font; the ink always comes from the table, so an iPhone's 👕 and the tile's 👕 share one ink even
+though the two fonts colour it differently.
 
 **Balance** is not shown here. The step previews the mark's own ink before anyone else is
 chosen; balance (1.8) applies on the who's-in step and may move the ink to a free neighbour
 there.
 
-**Reserved for stickers.** When the upload pipeline exists, a "Your stickers" section goes above
-Recent, in the same cell size. Nothing about it is designed here, nothing above changes when it
-arrives, and pasting a cutout (3.28) enters the same way.
+**Your stickers.** A row above Recent, in the same cells: a "Paste a cutout" cell first (dashed,
+with a paste glyph), then this person's stickers, newest first. While they have none, one
+`caption` under the row: "Lift a subject out of a photo, copy it, and paste it here." A paste
+anywhere in the sheet works too (3.28). Nothing else about the picker changes for stickers.
 
 **For a unit's mark** the same picker opens from wherever a unit is made, with no ink preview:
-nothing retints and the hueless line never shows, because units take no ink (1.7).
+nothing retints and the hueless line never shows, because units take no ink (1.7). No screen
+makes a unit with a label of its own yet, so this has no entry point until one does.
 
 **Never:** a mark suggested from the question's words, anything preselected except None, or a
 mark required to continue.
@@ -1280,6 +1713,617 @@ mark required to continue.
 Accessibility: every cell is a `button` with the emoji's name as its `aria-label` and
 `aria-pressed`; the None cell is labelled "No mark"; the sheet is a `dialog` labelled "Pick a
 mark".
+
+### 3.30 Pick one: entering
+
+Pick one means choosing one answer and nothing else. There is no confidence and no odds line.
+The last revision spread the rest of a person's confidence evenly across the answers they didn't
+pick, and that read as the app deciding something the person never said, so it is gone.
+Mechanically the pick carries full confidence: the right answer scores full, a wrong one scores
+zero, and the people who picked wrong pay the people who picked right, pairwise and capped as
+usual. It needs no contract change. Boards: `PickOneMarket` (interactive: tap an answer, choose
+a stake, enter) and `PickOneEntry`, frames 2 and 3.
+
+**At rest** (open, not in), the sheet holds "Pick one" in `body` 600 and the answers as 44px
+rows: radius 10, 1px line, the 28px slot and the answer in `body` 600, in the asker's order and
+never sorted by stake. When the viewer is one of the answers, their row reads "You".
+
+**Picking** is a tap. The row takes the market's field, a 1.5px inset ring in your hue and a
+check, and the stake chips (3.3) and the primary appear under the list as the sheet grows to
+hold them (320ms). Tapping another answer moves the pick. That is the whole entry: "I'm in:
+John, 2 beers", or, after the contract redeploy, "I'm in: John, just pride" with no stake (3.3).
+
+The entry line reads "You're in: John" over "2 beers · yours to change until 11pm". Change
+reopens the sheet with your pick selected and "Never mind" beside "Save: Priya, 2 beers".
+Failing to send and locking are the odds line's states (3.13).
+
+**Entering, as a moment.** The sheet lowers over 320ms. Then the bars (3.31) grow from the left
+over 700ms, your stake fills in your hue on your pick's bar, your 22px avatar appears on its
+row, and the shares fade in last (300ms, starting at 600ms). With `prefers-reduced-motion`, the
+resting state renders at once.
+
+Unchanged from the last revision: the answers editor and its "If none of them might happen, add
+that too." (3.29), blind (3.31), and voting on which answer happened, with "I couldn't tell" as
+the vote to void (3.24).
+
+### 3.31 Pick one: where the stake sits
+
+One row per answer, in the asker's order, under "Where the stake sits" (open) or "Where everyone
+landed" (locked). Boards: `PickOneEntry` frames 4 and 5, and `PickOneResolve`.
+
+- The row: the 28px slot, the answer in `body` 600, and the share in `numeral` 15 `--ink-2`,
+  right-aligned. Under it, a 12px bar, radius 6, with the market's surface as its track and its
+  ink as its fill; the track's full width is 100%.
+- Each person's whole stake sits on their pick. An answer's share is the stake on it over all
+  stake, rounded by largest remainder so the printed shares sum to 100. An answer nobody picked
+  shows an empty track and 0%.
+- Your stake is drawn in your hue at the left end of your pick's bar, separated by a 2px gap in
+  the ground colour, and your 22px avatar sits on that row. Nothing of yours appears on any
+  other bar: the slivers of the last revision showed a spread that no longer exists.
+- A no-stake entry is a person, not weight: an 8px hollow dot at the left end of its pick's bar.
+- No marker and no leader. Shares print from the third entry; before that, the bars alone. When
+  one stake is more than half the total, the caption says so in words (4.9).
+
+**Answers that are people** are unchanged: the avatar and first name, and a bar that stays in
+the market's ink (4.5).
+
+**Blind** is unchanged: outlined tracks, your pick marked with a 5px cap in your hue and your
+avatar, the lock chip and the count, and nothing else before lock. At lock, the bars grow as in
+the entering moment.
+
+**Locked** keeps the picture and drops Change. **Settled** is the pick-one settled screen
+(3.25).
+
+### 3.32 What's on
+
+A set of shared questions about things everyone is watching, such as a game or an awards show.
+Each is a template: its question, terms and close time are written once by the team. A person
+browses them, picks one that fits their friends, and asks those friends exactly as they would
+ask anything; settlement stays between those friends. Boards: `WhatsOn`; `WhatsOnFlow` for
+picking one; `WhatsOnStates` for launch, empty and failed; `FeedBallot` for voting (3.35).
+
+**It never looks like a market against the world.** The line sits at beliefs about the outcome,
+not at use. What must never appear is any aggregate of what people think will happen: odds, a
+price, a percentage, a share, "most picked", or how any group called it, voted or settled. What
+may appear is how much a question is being used. A count of friend groups arguing about a
+question says nothing about what any of them believe, so it tells nobody anything about the
+outcome and does not compete with settling only among friends; it is also what makes the tab
+feel like a shared moment. The last revision drew the line at any aggregate across groups, which
+was too wide.
+
+- No number about anyone's belief, anywhere on What's on or on a question's page: no
+  percentages, no shares, nothing picked. The one cross-group number allowed is a count of
+  groups using a question.
+- The order is popularity, with time as its fallback and its frame, as the tab below describes.
+  Popularity is the number of friend groups that have started a market from the question since
+  it opened, counting a market once it has a second person in. It is never the number of people,
+  and never anything they picked.
+- What a person sees about use is limited to markets they can already see. A row reads "You're
+  in this with the Friday crew", with the you're-in mark, when a market started from it includes
+  them, and tapping that row opens that market instead of the question's page.
+- Nothing about any particular group the person is not in: no names, no picks, no results. The
+  count is the only thing that crosses groups, and it counts groups, never what they said.
+- Once an event is over, its questions drop off. A finished event leaves nothing behind on
+  What's on, least of all how groups did.
+
+**The tab** (`WhatsOn`):
+
+- Header: "What's on" as the root's `label`, then one `body-sm` line in `--ink-2`: "Things
+  everyone's watching, to argue about with your friends. Whatever you pick stays between you."
+  The second sentence is the product's difference, said once, at the place someone might wonder
+  about it.
+- **Most asked** comes first: a `label` and one card holding up to three questions, the
+  most-used first, each row carrying its count and when it closes ("Asked in 214 groups ·
+  Tuesday, first pitch"). A question qualifies once 10 groups have used it; the section shows
+  however many qualify, up to three, and is not rendered at all when none do. Ten is the floor
+  because below it a count is noise, a small one beside a question reads as nobody caring, and a
+  count of two or three can tell someone whose group it is. It is a shortcut, so its rows also
+  appear under their day.
+- Then the schedule: sections by day ("Sunday, Sep 27") in `label`, soonest first. Each event is
+  a card: its name in `body` 600, its time and place in `caption`, a hairline, then one row per
+  question: the 40px stamp on the question's field colour, the question in `serif-m`, and a meta
+  line in `caption`. Inside an event, questions go most-used first, falling back to the
+  curators' order. The meta line gives the count once a question has 10 groups ("Asked in 41
+  groups · A number"), its kind and close below that ("Pick one · closes at kickoff"), and your
+  own use in place of either ("You're in this with the Friday crew"). The whole row is the
+  button; there are no action buttons in rows, because What's on is browsed and the one move
+  lives on the question's page.
+- Why popularity sits over a schedule rather than replacing it: a popular Tuesday game and a
+  quieter Sunday one both matter, and the Sunday one closes first. Ordering the whole list by
+  popularity would bury the question about to close; ordering it all by time would hide what
+  everyone is talking about. Most asked gives popularity the top of the screen, and the schedule
+  keeps every question findable by when it closes.
+- At launch, almost no question has been used, so Most asked isn't there and what remains is the
+  schedule (`WhatsOnStates`, A). A list ordered by time is exactly what a schedule looks like,
+  so the fallback never reads as a broken ranking, and counts appear row by row as questions
+  cross 10 groups.
+- Events come from the sports feed as well as by hand, so What's on lists upcoming games and
+  drops each one at its close. Nothing already started or finished is ever shown.
+- Nothing upcoming (`WhatsOnStates`, B): the header and one card with one line, "Nothing on
+  right now. Games show up here a few days before they start."
+- The feed fails (C): the 5.1 form-level block at the top of the list, "Couldn't get the latest
+  games." over "These were right as of 2:10pm." and a 44px "Try again", then whatever was saved
+  and is still before its close, plus anything curated by hand. When nothing saved is still open
+  (D), the block alone, reading "Couldn't load what's on." It never shows an event whose close
+  has passed, saved or not.
+- No badge, dot or count on the tab, ever. New questions arrive silently, never appear in Needs
+  you, and never send a push.
+
+**Curation**, by hand for the hackathon, alongside the games the feed lists. Public events only.
+Nothing involving minors, so no school or youth sport. No sponsored placement and no paid
+ordering. Every question must resolve from a public result, with its edge case written into its
+terms ("A tie counts as no."). Also out, added here beyond the brief: anything about injury,
+health, or anyone's private life. All three kinds are allowed, and pick-one follows the
+six-answer limit.
+
+**Why a tab.** What's on has to be visible at all times, including to someone whose Now is full.
+I weighed three homes:
+
+- A permanent section on Now. At the top, it would push the rows only this person can move below
+  things nobody is waiting on them for, which breaks the ordering Now exists for (4.7). At the
+  bottom, an active person with a long Now never reaches it, which is the "only appears when
+  nothing else is on screen" failure in a different place.
+- The Start sheet. Public questions are a way of starting, so they fit the sheet's meaning, but
+  only someone who has already decided to start something ever sees the sheet. That makes them
+  findable but never visible.
+- A tab. It is visible on every root, one tap away, and a real place to browse. The cost is one
+  built component (the bar), plus an amendment to the rule that nothing else earns a tab. That
+  rule's reason is that every market is reached from something that already mentions it. Public
+  questions are the one thing nothing in the app mentions first, so the tab passes the test the
+  rule was protecting. 6.2 records the exception as a sixth rule, with the test attached.
+
+The tab is the second of four: Now, What's on, People, You. It sits beside the root, where the
+eye starts, and leaves the two tabs about people together. Its icon is a ticket stub, drawn like
+the other tab icons at a 1.8px stroke on a 24px grid. It is shell furniture, like the three
+existing tab icons, so the closed set of eight structural icons does not change.
+
+### 3.33 A public question's page, and asking your friends
+
+`WhatsOnFlow`, four frames.
+
+**The page.** A task screen in the question's ink; a template carries a curated mark, so its ink
+comes from the table like any market's (1.8). Header: back and nothing else. The band: the 44px
+stamp; on the right, the event's day and time in `label`; the question in `serif-l`; and, where
+a market has its asker line, the ticket glyph at 16px with "From What's on · Titans at Giants"
+in `caption` `--ink-2`. Then the details `dl` with the written terms (Counts if, Decided, the
+edge case, Closes). A question a final score can answer says so in Decided ("By the final
+score"), and that row is what its ballot later credits (3.35). One caption above the sheet:
+"Only the people you ask see what anyone picks." Sheet: a chalk "Ask your friends". When a
+market you are in already came from this question, its row sits between the band and the terms
+("You're in this with the Friday crew", which opens it), and the chalk still asks a different
+set of friends.
+
+**Asking your friends** is the who's-in step (3.20), unchanged. The band shows the template's
+question, with "From What's on" where "Edit" would be. Then the terms step: the written rows in
+`--ink-2` and not tappable, the rows people set themselves (Stakes) as usual, and one caption,
+"What's on wrote the wording, so everyone reads the same terms." Then "Send it". That creates an
+ordinary market: its asker is whoever sent it ("You asked the Friday crew"), its close time is
+the template's, its ink is balanced on the who's-in step like any other (1.8), and everything
+after that already exists.
+
+**Why the wording is locked.** Curated terms are written to resolve cleanly against a public
+result, with the edge case settled in advance. An edited question is the likeliest route to a
+void, and a void counts against the asker (3.34).
+
+**Once it is running**, it looks like any other market, with one extra details row: "Question
+from | What's on". There is no badge on the band, no link to other groups and no public result.
+The moment someone picks a question, it belongs to them and their friends, and a badge would
+make it look like a shared market. The link tiles are the kind's usual tiles, and nothing on
+them says where the question came from.
+
+### 3.34 You: how your calls land
+
+You is where the product's claim is added up: every market's score is already a measurement of
+how well-calibrated the people in it are, and nothing new is collected to draw this. Boards:
+`You`, with everything in place, and `YouEarly` for before there is much to show.
+
+The screen, top to bottom: identity (the 56px avatar, the name in `body` 600, one caption such
+as "In 43 markets since March", or "Joined today" with none yet), then "How your calls land",
+"Numbers", "Questions you asked" and "Account". The stats come first because they are what You
+is for. Only this person's own calls appear, with no score, grade or rank, and no comparison
+with anyone else.
+
+**How your calls land** (yes-or-no):
+- What counts is every scored position on a resolved yes-or-no question. Voided and expired
+  questions count in neither direction. Pick-one entries are left out: a pick says nothing about
+  how sure, so it has no place on a confidence axis.
+- Bins are the tenths of the weight line (`bucket(v) = ceil(v / 10)`, with 0 joining the first),
+  so the plot and the market screen share one grid. For each bin: the calls, how many happened,
+  and the mean of what was said.
+- The picture: a reliability plot 318 by 236 inside its card, with "How often it happened" in
+  `caption` above it and "What you said" under it. x runs from 0% to 100% with ticks at 0%, 50%
+  and 100%; y runs from 0% to 100%, with gridlines at 0, 50 and 100 and a dashed `--line-strong`
+  diagonal from corner to corner labelled "right on". Each bin with a call is a dot in your hue
+  at (mean said, share that happened), with radius 3 + 1.6√n px and a 2px ring in the card's
+  surface, and behind it a 2px whisker at 0.45 opacity spanning the bin's 80% Wilson interval.
+  There is no floor per bin: a bin with two calls draws a small dot with a long whisker, which
+  shows how little it rests on, and hiding it would hide part of someone's record behind bins
+  they haven't filled.
+- The headline, in `serif-l`, names the bin with the most calls: "When you say about 70%, it
+  happened 7 of the 10 times." It uses counts rather than a second percentage, because a count
+  says how much the claim rests on.
+- One caption under the plot, the total and how to read the dots: "40 yes-or-no calls since
+  March. A bigger dot stands on more calls." A second caption counts pick one instead of
+  plotting it: "Pick-one markets aren't plotted, because a pick says nothing about how sure. You
+  called 5 of the 9 you were in."
+- The floor is ten resolved yes-or-no questions before the plot draws. Below ten, one result
+  moves the overall hit rate by ten points or more, the whole width of a bin, so every new
+  question would redraw the picture.
+- Under ten (`YouEarly`, frame B): the same frame with only the diagonal, at 0.6 opacity; a
+  title in `body` 600, "Your picture draws at 10 resolved calls. 3 so far."; and the calls
+  themselves as rows (28px stamp, "You said 70% · it happened", the question in `caption`). The
+  count is a fact and not a progress bar: nothing fills, nothing marks reaching 10, and nothing
+  asks the person to enter more.
+**Numbers:**
+
+- For each resolved number market, the distance is |your number − the answer| divided by the
+  width of that market's scoring scale (3.26), capped at 100%. That is the score's complement,
+  so the payout and the record are one number. The scale itself is never shown, and this must
+  not become a way to see one, so only aggregates appear: never a single market's distance and
+  never a tick per market.
+- The headline in `body` 600 reads "On numbers, you land 15% of the range away." The picture is
+  a line from "spot on" to 50% (distances past 50% sit at the end). Your average is a 3px cream
+  mark, the middle half of your distances is a 6px band in your hue at 0.45, and a dashed
+  reference at 25% is labelled "guessing the middle". That is the average distance of a guess at
+  the centre of every range, if answers fell anywhere in it. The caption reads "7 number
+  markets. The band is the middle half of them; the cream line is your average."
+- The floor is 5 resolved number markets. Under that, one line ("Numbers draw at 5 number
+  markets. 2 so far."); with none at all, the section is not rendered.
+
+**Questions you asked** (the clean-resolution rate):
+
+- This counts the questions you asked that ended, and how many resolved without a void. A void
+  by quorum vote, or by an arbitrator finding the terms undecidable, counts against the asker.
+  Expiry counts against nobody and is left out of both numbers. There is no floor, because this
+  means something from the first question.
+- The headline in `body` 600 puts the count first and never uses a percentage: "11 of the 12
+  questions you asked ended cleanly." With one: "The one question you asked ended cleanly."
+- The picture is one 16px state mark per counted question, in the order they ended: the resolved
+  disc in `--ink` and the voided mark in `--ink-3` (3.23), wrapping.
+- The caption names what went wrong, because a void is fixable next time by wording: "The group
+  voided “Does Maya make the 7:40?” Two others expired, which counts against nobody." With more
+  than one void, it names the most recent, "and 2 others".
+
+**Nothing yet** (`YouEarly`, frame A): when nothing has resolved and nothing asked has ended,
+the stats collapse into one card with one line: "Once some of your calls resolve, this is where
+you see how they land, and how cleanly the questions you ask end." There is no empty chart and
+no zeros (4.7: one line that names the empty case).
+
+**Account**: one card of rows, each `body` 600 over a `caption`, with a chevron: "Your units"
+("Beers, coffees, a next time, “dumpling run”"), "Your marks" ("The emoji you've used, most
+recent first", with your stickers once you have any), "Your number" ("Used to sign in. Nobody
+else sees it."), and "Sign out" with no caption, which asks once in a sheet (3.12, destructive).
+Sign out is the one way to leave the product, and it lives only here (4.7). While the build is
+still finding the cause of the installed app's bottom band, a tertiary "Measure the screen" sits
+under the card; it leaves with the cause.
+
+This revision draws the stats on You only. Whether friends ever see someone's clean-resolution
+rate is a separate decision, and nothing here depends on it.
+
+### 3.35 The ballot when a final score answers it
+
+For What's on questions a final score answers (who won, how many points, how many runs), the
+ballot opens with the result already proposed from the sports feed, and the group confirms it in
+one tap. Board: `FeedBallot`.
+
+- **A proposal, never a decision.** The server can never cast a vote, and the group still has to
+  confirm. So the proposal is credited to its source the way a ruling is credited to the
+  tiebreaker everyone agreed to: the terms said "Decided: By the final score", and the ballot
+  shows the score as the thing the terms named. Nothing on it says the app decided.
+- **The source card** stands where a person's claim card stands (3.25) and differs from it in
+  every channel that says who is speaking: no avatar and no "says". It has a kicker with the
+  ticket glyph, "From the final score"; the score as two `body` 600 rows, team and number, the
+  losing side in `--ink-2`; and one caption, "Final, Sun 4:12pm. The terms said the final score
+  decides." It has no clip, because nothing was filmed.
+- **The sheet** is the ordinary voting sheet: the count line ("Nobody has said yet. Two of you
+  and it settles."), a chalk that names the outcome in the voter's voice ("That's right, they
+  won"), and "Not how I saw it", which works as it does anywhere.
+- **Telling the two apart.** A question a final score can't answer, such as the first drive,
+  never gets a source card. It waits for someone to say what happened, and the ballot opens on
+  that person's claim card, with their avatar, "Maya says a field goal" and the clip if there is
+  one. The ballot tells the two apart by who is speaking: a person, with a face, or the score
+  the terms named, with none. A template is flagged as answerable by the score when it is
+  written; nothing is inferred later.
+- **Closed, waiting on the score.** The sheet reads "The final score will propose what
+  happened." For two hours past the event's expected end, that is all; then a tertiary "Say it
+  yourself" appears and opens the ordinary claim, in case the feed is late or has nothing.
+- **Nobody votes.** The 24-hour arbitration backstop rules using the same result. The settled
+  screen says so without making the app the judge: the outcome ("Yes. Giants 24, Titans 17."),
+  then "Decided by the final score, as the terms said. Nobody voted within a day." Everything
+  after that follows as usual: the call line or ruler, closest first, who's got who.
+
+### 3.36 Multi-choice spreading (for the contract redeploy; do not build yet)
+
+This section is for the contract redeploy. It is not part of the current build, and nothing in
+it should be built before the redeploy ships. Its board, `SpreadRedeploy`, carries the same
+warning.
+
+- **One kind of market, chosen at entry.** Everyone picks one by default, exactly as in 3.30,
+  and anyone who wants to can spread their answer instead. The asker doesn't decide for the
+  group; the person who cares about nuance opts in. Under the answers sits one tertiary, "Spread
+  it instead".
+- **Spreading.** The sheet raises to "Spread it". Each answer is a row with its value in
+  `numeral` 15 on the right and a bar underneath: a native `range` per row, step 1, a 44px hit
+  area, a 20px chalk thumb and a fill in your hue. Values start at the even split (20% each with
+  five answers; with a remainder, the first answers take the extra points, so 34, 33 and 33 for
+  three). The total must be exactly 100, in whole numbers.
+- **Where raising takes from: a share left to place.** Lowering an answer frees its share into a
+  pill at the top right, "15% left to place", ringed in your hue, or "All 100% placed" when
+  nothing is free. Raising takes only from what is left, and each bar stops at its ceiling,
+  marked with a 2px tick at its value plus what is left. The primary is enabled only at nothing
+  left, "I'm in with this spread, 2 beers"; otherwise it is disabled and reads "Place the last
+  15%". Two tertiaries: "Start from 1% each" sets every answer to the floor and puts the rest in
+  the pill (95% with five answers), for someone who would rather build up than trade down; "Back
+  to one pick" returns to picking.
+- **Why a pool rather than taking proportionally.** Taking proportionally from the rest keeps
+  the total at 100 without a pool, but it moves numbers the person never touched. That is the
+  reason pick one lost its implicit spread: the app deciding something the person never said.
+  Taking from the largest answer, or from a neighbour, fails the same way. With a pool, every
+  number on the screen is one the person set, or the even start they accepted, and it is still
+  one hand and two drags: lower one, raise another.
+- **The floor.** No answer goes below 1%. Multi-choice uses the logarithmic score, where a
+  person's score depends only on what they gave the answer that happened. Its one hazard is that
+  0% on the true answer is punished without limit, and the floor bounds the loss. A bar can't be
+  dragged below 1%, and no value ever reads 0.
+- **Where the stake sits.** A pick puts its whole stake on one bar (3.31). A spread puts stake ×
+  share on every answer, drawn in your hue on each bar it touched, so the slivers return here,
+  because here the person set them.
+- **The entry line** reads "You spread it, most on John" over "John 60 · Nobody 25 · 5 each on
+  the rest · 2 beers".
+- **Settled.** Closest first, ranked by how much each person gave the answer that happened;
+  under the logarithmic score that order is exactly the score. A spreader's row reads "spread
+  it" under the name and "gave it 30%" on the right. A picker's reads "picked Priya", with
+  "picked it" on the right when that was the answer. The gap bar runs from what they gave to a
+  cream tick at 100%, the 1px tick sits at the even split, and ties share a rank with "=".
+- **For the contract, before the redeploy.** How is a plain pick scored under the logarithmic
+  score? A pick at 100% gives every other answer 0%, which is exactly the unbounded case the
+  floor exists for. This design assumes a pick is scored as 100 − (k − 1)% on the pick and the
+  floor on each other answer, and it never shows those numbers: a picker's row says "picked",
+  never "gave it 1%". Confirm that, or its replacement, before the redeploy.
+
+### 3.37 After it ends: the settled screen, the empty photo state, and the memory it leaves
+
+A market's own screen once it has ended, whatever the ending. Boards: `Leaderboard` (14, settled
+with photos), `SettledPhotos` (no photos yet; someone who wasn't in; voided; expired) and
+`Memory` (15, the same market weeks later). This section is complete on its own: build from it,
+and treat the boards as pictures of it.
+
+**Settled, yes or no** (`Leaderboard`), top to bottom:
+
+1. The header: back and More.
+2. The question band (3.25): the stamp, the resolved disc in the market's ink and "Settled Sat
+   at 12:14am", the question in `serif-l`, the asker line.
+3. The outcome line in `serif-l`, in the market's words ("He did.", 3.25), 20px under the band,
+   then the claim's line in `caption` `--ink-2` ("Out cold, 1h 12m in."). Here the outcome comes
+   before the frame, because on this screen it is the news.
+4. The frame at 200px, 14px under the caption, and the strip: the claim's clip first, credited
+   to the claimant, then memories (3.8). With nothing added yet, the empty slot for someone who
+   was in, and nothing for anyone else.
+5. The call line at screen size (3.5), 32px pins, 14px under the frame or the strip.
+6. "Closest first" (3.7), with at most one annotated row.
+7. "Who's got who", grouped by owner: the owner's 28px avatar and "John's got" in `body` 600,
+   then the people they owe as tokens under it. Then one `caption` naming who called it even
+   ("Called it even: you and Priya, John and Gabe.").
+8. The sheet (3.24): for someone who was in, the chalk "Add yours from Friday" ("Add a photo
+   from Friday" while there are none) and the secondary "Send how it ended", with the whole
+   result tile at the second height. For anyone else, "Send how it ended" alone.
+
+**Number and pick one.** A number market's outcome is the sentence with the number ("14 shirts,
+then a seam gave out."), its caption says who was closest ("Theo was closest, off by 2."), and
+the ruler stands where the call line would. A pick-one market's outcome names the answer, its
+caption names who called it, and "Everyone's pick" replaces the call line and closest first
+(3.25). The frame, the sheet and who's got who are the same.
+
+**Voided** (`SettledPhotos`, frame C): the voided mark and "Voided Sat at 1:05am" in the band;
+the outcome line "Nobody could tell." with the caption "Nothing changes hands."; the frame or
+the empty slot; the call line with every pin and no wash or cap. No closest first and no who's
+got who. For someone who was in, the sheet is the chalk alone, "Add a photo from Friday": no
+result tile tells a void, so there is nothing to send. Anyone else gets no sheet. A void by the
+tiebreaker's finding says so in the caption: "The terms didn't decide it. Nothing changes
+hands."
+
+**Expired** (frame D): the expired mark and "Closed for good Sun at 9am"; the outcome line
+"Never settled." with the caption "Nobody said what happened before it closed for good."; then
+as voided.
+
+**Someone who wasn't in** (frame B): the same screen with no add anywhere. The frame shows, the
+empty slot never does, and the sheet is "Send how it ended".
+
+**Adding** works the same from the chalk and from the empty slot: the phone's photos, the
+library first, several at once, each landing as a placeholder at the end of the strip (3.8).
+When the first lands, the slot becomes the frame and the chalk becomes "Add yours from Friday".
+
+**The memory it leaves** (`Memory`). The same market opened once the day it ended is over (from
+the second calendar day in the viewer's zone, the way "yesterday" is counted everywhere),
+usually from a story in a timeline, often months later. It leads with what people come back for,
+the photos, and drops the ranking. Top to bottom:
+
+1. The header: back and More.
+2. The question band, with the ending's mark and the date where the clock was ("Sat, Aug 22").
+3. The frame at 260px, 12px under the band, then the strip. The claim's clip leads, credited.
+   With nothing added: the empty slot for someone who was in, and nothing for anyone else.
+4. The outcome line in `serif-l`, 18px under the strip, then one `body` line in `--ink-2`: the
+   claim's line, then who was closest ("Caught a shoe on the way over and landed fine. Theo was
+   closest, at 90%."). On a number market the second half is "Theo was closest, off by 2."; on
+   pick one, "Theo called it."
+5. The call line, ruler or pick-one rows, as on the settled screen.
+6. What it left: one `--surface` card of the consequences, grouped by owner, with no heading.
+   Each row follows 2.1's direction encoding ("Gabe's got Theo" with Gabe's avatar leading,
+   "You've got Theo" right-aligned with your token). A closed one carries the settled or
+   forgiven mark before its sentence. There is no settle control here; settling lives on the
+   person view (3.10). A market that moved nothing shows the one line "Nothing changed hands."
+   instead.
+7. "The rest of that night", in `label`: other events that share at least two people with this
+   market, the viewer among them, and happened between six hours before it closed and six hours
+   after it ended. Oldest first, at most five, in one `--surface` card of rows: the kind's 16px
+   icon and label in 13px 600 `--ink-3` ("Covered a round", "Argument"), the subject in `body`
+   600, one `caption` ("Nobody's paying it back", "Ruled for Priya."), and a 60px thumbnail on
+   the right when there is a photo. Each row opens its event. When the market closed between 5am
+   and 5pm in the viewer's zone, the heading is "The rest of that day". With none, the section
+   is not rendered.
+8. The sheet, as on the settled screen, saying "from that night" once it is a week old.
+
+Closest first leaves the memory screen: the call line already shows where everyone was, and
+months later the ranking is not why anyone opened it. Sizes: 13, 15, 17 and serif 26.
+
+**The claim card** (3.25; `Voting`, `PickOneResolve`, `FeedBallot`): the market's surface, a 1px
+line, radius 12, 12px padding, 12px from the screen edges, a 12px gap between its two parts. On
+the left the 72px clip, radius 10, with a 28px `--scrim` play plate on video (a photo or a
+screenshot has none). On the right the claimant's 22px avatar and "Priya says he fell asleep" in
+`body` 600, and under them in `caption` `--ink-3` the claim's line and when the clip was taken
+("Out cold, 1h 12m in · shot 11:52pm"). With more than one attachment the clip carries a `+2`
+chip; with none, the card is the avatar and the words alone. Tapping the clip opens it full
+screen.
+
+### 3.38 The rest of the screens, in text
+
+Every screen that matters, in words, where its board drew more than its component sections say.
+Components keep their own sections; this gives each screen its order and fixed copy, and notes
+where a board is older than the text.
+
+**Now** (`Now`, 4.7). The header is today's date in `label` `--ink-3`, the weekday spelled out
+("Thursday, Sep 24"), 20px from the top, with nothing on the right. Needs you starts 16px under
+it, then Running, then Just happened, each headed in `label` and each gone when empty. Only the
+soonest row with a clock carries the citron dot, and the Now tab's dot hides while Now is on
+screen, so one citron element is in view (4.5). The board draws three dots; the text wins.
+
+**First run** (`FirstRun`): as 3.14 gives it, top to bottom, with Start hidden.
+
+**The person view** (`Main`). Top to bottom: back and More; the identity row and the open header
+(3.10); the cancel-out row when a unit runs both ways; the shared-context band (3.21), whose
+helper line reads "Tap one to see only those."; "Coming up" in `label` `--ink-3` with any
+upcoming cards (3.4); the today rule; the timeline by date, newest first, dates in `label`; a
+44px tertiary "Show earlier"; and the rally last. The today rule is "Today" in `label` `--ink`,
+a 1px `--ink` hairline filling the row, and the date in `caption` `--ink-3` ("Thu, Sep 24"). The
+rally is its own `--surface` card: "The rally, lately" in `label`, the strip (3.11), its
+sentence in `body-sm` `--ink-2` ("You've picked up a few more of these lately."), and one
+`caption`, "Rounds, coffees and cabs nobody's paying back." A resolved market follows 3.4, with
+its outcome in `serif-l` ("He did, 1h 12m in."), a `body-sm` line naming who was closest and
+your number ("Priya was closest at 85%. You said 55%."), and the tertiary to the full table. The
+board sets that outcome in `body` 600; the text wins.
+
+**A year ago tonight** (`Main`). When a market between the two of you ended on this date in an
+earlier year and has photos, one card sits under the today rule: "A year ago tonight" in
+`label`, up to three 84px thumbnails 6px apart, one `body-sm` line naming the question, and a
+44px tertiary "Hide this" that hides it for good for that market. Tapping it opens the memory
+screen (3.37). At most one a day, and never a notification.
+
+**The story card** (`Story`). 3.4's resolved market as a timeline shows it: the frame at 180,
+the outcome sentence and its caption, "Everyone's number" in `label` over the call line or
+ruler, the roll call (3.6), then the consequences outside the link, ending "Everyone else called
+it even." The card carries no controls; adding photos and sending live on the market's own
+screen (3.37). There is no story that opens in place: tapping the card opens that screen.
+
+**The question step and the picker** (`MarkPicker`, `MarkPickerFrames`): as 3.29 gives them.
+
+**Who's in** (`Ask`, 3.20). The band holds the 44px stamp, "Your question" in `label` `--ink-2`
+and a 44px tertiary "Edit" on the right that returns to the question step, then the question in
+`serif-l`. Under it, "Who's in?" in `body` 600 and one `caption` `--ink-3`: "Everyone you pick
+gets the link. Nobody needs an account to look." Then the rows of 3.20, the naming prompt under
+the selected row when it applies, and last the dashed "Someone else" row, whose caption is "Pick
+people, or just send the link around". The sheet: "You can add anyone else right up until it
+closes." and the chalk "Set the terms".
+
+**Joining with a code** (`Join`, 3.16). "Got a code?" in `serif-l`, then one `body` `--ink-2`
+line: "Someone read you one, or sent you a link." The six boxes, then one `caption`: "Six
+characters. There's no O, I, Z, zero or one in any code." 28px under that, a row: "Got a link
+instead?" in `body` 600 over the `caption` "Tap it in the chat, or paste it here.", with a 44px
+row action "Paste a link" that reads the clipboard and opens that market's screen (3.17). A
+clipboard with no market link on it gets the form-level block: "There's no market link on your
+clipboard." Join is in the sheet. The board's helper leaves out Z; the text wins.
+
+**Claiming what was waiting** (`Claim`). The screen a new person sees once, after signing up,
+when things were logged under their name before they had an account.
+
+- The header: the wordmark alone and no back, because nothing is behind it, the one exception to
+  6.4's back control besides a signed-out link.
+- Prints: photos from the waiting stories, 150px wide on a `--chalk` mount with 8px sides and a
+  10px bottom, a 118px photo, the date in 13px 600 `--on-chalk`, radius 6, rotated −6°, 3° and
+  8°, overlapping in a 200px band with the 1.5 shadow. At most three, the most recent on top;
+  with fewer, fewer; with none, the band goes and the headline moves up.
+- The headline in `serif-xl`: "You were already in 6 stories." Then one `body` `--ink-2` line:
+  "Two weeks with the Friday crew, kept under your name, Maya. Say yes to what looks right and
+  it's yours."
+- One group per person, most items first: a 32px avatar, the name in `body` 600 and the count in
+  `caption` `--ink-3`, then one `--surface` card of claim rows (4.8): a 13px 600 kicker ("Market
+  · Sep 5", with the 20px stamp for a market), the subject in `body` 600, and one `body-sm` line
+  with the token ("Priya's got you").
+- Each row's control: a 44px target holding a 24px `--chalk` circle with an `--on-chalk` check,
+  pressed by default, labelled "Confirm: Priya's got you". A tap unpresses it (a 24px ring in
+  1.5px `--line-strong`), and an unpressed item stays unclaimed under the name it was logged
+  with. The row itself opens nothing.
+- The sheet: the chalk "Yep, all 6 are right", which counts the pressed rows ("Yep, these 5 are
+  right"), and one `caption` under it: "Something off? Tap it to leave it out."
+- Tokens here keep their hue border: every row is unconfirmed, so 3.2's dashed style would carry
+  no information, and the check already shows the state.
+
+**The market screen, before and after you're in** (`MarketDock`, `JoinLink`, `BlindSlow`). The
+participant stack under the band is 28px avatars and one `caption`. Before you're in: "3 friends
+are in. Where they landed shows once you are.", with a 20px lock glyph in `--ink-3` on the
+right. After: "4 of you in". Blind: "4 of 6 in". From a link, signed out: "4 friends are in".
+While the entering moment runs (3.13), the sheet's header reads "You're in at 70%" on the left
+and the stake on the right. The asker line names a set as "Priya asked the Friday crew"; a set
+whose name can't take "the", such as a possessive, reads "Theo asked · Papa's birthday"; an
+unnamed set names its people ("Priya asked Gabe, John and you", three names and then "and 3
+others"). A slow market's time series is headed "The group's number since Tuesday" in `label`,
+with its days under it in `caption` ("Tue", "Thu", "now") and the current value in 13px 600 at
+the right end.
+
+**Voting** (`Voting`). Once voting opens, the entry line leaves and the claim card (3.37) sits
+directly under the band; then "Where everyone landed" and the weight line; the sheet is 3.24's
+voting row, whose chalk repeats the claim in the voter's voice.
+
+**Closed, waiting** (`DockStates`). The wells are 56px on the market's ground with a 1px inset
+`--line-strong` ring, in `body` 600 (pick one: 48px, two across, with 24px avatars), under one
+caption: "Anyone who's in can say. Everyone else confirms it." The band's clock after close says
+when it will be decided, in the Decided term's words ("Decided when the movie ends"), and
+"Settled Sat at 12:14am" once settled.
+
+**An argument, ruled split** (`Split`). An argument's band has no mark: the kicker is the 16px
+argument icon and "Argument" in `label`, with the state mark and "Ruled just now" on the right,
+the question in `serif-l`, and the 24px context chip where the asker line goes ("Just you two").
+Then the positions card: two columns on the surface, theirs on the left with the 32px avatar
+leading and "Gabe said" in `caption` over "The fastball" in `body` 600, yours mirrored on the
+right with the avatar trailing. "THE CALL" (1.2's uppercase exception): a 12px bar split at the
+ruling in their hue and yours with a 2px gap, a 1px dashed `--ink` marker 20px tall at 50%, and
+under it in `caption` "Gabe · 40", "even would sit here" in `--ink-3`, and "You · 60". Then the
+ruling in `serif-l` ("Closer to the serve, 60 to 40.") and its reasoning in `body` `--ink-2`, at
+most two sentences (4.8). "WHAT IT MOVES": the consequence (3.2, halves only), or, when rounding
+leaves nothing, a dashed block with "Nothing changes hands" in `body` 600 and the `caption` "A
+60/40 moves a fifth of a beer. Rounded, that's nothing, so it goes on the rally.", then three
+reference cells on the field: "50/50" nothing, "75/25" half a beer, "90/10" one beer. The
+tiebreaker's ruling is final, because everyone agreed to it at entry, so there is no agreeing
+step: the sheet is 3.37's, with "Add a photo from tonight" and "Send how it ended". The board
+drew "That's fair" and "Push back" from before that; it is redrawn.
+
+**Pick one** (`PickOneEntry`, `PickOneResolve`). Under "Add a person", the asker can add
+themselves last, as "You". A blind market with no close time locks when everyone asked is in, or
+when the asker locks it: its band reads "Locks when all 6 are in", the entry line's caption
+"yours to change until it locks", and the sheet "Anyone you asked can get in until then." Who's
+got who lists at most three rows owed to one person; the rest collapse into one `caption` naming
+them ("Maya and Priya have got him too."), and the list ends "Everyone else called it even."
+when anyone is square.
+
+**Starting from a public question** (`WhatsOnFlow`, 3.33). The who's-in band keeps the page's
+layout: the clock top right, and "From What's on · Titans at Giants" with the ticket glyph where
+the asker line goes. On the terms step the asker line becomes the chosen set, as 22px avatars
+and its name ("Friday crew"). The Stakes row is a full-width button showing the unit ("Beers")
+with a chevron, and it opens a modal sheet with the units this person uses and a cap ("Up to 2
+each").
+
+**You** (`You`, `YouEarly`): as 3.34 gives it.
+
+**The tiles** (`TileAsk`, `TileAskRange`, `TileCalled`, `TilePhoto`, 3.27). Sizes 3.27 leaves
+out: "0%" and "100%" at 26px 600 in ink-hi; on the number tile the unit in serif at 60px, the
+stamp at radius 20, the field with a 2px inset ring in the ink's line colour and a 4 by 52px
+caret; on the result tile a 72px stamp at radius 18 beside the 72px outcome, a 12px track on the
+surface, an 8 by 64px cream cap, 52px pins with a 5px ring in the field, and end labels at 22px
+in ink-hi.
+
+**The wordmark.** "dareful" in lowercase Young Serif 400. In the app header it is 20px `--ink-2`
+in a 48px slot with 12px sides, and it stands where back would only when nothing is behind the
+screen (a signed-out link, the claimant screen). On tiles it is 32px in ink-hi, 56px from the
+left and 44px from the bottom. It is a logo, outside the type budget.
 
 ---
 
@@ -1322,9 +2366,13 @@ The weight follows what kind of event it is, not how good the picture is.
    app in November.
 3. Does the event have more than one piece of media? Frame for the first, 60px strip under it
    for the rest, `+N` past four.
-4. Is the media the evidence that resolved the question (the clip of the fence, John asleep)?
-   Frame, and it sits above the outcome line rather than below it.
-5. Nothing to show? Render nothing. An empty frame is worse than no frame.
+4. Is the media what the claim carried, the evidence that resolved the question (the clip of the
+   fence, John asleep)? Everyone voting sees it on the claim card, and once the market ends it
+   leads the frame, credited to whoever attached it. The frame sits above the outcome line on a
+   story card and on the memory screen; on the settled screen the outcome comes first, because
+   there it is the news.
+5. Nothing to show? Render nothing, with one exception: on a market's own screen after it ends,
+   someone who can add sees the empty slot (3.8), which is a button.
 
 ### 4.4 What makes something a story rather than a row
 
@@ -1367,20 +2415,32 @@ inside one boundary: nothing here has a price at any moment, nothing is bought o
 is held and nobody makes a market. Say the group's number, where the stake sits, your number,
 what's riding on it, who's in, called it.
 
-"Odds" is allowed in exactly one place: the question the app asks you, "What are the odds?", on
-the odds line and on the asking tile. It is never a label on anything the app shows back, so
-never implied odds, and never "the odds" for the group's number. Also never: price, "the market
-says", pot, house, buy, sell, shares, position size or liquidity. The picture can look like
-finance; the language has to keep saying it is six friends guessing.
+"Odds" is allowed only for what a person puts in: the question the app asks you, "What are the
+odds?", on the odds line and the asking tile, and "your odds" or "their odds" for someone's own
+number ("Slide to pick your odds", "Everyone puts in their odds."). It is never a label on
+anything the app shows back, so never implied odds, and never "the odds" for the group's number.
+Also never: price, "the market says", pot, house, buy, sell, shares, position size or liquidity.
+The picture can look like finance; the language has to keep saying it is six friends guessing.
 
 Numbers people put in are percentages: "You're in at 70%", "Priya called it at 90%", "said 85%".
 Number markets use the plain number and the unit: "You're in at 17", "14 shirts".
 
+Pick-one entries name the answer and nothing else: "You're in: John", "said Priya", "Theo called
+it". Never "favourite", "leading" or "the group's pick". On What's on, counts of use are allowed
+and are phrased as use ("Most asked", "Asked in 214 groups"). Nothing that states or implies a
+belief about an outcome is ever allowed: no odds, prices, percentages, "most picked", or how any
+group called it. A dissent without a number is "a note", never "a vote" (3.24). A ruling is
+credited to the agreement, never to the app: "the tiebreaker everyone agreed to", on the settled
+screen, in the details' "If it's unclear" row, on the arbitration sheet and on the result tile.
+
 Sentence case everywhere. Contractions. Second person for the viewer, first names for everyone
-else. Numbers never open a sentence in the interface. Times are relative for the last week
-inside the app ("Sat, Sep 12" after that) and always absolute on a link tile. No exclamation
-marks in system copy. The app never thanks the user for settling something and never
-congratulates anyone for winning.
+else. A line opens with a number only when the number is what the line is about: a count, where
+the count is the subject ("3 of 6 say Priya.", "3 friends are in.", "40 yes-or-no calls since
+March."), or a number the person just typed, said back to them ("2,400 shirts is past the limit
+here."). Everywhere else, words come first. Times are relative for the last week inside the app
+("Sat, Sep 12" after that) and always absolute on a link tile. No exclamation marks in system
+copy. The app never thanks the user for settling something and never congratulates anyone for
+winning.
 
 ### 4.7 Now, and why it is event-first
 
@@ -1402,8 +2462,15 @@ something is what made it unreadable. Now holds three sections, in this order:
 2. **Running.** Markets in flight that this person has already acted on, each with its state
    mark and no action button. It exists so that "I entered that, didn't I?" has an answer
    without a search.
-3. **Just happened.** Resolved markets, closed obligations, covers that landed. Stories keep
-   their story anatomy here (4.4); this is what the group did, not a notification list.
+3. **Just happened.** Resolved markets, closed obligations, covers that landed, each as one row:
+   the 3.15 anatomy, with a 44px thumbnail when there is media and the outcome in the meta line
+   ("He got carded · Maya called it"). Tapping a row opens the market's own screen (3.37) or the
+   obligation's. Closed obligations order by when the close went through
+   (`obligations.closed_at`) and read as settled or called even from the indexer, settled while
+   it hasn't caught up; cancelling out appears in nobody's Just happened. This used to say
+   stories keep their full anatomy here, which put a `serif-l` story question beside the
+   `serif-m` questions above it, a second serif size on the one screen everyone opens (4.8). The
+   `Now` board always drew rows.
 
 People is a tab rather than a section, because the person view is where the thesis lives and
 it should be one tap from the root rather than a scroll and a tap. Where a list of people does
@@ -1411,20 +2478,23 @@ appear, people with something open get a row each and everyone who is square col
 single row with an avatar stack and one sentence, because four rows that each say "nothing
 open" is four repetitions of nothing.
 
-What is deliberately not on home: a group list, and account actions. A group is a namespace,
-not a place. It forms lazily out of whoever was in a market, it earns a name only if the same
-set asks a second question, and it does its work in exactly two screens, the same-people
-picker (3.20) and the shared-context band on a person view (3.21). Listing groups on home was
-what made an occasion group permanent in the interface, and it is what forced leaving and
-archiving to exist as features. Take the list away and a group that is over simply stops being
-mentioned, with nothing to leave and nothing to archive. Account actions, sign out included,
-live behind the avatar in the header, because the primary screen of a social product should
-not end in a way to leave it.
+What is deliberately not on home: a group list, and account actions. A group is a namespace, not
+a place. It forms lazily out of whoever was in a market, it earns a name only if the same set
+asks a second question, and it does its work in exactly two screens, the same-people picker
+(3.20) and the shared-context band on a person view (3.21). Listing groups on home was what made
+an occasion group permanent in the interface, and it is what forced leaving and archiving to
+exist as features. Take the list away and a group that is over simply stops being mentioned,
+with nothing to leave and nothing to archive. Account actions, sign out included, live on You
+(3.34), because the primary screen of a social product should not end in a way to leave it.
 
 Placing something new on home: if it is an action only this person can take, it goes in Needs
 you. If it is something the group did, it goes in Just happened. If it is a way to reach
 someone, it goes in People. If it is organisational, or about the account, or about a group as
 an object, it does not go on home at all.
+
+Public questions are not on Now, except as the first-run starters (3.14). They have their own
+tab (6.2, rule 6), and a permanent block on Now would push the rows only this person can move
+below things nobody is waiting on them for.
 
 Two rules generalise out of this and apply everywhere:
 
@@ -1450,13 +2520,17 @@ A third count, softer, for review rather than lint: a screen that carries more t
 sentences of explanation is explaining a mechanism at the wrong moment (4.9).
 
 **The lint.** A test over each screen's rendered DOM. Mark the root of every control and token
-component with `data-type-exempt`: buttons, chips, inputs and textareas, the odds line's riding
-percent, the code boxes, the number field, the obligation token, and the wordmark. Walk every
-text node that is not inside `[data-type-exempt]`, an avatar, or an emoji-only run, and read
-`getComputedStyle` on its parent: the first family in `font-family`, `font-size`, and
-`font-weight`. Fail when the screen has more than four distinct family and size pairs, more than
-one distinct Young Serif size, or more than two weights at any one pair. Run it per state, since
-a raised sheet adds its own text.
+component with `data-type-exempt`: buttons, chips, inputs and textareas (except the ask flow's
+question, which counts as its step's serif line), the odds line's riding percent, the code
+boxes, the number field, the obligation token, and the wordmark. Walk every text node that is
+not inside `[data-type-exempt]`, an avatar, or an emoji-only run, and read `getComputedStyle` on
+its parent: the first family in `font-family`, `font-size`, and `font-weight`. Fail when the
+screen has more than four distinct family and size pairs, more than one distinct Young Serif
+size, or more than two weights at any one pair. Run it per state and per step: each step of a
+flow is its own screen, and each sheet state (raised, a modal sheet open) is its own state of
+that screen. The build's static lint leaves out the same things by element, by
+`data-type-exempt` or by file (the button, chip, tab bar, odds line, obligation token, number
+field and picker components); counting per state is what the DOM lint adds.
 
 **Why sizes and not tokens.** The tester's complaint was "too many different types of text", and
 a reader counts a family at a size as one type of text: 13px 600 and 13px 400 read as one size
@@ -1490,10 +2564,67 @@ The canvas after this revision, outside controls and tokens:
 | `Split` | 13 · 17 · serif 26 | 3 |
 | `Leaderboard` | 13 · 15 · 17 · serif 26 | 4 (was 5) |
 | `Memory` | 13 · 15 · 17 · serif 26 | 4 |
+| `SettledPhotos`, all four | 13 · 15 · 17 · serif 26 at most | 4 |
+| `FarOff`, both | 13 · 15 · 17 · serif 26 (blocked); 13 · 17 · serif 26 (fixed) | 4, then 3 |
 | `DockStates`, all seven | 13 · 17 · serif 26 | 3 |
+| `PickOneMarket` | entering: 13 · 17 · serif 26; in: 13 · 15 · 17 · serif 26 | 3, then 4 |
+| `PickOneEntry`, frames 1 to 5 | 13 · 17 · serif 26, plus 15 once the shares show (frame 4) | 3 or 4 |
+| `PickOneResolve`, all four | 13 · 15 · 17 · serif 26 | 4 |
+| `WhatsOn` | 13 · 15 · 17 · serif 17 | 4 |
+| `WhatsOnFlow`, all four | 13 · 17 · serif 26 | 3 |
+| `You` | 13 · 17 · serif 26 | 3 |
+| `YouEarly` | 13 · 17 | 2 |
+| `PickOneMarket`, `PickOneEntry`, `PickOneResolve` (redrawn) | 13 · 17 · serif 26, plus 15 once shares show | 3 or 4 |
+| `WhatsOn` (redrawn), `WhatsOnStates` | 13 · 15 · 17 · serif 17 | 4 |
+| `FeedBallot` | 13 · 17 · serif 26, plus 15 where shares or a caption line show | 3 or 4 |
+| `SpreadRedeploy` (for the redeploy) | 13 · 15 · 17 · serif 26 | 4 |
 
-Five screens sit at the cap, and each reads as one serif line, a subject line, a supporting line
-and metadata, which is the shape the cap is meant to allow.
+The screens at the cap each read as one serif line, a subject line, a supporting line and
+metadata, which is the shape the cap is meant to allow. On `WhatsOn` those four are the
+questions in `serif-m`, the event names, the one intro line, and captions.
+
+**The three day-one baselines, resolved.** The build held Now, the claimant screen and the ask
+flow above the budget from the first day it counted sizes (2026-09-25), and the log names each
+cause. Each resolution below answers it.
+
+- **Now.** This was the contradiction inside the specification. 4.7 said Just happened keeps
+  full story anatomy, and a story sets a market's question in `serif-l` (26) and brings a
+  `body-sm` supporting line and its consequence rows. Beside the `serif-m` (17) questions of
+  Needs you and Running, that is five sizes, two of them serif, on a screen that 1.2 and 4.1
+  hold to one serif size. 4.7 now makes Just happened rows, as the `Now` board always drew them.
+  Now: 13 (the date, section labels, meta), 17 (obligation subjects), serif 17 (questions).
+  Three sizes. The log names the same cause: serif 17 rows beside serif 26 story cards. Built
+  code: Just happened's story cards become rows, and the row component already exists (3.15).
+  The static lint also sums the signed-out and empty states, which the per-state count treats as
+  separate screens.
+- **The claimant screen.** It is headed in `serif-xl`, and 1.2 says a screen headed that way
+  sets the questions it lists in `body` 600. But the things it lists are events, and 3.4 sets an
+  event's question in `serif-l`. Read one way it has two serif sizes; read the other, one. The
+  resolution: the claimant's items are claim rows, not event cards. Each has a 13px 600 kicker
+  ("Market · Sep 5"), the subject in `body` 600 whatever kind of event it is, and one `body-sm`
+  line carrying the token ("Priya's got you"), as the `Claim` board draws. Claimant: 13, 15, 17
+  and serif 40. Four sizes, one serif, and nothing else may join: the prints' dates and the
+  per-person counts are 13. The log's cause is simpler: the dead, used and own-link states sit
+  at serif 26 beside the live state's serif 40 in one file, and a static lint sums them. Each
+  state is within budget on its own, so the per-state count passes it with no screen change, and
+  the claim-row rule still holds for the live state.
+- **The ask flow.** It carries three kinds, an answers editor and the mark picker, and the
+  pressure came from counting it as one screen. Each step is its own screen, and each sheet
+  state is its own state of that step (the lint note above). Inside a step, everything the asker
+  types or taps is a control: the kind chips, the answer fields, a number market's unit and
+  scale fields, and the picker's search and chips. The question textarea is the exception and
+  counts, because it is the line the whole step exists for. The log names the cause: a step
+  echoes the question and the declined screen's dare-instead line at serif 17 beside a serif 26
+  headline. The fix is 1.2's. A step has one serif line, the question at 26; a step headline is
+  `body` 600; a question echoed on a later step is that step's serif line, never a second size;
+  and the dare-instead line is `body` 600.
+  - The question step, any kind: 13 (labels, the mark row's sub-line, "Add a person", the
+    caption), 17 (the mark row's title) and serif 26 (the question). Three sizes. A number
+    market's block adds only labels and fields; any helper text in it is `caption`.
+  - With the mark picker open: the same three, since the picker's own text is 13 or controls.
+  - Who's in: 13, 17 and serif 26. Three.
+  - Terms: 13 (labels, captions), 15 (the stake-step sentences in `body-sm`), 17 (values) and
+    serif 26. Four, and the only four-size state in the flow.
 
 ### 4.9 Copy that earns its place
 
@@ -1595,29 +2726,53 @@ No red, no toasts that disappear before they are read, no modal error dialogs, n
 error pages inside the app, no error codes in front of people, and no message that makes
 someone feel audited for typing a code wrong in a dark room.
 
+### 5.5 Keeping a screen current
+
+Pulling only helps someone who thinks to pull, so there are three pieces.
+
+- **Pull to refresh** from the top of any scrolling screen: a touch that starts at the top and
+  travels 72px re-reads what is on screen, one server render and never a reload. A 2px line
+  under the status band fills with the pull and runs while the read is on, in `--ink`, the same
+  runner a working button carries (5.2). No spinner. A touch inside a modal sheet belongs to the
+  sheet.
+- **A re-read on return** to the foreground after more than two seconds away, which covers
+  switching to Messages and back, and on a page restored from the back-forward cache.
+- **A light poll on a locked market**, from lock until it settles: every six seconds while the
+  screen is visible, every thirty after five minutes on it, and stopping when it settles, when
+  the screen is hidden (resuming on return) and when the market is gone. It re-reads the screen
+  only when what the voting screen shows has changed, so a vote or an attachment on one phone
+  reaches the others within six seconds.
+
+None of it announces itself: no toast, no "updated", and nothing moves under a finger that is
+mid-gesture.
+
 ---
 
-## 6. The shell: three destinations and one button
+## 6. The shell: four destinations and one button
 
-Nineteen features, present and planned, collapse into three destinations and one action,
-because most of that list is a way of starting something rather than a place to be. A hub
-offers a few clearly distinct destinations; each destination does one job and has one obvious
-action.
+Nineteen features, present and planned, collapse into four destinations and one action, because
+most of that list is a way of starting something rather than a place to be. A hub offers a few
+clearly distinct destinations; each destination does one job and has one obvious action.
 
 ### 6.1 The destinations
 
 - **Now.** What is live and what is waiting on this person. The root, the back-stop for every
   other screen, and the only screen that carries the citron dot. Contents and ordering: 4.7.
   Every market row carries its stamp on its ink's field colour.
+- **What's on.** Public questions about things everyone is watching, to start with your own
+  friends (3.32). The only destination holding things nothing in the app has pointed you to,
+  which is the only reason it has a tab (6.2, rule 6).
 - **People.** The list, and through it the person view, which is where the product's thesis
   lives. Two segments: People, and Standings (who has been fronting what). One tap from the
   root.
 - **You.** Calibration, clean-resolution rate, your marks and stickers, your account, sign out.
   Everything about you rather than between you and somebody.
-- **Start**, the button: a 56px chalk circle 16px above the bar on the right, on the three roots
+- **Start**, the button: a 56px chalk circle 16px above the bar on the right, on the four roots
   only, and hidden on an empty Now where "Ask something" does its job. It opens one sheet
-  holding the five things a person can begin: ask something, settle an argument, log a cover,
-  split a receipt, join with a code. Starting is not a place, so it never becomes a tab.
+  holding what a person can begin: ask something, settle an argument, log a cover, join with a
+  code, and split a receipt once that flow exists. A row appears only when what it opens is
+  built, because a row that leads nowhere is a broken control. Starting is not a place, so it
+  never becomes a tab.
 
 ### 6.2 The routing rule, for anything built later
 
@@ -1626,25 +2781,37 @@ action.
 3. Acts on one relationship → that person's view.
 4. Is about you alone → You.
 5. Is about who has been fronting what → People, standings segment.
+6. Is something to start from that nothing in the app has pointed you to → What's on.
 
-Nothing else earns a tab. A fourth tab means one of the five was not applied. Markets are
-deliberately not a destination: a market is always reached from something that already mentions
-it, and a markets tab would be a feed of everything anyone ever asked, competing with the person
-view for the same attention. Groups are not a destination for the reasons in 4.7.
+Rule 6 is the one exception to a rule that otherwise held. Markets are deliberately not a
+destination: a market is always reached from something that already mentions it (a row on Now, a
+link in a chat, a story), and a markets tab would be a feed of everything anyone ever asked,
+competing with the person view for the same attention. Public questions are the one thing a
+person goes looking for before anything in the app mentions them, and that is why they get a
+tab. Anything that asks for a fifth has to pass the same test (it holds things nothing in the
+app has pointed you to), and markets you are in, people, groups, standings and settings all fail
+it. Groups are not a destination for the reasons in 4.7.
 
 ### 6.3 Where each feature lives
 
 | Feature | Home |
 | --- | --- |
 | Asking something | Start sheet → ask flow |
+| Asking a pick-one question | The ask flow's question step, "Pick one" and the answers (3.29) |
+| Browsing public questions | What's on tab (3.32) |
+| Starting from a public question | What's on → the question's page → who's in → terms (3.33) |
 | Picking a mark | The ask flow's question step, then the picker sheet (3.29); the same picker wherever a unit is made |
 | Joining by link | Deep link → the market's own screen, the sheet holding the empty odds line (3.17) |
 | Joining by code | Start sheet → join; plus the field on an empty Now |
 | Putting your odds in | Market screen, the sheet (3.13, 3.26) |
+| Picking an answer | Market screen, the sheet (3.30); spreading it only after the contract redeploy (3.36) |
+| Confirming a public result | Market screen, voting state, the sheet, on the source card (3.35) |
 | Voting | Market screen, voting state, the sheet |
+| Saying what happened, with photos or screenshots | Market screen, closed state, a well in the sheet (3.24) |
 | Changing your number | Change on the entry line, which reopens the line in the sheet |
 | Confirming an obligation | Now, needs-you row; also in place on the person view |
-| Settling or forgiving | Person view → the obligation row → sheet |
+| Settling or forgiving | Person view → the obligation row → sheet; a market's consequence from its story on the person view (3.4, 3.10) |
+| Cancelling out what runs both ways | Person view, the row under the header (3.10) |
 | Logging a cover | Start sheet → cover flow |
 | Splitting a group cover | A step inside the cover flow |
 | Person view and timeline | People tab; every avatar anywhere links to it |
@@ -1655,20 +2822,22 @@ view for the same attention. Groups are not a destination for the reasons in 4.7
 | Credit card roulette | Inside the cover flow, as how the payer gets chosen |
 | Capture standings | People tab, second segment |
 | Plans | Person timeline above today; the next one surfaces on Now |
-| Adding photos, making a sticker | The market's own screen, once settled |
-| Sending how it ended | The settled sheet, once (3.24, 3.27) |
-| Profile and calibration | You |
+| Adding photos | The market's own screen once it has ended, settled, voided or expired: the sheet's chalk, or the empty slot (3.8, 3.37) |
+| Making a sticker | The mark picker's "Your stickers" row, by paste (3.28, 3.29); from a market's photo, later |
+| Sending how it ended | The settled sheet's secondary (3.24, 3.27) |
+| Profile, calibration, clean resolution | You (3.34) |
 
 ### 6.4 Shell rules
 
-- The tab bar renders on the three roots and nowhere else. A task screen hides it and puts its
+- The tab bar renders on the four roots and nowhere else. A task screen hides it and puts its
   one move in the sheet, in the same place (3.24), which is what makes voting findable: the vote
   controls sit where the bar would be, under a one-line consequence ("Two more and it settles").
 - Every non-root screen has a 48px back control at its top left, and back lands on the root it
   came from. The app is installed with no browser chrome, so this is the only way home. A market
   screen reached from a link while signed out shows the wordmark instead.
-- A modal sheet (Start, settling an obligation) closes with a 48px close at its top right and by
-  dragging down. A sheet never opens another sheet.
+- A modal sheet (Start, settling an obligation, sending a vote) closes with a 48px close at its
+  top right and by dragging its handle down; the drag is read from the handle row only, so the
+  sheet's content still scrolls. A sheet never opens another sheet.
 - The citron dot appears on the Now tab when something time-bound is waiting on this person. No
   number, ever. It clears when the last of those is handled.
 - Nothing tapped more than once a session sits above the midpoint of the screen.
@@ -1677,13 +2846,19 @@ view for the same attention. Groups are not a destination for the reasons in 4.7
 
 ## 7. What we did not design, and how to derive it
 
-Not drawn in this canvas: the People tab's list and its standings segment, the You tab, the
-Start sheet itself, the rest of market creation ("Make a sticker" and the terms step; the
-question step and the who's-in step exist), argument creation, the people picker behind "Someone
-else", the claim flow behind the two outcome wells, the arbitration screen, receipt capture and
-splitting, credit-card roulette, plans and RSVPs, search, the details sheet, the light theme in
-situ, and any desktop layout. Every one of them has an address in 6.3, so a later phase has
-somewhere to put its screens without reopening the structure.
+Not drawn in this canvas: the People tab's list and its standings segment, the rest of You (the
+unit editor and the marks list behind its account rows), the Start sheet itself, the rest of
+market creation (the terms step; the question step and the who's-in step exist), "Make a
+sticker" from a photo (3.28, waiting), argument creation, the people picker behind "Someone
+else", the claim behind the two outcome wells (3.24 specifies it), the arbitration screen,
+receipt capture and splitting, credit-card roulette, plans and RSVPs, search, the details sheet,
+the pick-one asking and result tiles (3.27 specifies them), the light theme in situ, and any
+desktop layout. Every one of them has an address in 6.3, so a later phase has somewhere to put
+its screens without reopening the structure.
+
+Drawn, but not to be built yet: multi-choice spreading (3.36, `SpreadRedeploy`), which waits for
+the contract redeploy. So does a stake of nothing: boards that draw "Just pride" show the
+redeploy (3.3).
 
 Group management has come off this list rather than moving up it. Leaving, archiving, renaming
 and the group view do not exist, because a group is not a navigable object: there is no place to
@@ -1696,9 +2871,9 @@ To build one of them without waiting for a design pass:
 1. **Find its nearest relative in the canvas.** The terms step of market creation is the market
    screen before anyone is in: the question band in the chosen mark's ink, the details `dl` with
    its labels made editable, the stake chips, and the sheet with a chalk "Send it". The claim
-   flow behind the outcome wells is the claim card (3.25) being filled in: the outcome already
-   chosen, a camera row, and "Say it happened" in the sheet. There is no group view to derive: a
-   group is the picker, the chips, and the person views of the people in it (4.7).
+   behind the outcome wells is specified in 3.24, under "Saying what happened". There is no
+   group view to derive: a group is the picker, the chips, and the person views of the people in
+   it (4.7).
 2. **Classify every event it shows** with 4.4, then use the row or story anatomy as given.
 3. **Encode any obligation** with 2.1: side, hue, grammar, anatomy. If the screen has no "you,"
    fall back to sentence order with the owner's avatar leading.
