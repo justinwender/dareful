@@ -56,6 +56,7 @@ let numberId: string, aiScaleId: string, blindNumberId: string, answeredId: stri
 let memoryIds: string[] = [], evidenceOnSettledId: string, evidenceId: string, evidenceMarketId: string, stickerId: string, stickerMarketId: string;
 let nia: Signer, cNia: string, calledId: string, calledClipId: string, voidedId: string, memoryId: string;
 let pickOpenId: string, pickBlindId: string, pickLockedId: string, pickVotingId: string, pickSettledId: string;
+let windowId: string, windowPhotoId: string;
 const bucketKeys: string[] = [];
 
 before(async () => {
@@ -260,6 +261,21 @@ before(async () => {
   const st = await markets.openMarket(stDraft.id, asker.user.id, await asker.ledger.signTypedData(markets.createTypedData(stDraft)));
   await markets.enterMarket({ dareId: st.id, userId: asker.user.id, stake: 500n, value: 7000n, signature: await asker.ledger.signTypedData(markets.enterTypedData(st, 500n, 7000n)) });
   stickerMarketId = st.id;
+
+  // A photo taken while a question is open (docs/design.md 3.39): nia and the friend in, a third person not yet, nia's photo in the
+  // bucket, and nobody else's to see until it ends. A set of three, so everyone is not in and nobody's Now lights a lock.
+  const rae = await tempSigner("Rae");
+  const wg = await createGroup({ name: "Open window (check)", createdBy: nia.user.id });
+  track.group(wg.id);
+  await db.insert(schema.groupMembers).values([{ groupId: wg.id, userId: friend.user.id }, { groupId: wg.id, userId: rae.user.id }]);
+  const wUsd = await ensureUsd(wg.id, nia.user.id);
+  const wDraft = await markets.draftMarket({ creatorId: nia.user.id, groupId: wg.id, denomId: wUsd.id, title: "Does the pizza come before the second act?", termsText: "Yes if the pizza is on the table before the second act starts.", resolvesBy: new Date(Date.now() + 86_400_000) });
+  const w = await markets.openMarket(wDraft.id, nia.user.id, await nia.ledger.signTypedData(markets.createTypedData(wDraft)));
+  await markets.enterMarket({ dareId: w.id, userId: nia.user.id, stake: 500n, value: 8000n, signature: await nia.ledger.signTypedData(markets.enterTypedData(w, 500n, 8000n)) });
+  await markets.enterMarket({ dareId: w.id, userId: friend.user.id, stake: 500n, value: 3000n, signature: await friend.ledger.signTypedData(markets.enterTypedData(w, 500n, 3000n)) });
+  windowId = w.id;
+  windowPhotoId = ((await db.insert(schema.media).values({ dareId: w.id, kind: "photo", role: "memory", storageKey: "frames/check.jpg", width: 810, height: 1080, authorId: nia.user.id }).returning({ id: schema.media.id }))[0] as { id: string }).id;
+  if (storageConfigured()) { await putObject(thumbKey(windowPhotoId), await tiny(), "image/jpeg"); bucketKeys.push(thumbKey(windowPhotoId)); }
 });
 after(async () => {
   if (storageConfigured()) await removeObjects([...(photoId ? [thumbKey(photoId)] : []), ...bucketKeys]);
@@ -1064,6 +1080,35 @@ test("a pick-one question's tiles carry the answers and who called it, and never
   assert.equal(png.type, "image/png");
   const ask = await get(`/m/${pickOpenId}/opengraph-image`);
   assert.ok(ask.status === 200 && !ask.bytes.equals(png.bytes));
+});
+
+test("while a question is open, someone who is in gets the camera beside sending and their own photos under the stack; someone not in gets neither", async () => {
+  const mine = await get(`/m/${windowId}`, cNia);
+  assert.equal(mine.status, 200);
+  assert.ok(mine.html.includes("data-take-photo") && mine.html.includes('aria-label="Take a photo"'), "the camera beside \"Send it to the chat\" (3.39)");
+  assert.ok(mine.html.includes('capture="environment"'), "it opens the camera itself, not the library");
+  assert.ok(mine.html.includes("data-yours-from-tonight") && mine.text.includes("Yours from tonight") && mine.text.includes("Everyone sees these once it’s over."), "the row, with its one caption");
+  assert.ok(mine.html.includes(`/api/media/${windowPhotoId}?size=thumb`), "the photo taken, as a 60px square");
+  assert.ok(!mine.html.includes("data-media-frame") && !mine.html.includes("data-empty-slot"), "no frame and no slot before the end");
+  const other = await get(`/m/${windowId}`, cFriend);
+  assert.equal(other.status, 200);
+  assert.ok(other.html.includes("data-take-photo"), "the other participant has the camera too: they are in");
+  assert.ok(!other.html.includes(windowPhotoId) && !other.html.includes("data-yours-from-tonight"), "and nothing of nia's photo, on the screen");
+  const notIn = await get(`/m/${marketId}`, cFriend);
+  assert.equal(notIn.status, 200);
+  assert.ok(!notIn.html.includes("data-take-photo") && !notIn.html.includes('capture="environment"'), "someone not yet in sees no camera anywhere: entering stays the only move");
+});
+
+test("a photo taken while a question is open is served to whoever took it and reads as nothing to the other participant until it ends", async () => {
+  assert.equal((await get(`/api/media/${windowPhotoId}?size=thumb`, cFriend)).status, 404, "the other participant, before the end: not even that it exists");
+  assert.equal((await get(`/api/media/${windowPhotoId}?size=thumb`, cStranger)).status, 404);
+  const own = await get(`/api/media/${windowPhotoId}?size=thumb`, cNia);
+  if (storageConfigured()) {
+    assert.equal(own.status, 302, "the person who took it is sent to it");
+    assert.match(own.loc ?? "", /\/storage\/v1\/object\/sign\/media\/thumbs\//, "a signed URL into the private bucket");
+  } else {
+    assert.equal(own.status, 503);
+  }
 });
 
 test("asking offers pick one beside yes or no and a number", async () => {

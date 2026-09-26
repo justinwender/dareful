@@ -15,12 +15,13 @@ import { db, schema } from "@/db";
 import { ensureUsd } from "@/lib/ledger/denominations";
 import { createGroup } from "@/lib/ledger/groups";
 import * as markets from "@/lib/ledger/markets";
-import { addMarketPhoto, canSee, mediaById, mediaOnMarket, MediaError, frameOnMarkets, frameKey, thumbKey } from "@/lib/media";
+import { addMarketPhoto, canSee, mediaById, mediaOnMarket, MediaError, frameOnMarkets, frameKey, removeMarketPhoto, thumbKey } from "@/lib/media";
+import { evidenceFor } from "@/lib/media/evidence";
 import { addSticker, canSeeMark, MarkError, stickersOf, stickerSourceKey, stickerStampKey } from "@/lib/media/marks";
 import { removeObjects, storageConfigured } from "@/lib/media/storage";
 import { cleanup, tempSigner, tempUser, track, type Signer, type User } from "./fixture";
 
-let asker: Signer, friend: Signer, member: User, outsider: User, groupId: string, settledId: string, votingId: string, openId: string, voidedId: string;
+let asker: Signer, friend: Signer, member: User, outsider: User, settledId: string, votingId: string, openId: string, voidedId: string, windowId: string;
 const objects: string[] = [];
 
 /** A phone photo, drawn by sharp, with a capture time: what the pipeline strips and keeps is covered in the unit suite. */
@@ -33,7 +34,6 @@ before(async () => {
   [asker, friend, member, outsider] = await Promise.all([tempSigner("Priya Raman"), tempSigner("Dev"), tempUser("Maya"), tempUser("Stranger")]);
   const g = await createGroup({ name: "media check (temporary)", createdBy: asker.user.id });
   track.group(g.id);
-  groupId = g.id;
   await db.insert(schema.groupMembers).values([{ groupId: g.id, userId: friend.user.id }, { groupId: g.id, userId: member.id }]);
   const usd = await ensureUsd(g.id, asker.user.id);
   const ask = async (title: string) => {
@@ -48,6 +48,7 @@ before(async () => {
   votingId = await ask("Is the kettle being descaled right now?");
   await db.update(schema.dares).set({ lockedAt: new Date(Date.now() - 60_000) }).where(eq(schema.dares.id, votingId));
   openId = await ask("Will the kettle get descaled?");
+  windowId = await ask("Does the pizza come before the second act?");
   voidedId = await ask("Did anyone see the kettle?");
   await db.update(schema.dares).set({ lockedAt: new Date(Date.now() - 7_200_000), resolvedAt: new Date(Date.now() - 3_600_000), resolvedOutcome: -1n, resolvedBy: "quorum" }).where(eq(schema.dares.id, voidedId));
 });
@@ -57,8 +58,7 @@ after(async () => {
 });
 
 test("a memory goes on a market once it has ended, by someone who was in it, and by nobody else; a void was still a night", async () => {
-  assert.equal(await code(async () => addMarketPhoto({ dareId: openId, authorId: asker.user.id, bytes: await photo(), viewerZone: null, role: "memory" })), "not_ended", "not while it runs");
-  assert.equal(await code(async () => addMarketPhoto({ dareId: votingId, authorId: asker.user.id, bytes: await photo(), viewerZone: null, role: "memory" })), "not_ended", "not while it is being called");
+  assert.equal(await code(async () => addMarketPhoto({ dareId: openId, authorId: member.id, bytes: await photo(), viewerZone: null, role: "memory" })), "not_in", "someone in the group but not yet in it has no camera: entering is their only move (3.39)");
   const onVoid = await addMarketPhoto({ dareId: voidedId, authorId: friend.user.id, bytes: await photo(), viewerZone: null, role: "memory" });
   objects.push(frameKey(onVoid.id), thumbKey(onVoid.id));
   assert.equal(onVoid.role, "memory", "a voided market takes photos (3.8: ended means settled, voided or expired)");
@@ -74,6 +74,44 @@ test("a memory goes on a market once it has ended, by someone who was in it, and
   objects.push(frameKey(second.id), thumbKey(second.id));
   const { memories } = await mediaOnMarket(settledId);
   assert.deepEqual(memories.map((m) => [m.id, m.author.displayName]), [[first.id, "Priya Raman"], [second.id, "Dev"]], "oldest first, credited to whoever added it");
+});
+
+test("a photo taken while it is open is its author's alone until it ends: refused to the other participant and the group at the door, in nobody's frame, never read by the model, and in the frame once it ends; only its author can remove it", async () => {
+  const taken = await addMarketPhoto({ dareId: windowId, authorId: asker.user.id, bytes: await photo(), viewerZone: null, role: "memory" });
+  objects.push(frameKey(taken.id), thumbKey(taken.id));
+  assert.equal(taken.role, "memory", "a memory, never evidence: nothing has happened yet that it could prove");
+  const row = await mediaById(taken.id);
+  assert.ok(row);
+  assert.equal(await canSee(row, asker.user.id), true, "the person who took it");
+  assert.equal(await canSee(row, friend.user.id), false, "the other participant, before the end: the door refuses");
+  assert.equal(await canSee(row, member.id), false, "someone in the group, before the end");
+  assert.equal(await canSee(row, outsider.id), false);
+  const before = await mediaOnMarket(windowId, friend.user.id);
+  assert.deepEqual([before.frame, before.memories, before.evidence, before.yours], [[], [], [], []], "in nobody's frame, not evidence, and not in the other participant's own row");
+  assert.deepEqual((await mediaOnMarket(windowId, asker.user.id)).yours.map((m) => m.id), [taken.id], "\"Yours from tonight\" for the person who took it");
+  assert.deepEqual((await frameOnMarkets([windowId])).get(windowId), [], "the timeline's frame agrees");
+  assert.deepEqual(await evidenceFor(windowId), [], "the model never reads it");
+  assert.equal(await code(async () => removeMarketPhoto({ mediaId: taken.id, byUserId: friend.user.id })), "not_yours", "only whoever added it can remove it");
+  // Locked, with the photo still on it: still the author's alone, and the model still never sees it.
+  await db.update(schema.dares).set({ lockedAt: new Date() }).where(eq(schema.dares.id, windowId));
+  assert.equal(await canSee(row, friend.user.id), false, "not on the locked or voting screens either");
+  assert.deepEqual((await mediaOnMarket(windowId, friend.user.id)).frame, []);
+  // A photo started before lock lands as a memory even if it finishes after (3.39).
+  const late = await addMarketPhoto({ dareId: windowId, authorId: asker.user.id, bytes: await photo(), viewerZone: null, role: "memory" });
+  objects.push(frameKey(late.id), thumbKey(late.id));
+  assert.equal(late.role, "memory");
+  assert.deepEqual(await evidenceFor(windowId), [], "still not evidence");
+  // Ended: it joins the frame for the participants and the group, in the order taken.
+  await db.update(schema.dares).set({ resolvedAt: new Date(), resolvedOutcome: 1n, resolvedBy: "quorum" }).where(eq(schema.dares.id, windowId));
+  assert.equal(await canSee(row, friend.user.id), true, "once it ends, the other participant");
+  assert.equal(await canSee(row, member.id), true, "and the group it was asked in");
+  assert.equal(await canSee(row, outsider.id), false);
+  const after = await mediaOnMarket(windowId, asker.user.id);
+  assert.deepEqual(after.frame.map((m) => m.id), [taken.id, late.id], "in the frame, in the order they were added");
+  assert.deepEqual(after.yours, [], "and the row goes");
+  await removeMarketPhoto({ mediaId: late.id, byUserId: asker.user.id });
+  assert.equal(await mediaById(late.id), null, "whoever added a memory can remove it, at any time");
+  assert.deepEqual((await mediaOnMarket(windowId, asker.user.id)).frame.map((m) => m.id), [taken.id]);
 });
 
 test("a screenshot goes with what happened while it is being called, by anyone in the group, three at most, and never into the frame", async () => {
@@ -106,6 +144,13 @@ test("once it is called, the claimant's attachment leads the frame and a voter's
   assert.deepEqual((await frameOnMarkets([votingId])).get(votingId)?.map((m) => m.id), [clip.id], "and the timeline's frame agrees");
 });
 
+test("evidence stays: what went with a call is never removed, not even by whoever attached it", async () => {
+  const { evidence } = await mediaOnMarket(votingId);
+  const shot = evidence[0] as { id: string; author: { id: string } };
+  assert.equal(await code(async () => removeMarketPhoto({ mediaId: shot.id, byUserId: shot.author.id })), "evidence_stays");
+  assert.ok(await mediaById(shot.id), "still there");
+});
+
 test("a market's media is seen by its participants and its group, and reads as nothing to anyone else", async () => {
   const { memories } = await mediaOnMarket(settledId);
   const row = await mediaById((memories[0] as { id: string }).id);
@@ -131,9 +176,13 @@ test("a sticker belongs to its maker, carries the ink measured from its pixels, 
   assert.deepEqual(await stickersOf(friend.user.id), [], "your stickers are yours");
   assert.equal(await canSeeMark(s, asker.user.id), true);
   assert.equal(await canSeeMark(s, friend.user.id), false, "nobody else, until a question wears it");
-  // The friend cannot use the asker's sticker as a mark; the asker can, and the market takes its ink.
-  const usd = await ensureUsd(groupId, asker.user.id);
-  const draft = (owner: Signer) => markets.draftMarket({ creatorId: owner.user.id, groupId, denomId: usd.id, title: "Does the sticker stick?", termsText: "Yes if it does.", resolvesBy: new Date(Date.now() + 86_400_000), mark: { kind: "sticker", id: s.id } });
+  // The friend cannot use the asker's sticker as a mark; the asker can, and the market takes its ink. A set of its
+  // own, with nothing open in it: balance (1.8, rule 4) would otherwise move the ink whenever another question here hashed to Sea.
+  const sg = await createGroup({ name: "sticker check (temporary)", createdBy: asker.user.id });
+  track.group(sg.id);
+  await db.insert(schema.groupMembers).values([{ groupId: sg.id, userId: friend.user.id }, { groupId: sg.id, userId: member.id }]);
+  const usd = await ensureUsd(sg.id, asker.user.id);
+  const draft = (owner: Signer) => markets.draftMarket({ creatorId: owner.user.id, groupId: sg.id, denomId: usd.id, title: "Does the sticker stick?", termsText: "Yes if it does.", resolvesBy: new Date(Date.now() + 86_400_000), mark: { kind: "sticker", id: s.id } });
   assert.equal(await code(() => draft(friend)), "bad_input");
   const d = await draft(asker);
   assert.equal(d.markKind, "sticker");

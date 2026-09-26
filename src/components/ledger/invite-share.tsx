@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 
 /** Every share goes out through the user's own composer (Web Share, then sms:), never from Dareful. */
-export function InviteShare({ url, text, compact = false, primary = false, label, onShared }: { url: string; text: string; compact?: boolean; primary?: boolean; label?: string; onShared?: () => void }) {
+export function InviteShare({ url, text, compact = false, primary = false, label, onShared, trailing }: { url: string; text: string; compact?: boolean; primary?: boolean; label?: string; onShared?: () => void; /** A control at the end of the row: the camera beside "Send it to the chat" while a market is open (3.39). */ trailing?: ReactNode }) {
   const [copied, setCopied] = useState(false);
   async function share() {
     if (typeof navigator !== "undefined" && "share" in navigator) {
@@ -36,6 +36,7 @@ export function InviteShare({ url, text, compact = false, primary = false, label
       <Button variant="tertiary" onClick={copy}>
         {copied ? "Copied" : "Copy"}
       </Button>
+      {trailing}
     </div>
   );
 }

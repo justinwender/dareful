@@ -6,8 +6,9 @@ import { firstName } from "@/lib/ui/copy";
 import type { Hue } from "@/lib/ui/hue";
 import { cn } from "@/lib/utils";
 import { Avatar } from "./avatar";
+import { PhotoView } from "./photo-view";
 
-export type FrameItem = { id: string; author: { name: string; hue: Hue } };
+export type FrameItem = { id: string; author: { name: string; hue: Hue }; /** Whether the viewer added it as a memory, so its full-screen view offers "Remove" (3.8). */ removable?: boolean };
 
 /**
  * The media frame (docs/design.md 3.8): full card width, a credit chip bottom left (who added it, on the scrim)
@@ -20,13 +21,15 @@ export type FrameItem = { id: string; author: { name: string; hue: Hue } };
  * because an empty frame is worse than no frame (3.8, 4.3).
  *
  * `interactive` false draws the same frame with no controls, for a card that is itself a link (3.4): the strip
- * is still shown, and a tap on the card goes to the story.
+ * is still shown, and a tap on the card goes to the story. Interactive, a tap on the photo opens it full screen
+ * (3.8, 3.39), with "Save to your phone" and, for whoever added a memory, "Remove".
  */
 export function MediaFrame({ items, height, interactive = true, inset = false, className }: { items: FrameItem[]; height: 180 | 200 | 240 | 260; interactive?: boolean; /** 12px from the screen's edges, radius 12 (3.8); otherwise edge to edge inside a card. */ inset?: boolean; className?: string }) {
   const [current, setCurrent] = useState(0);
   const [showAll, setShowAll] = useState(false);
   const [state, setState] = useState<Record<string, "loading" | "ok" | "failed">>({});
   const [tries, setTries] = useState<Record<string, number>>({});
+  const [viewing, setViewing] = useState(false);
   if (items.length === 0) return null;
   const shown = items[Math.min(current, items.length - 1)] ?? items[0];
   if (!shown) return null;
@@ -48,7 +51,11 @@ export function MediaFrame({ items, height, interactive = true, inset = false, c
             onLoad={() => setState((x) => ({ ...x, [shown.id]: "ok" }))}
             onError={() => setState((x) => ({ ...x, [shown.id]: "failed" }))}
           />
-        ) : (
+        ) : null}
+        {interactive && s === "ok" ? (
+          <button type="button" aria-label={`Open photo ${current + 1} of ${items.length}`} onClick={() => setViewing(true)} className="absolute inset-0 rounded-none" />
+        ) : null}
+        {s === "failed" ? (
           <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-ink-2">
             <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2.2l1.2-2h6.2l1.2 2h2.2A1.5 1.5 0 0 1 20 8.5v9A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5z" />
@@ -68,7 +75,7 @@ export function MediaFrame({ items, height, interactive = true, inset = false, c
               </button>
             ) : null}
           </div>
-        )}
+        ) : null}
         <figcaption className="pointer-events-none absolute inset-x-2 bottom-2 flex items-center justify-between gap-2">
           <span className="inline-flex h-7 items-center gap-[6px] rounded-pill bg-scrim pr-3 pl-1 text-label text-ink">
             <Avatar name={shown.author.name} hue={shown.author.hue} size={20} />
@@ -79,6 +86,7 @@ export function MediaFrame({ items, height, interactive = true, inset = false, c
           </span>
         </figcaption>
       </div>
+      {viewing ? <PhotoView id={shown.id} alt={`Photo ${current + 1} of ${items.length}, added by ${firstName(shown.author.name)}`} removable={shown.removable === true} onClose={() => setViewing(false)} /> : null}
       {rest.length > 0 ? (
         <div className={cn("flex gap-[6px] overflow-x-auto [scrollbar-width:none]", inset && "px-0")} role={interactive ? "group" : undefined} aria-label={interactive ? "The rest of the photos" : undefined}>
           {squares.map((item) => {

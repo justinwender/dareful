@@ -11,6 +11,7 @@ import { Chip } from "@/components/ledger/chip";
 import { MarkRefStamp } from "@/components/ledger/mark-stamp";
 import { MediaFrame } from "@/components/ledger/media-frame";
 import { EmptySlot } from "@/components/markets/empty-slot";
+import { OpenPhotos } from "@/components/markets/open-photos";
 import { PhotoAdding } from "@/components/markets/photo-adding";
 import { mediaOnMarket } from "@/lib/media";
 import { storageConfigured } from "@/lib/media/storage";
@@ -299,8 +300,9 @@ export default async function MarketPage({
           isNull(schema.groupMembers.leftAt),
         ),
       ),
-    // Photos on the market (docs/marks-and-memories.md): memories for the frame, screenshots for the claim; told apart by their role.
-    mediaOnMarket(d.id),
+    // Photos on the market (docs/marks-and-memories.md): memories for the frame, screenshots for the claim, told apart by
+    // their role; and this viewer's own photos taken while it was open, which nobody else sees until it ends (3.39).
+    mediaOnMarket(d.id, me.id),
   ]);
   const ids = Array.from(
     new Set([
@@ -381,7 +383,8 @@ export default async function MarketPage({
   const endedAt = d.resolvedAt ?? d.lockedAt ?? d.createdAt;
   const memoryView = ended && daysBetween(endedAt, now, clock.zone) >= 1;
   const night = fromThatNight(endedAt, now, clock.zone);
-  const canAdd = ended && mine !== null && storageConfigured();
+  // Someone who is in adds a memory while it is open (the camera, 3.39) and once it has ended (the library, 3.8); nobody adds one while it is being called.
+  const canAdd = (ended || state === "open") && mine !== null && storageConfigured();
   // The picture of where everyone landed, for someone who is in. Weights when numbers may be seen (an open
   // question once you have picked, or any question once locked); otherwise who is in and nothing about where.
   const entries = positions.map((p) => ({
@@ -532,6 +535,7 @@ export default async function MarketPage({
           ? { count: positions.length, everyoneIn }
           : null
       }
+      camera={state === "open" && canAdd}
       farOff={
         numberUnit && farOffThreshold(d) !== null
           ? { threshold: (farOffThreshold(d) as bigint).toString(), scale: d.rangeSource === "asker" && d.range !== null ? d.range.toString() : null }
@@ -868,7 +872,7 @@ export default async function MarketPage({
       tile={ending === "settled" && outcome && outcome !== "void" ? { tileUrl: `/m/${d.id}/opengraph-image`, caption: `${answerLine}${closestLine ? ` ${closestLine}` : ""}`, url: `${appUrl}/m/${d.id}`, text: `How it ended: ${d.title}` } : null}
     />
   ) : null;
-  const frameItems = media.frame.map((m) => ({ id: m.id, author: { name: m.author.displayName, hue: hueFor(m.author.id) } }));
+  const frameItems = media.frame.map((m) => ({ id: m.id, author: { name: m.author.displayName, hue: hueFor(m.author.id) }, removable: m.role === "memory" && m.author.id === me.id }));
   // The frame, or the empty slot for someone who can add, or nothing (3.8): never an empty frame.
   const frameOrSlot = (height: 200 | 260) => (frameItems.length > 0 ? <MediaFrame items={frameItems} height={height} inset /> : canAdd ? <EmptySlot /> : null);
   const endedCaption =
@@ -1003,7 +1007,7 @@ export default async function MarketPage({
       className="grain flex flex-1 flex-col"
       style={inkVars(ink) as CSSProperties}
     >
-      <PhotoAdding dareId={d.id} night={night} canAdd={canAdd} viewer={{ name: me.displayName, hue: hueFor(me.id) }}>
+      <PhotoAdding dareId={d.id} night={night} canAdd={canAdd} capture={state === "open"} viewer={{ name: me.displayName, hue: hueFor(me.id) }}>
       <Screen>
         <TopBar back right={group?.name ? <Chip>{group.name}</Chip> : null} />
         <div className="flex flex-col gap-7 py-2">
@@ -1048,6 +1052,8 @@ export default async function MarketPage({
                   {Math.max(seats.length, positions.length)} in
                 </p>
               </section>
+              {/* Yours from tonight (3.39): this person's own photos, and nobody else's, until it ends. */}
+              {mine ? <OpenPhotos photos={media.yours.map((m) => ({ id: m.id }))} /> : null}
               {mine ? (
                 <section className="flex flex-col gap-3">
                   <RoomCode dareId={d.id} url={`${appUrl}/m/${d.id}`} />
@@ -1109,6 +1115,8 @@ export default async function MarketPage({
                   ))}
                 </ul>
               </section>
+              {/* A photo taken before lock stays this person's alone until it ends (3.39); from lock, anything new is evidence and goes with a call. */}
+              {mine ? <OpenPhotos photos={media.yours.map((m) => ({ id: m.id }))} /> : null}
             </>
           ) : null}
 

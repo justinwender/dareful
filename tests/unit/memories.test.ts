@@ -1,28 +1,46 @@
 /**
- * Media on a market as rules (docs/marks-and-memories.md; docs/decisions.md, the media phase): a memory goes on a
- * settled market, by someone who was in it, while there is room; a screenshot goes with what happened while it
- * is being called, by someone in the group, three at most; the frame shows memories only and the model reads
- * evidence only; the strip shows four and then "+N"; the pulse changes when a screenshot lands; and "Add yours
- * from Friday" names the night the way the settled screen does.
+ * Media on a market as rules (docs/marks-and-memories.md; docs/decisions.md, the media phase and the open window):
+ * a memory goes on a market from the moment it is asked, by someone who is in it, while there is room, and one
+ * taken before the end is its author's alone until then (docs/design.md 3.39); whoever added a memory can remove
+ * it and evidence stays; a screenshot goes with what happened while it is being called, by someone in the group,
+ * three at most; the frame shows memories only, and nothing before the end, and the model reads evidence only;
+ * the strip shows four and then "+N"; the pulse changes when a screenshot lands; and "Add yours from Friday"
+ * names the night the way the settled screen does.
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { evidenceBlocks } from "@/lib/ai/client";
 import { pulseOf } from "@/lib/ledger/pulse";
-import { EVIDENCE_PER_PERSON, evidenceAllowed, evidenceItems, frameItems, MEMORIES_PER_MARKET, memoryAllowed, recordItems, strip } from "@/lib/media/roles";
+import { EVIDENCE_PER_PERSON, evidenceAllowed, evidenceItems, frameItems, MEMORIES_PER_MARKET, memoryAllowed, memoryVisible, recordItems, removeAllowed, strip, yoursItems } from "@/lib/media/roles";
 import { fromThatNight } from "@/lib/ui/copy";
 import { PHOTOS_LINE } from "@/lib/ui/tiles";
 
-test("a memory goes on a market once it has ended, whatever the ending, by someone who was in it, while there is room", () => {
+test("a memory goes on a market from the moment it is asked, by someone who is in it, while there is room", () => {
   assert.deepEqual(memoryAllowed({ state: "resolved", inIt: true, count: 0 }), { ok: true });
   assert.deepEqual(memoryAllowed({ state: "resolved", inIt: true, count: MEMORIES_PER_MARKET - 1 }), { ok: true }, "weeks later included: nothing about time is checked");
   assert.deepEqual(memoryAllowed({ state: "voided", inIt: true, count: 0 }), { ok: true }, "a void was still a night (3.8)");
   assert.deepEqual(memoryAllowed({ state: "expired", inIt: true, count: 0 }), { ok: true });
-  assert.deepEqual(memoryAllowed({ state: "locked", inIt: true, count: 0 }), { ok: false, why: "not_ended" }, "not while it is being called");
-  assert.deepEqual(memoryAllowed({ state: "open", inIt: true, count: 0 }), { ok: false, why: "not_ended" });
-  assert.deepEqual(memoryAllowed({ state: "draft", inIt: true, count: 0 }), { ok: false, why: "not_ended" });
+  assert.deepEqual(memoryAllowed({ state: "open", inIt: true, count: 0 }), { ok: true }, "the camera while it is open (3.39)");
+  assert.deepEqual(memoryAllowed({ state: "locked", inIt: true, count: 0 }), { ok: true }, "a photo started before lock lands as a memory even if it finishes after (3.39)");
+  assert.deepEqual(memoryAllowed({ state: "draft", inIt: true, count: 0 }), { ok: false, why: "not_asked" }, "a draft has nobody in it yet");
+  assert.deepEqual(memoryAllowed({ state: "open", inIt: false, count: 0 }), { ok: false, why: "not_in" }, "someone not yet in sees no camera: entering is their only move (3.39)");
   assert.deepEqual(memoryAllowed({ state: "resolved", inIt: false, count: 0 }), { ok: false, why: "not_in" }, "someone in the group who was not in it may see the frame and not add to it");
   assert.deepEqual(memoryAllowed({ state: "resolved", inIt: true, count: MEMORIES_PER_MARKET }), { ok: false, why: "full" });
+});
+
+test("a memory taken before the market ends is its author's alone until then, and everyone's after, whatever the ending", () => {
+  assert.equal(memoryVisible({ state: "open", authorId: "priya", viewerId: "priya" }), true, "the person who took it");
+  assert.equal(memoryVisible({ state: "open", authorId: "priya", viewerId: "gabe" }), false, "another participant, before the end");
+  assert.equal(memoryVisible({ state: "locked", authorId: "priya", viewerId: "gabe" }), false, "not on the locked or voting screens either");
+  assert.equal(memoryVisible({ state: "resolved", authorId: "priya", viewerId: "gabe" }), true, "once it ends it joins the frame");
+  assert.equal(memoryVisible({ state: "voided", authorId: "priya", viewerId: "gabe" }), true, "a void was still a night");
+  assert.equal(memoryVisible({ state: "expired", authorId: "priya", viewerId: "gabe" }), true);
+});
+
+test("whoever added a memory can remove it, nobody else can, and evidence stays", () => {
+  assert.deepEqual(removeAllowed({ role: "memory", authorId: "priya", byUserId: "priya" }), { ok: true });
+  assert.deepEqual(removeAllowed({ role: "memory", authorId: "priya", byUserId: "gabe" }), { ok: false, why: "not_yours" });
+  assert.deepEqual(removeAllowed({ role: "evidence", authorId: "priya", byUserId: "priya" }), { ok: false, why: "evidence_stays" }, "a vote or a ruling may rest on it (3.8)");
 });
 
 test("a screenshot goes with what happened while it is being called, by anyone who may say what happened, three at most", () => {
@@ -49,6 +67,12 @@ test("the frame leads with what the claim carried, then the memories in order; e
   assert.deepEqual(evidenceItems(rows).map((r) => r.id), ["e1", "e2", "e0"], "everyone voting sees everything attached, oldest first");
   assert.deepEqual(recordItems(rows, "priya").map((r) => r.id), ["e2"], "evidence that was not the claimant's stays on the record behind More");
   assert.deepEqual(frameItems([], "priya"), []);
+  assert.deepEqual(frameItems(rows, "priya", false).map((r) => r.id), ["e1", "e0"], "before the market ends the claim's clip is everyone's and a memory taken while it was open waits (3.39)");
+  assert.deepEqual(frameItems(rows, null, false), [], "with no claimant, nothing before the end");
+  assert.deepEqual(yoursItems(rows, "gabe", false).map((r) => r.id), ["m1"], "\"Yours from tonight\": this person's own memories, and nobody else's");
+  assert.deepEqual(yoursItems(rows, "theo", false).map((r) => r.id), ["m2"]);
+  assert.deepEqual(yoursItems(rows, "priya", false), [], "evidence is not a memory, and someone who took none has no row");
+  assert.deepEqual(yoursItems(rows, "gabe", true), [], "once it ends they are in the frame, and the row goes");
 });
 
 test("the strip under the frame shows four and then +N", () => {

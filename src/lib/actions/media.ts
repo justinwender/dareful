@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { requireUser } from "@/lib/auth/session";
-import { addMarketPhoto, addSettlementPhoto, MediaError } from "@/lib/media";
+import { addMarketPhoto, addSettlementPhoto, MediaError, removeMarketPhoto } from "@/lib/media";
 import { addSticker, MarkError } from "@/lib/media/marks";
 import { MAX_UPLOAD_BYTES } from "@/lib/media/pipeline";
 import { MAX_STICKER_BYTES } from "@/lib/media/sticker";
@@ -36,8 +36,9 @@ export async function addSettlementPhotoAction(form: FormData): Promise<{ ok: tr
 }
 
 /**
- * A memory added to a settled market ("Add yours from that night", docs/marks-and-memories.md), by someone who was
- * in it. The same pipeline as the settlement photo, the market as the parent, the role stored on the row.
+ * A memory on a market (docs/marks-and-memories.md; docs/design.md 3.39): "Add yours from that night" once it has
+ * ended, or the camera while it is open, by someone who is in it. The same pipeline as the settlement photo, the
+ * market as the parent, the role stored on the row. Adding sends nobody anything.
  */
 export async function addMarketPhotoAction(form: FormData): Promise<{ ok: true; mediaId: string } | { error: string }> {
   const user = await requireUser();
@@ -55,6 +56,24 @@ export async function addMarketPhotoAction(form: FormData): Promise<{ ok: true; 
     if (err instanceof StorageUnavailable) return { error: "Photos are off right now." };
     console.error("market photo failed", { err: err instanceof Error ? err.message : err });
     return { error: "The photo didn't go through. Try again." };
+  }
+}
+
+/**
+ * Removes a memory (docs/design.md 3.8, 3.39): whoever added it, from its full-screen view, at any time. Evidence
+ * is refused here, since a vote or a ruling may rest on it.
+ */
+export async function removeMarketPhotoAction(rawId: string): Promise<{ ok: true } | { error: string }> {
+  const user = await requireUser();
+  const id = z.string().uuid().safeParse(rawId);
+  if (!id.success) return { error: "That one doesn't exist." };
+  try {
+    await removeMarketPhoto({ mediaId: id.data, byUserId: user.id });
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof MediaError) return { error: err.message };
+    console.error("removing a photo failed", { err: err instanceof Error ? err.message : err });
+    return { error: "That didn't go through. Try again." };
   }
 }
 

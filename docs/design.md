@@ -15,13 +15,14 @@ below match the artboards:
   (who's in), `JoinLink`, `Join`, `Claim`, `MarketDock` (the interactive market screen),
   `BlindSlow`, `Voting`, `Split`, `Leaderboard` (settled), `Memory` (the memory it leaves), and
   to their right `SettledPhotos` (after it ends: adding photos) and `FarOff` (a number past the
-  limit).
+  limit), then `OpenPhoto` (a photo while the market is open).
 - `DockStates` (the sheet through a market's life), the link tiles (`TileAsk`, `TileAskRange`,
   `TilePhoto`, `TileCalled`, `TileInChat`), and the ink boards (`Inks`, `InkCompare`).
 - New rows under the inks: pick-one markets (`PickOneMarket`, interactive; `PickOneEntry`;
   `PickOneResolve`), What's on (`WhatsOn`; `WhatsOnFlow`; `WhatsOnStates`; `FeedBallot`), You
-  (`You`; `YouEarly`), and a last row for the contract redeploy only (`SpreadRedeploy`), which
-  must not be built before it.
+  (`You`; `YouEarly`), a row for the contract redeploy only (`SpreadRedeploy`), which must not
+  be built before it, and a last row for after submission, the light theme (`LightScreens`,
+  `LightRules`).
 
 Market colours on boards other than `Inks` and `MarkPicker` are illustrative and were drawn
 before the emoji ink table existed (1.8). Where a board and `src/lib/ui/emoji-inks.json`
@@ -33,191 +34,35 @@ what happens after a market ends and the memory it leaves (3.37), and the rest o
 (3.38). Where a board is older than its text, 3.38 says so, and the text wins.
 
 Target: mobile web, installable as a PWA, 390px reference width. Tailwind plus shadcn/ui. Dark
-is the default and only shipped theme for v1; light values are given so nothing has to be
-re-derived later.
+is the default and only shipped theme for v1. The light theme is specified in section 8, to be
+built after submission.
 
 ### What changed in this revision
 
-This revision reconciles everything since the copy in the repository, which is the fifth
-session's. It covers three design sessions: the sixth and seventh, which never reached the
-repository, and the eighth, which is mostly this reconciliation. From here on this file is the
-single copy: it replaces the repository's `docs/design.md`, and `docs/decisions.md` keeps the
-reasoning. Every dated developer amendment is laid on top of the newest design work and listed
-below, so it is visible that nothing was lost. Each item says what it asks of existing code.
+This revision covers the ninth design session only. Everything not listed here is unchanged from
+the copy in the repository. Each item says what it asks of existing code.
 
-**The eighth session.**
-
-1. Photos (3.8, 3.24, 3.25, 3.37, 4.3). What someone attaches while saying what happened is
-   evidence, and everyone voting sees it: the claim card's clip and the raised sheet's list. The
-   claim's attachment becomes the first memory: once the market ends it leads the frame,
-   credited to whoever attached it. After a market ends, adding a photo is the sheet's chalk,
-   and sending the tile is the secondary, since the tile then says there are photos. With no
-   photos yet, the screen shows an empty slot that is itself a button, so adding the first one
-   plainly reads as an action. Voided and expired markets take photos too. Built code:
-   `media.role` stays and the frame reads the claim's evidence ahead of the memories;
-   `addMarketPhoto` accepts a voided or expired market; the settled sheet swaps its primary;
-   `SettledSheet`'s rule of going once sent or left applies only to someone who wasn't in the
-   market.
-2. A far-off number is blocked (3.26). There is no "Keep". The block is a field error that names
-   the limit ("Try something under 1,000."), never the scoring scale, and the limit stays
-   `farOffThreshold`. Built code: the entry sheet's check becomes the block, with its wording.
-3. The screens in text (3.37, 3.38). The memory screen is specified in full, and so is every
-   other screen whose board carried something the text didn't. Nothing needs the export to be
-   built.
-4. Outcome words (3.25). A yes-or-no market carries its outcomes in the question's own words,
-   written with the terms, so the wells, the claim card and the settled line can say "He fell
-   asleep" and "He did." rather than "Yes". "Yes" and "No" stay as the fallback. Built code: the
-   write-up returns four short phrasings, stored with the terms.
-5. Wording (4.6). A line may open with a number when the number is what it is about: a count, or
-   the number someone just typed. "Your odds" is allowed for what a person puts in. A ruling is
-   credited to the tiebreaker everyone agreed to.
-6. Canvas. `Leaderboard` (14) takes the photo move; new `SettledPhotos` (the empty slot, someone
-   who wasn't in, voided, expired) and `FarOff` (the block, then fixed); `Memory` (15) gets the
-   settled sheet; `Voting` (12) draws the claim card in its current layout; `TilePhoto` is
-   redrawn as the result tile with photos, which carries no photo; `DockStates`' settled frame,
-   `Story` and `Split` lose controls that no longer exist; `You` and `YouEarly` plot the tenths
-   (amendment 33). The export at `docs/design/reference/design.html` is regenerated and draws
-   every board without scripts.
-
-**The sixth and seventh sessions, new to the repository.**
-
-1. Pick one is a single choice (3.29, 3.30, 3.31, 3.25, 3.7, 3.27): two to six answers, a tap
-   and a stake are the whole entry, each person's whole stake sits on their pick, and the
-   settled screen says who called it, with no ranking. New components; the question step gains
-   "Pick one" and the answers editor under the band.
-2. What's on (3.32, 3.33, 3.35): a fourth tab, "Most asked" over a schedule by day, and a
-   question a final score answers opening its ballot on a source card. Built code: the tab bar
-   gains a fourth item; first run's starters come from What's on.
-3. You (3.34): calibration, distance on number markets and the clean-resolution rate, each with
-   its thin-data state, now on the build's bins (amendment 33).
-4. The type budget (4.7, 4.8): Now's Just happened uses rows, the claimant's list is claim rows,
-   and the ask flow is counted per step and per sheet state.
-5. A dissent without a number is a note on the record and never a vote (3.24).
-6. Multi-choice spreading, for the contract redeploy only (3.36, `SpreadRedeploy`). Do not build
-   it before the redeploy.
-
-**Developer amendments folded in.** Each is authoritative unless this revision says otherwise,
-and each names where it now lives.
-
-From the repository's `docs/design.md`:
-
-1. 2026-09-25, file paths: the emoji ink table is `src/lib/ui/emoji-inks.json`, made by
-   `scripts/emoji-inks.py`; the planning note is `docs/marks-and-memories.md`; the export is
-   `docs/design/reference/design.html`. Intro, 1.8, 3.29.
-2. 2026-09-25, 3.22: the group's number on a number market is the stake-weighted median as
-   implemented, the smallest value with at least half the stake at or below it, the lower value
-   on a tie at a boundary, and a far-off entry holding more than half the stake is the median,
-   with the marker over its column. The details sheet says it in a sentence. The no-stake case
-   stays, marked as waiting for the redeploy. 3.22.
-3. 2026-09-25, 3.27: the photo never rides a link tile; a result tile for a market with photos
-   says "With photos from that night." instead. 3.27. The hackathon list's "the frame in the
-   share card" in `docs/marks-and-memories.md` is superseded by it.
-
-From `docs/decisions.md`:
-
-4. 2026-09-18, applied 2026-09-25: picture marks get their own table, `picture_marks`, and
-   `media` keeps exactly two parents, `dare_id` and `obligation_id`. 1.7, 3.28.
-5. 2026-09-25, stickers by paste: `mark_kind` gains `sticker` with `mark_value` the row's id;
-   every stamp reads a `MarkRef`; paste is built, and tap-to-cut and "Make a sticker" wait; the
-   owner and anyone in a group where a question wears it can see one, through `/api/mark/[id]`;
-   the bucket admits PNG. 3.28.
-6. 2026-09-25, stickers are drawn into link tiles. The owner's decision, recorded beside the
-   photo rule so the difference reads as intended. 3.27.
-7. 2026-09-25, the sticker edge is baked at one width, sized for the 40px stamp (1.4px at 28,
-   3.2px at 64, the bare source at 20). 1.7.
-8. 2026-09-25, a sticker's ink is measured on its own pixels with the 1.8 rule, `nearestInk`
-   mirroring the three folds. 1.8.
-9. 2026-09-25, "Your stickers" sits above Recent: the paste cell first, then this person's
-   stickers newest first, and one caption while there are none. 3.29.
-10. 2026-09-25, one emoji table: a mark the tile font cannot draw is refused when a market is
-    drafted, and the picker's catalog (`src/lib/ui/emoji-catalog.json`) is exactly the table's
-    keys, in English. 3.29.
-11. 2026-09-25, the mark picker as built: the pace and mode chips stay under the band; Done sits
-    in the close position; recents and tones are kept per device; a long press or right click
-    opens tones; the draft's id is made on the question step, so the ink previewed is the ink
-    stored; the retint is 200ms; the number field and the picker are controls for the type
-    budget. 3.29, 4.8.
-12. 2026-09-25, a unit's mark has no entry point until a screen makes a unit with a label of its
-    own. 1.7, 3.29.
-13. 2026-09-25, the kind is chosen with chips under the band before the write-up; an argument is
-    always yes or no; the unit is proposed by the model and editable on the terms step. 3.29.
-14. 2026-09-25, the scale is a scoring rule: fixed at asking, set on the terms step as a
-    whole-number span in the question's unit, stored with whose it is (`range_source`), shown
-    once in the details only when the asker set it ("Off by 20 shirts or more scores nothing.
-    Closer scores more."), and a model's scale used only when it passes its check. The flagged
-    reading of "in the asker's own words" (their unit and figure) is confirmed. 3.26.
-15. 2026-09-25, a vote on a number market is a vote on a proposed number, and a dissent with no
-    number is words on the record. 3.24, where the seventh session's "note" wording stands.
-16. 2026-09-25, the settled answer on a number market is the number followed by the claimant's
-    words when they run to 60 characters or fewer, else the number alone. 3.25, 3.26.
-17. 2026-09-25, a notice about a number market carries no number, and the result tile carries
-    the answer. The recorded tension is resolved here: a notice goes out on its own, and a tile
-    is sent by a person. 3.27.
-18. 2026-09-25, the far-off threshold: a hundred times the model's most likely answer
-    (`dares.typical`), rounded to one significant figure; fifty times the asker's scale when
-    there is no most likely answer; nothing for a hidden scale with nothing to measure against.
-    The check that asked "It's 2,400 shirts" is not folded in: it becomes a block (item 2 of the
-    eighth session). 3.26.
-19. 2026-09-25, photos on a market (`addMarketPhoto`): anyone with a position adds, weeks later
-    included; someone in the group who wasn't in it sees and can't add; forty-eight a market,
-    never counted on screen; the frame's credit, counter, strip, loading and failed states;
-    `fromThatNight`; the phone's picker with no `capture`. Its "settled only" is not folded in:
-    voided and expired markets take photos. 3.8, 3.24, 3.37.
-20. 2026-09-25, argument evidence: screenshots attach through saying what happened and through a
-    case for the tiebreaker; `media.role` tells evidence from a memory; three a person a
-    question; the claim card's 72px clip and the raised sheet's 44px list with the supplier's
-    first name; the model reads each tagged with who supplied it. Its rule that the frame reads
-    memories only and that evidence reaches the model alone is not folded in: this revision
-    replaces it (item 1 of the eighth session). 3.8, 3.24, 3.37.
-21. 2026-09-25, the call sheet: "Nobody can tell" as a tertiary; a well raises the sheet to an
-    optional line and "Say it"; the vote opens as a modal; the claimant is the first voter; the
-    app's read sits on the claim only until someone votes, then in the raised sheet. The wells'
-    "Yes" and "No" become the fallback for outcome words. 3.24, 3.25.
-22. 2026-09-25, the link tiles as built: one route serves the asking tile until the market
-    settles and the result tile after; the close time is in the asker's zone (`dares.zone`), and
-    in UTC, saying so, for older markets. 3.27.
-23. 2026-09-25, a ruling is credited to "the tiebreaker everyone agreed to", never to the app.
-    4.6.
-24. 2026-09-25, the pinned sheet: only the grabber and the header row drag; it is not modal; a
-    moment that binds other people opens the modal sheet over it; its room is paid through
-    `--sheet-room`. 3.24.
-25. 2026-09-25, the odds line: while changing, your own share moves with your finger and the
-    group's marker waits for the save; every number is a whole percent. 3.13.
-26. 2026-09-25, the stake chips: three across at 44px, "$5", "$10", "$20" or 1, 2, 3 of the
-    unit, with "Something else" for a field. 3.3.
-27. 2026-09-20, a stake of nothing is drawn and tested but cannot be entered until the contract
-    redeploy, so "Just pride" waits for it. 3.3, 3.13, 3.22, 3.30, 7.
-28. 2026-09-25, settling and forgiving from the row: the chalk "Settled" and a secondary "Call
-    it even" at the same size, the photo row above them, and "Try the photo again" when a photo
-    fails after the close; notices for settled, forgiven and netted never carry the unit or an
-    amount. 3.10.
-29. 2026-09-25, cancelling out stays as placed and worded: a row under the person-view header,
-    "Cancel out the $10 each way", and a sheet that asks once. 3.10.
-30. 2026-09-25, `obligations.closed_at`: Just happened orders closed obligations by it, and
-    cancelling out appears in nobody's Just happened. 4.7.
-31. 2026-09-25, a market-minted obligation closes from its story on the person view, and the
-    story card is restructured: the story is the link, and the consequences sit under it outside
-    the link. 3.4.
-32. 2026-09-25, refresh: pull to refresh, a re-read on return to the foreground, and a light
-    poll on a locked market. New 5.5.
-33. 2026-09-25, profile stats: yes-or-no calls binned by the tenths of the weight line, a plot
-    from ten resolved questions, no floor per bin, and numbers as the average miss over the
-    scale. This replaces the sixth session's folding and its floor of five per band. 3.34.
-34. 2026-09-25, the type budget as built: sizes counted, controls and tokens left out by
-    element, by `data-type-exempt` or by file, and the three baselines with their causes. 4.8.
-35. 2026-09-24, Start offers only what is built, since a row that leads nowhere is a broken
-    control. 6.1.
-36. 2026-09-24, beside a state mark: a clock, or on a needs-you row the reason the row exists,
-    including how many are in. 3.23.
-37. 2026-09-25, the app's read on a number proposal names the number with its unit ("14
-    shirts"). 3.24.
-38. 2026-09-25, the viewport probe: a tertiary "Measure the screen" on You until the installed
-    app's bottom band has a cause. 3.34.
-
-Confirmed, with nothing to change: the rally strip as drawn; reds folding into Rose, now in the
-table itself; a unit's mark as a bare glyph inside a token and on `--surface-2` elsewhere; the
-leaderboard rank at 17px 600; and closing the books, cut as superseded, which this file never
-drew (all 2026-09-25).
+1. A photo while the market is open (new 3.39; 3.8, 3.24, 6.3). The "you're in" sheet gains a
+   camera button beside "Send it to the chat", for people who have entered and only while the
+   market is open. What it takes is a memory, never evidence, and only the person who took it
+   sees it until the market ends; then it joins the frame after the claim's attachment. Someone
+   who isn't in sees no camera at all, so entering stays the open screen's only move. Built
+   code: the sheet's row gains the button; `addMarketPhoto` accepts an open market from someone
+   with a position, with `role = 'memory'`; a photo added before the end is visible to its
+   author alone until then; the frame already orders memories by when they were added.
+2. The light theme, for after submission (new section 8). Follows the phone, with an override on
+   You. The primary action is graphite, the value extreme on a light ground; the eight inks keep
+   their hues at light layers; citron keeps its colour and gains a graphite edge; the grain is
+   recalibrated as a dark tile. Built code: none before submission. After it, a second set of
+   values for the same custom properties plus four drawn rules (8.8).
+3. No glass (1.5). Frosted and translucent surfaces stay out of both themes, with the reasons
+   written down, so a later pass doesn't reach for them.
+4. Cleanups. 4.7 said every row with a clock carries the citron dot, which contradicted 3.15's
+   one dot per viewport; it now points at 3.15. 1.1's Light column is marked as the value half
+   of section 8, and its citron value is replaced (8.5).
+5. Canvas. New `OpenPhoto`, at the end of the screens row. A new last row for after submission:
+   `LightScreens` (Now, a market in its ink, and board 14, in light) and `LightRules`. The
+   export at `docs/design/reference/design.html` is regenerated.
 
 ---
 
@@ -226,6 +71,9 @@ drew (all 2026-09-25).
 ### 1.1 Color
 
 Root is 16px. All colors are opaque hex unless an alpha form is given.
+
+The Light column is not shipped before submission. It is the value half of the light theme;
+section 8 gives the rules that are not a value swap, and they win where the two differ.
 
 | Token | Dark | Light | Used for |
 | --- | --- | --- | --- |
@@ -238,7 +86,8 @@ Root is 16px. All colors are opaque hex unless an alpha form is given.
 | `--on-chalk` | `#121110` | `#F5EFE4` | Text on a chalk fill |
 | `--ink-2` | `#C4BCAE` | `#544A3D` | Secondary text |
 | `--ink-3` | `#9A9385` | `#6C6153` | Captions, metadata, quiet marks, the 13px floor |
-| `--live` | `#E4E34A` | `#8A7A00` | Citron. Only a 6px dot or a 2px rule, only for "needs you, with a clock" |
+| `--live` | `#E4E34A` | `#E4E34A`, with its edge (8.5) | Citron. Only a 6px dot or a 2px rule, only for "needs you, with a clock" |
+| `--live-edge` | `transparent` | `#1B1815` | A 1px edge outside the citron dot and a keyline either side of the citron rule, light only (8.5) |
 | `--scrim` | `rgba(18,17,16,0.78)` | `rgba(18,17,16,0.78)` | Chips sitting on media |
 | `--scrim-play` | `rgba(18,17,16,0.70)` | `rgba(18,17,16,0.70)` | Play button plate on media |
 
@@ -394,10 +243,22 @@ on `--ground`. Three sanctioned uses of `box-shadow`:
    line uses the same idea at 1.5px.
 3. The claimant screen's photo prints: `0 10px 24px rgba(0,0,0,0.45)`, because they are meant to
    read as physical objects. Nothing else in the app uses a drop shadow.
+4. In the light theme only, the citron's edge: `0 0 0 1px var(--live-edge)` on the dot, and a
+   1px keyline above and below the rule (8.5).
 
 Border conventions: solid 1px `--line` is a normal boundary. Dashed 1px `--line-strong` means
 the thing has not happened yet (an upcoming plan, an unset mark, "nothing changes hands", the
 naming prompt). Never use dashed for errors.
+
+**No glass, in either theme.** No frosted or translucent surfaces: no `backdrop-filter`, no
+blurred bars, no see-through sheets. Three reasons. A web app can only approximate a native
+material with a blur, and an approximation reads as a web page dressed as a native app. The CSS
+that produces the blur makes an element the containing block of every fixed element inside it,
+which is the class of bug that still stops the tab bar and the pinned sheet from staying put in
+the installed app. And the look v2 built, opaque surfaces on a grained ground with ink carrying
+place, is what answered the tester who said the app looked AI-made. The tab bar, the pinned
+sheet and every modal sheet are opaque surfaces with a 1px line. Scrims on photos are the only
+translucency, and they carry no blur.
 
 ### 1.6 Targets and motion
 
@@ -524,6 +385,8 @@ market row, so balance can be checked without re-reading any pixels.
 
 Arguments get an ink the same way, which usually means a hash, because most arguments have no
 mark.
+
+The light theme's layers for all eight inks are in 8.4, for after submission.
 
 ---
 
@@ -807,20 +670,22 @@ tabular). The counter counts position, never toward a limit.
 
 **Order.** What the claim carried comes first. The photo or screenshot someone attached while
 saying what happened is the resolving clip: it leads, credited to them (4.3). Then memories, in
-the order they were added. A tap on a strip square brings it into the frame, and `+N` opens the
-rest.
+the order they were added, so photos taken while it was open come first among them. A tap on a
+strip square brings it into the frame, and `+N` opens the rest.
 
-**Who adds, and when.** Anyone who was in the market, from the moment it ends, weeks later
-included. Ended means settled, voided or expired: a void is not a night anyone won, and it was
-still a night. Someone in the group who wasn't in the market sees the frame and never gets an
-add. Adding sends nobody anything.
+**Who adds, and when.** Anyone who was in the market: while it is open, with the camera (3.39),
+and from the moment it ends, weeks later included. Ended means settled, voided or expired: a
+void is not a night anyone won, and it was still a night. Someone in the group who wasn't in the
+market sees the frame and never gets an add. Adding sends nobody anything.
 
-**How.** The phone's own picker, opened with no `capture` attribute, so the library comes first:
-the night has already happened. Several at once. Each new photo lands at the end of the strip as
-the hatched placeholder with its credit chip, and the control that started it is pending (5.2)
-until the last one is stored. A photo that fails leaves the 5.1 block in the sheet, "That photo
-didn't go up.", with "Try again". Forty-eight memories a market is the limit and no screen
-counts toward it; past it, the sheet says "This one's full." and never how full.
+**How.** Once it has ended, the phone's own picker, opened with no `capture` attribute, so the
+library comes first: the night has already happened. (While it is open, the camera itself,
+3.39.) Several at once. Each new photo lands at the end of the strip as the hatched placeholder
+with its credit chip, and the control that started it is pending (5.2) until the last one is
+stored. A photo that fails leaves the 5.1 block in the sheet, "That photo didn't go up.", with
+"Try again". Forty-eight memories a market is the limit and no screen counts toward it; past it,
+the sheet says "This one's full." and never how full. Whoever added a memory can remove it from
+its full-screen view at any time. Evidence stays, since a vote or a ruling may rest on it.
 
 **Where the files go.** Two derivatives, re-encoded so that nothing of the EXIF survives except
 when it was taken: the frame at 1080px on its long edge and a 256px square. The bucket is
@@ -1308,7 +1173,7 @@ Where it rests says whose move it is, and it never goes empty while the market r
 | State | Whose move | Resting | Raised |
 | --- | --- | --- | --- |
 | Open, not in | Yours | "What are the odds?" and the empty line (or the empty number field) | Stake and "I'm in at 70%, 2 beers" |
-| Open, you're in | Nobody's | "Send it to the chat" under "Anyone with the link can get in until 10:40pm." | No second height |
+| Open, you're in | Nobody's | "Send it to the chat" under "Anyone with the link can get in until 10:40pm.", with a 56px camera button beside it (3.39) | No second height |
 | Closed, not yet known | Whoever saw it | "When it's clear, say what happened." and the outcomes as two equal wells in the market's words ("He fell asleep", "He stayed up"; "Yes" and "No" without them, 3.25), with a tertiary "Nobody can tell" | The claim: an optional line, photos or screenshots, and "Say it" |
 | Voting, not said | Yours, with a clock | The count line ("3 of 6 have said yes. Two more and it settles."), chalk agree, secondary "Not how I saw it" | Who has said what; everything attached, as 44px squares with who supplied each; the app's read, once anyone has voted |
 | Voting, said | Theirs | One line: your avatar, "You said he was out", the count, Change | No second height |
@@ -1995,7 +1860,8 @@ recent first", with your stickers once you have any), "Your number" ("Used to si
 else sees it."), and "Sign out" with no caption, which asks once in a sheet (3.12, destructive).
 Sign out is the one way to leave the product, and it lives only here (4.7). While the build is
 still finding the cause of the installed app's bottom band, a tertiary "Measure the screen" sits
-under the card; it leaves with the cause.
+under the card; it leaves with the cause. After submission, an "Appearance" row joins the card
+(8.1).
 
 This revision draws the stats on You only. Whether friends ever see someone's clean-resolution
 rate is a separate decision, and nothing here depends on it.
@@ -2325,6 +2191,60 @@ in a 48px slot with 12px sides, and it stands where back would only when nothing
 screen (a signed-out link, the claimant screen). On tiles it is 32px in ink-hi, 56px from the
 left and 44px from the bottom. It is a logo, outside the type budget.
 
+### 3.39 A photo while the market is open
+
+A photo can be added at the claim and while voting (as evidence, 3.24), and from the moment a
+market ends (3.8, 3.37). Nothing covered the window before lock, when the pizza lands and the
+phone is already out. Photos taken then are not lost, since they can be added from the library
+once it ends; what was missing is the in-the-moment version. Board: `OpenPhoto`.
+
+**What it is.** A memory, never evidence: nothing has happened yet that it could prove. It is
+stored like any memory (`media.role = 'memory'`, on the market), counts toward the market's
+forty-eight, and never reaches the proposal or the tiebreaker.
+
+**Who can add one.** Only people who have entered. The open screen's job is getting people in,
+and for someone who isn't in, entering stays the only move on it: no camera, no photo row,
+nothing beside the odds line. It is also the rule once a market ends (a position adds), so one
+rule covers a market's whole life. The case for anyone who can see it: a friend at the table who
+hasn't entered took the best photo. They can enter, which is what the screen is asking them to
+do anyway, or send it to the chat; once they're in, the camera is theirs too.
+
+**Where it goes.** In the "you're in" sheet (3.24), beside "Send it to the chat": a 56px square
+secondary button, radius 10, 1px `--line-strong` border and no fill, the 24px camera glyph in
+`--ink`, named "Take a photo". The chalk stays the chalk and nothing else in the sheet changes.
+It sits under the thumb because this is an in-the-moment action, and because it only exists once
+you're in, it never sits beside entering. It shows while the market is open and goes when it
+locks: from lock until the market ends, anything attached is evidence, and it goes through
+saying what happened.
+
+**What it opens.** The camera itself (`capture="environment"` on the file input), not the
+library: this window is for the photo being taken now. Photos already on the phone wait for the
+end, when adding opens the library first. On an iPhone a photo taken this way is not saved to
+the phone's own photos, so its full-screen view offers "Save to your phone" through the share
+sheet, and the phone keeps the file until it is stored.
+
+**Before it ends, only you see it.** Under the participant stack, once you have added one:
+"Yours from tonight" in `label`, your photos as 60px squares (four, then `+N`), and one
+`caption`, "Everyone sees these once it's over." A photo still going up is its square at 0.88
+opacity with the 2px runner of 5.2 along its bottom edge; one that fails keeps its square with
+the camera glyph, and a tap retries. Tapping a photo opens it full screen with "Remove" and
+"Save to your phone". Nobody else sees any of it before the market ends: not on the open screen,
+not on the locked or voting screens, and not in any notice. Three reasons. A strip of other
+people's photos on the open screen would compete with entering for everyone not yet in. From
+lock until the end, the screen is about what happened, and a photo from before lock sitting
+beside the claim reads as evidence without having gone through the evidence path. And the frame
+filling with the night's photos when it ends is the payoff (3.37).
+
+**When it ends.** Settled, voided or expired, the photos join the frame after the claim's
+attachment, in the order they were added and credited to whoever took them (3.8), for everyone
+the market's rule lets see it: its participants and the group it was asked in. "Yours from
+tonight" goes.
+
+**Edges.** A photo started before lock lands as a memory even if it finishes after; the button
+itself goes at lock. Taking a photo sends nobody anything. An argument locks the moment the
+second person is in, so its open window is usually seconds, and the button follows the same
+rule. Type: the section's words are 13, and nothing new joins the screen's sizes.
+
 ---
 
 ## 4. Rules that generalize
@@ -2452,13 +2372,13 @@ The root is called Now, and it routes rather than does. Creating things moved of
 Start button and its sheet (section 6), because a hub that also holds five ways to begin
 something is what made it unreadable. Now holds three sections, in this order:
 
-1. **Needs you.** Only things that will not move without this person: a vote, a market they
-   have not entered, an obligation to confirm, a claim to accept, a draft they abandoned.
-   This is the strip that makes the app worth opening, and it is the one place the no-nagging
-   rule is under real pressure. What keeps it honest: every row is an action this person can
-   finish now, the section disappears when it is empty, and nothing in it counts or ages.
-   Inside it, anything with a clock outranks anything without one, and within each of those,
-   soonest first. The rows with clocks carry the citron dot; the rest do not.
+1. **Needs you.** Only things that will not move without this person: a vote, a market they have
+   not entered, an obligation to confirm, a claim to accept, a draft they abandoned. This is the
+   strip that makes the app worth opening, and it is the one place the no-nagging rule is under
+   real pressure. What keeps it honest: every row is an action this person can finish now, the
+   section disappears when it is empty, and nothing in it counts or ages. Inside it, anything
+   with a clock outranks anything without one, and within each of those, soonest first. Only the
+   soonest row with a clock carries the citron dot (3.15).
 2. **Running.** Markets in flight that this person has already acted on, each with its state
    mark and no action button. It exists so that "I entered that, didn't I?" has an answer
    without a search.
@@ -2566,6 +2486,8 @@ The canvas after this revision, outside controls and tokens:
 | `Memory` | 13 · 15 · 17 · serif 26 | 4 |
 | `SettledPhotos`, all four | 13 · 15 · 17 · serif 26 at most | 4 |
 | `FarOff`, both | 13 · 15 · 17 · serif 26 (blocked); 13 · 17 · serif 26 (fixed) | 4, then 3 |
+| `OpenPhoto`, all four | 13 · 17 · serif 26 | 3 |
+| `LightScreens` (after submission) | the same sizes as `Now`, `OpenPhoto` frame 3 and `Leaderboard` | 3, 3 and 4 |
 | `DockStates`, all seven | 13 · 17 · serif 26 | 3 |
 | `PickOneMarket` | entering: 13 · 17 · serif 26; in: 13 · 15 · 17 · serif 26 | 3, then 4 |
 | `PickOneEntry`, frames 1 to 5 | 13 · 17 · serif 26, plus 15 once the shares show (frame 4) | 3 or 4 |
@@ -2822,7 +2744,7 @@ it. Groups are not a destination for the reasons in 4.7.
 | Credit card roulette | Inside the cover flow, as how the payer gets chosen |
 | Capture standings | People tab, second segment |
 | Plans | Person timeline above today; the next one surfaces on Now |
-| Adding photos | The market's own screen once it has ended, settled, voided or expired: the sheet's chalk, or the empty slot (3.8, 3.37) |
+| Adding photos | While it is open, the "you're in" sheet's camera, for someone who is in (3.39); once it has ended, settled, voided or expired, the sheet's chalk or the empty slot (3.8, 3.37) |
 | Making a sticker | The mark picker's "Your stickers" row, by paste (3.28, 3.29); from a market's photo, later |
 | Sending how it ended | The settled sheet's secondary (3.24, 3.27) |
 | Profile, calibration, clean resolution | You (3.34) |
@@ -2852,13 +2774,14 @@ market creation (the terms step; the question step and the who's-in step exist),
 sticker" from a photo (3.28, waiting), argument creation, the people picker behind "Someone
 else", the claim behind the two outcome wells (3.24 specifies it), the arbitration screen,
 receipt capture and splitting, credit-card roulette, plans and RSVPs, search, the details sheet,
-the pick-one asking and result tiles (3.27 specifies them), the light theme in situ, and any
-desktop layout. Every one of them has an address in 6.3, so a later phase has somewhere to put
-its screens without reopening the structure.
+the pick-one asking and result tiles (3.27 specifies them), the light theme beyond its three
+proving screens (section 8), and any desktop layout. Every one of them has an address in 6.3, so
+a later phase has somewhere to put its screens without reopening the structure.
 
 Drawn, but not to be built yet: multi-choice spreading (3.36, `SpreadRedeploy`), which waits for
 the contract redeploy. So does a stake of nothing: boards that draw "Just pride" show the
-redeploy (3.3).
+redeploy (3.3). The light theme (section 8, `LightScreens`, `LightRules`) waits for after
+submission.
 
 Group management has come off this list rather than moving up it. Leaving, archiving, renaming
 and the group view do not exist, because a group is not a navigable object: there is no place to
@@ -2891,3 +2814,148 @@ To build one of them without waiting for a design pass:
 
 If two of these rules conflict on a screen, the no-nagging rule wins, then direction encoding,
 then density.
+
+---
+
+## 8. The light theme (for after submission; do not build yet)
+
+Dark stays the only shipped theme until after submission. This section specifies light so it can
+be built then, and it is not an inversion: v2 is dark-specific in ways that carry weight, and
+each is decided here. Almost all of it is a second set of values for the same custom properties.
+Four rules change how something is drawn: the citron's edge, person-hue strokes, the avatar's
+edge and the grain tile. Boards, both marked for after submission: `LightScreens` (Now, a market
+in its ink, and the settled screen, board 14, each converted by exactly these rules) and
+`LightRules` (the primary action, the tokens and inks side by side, citron, focus and marks).
+
+### 8.1 When it applies
+
+The app follows the phone, through `prefers-color-scheme`. A manual override is worth having,
+and it lives on You: an "Appearance" row in the Account card, captioned with the current choice
+("Match your phone"), opening a modal sheet of three rows: "Match your phone" (the default),
+"Always dark" and "Always light". The reason is where the app gets used: a dark room, a bar, a
+movie. Someone who keeps their phone in light all day still wants dark at 11pm; someone on
+Automatic gets it at sunset anyway, and the override is for the first person. It is a device
+preference kept on the device, like recents, and never a record about the person.
+
+Before first paint, an inline script in the document head reads the stored choice and sets
+`data-theme` on `html`, so a cold start of the installed app never flashes the wrong theme.
+`color-scheme` follows the theme, and `theme-color` has one value per scheme (`<meta
+name="theme-color" media="(prefers-color-scheme: light)" content="#F5EFE4">`). On a market's own
+screen the status band already paints that market's ground, in either theme.
+
+What does not follow the theme: link tiles, which are one image for everyone, frozen into a chat
+whose theme the app can't know, so they stay as 3.27 draws them.
+
+### 8.2 The primary action
+
+On dark, the thing to tap is a chalk fill because chalk is the brightest object on a dark
+ground. As a rule rather than a colour, the primary action takes the value extreme opposite the
+ground (4.5: value carries hierarchy). On light that is the darkest object on the screen: a
+graphite fill, `--chalk` resolving to `#1B1815`, with paper-coloured text, `--on-chalk`
+`#F5EFE4`, at 15.4:1. `--ink` and `--chalk` stay one token in both themes, as they are now, so
+the button and body text share graphite; the button still reads as the thing to tap because it
+is the only solid dark mass on the screen, 56px tall and full width, where text is strokes. At
+most one per viewport, unchanged. The Start circle is graphite with a paper plus, and the
+selected stake chip fills graphite the same way.
+
+Rejected: the market's ink as the fill, since ink carries place and nothing else (1.8), and a
+primary that changed colour per market would give ink a second job; a new accent colour, which
+is a fifth channel, the job marigold was retired for; and an outlined primary, which would speak
+the secondary's language.
+
+### 8.3 Neutral tokens
+
+The Light column of 1.1. `--ink` on `--ground` is 15.4:1, `--ink-2` 7.6:1, and `--ink-3` 5.3:1
+on the ground, 5.9:1 on `--surface` and 4.8:1 on `--surface-2`, so the 13px floor passes AA on
+every neutral surface. Depth changes direction and keeps its meaning: cards and sheets
+(`--surface`, `#FFFBF4`) are lighter than the ground, tracks, chips and tokens (`--surface-2`,
+`#EDE4D4`) sit recessed below it, and the 1px line still draws every edge. `--line-strong` on
+the ground is 1.7:1, as quiet as on dark (2.0:1), on purpose: dashed edges and secondary
+outlines stay quiet, and a secondary's words carry it.
+
+### 8.4 The eight inks
+
+Retuned for light with each ink's hue unchanged, so a market keeps its colour across themes, and
+matched in OKLCH like the dark set so no market shouts louder than another:
+
+| Ink | Hue | ground | surface | field | line | ink | ink-hi |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Clay | 45 | `#F9EDE9` | `#FEF9F7` | `#F4D9CD` | `#E0CAC1` | `#A26448` | `#6E412D` |
+| Ochre | 85 | `#F4F0E6` | `#FCFAF6` | `#EADEC7` | `#D8CEBB` | `#8F7131` | `#604B1C` |
+| Olive | 112 | `#F0F1E7` | `#FAFBF6` | `#E0E2C9` | `#CFD2BD` | `#777B38` | `#4F5221` |
+| Sea | 192 | `#E6F3F2` | `#F6FBFB` | `#C7E7E5` | `#BCD6D4` | `#1E8783` | `#0A5A58` |
+| Slate | 248 | `#E9F1F9` | `#F7FBFE` | `#CFE2F6` | `#C2D1E1` | `#487AA8` | `#2D5173` |
+| Iris | 288 | `#EFEFF9` | `#FAF9FE` | `#DEDDF6` | `#CECDE1` | `#746DA8` | `#4D4872` |
+| Plum | 330 | `#F6EDF5` | `#FDF9FC` | `#EDD8EB` | `#DAC9D8` | `#94628F` | `#644061` |
+| Rose | 8 | `#F9ECEE` | `#FEF8F9` | `#F5D7DB` | `#E1C8CC` | `#A35F6B` | `#6F3D47` |
+
+Layer levels in OKLCH: ground L 0.955 C 0.014; surface 0.985, 0.006; field 0.905, 0.034; line
+0.855, 0.028; ink 0.565, 0.090; ink-hi 0.425, 0.070. A market's line-strong is its hue at 0.79,
+0.04. The ink layer is darker and a little stronger than on dark (0.70, 0.075), because on a
+pale ground a colour reads through depth rather than brightness: ink on its own ground is 3.8 to
+4.2:1, enough for columns, marks and washes. ink-hi, the ink's type colour, becomes the darker
+tone, 6.1 to 6.4:1 on field. Graphite on every field is 13.1 to 13.5:1.
+
+Where each layer goes is unchanged (1.8): on the market's own screen the four structural tokens
+swap to its layers and the band sits on field; elsewhere only the stamp's field. The tint is
+quieter in light, where a ground at chroma 0.014 is a whisper on paper, so the band and the ink
+in the columns carry the place. The resolved call line's wash stays the ink at 0.40.
+
+### 8.5 Citron
+
+`#E4E34A` on the light ground is 1.2:1: gone at 6px. It keeps its colour, because the colour is
+the signal and should mean the same thing in both themes, and it gains an edge, `--live-edge`,
+which is `#1B1815` in light and transparent in dark. The dot stays a 6px disc with a 1px edge
+outside it (`box-shadow: 0 0 0 1px var(--live-edge)`, an 8px footprint). The 2px rule gains a
+1px keyline above and below (`box-shadow: 0 -1px 0 var(--live-edge), 0 1px 0 var(--live-edge)`).
+Citron against its edge is 12.9:1, and the edge against the ground far more. Everything else
+about citron holds: one element per viewport, never larger, gone when handled.
+
+Rejected: the darker yellow the table used to list for light, `#8A7A00`. It reaches 3.8:1 on the
+ground, but it lands at the lightness and hue of the light Ochre and Olive inks (OKLCH 0.58 at
+hue 100, against their 0.565 at 85 and 112), so on those markets' screens the urgency mark would
+read as the market's own colour, which 4.5 forbids.
+
+### 8.6 Grain
+
+Kept, recalibrated. The paper look is part of what made v2 read as made rather than generated,
+and on a light ground it reads as paper tooth. The same 120px tile over `--ground` only; in
+light its specks are dark, `#3A3024` at 4%, where dark's are cream at 3%. The light tile is its
+own image with the colour and opacity inside it, and nothing adds a CSS `filter` or
+`backdrop-filter` to make it, for the containing-block reason in 1.5. If the tile reads as dirt
+on a real phone at full brightness, it is dropped in light before shipping: light may be flat,
+and nothing else depends on the grain.
+
+### 8.7 Everything else that assumed dark
+
+- Focus: the same 2px `--ink` outline 2px outside the control, now graphite. On the graphite
+  primary it sits across the 2px gap on the ground, so it still separates. Errors keep their
+  rule, the field's own border going to 1.5px `--ink`.
+- State marks keep their forms (3.23), with the tokens' colours. "You're in" draws in the
+  person's text-on-light variant (1.1), because a pastel stroke on paper is under 2:1. Open and
+  resolved on a market's own screen use the light ink.
+- Person hues: the fills stay the same pastels, since a person's colour is who they are in
+  either theme. Avatars gain a 1px inset edge, `rgba(27,24,21,0.10)`, so a pale avatar keeps its
+  outline on paper; initials stay `#121110`. Everything drawn as a line or a translucent wash in
+  a person's hue (token borders at 0.55, selection rings at 0.50, leaderboard gap bars at 0.40,
+  the riding percent's ring, the number field's ring, the "you're in" mark) uses the
+  text-on-light variant at the same alpha.
+- The call line: the resolved cap is `--ink`, graphite, since what happened is ink; the neutral
+  wash is `rgba(27,24,21,0.08)`; the cream ring on whoever called it is a 2px `--ink` ring. The
+  weight line's marker is `--ink`.
+- Media keep their scrims, which sit on photos. The hatched placeholder uses the light field and
+  surface. The claimant's prints' shadow drops to `rgba(0,0,0,0.18)`.
+- Type: sizes, weights and the budget are unchanged. Desktop browsers thin dark text on light
+  under `-webkit-font-smoothing: antialiased`, so light sets it to `auto`; phones are
+  unaffected.
+- No glass (1.5), in light as in dark.
+
+### 8.8 Building it
+
+`globals.css` gains a `[data-theme="light"]` block, and the same values under `@media
+(prefers-color-scheme: light)` for `:root:not([data-theme="dark"])`, holding 1.1's Light column,
+`--live-edge`, and the light layers of the eight inks, which `inkVars` reads for the current
+theme. The component changes are the four drawn rules: the citron's edge, the person-hue variant
+for strokes and washes, the avatar's edge, and the light grain tile. Everything else is the
+swap, which is why `LightScreens` could be made from the dark boards by the values plus those
+four rules and nothing more. Nothing reads `data-theme` before submission.

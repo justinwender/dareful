@@ -20,6 +20,7 @@ import { PickOneBars, type PickOneAnswer, type PickOneBar } from "./pick-one-bar
 import { PickOneEntry } from "./pick-one-entry";
 import { numberAxis, serialiseAxis, unitPhrase, withSeparators, type NumberLineAxis } from "@/lib/ledger/number-axis";
 import { LockButton, type Signing, type StakeUnit } from "./market-actions";
+import { CameraButton } from "./camera-button";
 
 export type StagePicture =
   | {
@@ -75,6 +76,8 @@ export function MarketStage(props: {
   share: { url: string; text: string; joinLine: string } | null;
   /** The asker's lock, while open: how many are in and whether that is everyone. */
   lock: { count: number; everyoneIn: boolean } | null;
+  /** The camera beside "Send it to the chat" (3.39): for someone who is in, while it is open, and only where photos are on. */
+  camera?: boolean;
   /**
    * The far-off check on a number question (src/lib/ledger/scale.ts): a number at or past the threshold gets a
    * line the person can confirm past, never a block. `scale` is the asker's scale when they set one, which the
@@ -581,7 +584,7 @@ export function MarketStage(props: {
           {props.lock && props.lock.everyoneIn ? (
             <>
               <LockButton dareId={dareId} count={props.lock.count} primary />
-              <InviteShare url={props.share.url} text={props.share.text} />
+              <InviteShare url={props.share.url} text={props.share.text} trailing={props.camera ? <CameraButton /> : undefined} />
             </>
           ) : (
             <>
@@ -589,6 +592,7 @@ export function MarketStage(props: {
                 url={props.share.url}
                 text={props.share.text}
                 primary
+                trailing={props.camera ? <CameraButton /> : undefined}
               />
               {props.lock && props.lock.count >= 2 ? (
                 <LockButton
