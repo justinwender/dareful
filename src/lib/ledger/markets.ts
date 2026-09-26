@@ -32,6 +32,7 @@ import { isMember, peopleForUser } from "./groups";
 import { groupsNumberBps } from "./weight";
 import { MAX_NUMBER } from "./scoring";
 import { MAX_ANSWER_LENGTH, MAX_ANSWERS, MIN_ANSWERS, PICK_ONE_CONFIDENCE, type Answer } from "./pick-one";
+import { SPORT_MARK } from "@/lib/sports/templates";
 import { scaleAfterward } from "./scale";
 import { bufferToHex, bytes16ToUuid, dareOnchainId, denomOnchainId, groupOnchainId, hexToBuffer } from "./ids";
 import { ensureDenomOnchain, ensureGroupOnchain } from "./registry";
@@ -46,7 +47,8 @@ export const toChainOutcome = (o: bigint): bigint => (o === VOID_OUTCOME ? VOID 
 export const MAX_POSITIONS = 12;
 
 export type MarketKind = "binary" | "numeric" | "categorical";
-export type Unit = { singular: string; plural: string };
+/** A number's unit; a signed margin's unit also carries its shift and the two sides, so every number on the screen reads as "Giants by 7" (docs/decisions.md, public markets). */
+export type Unit = { singular: string; plural: string; margin?: { shift: string; home: string; away: string } | null };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /**
  * A pick-one market's answers, in the asker's order (docs/design.md 3.29): the words in `outcome_labels`, the
@@ -218,12 +220,14 @@ export type DraftInput = {
   /** Yes-or-no by default. A number market carries its unit and its scoring scale (docs/design.md 3.26). */
   kind?: MarketKind;
   unit?: Unit | null;
-  /** The asker's scale, if they set one; else the model's, already through `checkScale`; else the draft is refused. */
-  scale?: { range: bigint; source: "asker" | "ai" } | null;
+  /** The asker's scale, if they set one; else the model's, already through `checkScale`; else the draft is refused. A template's is written by people and shown like an asker's. */
+  scale?: { range: bigint; source: "asker" | "ai" | "template" } | null;
   /** The model's most likely answer, when it scoped the question: the far-off check's reference, never shown. */
   typical?: bigint | null;
   /** A pick-one market's answers (docs/design.md 3.29), two to six in the asker's order; a person answer names someone the asker knows, or the asker. */
   answers?: Array<{ text: string; userId?: string | null }> | null;
+  /** A What's on market (3.33): the public question it copies. Set only by `draftFromTemplate`. */
+  templateId?: string | null;
 };
 
 /** A draft: terms the creator can read and has not yet signed. Nobody else can see it. */
@@ -305,10 +309,50 @@ export async function draftMarket(input: DraftInput): Promise<DareRow> {
       markKind: emoji ? "emoji" : sticker ? "sticker" : null,
       markValue: emoji ?? sticker?.id ?? null,
       outcomeWords: kind === "binary" && input.outcomeWords ? input.outcomeWords.map((w) => w.trim()) : null,
+      templateId: input.templateId ?? null,
     })
     .returning();
   if (!row) throw new MarketError("Couldn't save that.", "chain");
   return row;
+}
+
+/**
+ * A market from a public question (docs/design.md 3.33; docs/decisions.md, public markets): the template's
+ * question, terms, kind, unit, scale, answers and outcome words copied onto an ordinary market, closing when the
+ * game starts, its tiebreaker fixed to the final score (the terms say so in plain words, and the entry signature
+ * carries that consent), wearing the sport's mark. The asker is whoever sends it; everything after is the usual.
+ * Refused once the game has started, and while the source has not confirmed the start time.
+ */
+export async function draftFromTemplate(input: { templateId: string; creatorId: string; groupId: string; denomId: string; zone?: string | null; id?: string; now?: Date }): Promise<DareRow> {
+  const [row] = await db.select({ template: schema.publicQuestions, game: schema.sportsGames }).from(schema.publicQuestions).innerJoin(schema.sportsGames, eq(schema.sportsGames.id, schema.publicQuestions.gameId)).where(eq(schema.publicQuestions.id, input.templateId)).limit(1);
+  if (!row) throw new MarketError("That question isn't on any more.", "not_found");
+  const { template: t, game } = row;
+  const now = input.now ?? new Date();
+  if (!game.timeValid) throw new MarketError("That game doesn't have a confirmed start time yet.", "bad_input");
+  if (game.startsAt.getTime() <= now.getTime()) throw new MarketError("That game has started, so it's too late to ask.", "bad_input");
+  if (game.status === "postponed" || game.status === "canceled") throw new MarketError("That game is off.", "bad_input");
+  const words = t.outcomeWords && t.outcomeWords.length === 4 ? (t.outcomeWords as [string, string, string, string]) : null;
+  const mark = SPORT_MARK[game.sport as keyof typeof SPORT_MARK];
+  return draftMarket({
+    id: input.id,
+    creatorId: input.creatorId,
+    groupId: input.groupId,
+    denomId: input.denomId,
+    title: t.title,
+    termsText: t.termsText,
+    kind: t.kind as MarketKind,
+    unit: t.kind === "numeric" ? { singular: t.outcomeLabels[0] ?? "", plural: t.outcomeLabels[1] ?? t.outcomeLabels[0] ?? "" } : null,
+    scale: t.kind === "numeric" && t.range !== null ? { range: t.range, source: "template" } : null,
+    typical: t.typical,
+    answers: t.kind === "categorical" ? t.outcomeLabels.map((text) => ({ text })) : null,
+    outcomeWords: t.kind === "binary" ? words : null,
+    resolvesBy: game.startsAt,
+    stalemate: "arbitrate",
+    revealMode: "open",
+    mark: mark ? { kind: "emoji", value: mark } : null,
+    zone: input.zone ?? null,
+    templateId: t.id,
+  });
 }
 
 /** The creator's signature opens the market. Verified here against their ledger wallet; verified again onchain at lock. */
@@ -583,7 +627,7 @@ export function settlementFromReceipt(result: { hash: Hex; receipt: { logs: Read
  * and one shadow `obligations` row per minted edge (the edge's onchain id is its uuid, so the two sides join the
  * way every other obligation does). A partial result is refused rather than recorded.
  */
-export async function mirrorSettlement(d: DareRow, s: Settlement, how: { by: "quorum" | "arbitration"; rulingText?: string; rulingHash?: Hex }): Promise<void> {
+export async function mirrorSettlement(d: DareRow, s: Settlement, how: { by: "quorum" | "arbitration" | "feed"; rulingText?: string; rulingHash?: Hex }): Promise<void> {
   const positions = await positionsOf(d.id);
   const users = await db.select().from(schema.users).where(inArray(schema.users.id, positions.map((p) => p.userId as string)));
   const byLedger = new Map(users.map((u) => [u.ledgerWallet.toLowerCase(), u]));

@@ -23,7 +23,7 @@ import { db, schema } from "@/db";
 import { and, asc, eq } from "drizzle-orm";
 import { denominationById, ensureUnitInGroup, ensureUsd } from "@/lib/ledger/denominations";
 import { createOccasionGroup, isMember, setForPeople } from "@/lib/ledger/groups";
-import { answersOf, callToOutcome, castVote, draftMarket, enterMarket, lockMarket, MarketError, marketById, openMarket, sayWhatHappened, stateOf, unitOf, VOID_OUTCOME, pickInk } from "@/lib/ledger/markets";
+import { answersOf, callToOutcome, castVote, draftFromTemplate, draftMarket, enterMarket, lockMarket, MarketError, marketById, openMarket, sayWhatHappened, stateOf, unitOf, VOID_OUTCOME, pickInk } from "@/lib/ledger/markets";
 import { MAX_ANSWER_LENGTH, MAX_ANSWERS, MIN_ANSWERS } from "@/lib/ledger/pick-one";
 
 const uuid = z.string().uuid();
@@ -193,6 +193,30 @@ export async function draftMarketAction(input: z.infer<typeof Draft>): Promise<{
       revealMode: d.blind ? "blind" : "open",
       zone: await viewerZone(),
     });
+    return { id: row.id };
+  } catch (err) {
+    return { error: say(err, "Couldn't save that.") };
+  }
+}
+
+/**
+ * A market from a public question (docs/design.md 3.33): who's in, what's riding on it and whether it is blind are
+ * the asker's; the question, its terms, its kind, its scale, its close and its tiebreaker are the template's,
+ * copied on the server and never taken from the client.
+ */
+export async function draftFromTemplateAction(input: { templateId: string; who: z.infer<typeof Who>; unit: z.infer<typeof Unit>; blind?: boolean; id?: string }): Promise<{ id: string } | { error: string }> {
+  const user = await requireUser();
+  const parsed = z.object({ templateId: uuid, who: Who, unit: Unit, blind: z.boolean().default(false), id: z.string().uuid().optional() }).safeParse(input);
+  if (!parsed.success) return { error: "Something in that is off." };
+  const d = parsed.data;
+  try {
+    if (d.who.kind === "set" && !(await isMember(d.who.groupId, user.id))) return { error: "You're not one of those people." };
+    if (d.who.kind !== "set" && d.unit.kind === "existing") return { error: "That unit isn't around any more. Pick another." };
+    const groupId = d.who.kind === "set" ? d.who.groupId : d.who.kind === "people" ? (await setForPeople(user.id, d.who.userIds)).id : (await createOccasionGroup(user.id)).id;
+    const denom = d.unit.kind === "usd" ? await ensureUsd(groupId, user.id) : d.unit.kind === "existing" ? await denominationById(d.unit.id) : await ensureUnitInGroup(groupId, user.id, d.unit);
+    if (!denom) return { error: "That unit isn't around any more. Pick another." };
+    const row = await draftFromTemplate({ templateId: d.templateId, creatorId: user.id, groupId, denomId: denom.id, zone: await viewerZone(), id: d.id });
+    if (d.blind) await db.update(schema.dares).set({ revealMode: "blind" }).where(and(eq(schema.dares.id, row.id), eq(schema.dares.creatorId, user.id)));
     return { id: row.id };
   } catch (err) {
     return { error: say(err, "Couldn't save that.") };

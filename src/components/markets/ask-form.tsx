@@ -10,7 +10,7 @@ import { Screen } from "@/components/ledger/screen";
 import { Button } from "@/components/ui/button";
 import { PinnedSheet } from "@/components/ui/pinned-sheet";
 import { dismissNamePromptAction, nameGroupAction } from "@/lib/actions/join";
-import { carefulQuestionsAction, draftMarketAction, scopeMarketAction, triageAction, type ScopeResult, type TriageResult } from "@/lib/actions/markets";
+import { carefulQuestionsAction, draftFromTemplateAction, draftMarketAction, scopeMarketAction, triageAction, type ScopeResult, type TriageResult } from "@/lib/actions/markets";
 import { emojiInk } from "@/lib/ui/emoji-ink";
 import type { Hue } from "@/lib/ui/hue";
 import { inkFor, inkVars, type InkName } from "@/lib/ui/ink";
@@ -47,9 +47,15 @@ const COUNT = ["", "", "two", "three", "four", "five", "six", "seven", "eight", 
 /** One answer in the editor (3.29): a few words, or a person the asker knows (their id), with the words being their first name. */
 type Choice = { text: string; userId: string | null };
 
-export function AskForm({ sets, people, initialLine = "", initialPace = "dare", me, chrome, stickers = [], canPaste = false }: { sets: SetOption[]; people: Person[]; initialLine?: string; initialPace?: "dare" | "argument"; me: { id: string; name: string; hue: Hue }; /** The screen's top bar, rendered by the page; the form owns the screen so a picked mark can retint all of it (3.29). */ chrome: ReactNode; /** This person's stickers for the picker (3.28), and whether a cutout can be pasted at all. */ stickers?: Sticker[]; canPaste?: boolean }) {
+/**
+ * A public question being asked of one's own friends (docs/design.md 3.33): the question, the terms, the kind
+ * and the close are What's on's and read-only; who's in, what's riding and whether it is blind are the asker's.
+ */
+export type TemplateForAsking = { id: string; title: string; terms: string; kind: "binary" | "numeric" | "categorical"; gameName: string; /** "Sunday at 1pm": when it closes, in the asker's zone. */ closes: string; decidedByScore: boolean; /** "Off by 28 points or more scores nothing.", where the template sets a scale. */ scored: string | null };
+
+export function AskForm({ sets, people, initialLine = "", initialPace = "dare", me, chrome, stickers = [], canPaste = false, template = null }: { sets: SetOption[]; people: Person[]; initialLine?: string; initialPace?: "dare" | "argument"; me: { id: string; name: string; hue: Hue }; /** The screen's top bar, rendered by the page; the form owns the screen so a picked mark can retint all of it (3.29). */ chrome: ReactNode; /** This person's stickers for the picker (3.28), and whether a cutout can be pasted at all. */ stickers?: Sticker[]; canPaste?: boolean; /** A public question (3.33): the flow starts at who's in, with the wording locked. */ template?: TemplateForAsking | null }) {
   const router = useRouter();
-  const [step, setStep] = useState<"question" | "declined" | "criterion" | "careful" | "who" | "terms">("question");
+  const [step, setStep] = useState<"question" | "declined" | "criterion" | "careful" | "who" | "terms">(template ? "who" : "question");
   // Two paces, one object (PLANNING.md 8a): something that will happen, or a claim to settle now.
   const [pace, setPace] = useState<"dare" | "argument">(initialPace);
   // Yes or no, a number, or pick one (docs/design.md 3.26, 3.29). Chosen before the write-up, since the terms say how the answer is counted.
@@ -159,9 +165,21 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
     setProblem(null);
     if (who.kind === "people" && who.userIds.length === 0) return setProblem("Pick someone, or just send the link around.");
     startWait(async () => {
-      await scoping.current;
+      // What's on wrote the wording (3.33), so there is nothing to write up.
+      if (!template) await scoping.current;
       setUnit({ kind: "usd" });
       setStep("terms");
+    });
+  }
+
+  /** Sends a public question to one's own friends (3.33): the template's wording, the asker's people, stake and reveal. */
+  function saveFromTemplate() {
+    if (!template) return;
+    setProblem(null);
+    startSave(async () => {
+      const r = await draftFromTemplateAction({ templateId: template.id, who, unit, blind, id: draftId ?? undefined });
+      if ("error" in r) return setProblem(r.error);
+      router.push(`/m/${r.id}`);
     });
   }
 
@@ -503,7 +521,15 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
     );
   }
 
-  const question = (
+  const question = template ? (
+    // The band shows the template's question, with "From What's on" where Edit would be (3.33).
+    <div className="flex items-start justify-between gap-3 rounded-card border border-line bg-surface px-4 py-3" data-from-whats-on="">
+      <div className="flex min-w-0 flex-col gap-1">
+        <span className="text-caption text-ink-3">From What’s on · {template.gameName}</span>
+        <span className="text-serif-l text-ink">{template.title}</span>
+      </div>
+    </div>
+  ) : (
     <div className="flex items-start justify-between gap-3 rounded-card border border-line bg-surface px-4 py-3">
       <div className="flex min-w-0 flex-col gap-1">
         <span className="text-caption text-ink-3">Your question</span>
@@ -649,6 +675,80 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
     );
   }
 
+  if (template) {
+    const units = selectedSet?.units ?? [];
+    const unitChip = (u: Unit, label: string, key: string) => {
+      const selected = u.kind === unit.kind && (u.kind === "usd" || (u.kind === "existing" && unit.kind === "existing" && u.id === unit.id) || (u.kind === "new" && unit.kind === "new" && u.template === unit.template));
+      return (
+        <button key={key} type="button" onClick={() => setUnit(u)} className="rounded-pill">
+          <Chip size={36} selected={selected}>
+            {label}
+          </Chip>
+        </button>
+      );
+    };
+    return wrap(
+      <div className="flex flex-col gap-6">
+        {question}
+        {/* The written rows (3.33): in --ink-2 and not tappable. Everyone who reads them reads the same terms. */}
+        <dl className="grid grid-cols-[96px_minmax(0,1fr)] gap-x-3 gap-y-2 rounded-card border border-line bg-surface px-4 py-[14px]" data-template-terms="">
+          <dt className="text-label text-ink-3">Counts if</dt>
+          <dd className="text-body text-ink-2">{template.terms}</dd>
+          <dt className="text-label text-ink-3">Decided</dt>
+          <dd className="text-body text-ink-2">{template.decidedByScore ? "By the final score, once the game is over" : "By the people in it, once the game is over"}</dd>
+          {template.scored ? (
+            <>
+              <dt className="text-label text-ink-3">Scored on</dt>
+              <dd className="text-body text-ink-2">{template.scored}</dd>
+            </>
+          ) : null}
+          <dt className="text-label text-ink-3">Closes</dt>
+          <dd className="text-body text-ink-2">When the game starts, {template.closes}</dd>
+          <dt className="text-label text-ink-3">If it’s unclear</dt>
+          <dd className="text-body text-ink-2">{template.decidedByScore ? "If nobody votes, the final score decides." : "Everyone says their piece and the tiebreaker everyone agreed to calls it."}</dd>
+        </dl>
+        <p className="text-caption text-ink-3">What’s on wrote the wording, so everyone reads the same terms.</p>
+        <div className="flex flex-col gap-3">
+          <h2 className="text-label text-ink-3">What’s riding on it</h2>
+          <div className="flex flex-wrap gap-2">
+            {unitChip({ kind: "usd" }, "Dollars", "usd")}
+            {units.map((u) => unitChip({ kind: "existing", id: u.id }, u.template === "next_time" ? "a next time" : u.template ? `${u.label}s` : `“${u.label}”`, u.id))}
+            {PRESETS.filter((p) => !units.some((u) => u.template === p.template)).map((p) => unitChip({ kind: "new", template: p.template, label: p.template }, p.label, p.template))}
+          </div>
+          <p className="text-caption text-ink-3">One kind of thing for everyone, fixed now. Dollars and beers can’t be weighed against each other.</p>
+        </div>
+        <div className="flex flex-col gap-3">
+          <h2 className="text-label text-ink-3">Where everyone landed</h2>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" aria-pressed={!blind} onClick={() => setBlind(false)} className="rounded-pill">
+              <Chip size={36} selected={!blind}>
+                Shows once you’ve picked
+              </Chip>
+            </button>
+            <button type="button" aria-pressed={blind} onClick={() => setBlind(true)} className="rounded-pill">
+              <Chip size={36} selected={blind}>
+                Hidden until it’s locked
+              </Chip>
+            </button>
+          </div>
+        </div>
+        <Button variant="tertiary" className="self-start" onClick={() => setStep("who")} disabled={saving}>
+          Back to who’s in
+        </Button>
+        <PinnedSheet
+          label="Finish"
+          low={
+            <>
+              <ProblemSummary messages={[problem]} />
+              <Button variant="primary" onClick={saveFromTemplate} loading={saving}>
+                Send it
+              </Button>
+            </>
+          }
+        />
+      </div>,
+    );
+  }
   if (!scope) return wrap(<ProblemSummary messages={[problem ?? "The write-up didn’t come through. Go back and try once more."]} />);
   if (scope.ambiguous && scope.criteria.length > 0) {
     return wrap(

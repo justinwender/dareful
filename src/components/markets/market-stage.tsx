@@ -15,6 +15,7 @@ import type { Hue } from "@/lib/ui/hue";
 import { OddsHeader, OddsLine } from "./odds-line";
 import { WeightLine, bucketOfPercent, type WeightBucket } from "./weight-line";
 import { NumberEntry } from "./number-entry";
+import { MarginEntry } from "./margin-entry";
 import { NumberLine } from "./number-line";
 import { PickOneBars, type PickOneAnswer, type PickOneBar } from "./pick-one-bars";
 import { PickOneEntry } from "./pick-one-entry";
@@ -60,8 +61,10 @@ export function MarketStage(props: {
   mine: { percent: number; number?: string; pick?: number; stake: string; stakeWords: string } | null;
   picture: StagePicture | null;
   mark: string | null;
-  /** A number question: what the number counts. Absent on a yes-or-no question. */
-  numberUnit?: { singular: string; plural: string } | null;
+  /** A number question: what the number counts, and on a signed margin its shift and the two sides. Absent on a yes-or-no question. */
+  numberUnit?: { singular: string; plural: string; margin?: { shift: string; home: string; away: string } | null } | null;
+  /** A who-wins question (docs/decisions.md, public markets): the two sides at the odds line's ends, the away side low and the home side high. */
+  ends?: { low: string; high: string } | null;
   /** A pick-one question (3.30): its answers, in the asker's order, for the sheet's rows and the bars. */
   pickOne?: { answers: PickOneAnswer[] } | null;
   /** An argument: which side this person starts on, all the way, and which side is already taken. */
@@ -395,6 +398,23 @@ export function MarketStage(props: {
           ) : null}
           {numberUnit ? (
             <>
+              {numberUnit.margin ? (
+                // A signed margin (docs/decisions.md, public markets): the side, then by how much; stored shifted up by half the scale.
+                <MarginEntry
+                  value={number === null ? null : number - BigInt(numberUnit.margin.shift)}
+                  unit={numberUnit}
+                  hue={me.hue}
+                  home={numberUnit.margin.home}
+                  away={numberUnit.margin.away}
+                  shift={BigInt(numberUnit.margin.shift)}
+                  problem={blocked}
+                  disabled={phase === "entering" && !changing && reading}
+                  onChange={(v) => {
+                    setNumber(v === null ? null : v + BigInt((numberUnit.margin as { shift: string }).shift));
+                    if (!raised && v !== null) setRaised(true);
+                  }}
+                />
+              ) : (
               <NumberEntry
                 header={null}
                 value={number}
@@ -407,6 +427,7 @@ export function MarketStage(props: {
                   if (!raised && v !== null) setRaised(true);
                 }}
               />
+              )}
               {blocked && number !== null && props.farOff ? (
                 // The far-off block (3.26): a field error, never a way to keep the number. It names the limit, which is not the scoring scale.
                 <p role="alert" data-far-off="" className="flex items-start gap-2 text-body-sm text-ink">
@@ -455,6 +476,7 @@ export function MarketStage(props: {
             value={value}
             mark={mark}
             hue={me.hue}
+            ends={props.ends ?? null}
             disabled={phase === "entering" && !changing && reading}
             onChange={(v) => {
               setValue(v);

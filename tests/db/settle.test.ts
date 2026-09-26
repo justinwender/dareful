@@ -87,6 +87,33 @@ test("the toll: a void by the group or by the arbitrator counts against whoever 
   assert.equal(markets.stateOf((await markets.marketById(expired)) as markets.DareRow), "expired");
 });
 
+test("one warning before the backstop acts, never a second: six hours before the tiebreaker's day is up, and six hours before the void rule's deadline", async () => {
+  const warned: string[] = [];
+  const notify = async (id: string, flavour: string) => void warned.push(`${flavour}:${id}`);
+  const H = 3_600_000;
+  // The tiebreaker's: due and locked nineteen hours ago, so the backstop is five hours off.
+  const t = await question({ resolvesBy: new Date(Date.now() + H) });
+  await t.enter(ana, 8000n);
+  await t.enter(ben, 2000n);
+  await lockInMirror(t.d.id, { lockedAt: new Date(Date.now() - 19 * H), resolvesBy: new Date(Date.now() - 19 * H) });
+  // The void rule's: its deadline five hours away, with a window still open; and one seven hours away, which is not yet.
+  const v = await question({ stalemate: "void" });
+  await v.enter(ana, 8000n);
+  await v.enter(ben, 2000n);
+  await lockInMirror(v.d.id, { resolvesBy: new Date(Date.now() + 5 * H) });
+  const later = await question({ stalemate: "void" });
+  await later.enter(ana, 8000n);
+  await later.enter(ben, 2000n);
+  await lockInMirror(later.d.id, { resolvesBy: new Date(Date.now() + 7 * H) });
+  const ids = [t.d.id, v.d.id, later.d.id];
+  const first = await tick(new Date(), async () => undefined, { onlyIds: ids, notifyWarning: notify });
+  assert.deepEqual(first.warned.map((w) => `${w.flavour}:${w.id}`).sort(), [`tiebreaker:${t.d.id}`, `void:${v.d.id}`].sort(), "the two whose backstop is within six hours, each with its flavour");
+  assert.deepEqual(warned.sort(), [`tiebreaker:${t.d.id}`, `void:${v.d.id}`].sort());
+  const second = await tick(new Date(), async () => undefined, { onlyIds: ids, notifyWarning: notify });
+  assert.deepEqual([second.warned, warned.length], [[], 2], "never a second reminder");
+  assert.deepEqual(first.arbitrated, [], "the warning is not the backstop: the tiebreaker has not been asked");
+});
+
 test("the tick tells the asker their time has come exactly once, however often it runs, and never before", async () => {
   const { d, enter } = await question();
   await enter(ana, 8000n);

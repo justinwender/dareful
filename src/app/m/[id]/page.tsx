@@ -38,6 +38,8 @@ import { rulerFor } from "@/components/markets/market-card-from";
 import { VotePoll } from "@/components/markets/vote-poll";
 import { numberAxis, serialiseAxis, unitPhrase, withSeparators } from "@/lib/ledger/number-axis";
 import { pulseOf } from "@/lib/ledger/pulse";
+import { templateOfMarket } from "@/lib/sports";
+import { SAY_YOURSELF_AFTER_MS, scoreLine } from "@/lib/sports/results";
 import { farOffThreshold } from "@/lib/ledger/scale";
 import { InvitePreview } from "@/components/markets/invite-preview";
 import { RoomCode } from "@/components/markets/room-code";
@@ -194,7 +196,13 @@ export default async function MarketPage({
   const state = stateOf(d);
   if (state === "draft" && d.creatorId !== me.id) notFound();
   const ink = inkOf(d);
-  const numberUnit = unitOf(d);
+  // A What's on market (3.33, 3.35): the question and game it came from, and whether the final score answers it.
+  const fromTemplate = await templateOfMarket(d);
+  const decidedByScore = fromTemplate?.template.decidedByScore === true;
+  const game = fromTemplate?.game ?? null;
+  const feedFinal = game && game.finalSeenAt && game.homeScore !== null && game.awayScore !== null ? { home: game.homeScore, away: game.awayScore } : null;
+  // On a signed margin the unit carries its shift and the two sides, so every number on this screen reads "Giants by 7".
+  const numberUnit = ((u) => (u && fromTemplate?.template.key === "margin" && fromTemplate.template.shift !== null && game ? { ...u, margin: { shift: fromTemplate.template.shift.toString(), home: game.homeShort, away: game.awayShort } } : u))(unitOf(d));
   const answers = answersOf(d);
   const word = wordFor(numberUnit !== null, answers !== null);
   /** A pick-one answer's words for the viewer: a person answer reads as their current first name, the viewer as "You" (3.30). Filled once the people are read. */
@@ -516,6 +524,7 @@ export default async function MarketPage({
       }
       picture={picture}
       numberUnit={numberUnit}
+      ends={fromTemplate?.template.key === "home_wins" && game ? { low: game.awayShort, high: game.homeShort } : null}
       pickOne={pickAnswers ? { answers: pickAnswers } : null}
       mark={d.markKind === "emoji" ? d.markValue : null}
       argument={argument}
@@ -601,7 +610,9 @@ export default async function MarketPage({
       <dd className="text-body text-ink">{d.termsText}</dd>
       <dt className="text-label text-ink-3">Decided</dt>
       <dd className="text-body text-ink">
-        {d.resolvesBy ? (
+        {decidedByScore ? (
+          "By the final score, once the game is over"
+        ) : d.resolvesBy ? (
           <>
             by{" "}
             <When
@@ -617,6 +628,13 @@ export default async function MarketPage({
         )}
         {d.criterion ? `, ${d.criterion}` : ""}
       </dd>
+      {fromTemplate ? (
+        // Once it is running it looks like any other market, with one extra row (3.33): no badge, no link to other groups.
+        <>
+          <dt className="text-label text-ink-3">Question from</dt>
+          <dd className="text-body text-ink">What’s on{game ? `, ${game.name}` : ""}</dd>
+        </>
+      ) : null}
       <dt className="text-label text-ink-3">Stakes</dt>
       <dd className="text-body text-ink">
         {denomination.monetary
@@ -624,18 +642,20 @@ export default async function MarketPage({
           : unit.plural.charAt(0).toUpperCase() + unit.plural.slice(1)}
         , the same for everyone
       </dd>
-      {/* The scoring scale, once, only when the asker set it (3.26): a scale the app set appears on no screen. */}
-      {numberUnit && d.range !== null && d.rangeSource === "asker" ? (
+      {/* The scoring scale, once, only when a person set it (3.26): the asker's, or a template's written by people; a scale the app set appears on no screen. */}
+      {numberUnit && d.range !== null && (d.rangeSource === "asker" || d.rangeSource === "template") ? (
         <>
           <dt className="text-label text-ink-3">Scored on</dt>
-          <dd className="text-body text-ink">Off by {unitPhrase(d.range, numberUnit)} or more scores nothing. Closer scores more.</dd>
+          <dd className="text-body text-ink">Off by {withSeparators(d.range)} {d.range === 1n ? numberUnit.singular : numberUnit.plural} or more scores nothing. Closer scores more.</dd>
         </>
       ) : null}
       <dt className="text-label text-ink-3">If it’s unclear</dt>
       <dd className="text-body text-ink">
-        {d.stalemate === "void"
-          ? "It’s called off and nothing changes hands."
-          : "Everyone says their piece and the tiebreaker everyone agreed to calls it."}
+        {decidedByScore
+          ? "If nobody votes, the final score decides."
+          : d.stalemate === "void"
+            ? "It’s called off and nothing changes hands."
+            : "Everyone says their piece and the tiebreaker everyone agreed to calls it."}
       </dd>
     </dl>
   );
@@ -751,6 +771,33 @@ export default async function MarketPage({
       </p>
     </section>
   );
+  // The source card (3.35): where a person's claim card stands, once the final score is in and before anyone has
+  // said. No avatar and no "says": the score the terms named is speaking, not a person.
+  const finalLabel = game?.finalSeenAt ? `${game.finalSeenAt.toLocaleDateString("en-US", { timeZone: clock.zone, weekday: "short" })} ${clockOf(game.finalSeenAt, clock.zone)}` : null;
+  const sourceCard =
+    state === "locked" && decidedByScore && feedFinal && game && votes.length === 0 ? (
+      <section className="flex flex-col gap-2 rounded-card border border-line bg-surface p-3" data-source-card="">
+        <p className="flex items-center gap-2 text-label text-ink-3">
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 9a2 2 0 0 0 2-2V6h12v1a2 2 0 0 0 2 2v6a2 2 0 0 0-2 2v1H6v-1a2 2 0 0 0-2-2z" />
+            <path d="M12 7v10" strokeDasharray="1.5 2.5" />
+          </svg>
+          <span>From the final score</span>
+        </p>
+        {[
+          { name: game.homeShort, score: feedFinal.home },
+          { name: game.awayShort, score: feedFinal.away },
+        ]
+          .sort((a, b) => b.score - a.score)
+          .map((row, i) => (
+            <p key={row.name} className={`flex items-baseline justify-between text-body-strong ${i === 0 && feedFinal.home !== feedFinal.away ? "text-ink" : "text-ink-2"}`}>
+              <span>{row.name}</span>
+              <span className="tabular-nums">{row.score}</span>
+            </p>
+          ))}
+        <p className="text-caption text-ink-3">{finalLabel ? `Final, ${finalLabel}. ` : "Final. "}The terms said the final score decides.</p>
+      </section>
+    ) : null;
   // The claim card while voting (3.25): who first said how it came out, and what they said happened.
   const claimant = state === "locked" ? (orderedVotes[0] ?? null) : null;
   const claimWord = claimant ? word(claimant.outcome) : null;
@@ -808,8 +855,19 @@ export default async function MarketPage({
         wells={wells}
         answers={pickAnswers}
         myNote={myVote === null && statements.some((s) => s.userId === me.id)}
+        feed={
+          decidedByScore && game
+            ? {
+                waiting: d.feedOutcome === null,
+                canSayYourself: now.getTime() >= game.expectedEndAt.getTime() + SAY_YOURSELF_AFTER_MS,
+                tie: d.feedOutcome === VOID_OUTCOME && feedFinal ? `${scoreLine(feedFinal, game.homeShort, game.awayShort)}. The final score can’t settle a tie until the app can score one, so this one is called off in a day with nothing changing hands, and it counts against nobody.` : null,
+              }
+            : null
+        }
         proposal={
-          d.aiRationale
+          decidedByScore && d.feedOutcome !== null && d.feedOutcome !== VOID_OUTCOME && feedFinal && game
+            ? { outcome: word(d.feedOutcome), line: `From the final score: ${scoreLine(feedFinal, game.homeShort, game.awayShort)}.`, rationale: null }
+            : d.aiRationale
             ? {
                 outcome: word(d.aiOutcome),
                 line:
@@ -827,7 +885,7 @@ export default async function MarketPage({
         awaitingProposal={d.pace === "argument" && !d.aiProposedAt}
         numberUnit={numberUnit}
         split={
-          d.stalemate === "arbitrate" && mine && counted.length > 1
+          d.stalemate === "arbitrate" && mine && counted.length > 1 && !decidedByScore
             ? {
                 cases: cases.map((c) => ({
                   name: nameOf(c.userId),
@@ -879,7 +937,9 @@ export default async function MarketPage({
     state === "voided"
       ? d.resolvedBy === "arbitration"
         ? "The terms didn’t decide it. Nothing changes hands."
-        : "Nothing changes hands."
+        : d.resolvedBy === "feed"
+          ? "The final score couldn’t settle it. Nothing changes hands, and it counts against nobody."
+          : "Nothing changes hands."
       : state === "expired"
         ? "Nobody said what happened before it closed for good."
         : numberUnit || pickAnswers
@@ -1071,7 +1131,7 @@ export default async function MarketPage({
 
           {state === "locked" ? (
             <>
-              {claim}
+              {claim ?? sourceCard}
               {mine ? stage : null}
               {sparkline}
               <section className="flex flex-col gap-3">
@@ -1125,13 +1185,13 @@ export default async function MarketPage({
           {mine || state !== "open" ? more : null}
 
           {d.rulingText && (state === "resolved" || state === "voided") ? (
-            <section className="flex flex-col gap-2 rounded-card border border-line bg-surface px-4 py-[14px]">
+            <section className="flex flex-col gap-2 rounded-card border border-line bg-surface px-4 py-[14px]" data-ruling={d.resolvedBy ?? ""}>
               <h2 className="text-body-strong text-ink">
-                Settled by the tiebreaker everyone agreed to
+                {d.resolvedBy === "feed" ? "Decided by the final score, as the terms said" : "Settled by the tiebreaker everyone agreed to"}
               </h2>
               <p className="text-body-sm text-ink-2">{d.rulingText}</p>
               <p className="text-caption text-ink-3">
-                On the permanent record, word for word.
+                {d.resolvedBy === "feed" ? "Nobody called it in time, so the final score did, the way everyone agreed at entry. On the permanent record, word for word." : "On the permanent record, word for word."}
               </p>
             </section>
           ) : null}
@@ -1159,7 +1219,7 @@ export default async function MarketPage({
           {callSheet}
           {settledSheet}
           {/* A market in voting goes stale on screen: a light poll of Postgres, never the indexer, while it is locked and this screen is visible. */}
-          {state === "locked" ? <VotePoll dareId={d.id} pulse={pulseOf({ votes, statements, resolvedAt: d.resolvedAt, aiProposedAt: d.aiProposedAt, evidence: media.evidence.map((e) => e.id) })} /> : null}
+          {state === "locked" ? <VotePoll dareId={d.id} pulse={pulseOf({ votes, statements, resolvedAt: d.resolvedAt, aiProposedAt: d.aiProposedAt, evidence: media.evidence.map((e) => e.id), feedOutcomeAt: d.feedOutcomeAt })} /> : null}
         </div>
       </Screen>
       </PhotoAdding>

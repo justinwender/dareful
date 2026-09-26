@@ -25,12 +25,15 @@ export function OddsLine({
   mark,
   hue,
   disabled = false,
+  ends,
 }: {
   value: number | null;
   onChange: (v: number) => void;
   mark: string | null;
   hue: Hue;
   disabled?: boolean;
+  /** The two sides by name where the question is between two teams (a who-wins question, docs/decisions.md public markets): the low end is the away side, the high end the home side. */
+  ends?: { low: string; high: string } | null;
 }) {
   const id = useId();
   const plot = useRef<HTMLDivElement>(null);
@@ -163,8 +166,8 @@ export function OddsLine({
         aria-hidden="true"
         className="flex justify-between text-caption text-ink-3"
       >
-        <span>0%</span>
-        <span>100%</span>
+        <span>{ends ? ends.low : "0%"}</span>
+        <span>{ends ? ends.high : "100%"}</span>
       </p>
     </div>
   );

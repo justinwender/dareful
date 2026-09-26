@@ -20,6 +20,10 @@ import { stickerStampKey } from "@/lib/media/marks";
 import { putObject, removeObjects, storageConfigured } from "@/lib/media/storage";
 import sharp from "sharp";
 import { cleanup, cover, ghost, tempSigner, tempUser, track, type Signer, type User } from "../db/fixture";
+import { readFileSync } from "node:fs";
+import { syncSchedule } from "@/lib/sports";
+import { parseScoreboard } from "@/lib/sports/espn";
+import { FEED_RULING } from "@/lib/sports";
 
 const BASE = process.env.TEST_BASE_URL ?? "http://localhost:3000";
 
@@ -57,6 +61,7 @@ let memoryIds: string[] = [], evidenceOnSettledId: string, evidenceId: string, e
 let nia: Signer, cNia: string, calledId: string, calledClipId: string, voidedId: string, memoryId: string;
 let pickOpenId: string, pickBlindId: string, pickLockedId: string, pickVotingId: string, pickSettledId: string;
 let windowId: string, windowPhotoId: string;
+let feedOpenId: string, feedMarginId: string, feedVotingId: string, feedSettledId: string, feedHome = "", feedAway = "", cRae: string;
 const bucketKeys: string[] = [];
 
 before(async () => {
@@ -276,6 +281,45 @@ before(async () => {
   windowId = w.id;
   windowPhotoId = ((await db.insert(schema.media).values({ dareId: w.id, kind: "photo", role: "memory", storageKey: "frames/check.jpg", width: 810, height: 1080, authorId: nia.user.id }).returning({ id: schema.media.id }))[0] as { id: string }).id;
   if (storageConfigured()) { await putObject(thumbKey(windowPhotoId), await tiny(), "image/jpeg"); bucketKeys.push(thumbKey(windowPhotoId)); }
+
+  // What's on (docs/design.md 3.33, 3.35): a game from the recorded scoreboard, its ids this test's own, and four questions from it:
+  // who wins with the asker in, the margin with the asker in, who wins locked with the final score proposing, and one the final score settled.
+  const scoreboard = JSON.parse(readFileSync(new URL("../fixtures/sports/espn-nfl-scheduled.json", import.meta.url), "utf8")) as unknown;
+  const feedGame = parseScoreboard("nfl", scoreboard).slice(0, 1).map((g) => ({ ...g, sourceId: `test:pages:${randomUUID().slice(0, 8)}:${g.sourceId}`, startsAt: new Date(Date.now() + 5 * 86_400_000) }));
+  await syncSchedule("nfl", new Date(), { name: "espn", listGames: async () => feedGame });
+  const [gameRow] = await db.select().from(schema.sportsGames).where(eq(schema.sportsGames.sourceId, feedGame[0]!.sourceId));
+  const templates = await db.select().from(schema.publicQuestions).where(eq(schema.publicQuestions.gameId, (gameRow as { id: string }).id));
+  const tpl = (key: string) => templates.find((t) => t.key === key) as { id: string; shift: bigint | null };
+  feedHome = feedGame[0]!.home.short;
+  feedAway = feedGame[0]!.away.short;
+  const fromTemplate = async (key: string, by: Signer = asker, inGroup: string = mg.id, denom: string = usd.id) => {
+    const d0 = await markets.draftFromTemplate({ templateId: tpl(key).id, creatorId: by.user.id, groupId: inGroup, denomId: denom });
+    return markets.openMarket(d0.id, by.user.id, await by.ledger.signTypedData(markets.createTypedData(d0)));
+  };
+  const fo = await fromTemplate("home_wins");
+  await markets.enterMarket({ dareId: fo.id, userId: asker.user.id, stake: 500n, value: 7000n, signature: await asker.ledger.signTypedData(markets.enterTypedData(fo, 500n, 7000n)) });
+  feedOpenId = fo.id;
+  const fm = await fromTemplate("margin");
+  const stored = 3n + (tpl("margin").shift ?? 0n);
+  await markets.enterMarket({ dareId: fm.id, userId: asker.user.id, stake: 500n, value: stored, signature: await asker.ledger.signTypedData(markets.enterTypedData(fm, 500n, stored)) });
+  feedMarginId = fm.id;
+  // The ballot and the settled screen live in a set of nia and rae, so no older Now row moves.
+  cRae = await cookieFor(rae.user.id);
+  const fg = await createGroup({ name: "From the final score (check)", createdBy: nia.user.id });
+  track.group(fg.id);
+  await db.insert(schema.groupMembers).values({ groupId: fg.id, userId: rae.user.id });
+  const fgUsd = await ensureUsd(fg.id, nia.user.id);
+  const fv = await fromTemplate("home_wins", nia, fg.id, fgUsd.id);
+  await markets.enterMarket({ dareId: fv.id, userId: nia.user.id, stake: 500n, value: 7000n, signature: await nia.ledger.signTypedData(markets.enterTypedData(fv, 500n, 7000n)) });
+  await markets.enterMarket({ dareId: fv.id, userId: rae.user.id, stake: 500n, value: 4000n, signature: await rae.ledger.signTypedData(markets.enterTypedData(fv, 500n, 4000n)) });
+  await db.update(schema.dares).set({ lockedAt: new Date(Date.now() - 4 * 3_600_000), resolvesBy: new Date(Date.now() - 4 * 3_600_000), feedOutcome: 1n, feedOutcomeAt: new Date(Date.now() - 60_000) }).where(eq(schema.dares.id, fv.id));
+  await db.update(schema.sportsGames).set({ status: "final", completed: true, homeScore: 24, awayScore: 17, finalSeenAt: new Date(Date.now() - 20 * 60_000), expectedEndAt: new Date(Date.now() - 60 * 60_000) }).where(eq(schema.sportsGames.id, (gameRow as { id: string }).id));
+  feedVotingId = fv.id;
+  const fs = await fromTemplate("home_wins", nia, fg.id, fgUsd.id);
+  await markets.enterMarket({ dareId: fs.id, userId: nia.user.id, stake: 500n, value: 7000n, signature: await nia.ledger.signTypedData(markets.enterTypedData(fs, 500n, 7000n)) });
+  await markets.enterMarket({ dareId: fs.id, userId: rae.user.id, stake: 500n, value: 4000n, signature: await rae.ledger.signTypedData(markets.enterTypedData(fs, 500n, 4000n)) });
+  await db.update(schema.dares).set({ lockedAt: new Date(Date.now() - 30 * 3_600_000), resolvesBy: new Date(Date.now() - 30 * 3_600_000), resolvedAt: new Date(Date.now() - 3_600_000), resolvedOutcome: 1n, resolvedBy: "feed", rulingText: `${FEED_RULING} ${feedHome} 24, ${feedAway} 17.`, rulingHash: Buffer.alloc(32, 1) }).where(eq(schema.dares.id, fs.id));
+  feedSettledId = fs.id;
 });
 after(async () => {
   if (storageConfigured()) await removeObjects([...(photoId ? [thumbKey(photoId)] : []), ...bucketKeys]);
@@ -810,7 +854,7 @@ test("a market in voting can be watched: its pulse is Postgres only, answers the
   assert.equal(r.status, 200);
   const body = (await r.json()) as { pulse: string; resolved: boolean };
   assert.equal(body.resolved, false);
-  assert.match(body.pulse, /^v\[\] s\[\] e\[\] r0 p0$/, "nothing said, nothing voted, nothing attached");
+  assert.match(body.pulse, /^v\[\] s\[\] e\[\] r0 p0 f0$/, "nothing said, nothing voted, nothing attached, no score");
   assert.equal(r.headers.get("cache-control"), "no-store");
   await markets.sayWhatHappened(numberId, friend.user.id, "14, then a seam gave out");
   const again = (await (await fetch(`${BASE}/api/m/${numberId}/pulse`, { headers: { cookie: `dareful_session=${cFriend}` } })).json()) as { pulse: string };
@@ -1109,6 +1153,41 @@ test("a photo taken while a question is open is served to whoever took it and re
   } else {
     assert.equal(own.status, 503);
   }
+});
+
+test("a question from What's on: the two sides at the odds line's ends, a signed margin in the sides' words, the written rows in the details, and nothing that says spread or official", async () => {
+  const r = await get(`/m/${feedOpenId}`, cFriend);
+  assert.equal(r.status, 200);
+  assert.ok(r.text.includes(feedAway) && r.text.includes(feedHome), "the two teams");
+  assert.ok(new RegExp(`<span>${feedAway}</span><span>${feedHome}</span>`).test(r.html), "at the odds line's ends, the away side low and the home side high");
+  assert.ok(r.text.includes("Question from") && r.text.includes("What’s on"), "the one extra details row (3.33)");
+  assert.ok(r.text.includes("By the final score, once the game is over") && r.text.includes("If nobody votes, the final score decides."), "decided by the score, and the consent in plain words");
+  assert.ok(!/spread|official/i.test(r.text), "never a sportsbook's word");
+  const m = await get(`/m/${feedMarginId}`, cAsker);
+  assert.equal(m.status, 200);
+  assert.ok(m.text.includes(`You’re in at ${feedHome} by 3`), "the entry line in the sides' words, never the shifted number");
+  assert.ok(m.text.includes("Scored on") && m.text.includes("or more scores nothing"), "the template's scale shown like an asker's");
+  assert.ok(!m.text.includes("You’re in at 17"), "the stored figure is never shown");
+  const ask = await get(`/m/new?template=${(await db.select({ templateId: schema.dares.templateId }).from(schema.dares).where(eq(schema.dares.id, feedOpenId)))[0]?.templateId}`, cAsker);
+  assert.equal(ask.status, 200);
+  assert.ok(ask.html.includes("data-from-whats-on") && ask.text.includes("From What’s on"), "the flow starts at who's in with the template's question");
+  assert.ok(ask.text.includes("Who’s in?") && !ask.text.includes("Ask it in a line"), "no question step");
+});
+
+test("the ballot when a final score answers it: the source card where the claim card stands, the score's proposal to confirm in a tap, and the final score's ruling once it settled one", async () => {
+  const r = await get(`/m/${feedVotingId}`, cRae);
+  assert.equal(r.status, 200);
+  assert.ok(r.html.includes("data-source-card") && r.text.includes("From the final score") && r.text.includes("The terms said the final score decides."), "the source card (3.35)");
+  assert.ok(new RegExp(`${feedHome}\\s*24`).test(r.text) && new RegExp(`${feedAway}\\s*17`).test(r.text), "the two rows, team and number");
+  assert.ok(!r.html.includes("says"), "no avatar and no says: the score is speaking, not a person");
+  assert.ok(r.text.includes(`From the final score: ${feedHome} 24, ${feedAway} 17.`), "the sheet's header names the score the terms named");
+  assert.ok(r.text.includes(`The ${feedHome} won, that’s right`), "the chalk confirms it in the market's own words");
+  assert.ok(!r.text.includes("Can’t agree?") && !r.text.includes("Let the tiebreaker call it"), "the final score is the tiebreaker: the model is never offered");
+  const s = await get(`/m/${feedSettledId}`, cNia);
+  assert.equal(s.status, 200);
+  assert.ok(s.text.includes(`The ${feedHome} won.`), "the outcome in its own words");
+  assert.ok(s.html.includes('data-ruling="feed"') && s.html.includes(">Decided by the final score, as the terms said</h2>") && !s.text.includes("Settled by the tiebreaker everyone agreed to") && s.text.includes("Nobody called it in time"), "the final score's ruling, not the tiebreaker's: the heading itself, since the ruling's own text says the same words");
+  assert.ok(s.text.includes("Closest first") && s.text.includes("Who’s got who"), "everything after follows as usual");
 });
 
 test("asking offers pick one beside yes or no and a number", async () => {

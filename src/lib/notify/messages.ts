@@ -124,3 +124,30 @@ export function closedNotice(input: { name: string; reason: "settled" | "forgive
 export function nettedNotice(input: { name: string; personId: string; appUrl: string }): Notice {
   return { title: `${input.name} cancelled out what went both ways`, body: "Only the difference is left between you.", url: `${input.appUrl}/p/${input.personId}` };
 }
+
+/**
+ * The one warning before a backstop acts (docs/decisions.md, public markets): the tiebreaker everyone agreed
+ * to, the final score, or the void rule, about to settle a question nobody has called. Provisional copy, flagged
+ * for the design session's pass. Never a second reminder: the person-triggered nudge covers everything else.
+ */
+export function backstopWarningNotice(input: { title: string; flavour: "tiebreaker" | "score" | "void"; marketId: string; appUrl: string }): Notice {
+  const body =
+    input.flavour === "score"
+      ? "In about six hours the final score settles it, the way everyone agreed going in, unless someone calls it first."
+      : input.flavour === "void"
+        ? "In about six hours it goes unsettled and nothing changes hands, unless someone calls it first."
+        : "In about six hours the tiebreaker everyone agreed to calls it, unless someone says how it came out first.";
+  return { title: `Nobody’s called “${short(input.title)}” yet`, body, url: `${input.appUrl}/m/${input.marketId}#ballot` };
+}
+
+/**
+ * The notice after a backstop has acted: the final score settled it, or could not, or the void rule let it go
+ * unsettled. Provisional copy, flagged for the design session's pass. The tiebreaker's own notice is the ruling
+ * notice above. Never a number, never a score: the screen has them.
+ */
+export function backstopResultNotice(input: { title: string; how: "feed" | "feed_void" | "expired"; marketId: string; appUrl: string }): Notice {
+  const url = `${input.appUrl}/m/${input.marketId}`;
+  if (input.how === "feed") return { title: `“${short(input.title)}” is decided`, body: "Decided by the final score, as the terms said. Nobody called it in time. Have a look at who was closest.", url };
+  if (input.how === "feed_void") return { title: `“${short(input.title)}” went unsettled`, body: "The final score couldn’t settle it, so nothing changes hands. The reason is on the screen.", url };
+  return { title: `“${short(input.title)}” went unsettled`, body: "Nobody said how it came out in time, so it goes unsettled and nothing changes hands, as everyone agreed going in.", url };
+}

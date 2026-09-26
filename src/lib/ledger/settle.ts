@@ -8,7 +8,7 @@
  * `Enter`), which the contract checked at lock. This module never arbitrates a market whose rule is `void`, and
  * the contract would refuse it if it tried.
  */
-import { and, asc, eq, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
 import { keccak256, stringToHex, type Hex } from "viem";
 import { db, schema } from "@/db";
 import { arbitrate as askArbitrator, arbitrateAnswer, arbitrateNumber, ruleClaim } from "@/lib/ai/settler";
@@ -22,6 +22,15 @@ import { answersOf, lockMarket, marketById, MarketError, mirrorSettlement, posit
 
 /** If nobody presses, the scheduler hears a deadlock this long after the question was due (or locked, if later). */
 export const ARBITRATION_BACKSTOP_MS = 24 * 3_600_000;
+/** The one warning before a backstop acts goes this long before it (docs/decisions.md, public markets): never a second. */
+export const BACKSTOP_WARNING_MS = 6 * 3_600_000;
+
+/** Whether a market's tiebreaker is the final score rather than the model: a What's on question the score answers. */
+export async function decidedByScore(d: Pick<DareRow, "templateId">): Promise<boolean> {
+  if (!d.templateId) return false;
+  const [t] = await db.select({ decidedByScore: schema.publicQuestions.decidedByScore }).from(schema.publicQuestions).where(eq(schema.publicQuestions.id, d.templateId)).limit(1);
+  return t?.decidedByScore === true;
+}
 
 // ------------------------------------------------------------------------------------------------ arguments
 
@@ -94,6 +103,8 @@ export async function arbitrateMarket(dareId: string, byUserId: string | null, n
   if (!d) throw new MarketError("That one doesn't exist.", "not_found");
   if (d.resolvedAt) throw new MarketError("It's already decided.", "wrong_state");
   if (!arbitrationOpen(d, now) || !d.onchainId) throw new MarketError(d.stalemate !== "arbitrate" ? "This one was set to go unsettled if nobody agrees." : "It isn't time for that yet. The group gets to call it first.", "wrong_state");
+  // A What's on question the score answers has the final score as its tiebreaker, never the model (3.35).
+  if (await decidedByScore(d)) throw new MarketError("The final score settles this one, the way everyone agreed at entry.", "wrong_state");
   const positions = await positionsOf(d.id);
   if (byUserId !== null && !positions.some((p) => p.userId === byUserId)) throw new MarketError("Only someone who's in it can ask.", "not_member");
 
@@ -168,22 +179,27 @@ export async function cleanResolution(creatorId: string): Promise<{ ended: numbe
   const rows = await db
     .select({ outcome: schema.dares.resolvedOutcome, by: schema.dares.resolvedBy })
     .from(schema.dares)
-    .where(and(eq(schema.dares.creatorId, creatorId), isNotNull(schema.dares.resolvedAt), inArray(schema.dares.resolvedBy, ["quorum", "arbitration"])));
+    .where(and(eq(schema.dares.creatorId, creatorId), isNotNull(schema.dares.resolvedAt), inArray(schema.dares.resolvedBy, ["quorum", "arbitration", "feed"])));
   return cleanResolutionOf(rows);
 }
 
 /**
- * Pure: of the questions that ended by a quorum or by the tiebreaker, how many ended with an answer. A tie is a
- * fine question with no loser (docs/decisions.md 2026-09-16; a pick-one question everyone called, or nobody did,
- * moves nothing and is still clean): only a void counts against whoever wrote the terms.
+ * Pure: of the questions that ended by a quorum, by the tiebreaker or by the final score, how many ended with an
+ * answer. A tie is a fine question with no loser (docs/decisions.md 2026-09-16; a pick-one question everyone
+ * called, or nobody did, moves nothing and is still clean): only a void counts against whoever wrote the terms.
+ * The final score settling one counts clean; the final score failing to (a tie the contract cannot score, or two
+ * scoreboards that disagree) counts against nobody and is in neither number (docs/decisions.md, public markets).
  */
-export function cleanResolutionOf(rows: ReadonlyArray<{ outcome: bigint | null }>): { ended: number; clean: number } {
-  return { ended: rows.length, clean: rows.filter((r) => r.outcome !== VOID_OUTCOME).length };
+export function cleanResolutionOf(rows: ReadonlyArray<{ outcome: bigint | null; by?: string | null }>): { ended: number; clean: number } {
+  const counted = rows.filter((r) => !(r.by === "feed" && r.outcome === VOID_OUTCOME));
+  return { ended: counted.length, clean: counted.filter((r) => r.outcome !== VOID_OUTCOME).length };
 }
 
 // -------------------------------------------------------------------------------------------------- the tick
 
-export type TickReport = { locked: string[]; notified: string[]; expired: string[]; arbitrated: string[]; failed: Array<{ id: string; what: string; why: string }> };
+export type TickReport = { locked: string[]; notified: string[]; expired: string[]; arbitrated: string[]; warned: Array<{ id: string; flavour: BackstopFlavour }>; failed: Array<{ id: string; what: string; why: string }> };
+/** Which backstop a warning is about: the tiebreaker everyone agreed to, the final score, or the void rule. */
+export type BackstopFlavour = "tiebreaker" | "score" | "void";
 
 /**
  * Everything a timer has to drive, once a minute, idempotently (docs/decisions.md 2026-09-21). Each job is also
@@ -193,11 +209,11 @@ export type TickReport = { locked: string[]; notified: string[]; expired: string
  *
  * `notifyDeadline` is passed in so this module does not depend on the notification channels.
  */
-export async function tick(now: Date, notifyDeadline: (dareId: string, creatorId: string) => Promise<void>, opts: { limit?: number; onlyIds?: string[] } = {}): Promise<TickReport> {
+export async function tick(now: Date, notifyDeadline: (dareId: string, creatorId: string) => Promise<void>, opts: { limit?: number; onlyIds?: string[]; notifyWarning?: (dareId: string, flavour: BackstopFlavour) => Promise<void> } = {}): Promise<TickReport> {
   const limit = opts.limit ?? 10;
   // Tests run against the real database, so a test names the questions it made and the tick touches nothing else.
   const mine = opts.onlyIds ? inArray(schema.dares.id, opts.onlyIds.length ? opts.onlyIds : ["00000000-0000-4000-8000-000000000000"]) : undefined;
-  const report: TickReport = { locked: [], notified: [], expired: [], arbitrated: [], failed: [] };
+  const report: TickReport = { locked: [], notified: [], expired: [], arbitrated: [], warned: [], failed: [] };
   const attempt = async (id: string, what: string, fn: () => Promise<void>) => {
     try {
       await fn();
@@ -245,12 +261,53 @@ export async function tick(now: Date, notifyDeadline: (dareId: string, creatorId
       // Still worth a vote if the votes already there would decide it: never overrule a quorum that exists.
       const d = await marketById(id);
       if (!d) return;
+      // A What's on question the score answers is the feed's to settle (src/lib/sports), on the feed's own clocks.
+      if (await decidedByScore(d)) return;
       const votes = await votesOf(id);
       const leading = Math.max(0, ...Array.from(votes.reduce((m, v) => m.set(v.outcome.toString(), (m.get(v.outcome.toString()) ?? 0) + 1), new Map<string, number>()).values()));
       if (leading >= d.threshold) return;
       await arbitrateMarket(id, null, now);
       report.arbitrated.push(id);
     });
+  }
+
+  // 5. One warning before a backstop acts, never a second (docs/decisions.md, public markets): six hours before the
+  // tiebreaker's day is up, before the void rule's deadline, or before the final score's day is up.
+  if (opts.notifyWarning) {
+    const warnBy = new Date(now.getTime() - ARBITRATION_BACKSTOP_MS + BACKSTOP_WARNING_MS);
+    const voidBy = new Date(now.getTime() + BACKSTOP_WARNING_MS);
+    const scoreBy = new Date(now.getTime() - ARBITRATION_BACKSTOP_MS + BACKSTOP_WARNING_MS);
+    const toWarn = await db
+      .select({ id: schema.dares.id, stalemate: schema.dares.stalemate, resolvesBy: schema.dares.resolvesBy, templateId: schema.dares.templateId })
+      .from(schema.dares)
+      .leftJoin(schema.publicQuestions, eq(schema.publicQuestions.id, schema.dares.templateId))
+      .leftJoin(schema.sportsGames, eq(schema.sportsGames.id, schema.publicQuestions.gameId))
+      .where(
+        and(
+          mine,
+          isNotNull(schema.dares.lockedAt),
+          isNull(schema.dares.resolvedAt),
+          isNull(schema.dares.backstopWarnedAt),
+          or(
+            // The final score's: a day after the final was seen, less the warning.
+            and(eq(schema.publicQuestions.decidedByScore, true), isNotNull(schema.sportsGames.finalSeenAt), lt(schema.sportsGames.finalSeenAt, scoreBy)),
+            // The tiebreaker's: a day after it was due or locked, whichever is later, less the warning.
+            and(eq(schema.dares.stalemate, "arbitrate"), or(isNull(schema.publicQuestions.decidedByScore), eq(schema.publicQuestions.decidedByScore, false)), lt(schema.dares.lockedAt, warnBy), or(lt(schema.dares.resolvesBy, warnBy), eq(schema.dares.pace, "argument"))),
+            // The void rule's: its deadline, less the warning, while there is still a window.
+            and(eq(schema.dares.stalemate, "void"), isNotNull(schema.dares.resolvesBy), lt(schema.dares.resolvesBy, voidBy), gt(schema.dares.resolvesBy, now)),
+          ),
+        ),
+      )
+      .limit(limit);
+    for (const row of toWarn) {
+      await attempt(row.id, "warning", async () => {
+        const [claimed] = await db.update(schema.dares).set({ backstopWarnedAt: now }).where(and(eq(schema.dares.id, row.id), isNull(schema.dares.backstopWarnedAt))).returning({ id: schema.dares.id });
+        if (!claimed) return;
+        const flavour: BackstopFlavour = row.stalemate === "void" ? "void" : row.templateId && (await decidedByScore(row)) ? "score" : "tiebreaker";
+        await opts.notifyWarning!(row.id, flavour);
+        report.warned.push({ id: row.id, flavour });
+      });
+    }
   }
   return report;
 }

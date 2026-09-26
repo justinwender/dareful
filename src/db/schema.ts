@@ -424,8 +424,11 @@ export const dares = pgTable(
     /** Mirror of DareResolved or DareArbitrated for onchain markets; the provisional call otherwise. */
     resolvedOutcome: money("resolved_outcome"),
     /**
-     * How it ended: 'quorum' | 'arbitration' | 'provisional' | 'expired' | null. 'expired' is the void rule's
-     * silent end: no outcome, nothing minted, no toll, and the question stays in the timeline as unresolved.
+     * How it ended: 'quorum' | 'arbitration' | 'provisional' | 'expired' | 'feed' | null. 'expired' is the void
+     * rule's silent end: no outcome, nothing minted, no toll, and the question stays in the timeline as
+     * unresolved. 'feed' is the final score settling a What's on market nobody voted on, the way everyone agreed
+     * at entry (docs/decisions.md, public markets): recorded on the chain through `arbitrate`, counted clean,
+     * and never a void that counts against anyone.
      */
     resolvedBy: text("resolved_by"),
     /**
@@ -442,6 +445,21 @@ export const dares = pgTable(
     rulingHash: bytea("ruling_hash"),
     /** Set once when the asker has been told the time they set has come. What makes the scheduler's tick idempotent. */
     deadlineNotifiedAt: ts("deadline_notified_at"),
+    /**
+     * A What's on market (docs/design.md 3.33; docs/decisions.md, public markets): the public question it was
+     * started from. Its terms, kind, unit, scale and close time are the template's, copied at draft so the market
+     * stands on its own; the row is kept for "Question from | What's on", the use count, and the feed.
+     */
+    templateId: uuid("template_id").references(() => publicQuestions.id),
+    /**
+     * What the final score proposes, in the chain's encoding (3.35), written by the tick once the game is complete
+     * and rewritten if the score is corrected before the quorum is reached; `VOID_OUTCOME` for a tie the contract
+     * cannot score. Null until the game is complete, and on a question the score does not answer.
+     */
+    feedOutcome: money("feed_outcome"),
+    feedOutcomeAt: ts("feed_outcome_at"),
+    /** Set once when everyone in it has been warned that the backstop is about to act (the one warning, never a second). */
+    backstopWarnedAt: ts("backstop_warned_at"),
     resolvedAt: ts("resolved_at"),
     createdAt: ts("created_at").notNull().defaultNow(),
     /**
@@ -477,7 +495,7 @@ export const dares = pgTable(
     check("dares_kind_known", sql`${t.kind} in ('binary', 'numeric', 'categorical')`),
     check("dares_answers_two_to_six", sql`${t.kind} <> 'categorical' or array_length(${t.outcomeLabels}, 1) between 2 and 6`),
     check("dares_answer_people_aligned", sql`${t.answerPeople} is null or array_length(${t.answerPeople}, 1) = array_length(${t.outcomeLabels}, 1)`),
-    check("dares_range_source_known", sql`${t.rangeSource} is null or ${t.rangeSource} in ('asker', 'ai')`),
+    check("dares_range_source_known", sql`${t.rangeSource} is null or ${t.rangeSource} in ('asker', 'ai', 'template')`),
     check("dares_range_with_source", sql`(${t.kind} <> 'numeric') or (${t.range} is not null and ${t.range} > 0 and ${t.rangeSource} is not null)`),
     check("dares_pace_known", sql`${t.pace} in ('dare', 'argument')`),
     check("dares_tier_known", sql`${t.tier} is null or ${t.tier} in ('checkable', 'contestable')`),
@@ -487,7 +505,7 @@ export const dares = pgTable(
     check("dares_reveal_mode_known", sql`${t.revealMode} in ('open', 'blind')`),
     check(
       "dares_resolved_by_known",
-      sql`${t.resolvedBy} is null or ${t.resolvedBy} in ('quorum', 'arbitration', 'provisional', 'expired')`,
+      sql`${t.resolvedBy} is null or ${t.resolvedBy} in ('quorum', 'arbitration', 'provisional', 'expired', 'feed')`,
     ),
     check("dares_threshold_positive", sql`${t.threshold} > 0`),
     check(
@@ -853,6 +871,130 @@ export const itemClaims = pgTable(
  * to encrypt to it. Not in PLANNING.md's schema (docs/decisions.md 2026-09-19). A subscription the push service
  * reports gone is deleted; it was never ledger history.
  */
+// ------------------------------------------------------------------------------------------------------
+// What's on: games from a public scoreboard, and the questions written for each
+// (docs/design.md 3.32, 3.33, 3.35; docs/decisions.md, public markets)
+// ------------------------------------------------------------------------------------------------------
+
+/**
+ * A game as the schedule source lists it, behind the adapter in `src/lib/sports`. One row per (source, game),
+ * refreshed by the tick: the schedule a few days ahead, then, after the game's expected end, its final score,
+ * read again once to catch a correction, and the second source's score beside it for the backstop. A score is
+ * only ever written from a response whose status says the game is complete. Nothing here is a person's.
+ */
+export const sportsGames = pgTable(
+  "sports_games",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** 'espn' today; the adapter is the only thing that knows the shape. */
+    source: text("source").notNull(),
+    sourceId: text("source_id").notNull(),
+    /** 'nfl' | 'mlb' | 'nba' | 'nhl'. */
+    sport: text("sport").notNull(),
+    /** "Titans at Giants": the away side first, as the sport says it. */
+    name: text("name").notNull(),
+    startsAt: ts("starts_at").notNull(),
+    /** Whether the source has confirmed the start time; a game is not listed with a close time until it has. */
+    timeValid: boolean("time_valid").notNull().default(true),
+    venue: text("venue"),
+    homeId: text("home_id").notNull(),
+    homeAbbr: text("home_abbr").notNull(),
+    homeName: text("home_name").notNull(),
+    homeShort: text("home_short").notNull(),
+    awayId: text("away_id").notNull(),
+    awayAbbr: text("away_abbr").notNull(),
+    awayName: text("away_name").notNull(),
+    awayShort: text("away_short").notNull(),
+    /** Whether the source reports play-by-play for it: the first-drive question is offered only where it does. */
+    playByPlay: boolean("play_by_play").notNull().default(false),
+    /** 'scheduled' | 'in_progress' | 'final' | 'postponed' | 'canceled' | 'unknown'. */
+    status: text("status").notNull().default("scheduled"),
+    /** The source's own word that the game is over. `winner` means nothing until this is true. */
+    completed: boolean("completed").notNull().default(false),
+    homeScore: integer("home_score"),
+    awayScore: integer("away_score"),
+    /** When the final was first read, or last changed: the clock the backstop counts from. */
+    finalSeenAt: ts("final_seen_at"),
+    /** When a later read found the same final: the one confirmation re-read, after which polling stops. */
+    finalConfirmedAt: ts("final_confirmed_at"),
+    /** The second source's final, read once the backstop is due; null where it has none (hockey always). */
+    checkHomeScore: integer("check_home_score"),
+    checkAwayScore: integer("check_away_score"),
+    checkedAt: ts("checked_at"),
+    /** The start plus the sport's usual length: when polling for a final begins. */
+    expectedEndAt: ts("expected_end_at").notNull(),
+    polledAt: ts("polled_at"),
+    fetchedAt: ts("fetched_at").notNull().defaultNow(),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    unique("sports_games_source").on(t.source, t.sourceId),
+    index("sports_games_starts").on(t.sport, t.startsAt),
+    check("sports_games_sport_known", sql`${t.sport} in ('nfl', 'mlb', 'nba', 'nhl')`),
+    check("sports_games_status_known", sql`${t.status} in ('scheduled', 'in_progress', 'final', 'postponed', 'canceled', 'unknown')`),
+    check("sports_games_scores_together", sql`(${t.homeScore} is null) = (${t.awayScore} is null)`),
+    check("sports_games_check_together", sql`(${t.checkHomeScore} is null) = (${t.checkAwayScore} is null)`),
+    check("sports_games_final_has_scores", sql`${t.finalSeenAt} is null or ${t.homeScore} is not null`),
+  ],
+).enableRLS();
+
+/**
+ * A public question (docs/design.md 3.32): a template written for one game, from a fixed set per sport (who
+ * wins, the margin, the total, and the first drive where play-by-play is reported). Its question, terms, kind,
+ * unit, scale and close time are written once; a person starts an ordinary market from it, and the market copies
+ * everything so it stands on its own. `decided_by_score` is set when the template is written and never inferred.
+ */
+export const publicQuestions = pgTable(
+  "public_questions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    gameId: uuid("game_id")
+      .notNull()
+      .references(() => sportsGames.id),
+    /** 'home_wins' | 'margin' | 'total' | 'first_drive'. */
+    key: text("key").notNull(),
+    /** 'binary' | 'numeric' | 'categorical'. */
+    kind: text("kind").notNull(),
+    title: text("title").notNull(),
+    termsText: text("terms_text").notNull(),
+    /** The unit for a number question, the answers for a pick-one question, ['no', 'yes'] otherwise. */
+    outcomeLabels: text("outcome_labels").array().notNull(),
+    /** A number question's scoring scale, the template's (`range_source = 'template'` on the market). */
+    range: money("range"),
+    /** The number the far-off check measures against, where the question has one. */
+    typical: money("typical"),
+    /** The signed margin's offset: what is added before storing and taken off for display, half the scale. */
+    shift: money("shift"),
+    /** Whether the final score answers it, so the ballot opens on a source card and the feed is its backstop (3.35). */
+    decidedByScore: boolean("decided_by_score").notNull().default(false),
+    /** A yes-or-no question's outcomes in its own words (3.25), in the stored order. */
+    outcomeWords: text("outcome_words").array(),
+    /** The curators' order within a game. */
+    sort: smallint("sort").notNull().default(0),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    unique("public_questions_game_key").on(t.gameId, t.key),
+    check("public_questions_key_known", sql`${t.key} in ('home_wins', 'margin', 'total', 'first_drive')`),
+    check("public_questions_kind_known", sql`${t.kind} in ('binary', 'numeric', 'categorical')`),
+    check("public_questions_range_numeric", sql`(${t.kind} <> 'numeric') or (${t.range} is not null and ${t.range} > 0)`),
+    check("public_questions_outcome_words_four", sql`${t.outcomeWords} is null or array_length(${t.outcomeWords}, 1) = 4`),
+  ],
+).enableRLS();
+
+/** When each source was last read for each sport, and how it went: what the failed-feed state reads (3.32, C and D). */
+export const sportsFeedReads = pgTable(
+  "sports_feed_reads",
+  {
+    source: text("source").notNull(),
+    sport: text("sport").notNull(),
+    lastOkAt: ts("last_ok_at"),
+    lastErrorAt: ts("last_error_at"),
+    lastError: text("last_error"),
+  },
+  (t) => [primaryKey({ columns: [t.source, t.sport] })],
+).enableRLS();
+
 export const pushSubscriptions = pgTable(
   "push_subscriptions",
   {
@@ -883,7 +1025,7 @@ export const notificationLog = pgTable(
     /** What it is about: a question, or an obligation (settled, forgiven), or neither for a netting between two people. */
     dareId: uuid("dare_id").references(() => dares.id),
     obligationId: uuid("obligation_id").references(() => obligations.id),
-    kind: text("kind", { enum: ["vote_request", "result", "opened", "joined", "nudge", "deadline", "ruling", "settled", "forgiven", "netted"] }).notNull(),
+    kind: text("kind", { enum: ["vote_request", "result", "opened", "joined", "nudge", "deadline", "ruling", "settled", "forgiven", "netted", "backstop_warning", "backstop_result"] }).notNull(),
     /**
      * What makes "the same thing" the same, per kind: how many had voted (vote_request), how many were in
      * (joined), a six-hour window (nudge), 0 otherwise.

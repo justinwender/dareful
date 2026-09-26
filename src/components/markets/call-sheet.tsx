@@ -30,11 +30,12 @@ import type { Hue } from "@/lib/ui/hue";
 import { cn } from "@/lib/utils";
 import type { Signing } from "./market-actions";
 import { NumberEntry } from "./number-entry";
+import { MarginEntry } from "./margin-entry";
 import type { PickOneAnswer } from "./pick-one-bars";
 
 /** What a vote names: yes, no, nobody can tell, "n:" and the whole number on a number question, or "a:" and the answer's index on a pick-one question. */
 export type Word = "yes" | "no" | "void" | `n:${string}` | `a:${string}`;
-type Unit = { singular: string; plural: string } | null;
+type Unit = { singular: string; plural: string; margin?: { shift: string; home: string; away: string } | null } | null;
 type Answers = PickOneAnswer[] | null;
 /** The market's outcomes in its own words (3.25): the wells, or null for "Yes" and "No". */
 export type Wells = { yes: string; no: string } | null;
@@ -83,8 +84,14 @@ export type CallSheetProps = {
   } | null;
   /** An argument whose read is on its way: the screen re-reads itself for a minute. */
   awaitingProposal: boolean;
-  /** A number question: what the number counts. The sheet then takes a number where it took yes or no (3.24). */
-  numberUnit?: { singular: string; plural: string } | null;
+  /** A number question: what the number counts, and on a signed margin its shift and the two sides. The sheet then takes a number where it took yes or no (3.24). */
+  numberUnit?: { singular: string; plural: string; margin?: { shift: string; home: string; away: string } | null } | null;
+  /**
+   * A What's on question the final score answers (3.35): before the score is in, the sheet waits on it ("The final
+   * score will propose what happened.") and offers "Say it yourself" only two hours past the game's expected end;
+   * a tie the contract cannot score is said and never put to a vote, since the final score voids it with no toll.
+   */
+  feed?: { waiting: boolean; canSayYourself: boolean; tie: string | null } | null;
   /** A pick-one question: the answers, in the asker's order. The sheet then takes an answer where it took yes or no (3.24). */
   answers?: PickOneAnswer[] | null;
   /** Under the arbitrate rule, once the vote is split: the cases, and whether the app may be asked yet. */
@@ -120,6 +127,9 @@ export function CallSheet(props: CallSheetProps) {
   const [picking, setPicking] = useState(false);
   const [raised, setRaised] = useState(false);
   const [line, setLine] = useState("");
+  // "Say it yourself" (3.35): the feed is late or has nothing, and a person opens the ordinary claim.
+  const [sayingItMyself, setSayingItMyself] = useState(false);
+  const feed = props.feed ?? null;
   // Up to three photos or screenshots with the claim (3.24): evidence, seen by everyone voting, read by the model as this person's claim.
   const [shots, setShots] = useState<Array<{ file: File; preview: string }>>([]);
   const [choice, setChoice] = useState<Word | null>(null);
@@ -177,9 +187,11 @@ export function CallSheet(props: CallSheetProps) {
     }
   }
 
+  /** The stored form of a typed number: a signed margin is shifted up by half its scale before it goes anywhere. */
+  const stored = (n: bigint): bigint => (unit?.margin ? n + BigInt(unit.margin.shift) : n);
   /** The claim: what happened, in a line if there is one, then the vote that goes with it. */
   async function say() {
-    const call: Word | null = unit ? (typed !== null ? `n:${typed.toString()}` : null) : pick;
+    const call: Word | null = unit ? (typed !== null ? `n:${stored(typed).toString()}` : null) : pick;
     setProblem(null);
     if (line.trim().length >= 2 || shots.length > 0) {
       setBusy(true);
@@ -202,10 +214,16 @@ export function CallSheet(props: CallSheetProps) {
     }
     setChoice(call);
   }
-  /** The number field with the line under it, for the claim and for a dissenter (3.24). */
+  /** The number field with the line under it, for the claim and for a dissenter (3.24); the side and the figure on a signed margin. */
   const numberPanel = unit ? (
-    <NumberEntry header={null} label="What it was" value={typed} unit={unit} hue={props.me.hue} disabled={busy} onChange={(v) => setTyped(v)} />
+    unit.margin ? (
+      <MarginEntry value={typed} unit={unit} hue={props.me.hue} home={unit.margin.home} away={unit.margin.away} shift={BigInt(unit.margin.shift)} disabled={busy} onChange={(v) => setTyped(v)} />
+    ) : (
+      <NumberEntry header={null} label="What it was" value={typed} unit={unit} hue={props.me.hue} disabled={busy} onChange={(v) => setTyped(v)} />
+    )
   ) : null;
+  /** "It was Giants by 7", "It was 14 shirts": the typed number in the unit's words. */
+  const typedWords = (n: bigint) => (unit ? unitPhrase(stored(n), unit) : "");
 
   const modal = (
     <Sheet
@@ -283,7 +301,7 @@ export function CallSheet(props: CallSheetProps) {
         </div>
         <ProblemSummary messages={[choice === null ? problem : null]} />
         <Button variant="primary" onClick={say} loading={busy && choice === null} disabled={typed === null}>
-          {typed !== null ? `It was ${unitPhrase(typed, unit)}` : "Type what it was"}
+          {typed !== null ? `It was ${typedWords(typed)}` : "Type what it was"}
         </Button>
         {typed === null ? (
           // A dissent without a number is a note on the record and never a vote (3.24).
@@ -338,6 +356,36 @@ export function CallSheet(props: CallSheetProps) {
       ) : null}
     </div>
   );
+
+  // A tie the contract cannot score (3.35; docs/decisions.md, public markets): said, never put to a vote.
+  if (myVote === null && claim === null && feed?.tie) {
+    return (
+      <PinnedSheet
+        label="The final score"
+        header={<p className="text-body-strong text-ink">A tie.</p>}
+        low={<p className="text-body-sm text-ink-2">{feed.tie}</p>}
+      />
+    );
+  }
+  // Closed, waiting on the score (3.35): the final score will propose what happened; two hours past the game's
+  // expected end, "Say it yourself" opens the ordinary claim in case the feed is late or has nothing.
+  if (myVote === null && claim === null && feed?.waiting && !sayingItMyself) {
+    return (
+      <PinnedSheet
+        label="Waiting on the score"
+        header={<p className="text-body-strong text-ink">The final score will propose what happened.</p>}
+        low={
+          feed.canSayYourself ? (
+            <Button variant="tertiary" className="self-start" onClick={() => setSayingItMyself(true)}>
+              Say it yourself
+            </Button>
+          ) : (
+            <p className="text-caption text-ink-3">Once the game is over, the score goes on the ballot and everyone confirms it in a tap.</p>
+          )
+        }
+      />
+    );
+  }
 
   // Not yet known: nobody has said anything, and the app has nothing to say either.
   if (myVote === null && claim === null) {
@@ -435,7 +483,7 @@ export function CallSheet(props: CallSheetProps) {
                 loading={busy && choice === null}
                 disabled={unit ? typed === null : pick === null}
               >
-                {unit ? (typed !== null ? `It was ${unitPhrase(typed, unit)}` : "Type what it was") : pick ? `Say it: ${said(pick, unit)}` : "Pick what happened"}
+                {unit ? (typed !== null ? `It was ${typedWords(typed)}` : "Type what it was") : pick ? `Say it: ${said(pick, unit)}` : "Pick what happened"}
               </Button>
             </>
           }

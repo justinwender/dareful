@@ -1,7 +1,8 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
-import { notifyDeadline, notifyRuling } from "@/lib/notify";
+import { notifyBackstopResult, notifyBackstopWarning, notifyDeadline, notifyRuling } from "@/lib/notify";
 import { tick } from "@/lib/ledger/settle";
+import { sportsTick } from "@/lib/sports";
 import { watchRelayer } from "@/lib/chain/watch";
 
 export const dynamic = "force-dynamic";
@@ -22,13 +23,17 @@ export async function POST(req: Request): Promise<Response> {
   const ok = Boolean(secret) && secret !== undefined && given.length === secret.length && timingSafeEqual(Buffer.from(given), Buffer.from(secret));
   if (!ok) return new NextResponse(null, { status: 404 });
   const now = new Date();
-  const report = await tick(now, notifyDeadline);
-  await Promise.all(report.arbitrated.map((id) => notifyRuling(id, null)));
+  const report = await tick(now, notifyDeadline, { notifyWarning: notifyBackstopWarning });
+  await Promise.all([...report.arbitrated.map((id) => notifyRuling(id, null)), ...report.expired.map((id) => notifyBackstopResult(id))]);
   if (report.failed.length > 0) console.error("tick: some jobs failed", report.failed);
+  // What's on (src/lib/sports): the schedule, the finals, the score's proposals, and the backstop's three endings.
+  const sports = await sportsTick(now);
+  await Promise.all([...sports.settled, ...sports.voided].map((id) => notifyBackstopResult(id)));
+  if (sports.failed.length > 0) console.error("tick: some feed jobs failed", sports.failed);
   // The relayer's gas, read after the jobs so the read never delays a send; unread is reported, never thrown.
   const relayer = await watchRelayer(now).catch((err: unknown) => {
     console.error("tick: the relayer's balance could not be read", err instanceof Error ? err.message : err);
     return null;
   });
-  return NextResponse.json({ locked: report.locked.length, notified: report.notified.length, expired: report.expired.length, arbitrated: report.arbitrated.length, failed: report.failed.length, relayer });
+  return NextResponse.json({ locked: report.locked.length, notified: report.notified.length, expired: report.expired.length, arbitrated: report.arbitrated.length, warned: report.warned.length, failed: report.failed.length, feed: { synced: sports.synced, polled: sports.polled.length, proposed: sports.proposed.length, settled: sports.settled.length, voided: sports.voided.length, failed: sports.failed.length }, relayer });
 }

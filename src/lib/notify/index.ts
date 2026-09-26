@@ -13,10 +13,10 @@ import { marketById, quorumOf, tally, VOID_OUTCOME, votesOf } from "@/lib/ledger
 import { firstName } from "@/lib/ui/copy";
 import { sendEmail, sendPush } from "./channels";
 import { positionsOf } from "@/lib/ledger/markets";
-import { closedNotice, deadlineNotice, rulingNotice, joinedNotice, nettedNotice, nudgeNotice, nudgeSeq, nudgeTargets, openedNotice, recipientsAfterVote, resultNotice, voteRequest, type Notice } from "./messages";
+import { backstopResultNotice, backstopWarningNotice, closedNotice, deadlineNotice, rulingNotice, joinedNotice, nettedNotice, nudgeNotice, nudgeSeq, nudgeTargets, openedNotice, recipientsAfterVote, resultNotice, voteRequest, type Notice } from "./messages";
 
 /** Claims the (person, market, kind, count) slot; false if it was already told. This is what makes a retry silent. */
-export async function claimNotice(userId: string, dareId: string, kind: "vote_request" | "result" | "opened" | "joined" | "nudge" | "deadline" | "ruling", seq: number, causedBy: string): Promise<string | null> {
+export async function claimNotice(userId: string, dareId: string, kind: "vote_request" | "result" | "opened" | "joined" | "nudge" | "deadline" | "ruling" | "backstop_warning" | "backstop_result", seq: number, causedBy: string): Promise<string | null> {
   const [row] = await db.insert(schema.notificationLog).values({ userId, dareId, kind, seq, causedBy }).onConflictDoNothing().returning({ id: schema.notificationLog.id });
   return row?.id ?? null;
 }
@@ -188,6 +188,44 @@ export async function notifyRuling(dareId: string, askedBy: string | null): Prom
     );
   } catch (err) {
     console.error("the ruling notice failed", { dareId, err });
+  }
+}
+
+/**
+ * One warning before a backstop acts, to everyone in the question (docs/decisions.md, public markets). Caused, as
+ * the deadline notice is, by the asker's own act of setting the rule everyone then agreed to; push and email only.
+ */
+export async function notifyBackstopWarning(dareId: string, flavour: "tiebreaker" | "score" | "void"): Promise<void> {
+  try {
+    const d = await marketById(dareId);
+    if (!d || d.resolvedAt) return;
+    const positions = await positionsOf(dareId);
+    await Promise.all(
+      positions.map((p) => p.userId).filter((x): x is string => x !== null).map(async (userId) => {
+        const id = await claimNotice(userId, dareId, "backstop_warning", 0, d.creatorId);
+        if (id) await deliver(userId, id, backstopWarningNotice({ title: d.title, flavour, marketId: d.id, appUrl: APP_URL() }));
+      }),
+    );
+  } catch (err) {
+    console.error("the backstop warning failed", { dareId, err });
+  }
+}
+
+/** The notice after the final score or the void rule ended a question nobody called: everyone in it hears, once. */
+export async function notifyBackstopResult(dareId: string): Promise<void> {
+  try {
+    const d = await marketById(dareId);
+    if (!d || !d.resolvedAt || (d.resolvedBy !== "feed" && d.resolvedBy !== "expired")) return;
+    const how = d.resolvedBy === "expired" ? "expired" : d.resolvedOutcome === VOID_OUTCOME ? "feed_void" : "feed";
+    const positions = await positionsOf(dareId);
+    await Promise.all(
+      positions.map((p) => p.userId).filter((x): x is string => x !== null).map(async (userId) => {
+        const id = await claimNotice(userId, dareId, "backstop_result", 0, d.creatorId);
+        if (id) await deliver(userId, id, backstopResultNotice({ title: d.title, how, marketId: d.id, appUrl: APP_URL() }));
+      }),
+    );
+  } catch (err) {
+    console.error("the backstop notice failed", { dareId, err });
   }
 }
 

@@ -137,14 +137,17 @@ export function weightedMedian(entries: ReadonlyArray<{ stake: bigint; value: bi
   return (s[s.length - 1] as { value: bigint }).value;
 }
 
-export function numberAxis(entries: NumberEntry[], unit: { singular: string; plural: string }): NumberAxis | null {
+export function numberAxis(entries: NumberEntry[], unit: { singular: string; plural: string; margin?: { shift: string; home: string; away: string } | null }): NumberAxis | null {
+  // On a signed margin every label is the sign and the figure, never the shifted number the chain stores.
+  const shift = unit.margin ? BigInt(unit.margin.shift) : null;
+  const num = (v: bigint) => (shift === null ? withSeparators(v) : signedLabel(v, shift));
   if (entries.length === 0) return null;
   const { keep, offHigh, offLow } = splitOffAxis(entries.map((e) => e.value));
   const { lo, hi } = axisEnds(keep);
   const mode: NumberAxis["mode"] = hi - lo + 1n <= 10n ? "values" : "slices";
   const n = mode === "values" ? Number(hi - lo + 1n) : 10;
   const columns: AxisColumn[] = Array.from({ length: n }, (_, i) => ({ n: i + 1, value: mode === "values" ? lo + BigInt(i) : null, label: null, stake: 0n, heightPermille: 0, people: 0, noStake: 0 }));
-  const off = { high: offHigh === null ? null : { value: offHigh, stake: 0n, heightPermille: 0, people: 0, noStake: 0, label: `${withSeparators(offHigh)} →` }, low: offLow === null ? null : { value: offLow, stake: 0n, heightPermille: 0, people: 0, noStake: 0, label: `← ${withSeparators(offLow)}` } };
+  const off = { high: offHigh === null ? null : { value: offHigh, stake: 0n, heightPermille: 0, people: 0, noStake: 0, label: `${num(offHigh)} →` }, low: offLow === null ? null : { value: offLow, stake: 0n, heightPermille: 0, people: 0, noStake: 0, label: `← ${num(offLow)}` } };
   // Each off-axis end takes one entry only: the one whose value it is, and the first of a tie.
   let highTaken = false;
   let lowTaken = false;
@@ -171,13 +174,13 @@ export function numberAxis(entries: NumberEntry[], unit: { singular: string; plu
 
   // Labels (3.22): every column when seven or fewer per-value columns, else the two ends and the middle; across
   // slices, lo at the left, the rounded midpoint in the centre, hi at the right. The unit rides the right end only.
-  const rightEnd = (v: bigint) => `${withSeparators(v)} ${v === 1n ? unit.singular : unit.plural}`.trim();
+  const rightEnd = (v: bigint) => (shift === null ? `${withSeparators(v)} ${v === 1n ? unit.singular : unit.plural}`.trim() : unitPhrase(v, unit));
   if (mode === "values") {
     const mid = Math.floor((n - 1) / 2);
     for (const c of columns) {
       const v = c.value as bigint;
       const last = c.n === n;
-      if (n <= 7 || c.n === 1 || c.n === n || c.n - 1 === mid) c.label = last ? rightEnd(v) : withSeparators(v);
+      if (n <= 7 || c.n === 1 || c.n === n || c.n - 1 === mid) c.label = last ? rightEnd(v) : num(v);
     }
   } else {
     (columns[0] as AxisColumn).label = withSeparators(lo);
@@ -273,7 +276,21 @@ export function ruler(pins: Array<{ id: string; value: bigint }>, answer: bigint
   };
 }
 
-/** "14 shirts", "1 shirt", "1,240 people": the number with the form of the unit that matches (3.26). */
-export function unitPhrase(n: bigint, unit: { singular: string; plural: string }): string {
+/**
+ * "14 shirts", "1 shirt", "1,240 people": the number with the form of the unit that matches (3.26). On a signed
+ * margin the stored number is shifted, and the phrase is the sides' words: "Giants by 7", "Titans by 3", "Level".
+ */
+export function unitPhrase(n: bigint, unit: { singular: string; plural: string; margin?: { shift: string; home: string; away: string } | null }): string {
+  if (unit.margin) {
+    const signed = n - BigInt(unit.margin.shift);
+    if (signed === 0n) return "Level";
+    return signed > 0n ? `${unit.margin.home} by ${withSeparators(signed)}` : `${unit.margin.away} by ${withSeparators(-signed)}`;
+  }
   return `${withSeparators(n)} ${n === 1n ? unit.singular : unit.plural}`.trim();
+}
+
+/** A column's or a pin's short label on a signed margin: the sign and the number, never a shifted figure. */
+export function signedLabel(n: bigint, shift: bigint): string {
+  const signed = n - shift;
+  return signed > 0n ? `+${withSeparators(signed)}` : signed < 0n ? `-${withSeparators(-signed)}` : "0";
 }

@@ -144,6 +144,14 @@ async function removeEverything(): Promise<void> {
       await tx.delete(schema.obligations).where(inArray(schema.obligations.originId, ids));
       await tx.delete(D).where(inArray(D.id, ids));
     }
+    // Games and public questions a test made (their source ids start with "test:"), once nothing rides on them.
+    const testGames = (await tx.select({ id: schema.sportsGames.id }).from(schema.sportsGames).where(like(schema.sportsGames.sourceId, "test:%"))).map((g) => g.id);
+    if (testGames.length) {
+      const templates = (await tx.select({ id: schema.publicQuestions.id }).from(schema.publicQuestions).where(inArray(schema.publicQuestions.gameId, testGames))).map((t) => t.id);
+      if (templates.length) await tx.update(D).set({ templateId: null }).where(inArray(D.templateId, templates));
+      await tx.delete(schema.publicQuestions).where(inArray(schema.publicQuestions.gameId, testGames));
+      await tx.delete(schema.sportsGames).where(inArray(schema.sportsGames.id, testGames));
+    }
     if (u.length) {
       await tx.delete(schema.codeAttempts).where(inArray(schema.codeAttempts.userId, u));
       await tx.delete(schema.deviceStates).where(inArray(schema.deviceStates.userId, u));

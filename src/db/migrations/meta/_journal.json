@@ -169,6 +169,13 @@
       "when": 1790447466781,
       "tag": "0023_answer_people",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1790455906885,
+      "tag": "0024_whats_on",
+      "breakpoints": true
     }
   ]
 }

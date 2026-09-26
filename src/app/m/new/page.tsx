@@ -5,6 +5,8 @@ import { currentUser } from "@/lib/auth/session";
 import { denominationsForGroup } from "@/lib/ledger/denominations";
 import { peopleForUser, peopleSetsFor } from "@/lib/ledger/groups";
 import { openInksByGroup, recentCompanions } from "@/lib/ledger/markets";
+import { templateById } from "@/lib/sports";
+import { clockOf, closesLabel } from "@/lib/ui/copy";
 import { stickersOf } from "@/lib/media/marks";
 import { storageConfigured } from "@/lib/media/storage";
 import { setCaption } from "@/lib/ui/copy";
@@ -14,7 +16,7 @@ import { viewerClock } from "@/lib/ui/zone";
 export const dynamic = "force-dynamic";
 
 /** Asking: the question, who's in, then the terms (docs/design.md 3.20, section 7). */
-export default async function AskPage({ searchParams }: { searchParams: Promise<{ line?: string; pace?: string }> }) {
+export default async function AskPage({ searchParams }: { searchParams: Promise<{ line?: string; pace?: string; template?: string }> }) {
   const me = await currentUser();
   if (!me) redirect("/");
   const sp = await searchParams;
@@ -26,6 +28,21 @@ export default async function AskPage({ searchParams }: { searchParams: Promise<
   const rank = new Map(recent.map((id, i) => [id, i]));
   const people = [...known].sort((a, b) => (rank.get(a.user.id) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b.user.id) ?? Number.MAX_SAFE_INTEGER) || a.user.displayName.localeCompare(b.user.displayName));
   const now = new Date(clock.now);
+  // A public question (docs/design.md 3.33): the flow starts at who's in with the wording locked; a game that has started is no longer askable.
+  const fromWhatsOn = sp.template && /^[0-9a-f-]{36}$/i.test(sp.template) ? await templateById(sp.template) : null;
+  const template =
+    fromWhatsOn && fromWhatsOn.game.startsAt.getTime() > now.getTime() && fromWhatsOn.game.timeValid
+      ? {
+          id: fromWhatsOn.template.id,
+          title: fromWhatsOn.template.title,
+          terms: fromWhatsOn.template.termsText,
+          kind: fromWhatsOn.template.kind as "binary" | "numeric" | "categorical",
+          gameName: fromWhatsOn.game.name,
+          closes: `${closesLabel(fromWhatsOn.game.startsAt, now, clock.zone)} at ${clockOf(fromWhatsOn.game.startsAt, clock.zone)}`,
+          decidedByScore: fromWhatsOn.template.decidedByScore,
+          scored: fromWhatsOn.template.kind === "numeric" && fromWhatsOn.template.range !== null ? `Off by ${fromWhatsOn.template.range} ${fromWhatsOn.template.range === 1n ? fromWhatsOn.template.outcomeLabels[0] : fromWhatsOn.template.outcomeLabels[1]} or more scores nothing. Closer scores more.` : null,
+        }
+      : null;
   const taken = await openInksByGroup(sets.slice(0, 6).map((s) => s.groupId));
   const options = await Promise.all(
     sets.slice(0, 6).map(async (s, i) => ({
@@ -41,5 +58,5 @@ export default async function AskPage({ searchParams }: { searchParams: Promise<
   );
   // The form owns the screen (docs/design.md 3.29): a picked mark retints the band, the ground and the sheet, so the room is the form's to paint.
   const stickers = await stickersOf(me.id);
-  return <AskForm chrome={<TopBar back title={pace === "argument" ? "Settle an argument" : "Ask something"} />} me={{ id: me.id, name: me.displayName, hue: hueFor(me.id) }} sets={options} people={people.map((p) => ({ id: p.user.id, name: p.user.displayName, hue: hueFor(p.user.id) }))} initialLine={sp.line} initialPace={pace} stickers={stickers} canPaste={storageConfigured()} />;
+  return <AskForm chrome={<TopBar back title={template ? "Ask your friends" : pace === "argument" ? "Settle an argument" : "Ask something"} />} me={{ id: me.id, name: me.displayName, hue: hueFor(me.id) }} sets={options} people={people.map((p) => ({ id: p.user.id, name: p.user.displayName, hue: hueFor(p.user.id) }))} initialLine={sp.line} initialPace={template ? "dare" : pace} stickers={stickers} canPaste={storageConfigured()} template={template} />;
 }

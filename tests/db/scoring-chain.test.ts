@@ -20,6 +20,19 @@ test("scores agree with the deployed contract across the whole probability range
   }
 });
 
+test("the deployed contract cannot score a yes-or-no market at the middle: a tie cannot resolve to 5000 until the redeploy, and the mirror refuses it too", async () => {
+  const { dares } = contracts();
+  const { publicClient } = relayer();
+  // The owner's who-wins question would score a tie as the exact middle (docs/decisions.md, public markets). The
+  // deployed contract's scoring takes 0 or 1 and its resolve and arbitrate paths refuse anything else, so until
+  // the redeploy an NFL tie goes unsettled with no toll, and the middle outcome is on the redeploy list.
+  for (const outcome of [2n, 5000n, 10_000n]) {
+    await assert.rejects(publicClient.readContract({ address: dares.address, abi: dares.abi, functionName: "scoreBinary", args: [5000n, outcome] }), /BadOutcome/, `outcome ${outcome} is refused by the contract`);
+    assert.throws(() => scoreBinary(5000n, outcome), RangeError, `outcome ${outcome} is refused by the mirror`);
+  }
+  assert.equal(BigInt(await publicClient.readContract({ address: dares.address, abi: dares.abi, functionName: "scoreBinary", args: [5000n, 1n] })), 7500n, "the two outcomes it does score");
+});
+
 test("pairwise transfers agree with the deployed contract, including where truncation bites", async () => {
   const { dares } = contracts();
   const { publicClient } = relayer();
