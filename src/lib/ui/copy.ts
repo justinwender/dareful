@@ -127,3 +127,15 @@ export function lockedLabel(at: Date, now: Date, timeZone: string): string {
   if (dayNumber(now, timeZone) === dayNumber(at, timeZone)) return `Locked at ${clockOf(at, timeZone)}`;
   return `Locked ${at.toLocaleDateString("en-US", { timeZone, weekday: "short", month: "short", day: "numeric" })}`;
 }
+
+/**
+ * "Add yours from Friday" (docs/design.md 3.25): the night a settled question belongs to, as a weekday while it is
+ * still this week, "tonight" on the day, and "that night" once a weekday would be ambiguous. In the viewer's zone.
+ */
+export function fromThatNight(settledAt: Date, now: Date, timeZone: string): string {
+  const days = dayNumber(now, timeZone) - dayNumber(settledAt, timeZone);
+  if (days <= 0) return "tonight";
+  if (days === 1) return "last night";
+  if (days < 7) return settledAt.toLocaleDateString("en-US", { timeZone, weekday: "long" });
+  return "that night";
+}

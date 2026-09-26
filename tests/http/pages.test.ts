@@ -16,6 +16,7 @@ import * as markets from "@/lib/ledger/markets";
 import { marketTile } from "@/lib/ledger/share";
 import { INKS, inkOf } from "@/lib/ui/ink";
 import { thumbKey } from "@/lib/media";
+import { stickerStampKey } from "@/lib/media/marks";
 import { putObject, removeObjects, storageConfigured } from "@/lib/media/storage";
 import sharp from "sharp";
 import { cleanup, cover, ghost, tempSigner, tempUser, track, type Signer, type User } from "../db/fixture";
@@ -52,6 +53,8 @@ let cA: string, cB: string, cU: string;
 let gabe: string, linkToken: string, inviteToken: string, groupId: string, boundId: string, ghostCoverId: string;
 let asker: Signer, friend: Signer, stranger: Signer, cAsker: string, cFriend: string, cStranger: string, marketId: string, draftId: string, owedId: string, photoId: string, settledMarketId: string, mintedId: string;
 let numberId: string, aiScaleId: string, blindNumberId: string, answeredId: string;
+let memoryIds: string[] = [], evidenceOnSettledId: string, evidenceId: string, evidenceMarketId: string, stickerId: string, stickerMarketId: string;
+const bucketKeys: string[] = [];
 
 before(async () => {
   const up = await fetch(BASE).catch(() => null);
@@ -136,9 +139,41 @@ before(async () => {
   await db.update(schema.darePositions).set({ score: 10000 }).where(and(eq(schema.darePositions.dareId, done.id), eq(schema.darePositions.userId, asker.user.id)));
   await db.update(schema.darePositions).set({ score: 9000 }).where(and(eq(schema.darePositions.dareId, done.id), eq(schema.darePositions.userId, friend.user.id)));
   answeredId = done.id;
+
+  // The memory it leaves (docs/marks-and-memories.md): two photos on the answered question, the asker's first, then the friend's
+  // three weeks on; and a screenshot attached to it while it was being called, which is evidence and never the frame's.
+  const tiny = async () => sharp({ create: { width: 8, height: 8, channels: 3, background: { r: 60, g: 40, b: 30 } } }).jpeg().toBuffer();
+  const mem = async (authorId: string, minutesAgo: number) => {
+    const [row] = await db.insert(schema.media).values({ dareId: done.id, kind: "photo", role: "memory", storageKey: "frames/check.jpg", width: 810, height: 1080, authorId, createdAt: new Date(Date.now() - minutesAgo * 60_000) }).returning({ id: schema.media.id });
+    return (row as { id: string }).id;
+  };
+  memoryIds = [await mem(asker.user.id, 50), await mem(friend.user.id, 5)];
+  evidenceOnSettledId = ((await db.insert(schema.media).values({ dareId: done.id, kind: "photo", role: "evidence", storageKey: "frames/check.jpg", width: 800, height: 500, authorId: asker.user.id, createdAt: new Date(Date.now() - 90 * 60_000) }).returning({ id: schema.media.id }))[0] as { id: string }).id;
+  if (storageConfigured()) for (const id of memoryIds) { await putObject(thumbKey(id), await tiny(), "image/jpeg"); bucketKeys.push(thumbKey(id)); }
+
+  // A question being called with a screenshot attached by the claimant, the app's read of it written, and the claimant's vote in.
+  const evDraft = await ask("Did the kettle boil dry?");
+  const ev = await markets.openMarket(evDraft.id, asker.user.id, await asker.ledger.signTypedData(markets.createTypedData(evDraft)));
+  await markets.enterMarket({ dareId: ev.id, userId: asker.user.id, stake: 600n, value: 8000n, signature: await asker.ledger.signTypedData(markets.enterTypedData(ev, 600n, 8000n)) });
+  await markets.enterMarket({ dareId: ev.id, userId: friend.user.id, stake: 600n, value: 3000n, signature: await friend.ledger.signTypedData(markets.enterTypedData(ev, 600n, 3000n)) });
+  await db.update(schema.dares).set({ lockedAt: new Date(Date.now() - 600_000), aiOutcome: 1n, aiConfidenceBps: 8000, aiRationale: "The screenshot Priya supplied shows the kettle's base scorched.", aiProposedAt: new Date() }).where(eq(schema.dares.id, ev.id));
+  await db.insert(schema.dareStatements).values({ dareId: ev.id, userId: asker.user.id, kind: "update", statement: "Scorched the base. Photo attached." });
+  await db.insert(schema.dareVotes).values({ dareId: ev.id, userId: asker.user.id, outcome: 1n, signature: Buffer.alloc(65) });
+  evidenceId = ((await db.insert(schema.media).values({ dareId: ev.id, kind: "photo", role: "evidence", storageKey: "frames/check.jpg", width: 800, height: 500, authorId: asker.user.id }).returning({ id: schema.media.id }))[0] as { id: string }).id;
+  evidenceMarketId = ev.id;
+
+  // A sticker of the asker's, worn by a question in the group (docs/design.md 3.28).
+  const [sticker] = await db.insert(schema.pictureMarks).values({ ownerId: asker.user.id, kind: "sticker", sourceKey: "stickers/check.png", stampKey: "stamps/check.png", width: 512, height: 512, ink: "sea" }).returning({ id: schema.pictureMarks.id });
+  stickerId = (sticker as { id: string }).id;
+  await db.update(schema.pictureMarks).set({ stampKey: stickerStampKey(stickerId), sourceKey: `stickers/${stickerId}.png` }).where(eq(schema.pictureMarks.id, stickerId));
+  if (storageConfigured()) { await putObject(stickerStampKey(stickerId), await sharp({ create: { width: 8, height: 8, channels: 4, background: { r: 40, g: 170, b: 165, alpha: 1 } } }).png().toBuffer(), "image/png"); bucketKeys.push(stickerStampKey(stickerId)); }
+  const stDraft = await markets.draftMarket({ creatorId: asker.user.id, groupId: mg.id, denomId: usd.id, title: "Does the sticker ride the band?", termsText: "Yes if it does.", resolvesBy: new Date(Date.now() + 86_400_000), mark: { kind: "sticker", id: stickerId } });
+  const st = await markets.openMarket(stDraft.id, asker.user.id, await asker.ledger.signTypedData(markets.createTypedData(stDraft)));
+  await markets.enterMarket({ dareId: st.id, userId: asker.user.id, stake: 500n, value: 7000n, signature: await asker.ledger.signTypedData(markets.enterTypedData(st, 500n, 7000n)) });
+  stickerMarketId = st.id;
 });
 after(async () => {
-  if (storageConfigured() && photoId) await removeObjects([thumbKey(photoId)]);
+  if (storageConfigured()) await removeObjects([...(photoId ? [thumbKey(photoId)] : []), ...bucketKeys]);
   await cleanup();
 });
 
@@ -659,7 +694,7 @@ test("a market in voting can be watched: its pulse is Postgres only, answers the
   assert.equal(r.status, 200);
   const body = (await r.json()) as { pulse: string; resolved: boolean };
   assert.equal(body.resolved, false);
-  assert.match(body.pulse, /^v\[\] s\[\] r0 p0$/, "nothing said, nothing voted");
+  assert.match(body.pulse, /^v\[\] s\[\] e\[\] r0 p0$/, "nothing said, nothing voted, nothing attached");
   assert.equal(r.headers.get("cache-control"), "no-store");
   await markets.sayWhatHappened(numberId, friend.user.id, "14, then a seam gave out");
   const again = (await (await fetch(`${BASE}/api/m/${numberId}/pulse`, { headers: { cookie: `dareful_session=${cFriend}` } })).json()) as { pulse: string };
@@ -696,6 +731,74 @@ test("a number question's asking tile is drawn, and differs from a yes-or-no que
   assert.ok(plain?.kind === "ask" && plain.unit === null, "a yes-or-no question's tile has no unit: the odds line");
   const result = await marketTile(answeredId);
   assert.ok(result?.kind === "number" && result.outcomeLine === "14 shirts." && result.ruler.leftLabel === "12" && result.ruler.rightLabel === "14 shirts" && result.ruler.pins.some((p) => p.closest), "the answer, the ruler, whoever was closest ringed");
+});
+
+// ------------------------------------------------------------------------------------------------ media
+
+test("a settled question shows its memories in the frame with the credit and the counter, its evidence nowhere, and Add yours only to someone who was in it", async () => {
+  const r = await get(`/m/${answeredId}`, cAsker);
+  assert.equal(r.status, 200);
+  assert.ok(r.html.includes("data-media-frame"), "the frame (3.8, 3.25)");
+  assert.ok(r.html.includes(`/api/media/${memoryIds[0]}"`) && r.html.includes("Photo 1 of 2, added by Priya"), "the first photo added is the frame, credited by first name");
+  assert.ok(r.html.includes(`/api/media/${memoryIds[1]}?size=thumb`), "the second is a square in the strip");
+  assert.ok(r.text.includes("1 / 2"), "the counter");
+  assert.ok(!r.html.includes(evidenceOnSettledId), "a screenshot that was attached to what happened is not a memory of the night, and never in the frame");
+  assert.ok(r.text.includes("Add yours from"), "the tertiary under the outcome, for someone who was in it");
+  const outsider = await get(`/m/${answeredId}`, cStranger);
+  assert.ok(!outsider.html.includes(memoryIds[0] ?? "x"), "someone outside the group gets neither the story nor its photos");
+});
+
+test("a market's photo is served to its participants and reads as nothing to anyone else; the story on a person view carries the frame", async () => {
+  const id = memoryIds[0] ?? "";
+  assert.equal((await get(`/api/media/${id}`)).status, 404, "signed out: nothing");
+  assert.equal((await get(`/api/media/${id}?size=thumb`, cStranger)).status, 404, "someone else signed in: nothing, not even that it exists");
+  const party = await get(`/api/media/${id}?size=thumb`, cFriend);
+  if (storageConfigured()) {
+    assert.equal(party.status, 302, "the other participant is sent to the photo");
+    assert.match(party.loc ?? "", /\/storage\/v1\/object\/sign\/media\/thumbs\//, "a signed URL into the private bucket");
+  } else {
+    assert.equal(party.status, 503);
+  }
+  const timeline = await get(`/p/${friend.user.id}`, cAsker);
+  assert.equal(timeline.status, 200);
+  assert.ok(timeline.html.includes("data-media-frame") && timeline.html.includes(`/api/media/${id}"`) && timeline.html.includes("data-media-counter"), "the story in a timeline carries the frame at 180 (3.4)");
+});
+
+test("a screenshot attached to what happened sits on the claim card and in the sheet, and the app's read of it says who supplied it", async () => {
+  const r = await get(`/m/${evidenceMarketId}`, cFriend);
+  assert.equal(r.status, 200);
+  const shots = r.html.match(new RegExp(`data-evidence="${evidenceId}"`, "g")) ?? [];
+  assert.ok(shots.length >= 2, `the claim card's 72px clip and the sheet's attached list (3.25): found ${shots.length}`);
+  assert.ok(r.html.includes(`width="72"`), "the clip on the claim card is 72px");
+  assert.ok(!r.html.includes("data-media-frame"), "no frame on a question being called: evidence is not a memory");
+  assert.ok(r.text.includes("The screenshot Priya supplied"), "the read names who supplied what");
+});
+
+test("a sticker mark rides the band behind its own door: seen by its owner and the group, nothing to anyone else", async () => {
+  const r = await get(`/m/${stickerMarketId}`, cFriend);
+  assert.equal(r.status, 200);
+  assert.ok(r.html.includes(`/api/mark/${stickerId}?size=stamp`) && r.html.includes('data-mark="sticker"'), "the 256 derivative with its edge, fit to the stamp (1.7, 3.9)");
+  assert.equal((await get(`/api/mark/${stickerId}`)).status, 404, "signed out");
+  assert.equal((await get(`/api/mark/${stickerId}?size=stamp`, cStranger)).status, 404, "outside the group: not even that it exists");
+  if (storageConfigured()) {
+    assert.equal((await get(`/api/mark/${stickerId}?size=stamp`, cFriend)).status, 302, "in a group where a question wears it");
+    assert.equal((await get(`/api/mark/${stickerId}?size=stamp`, cAsker)).status, 302, "its owner");
+  }
+  const ask = await get("/m/new", cAsker);
+  assert.ok(ask.html.includes(stickerId), "the ask screen carries this person's stickers for the picker (3.29)");
+  assert.ok(!(await get("/m/new", cStranger)).html.includes(stickerId), "and nobody else's");
+});
+
+test("a result tile for a question with photos says there are photos and never carries one", async () => {
+  const withPhotos = await marketTile(answeredId);
+  assert.ok(withPhotos?.kind === "number" && withPhotos.photos === true, "the line is a reason to tap through");
+  const without = await marketTile(settledMarketId);
+  assert.ok(without?.kind === "called" && without.photos === false);
+  const asJson = JSON.stringify(withPhotos);
+  assert.ok(!asJson.includes("/api/media") && !memoryIds.some((id) => asJson.includes(id)) && !asJson.includes("storage/v1"), "nothing on the tile can fetch a photo: a preview lands in chats with people outside the market");
+  const tile = await get(`/m/${answeredId}/opengraph-image`);
+  assert.equal(tile.status, 200);
+  assert.equal(tile.type, "image/png");
 });
 
 // ------------------------------------------------------------------------------------------------ dates

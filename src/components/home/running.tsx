@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { MarkStamp } from "@/components/ledger/mark-stamp";
+import { MarkRefStamp } from "@/components/ledger/mark-stamp";
 import { StateMark } from "@/components/ledger/state-mark";
 import { LinkPending } from "@/components/ui/link-pending";
 import type { RunningRow } from "@/lib/ledger/home";
@@ -20,7 +20,7 @@ export function Running({ rows, viewerId }: { rows: RunningRow[]; viewerId: stri
         {rows.map((r, i) => (
           <Link prefetch={false} key={r.id} href={`/m/${r.id}`} className={`relative grid items-center gap-3 px-4 py-[14px] ${r.mark ? "grid-cols-[40px_minmax(0,1fr)]" : "grid-cols-[minmax(0,1fr)]"} ${i > 0 ? "border-t border-line" : ""}`}>
             <LinkPending />
-            {r.mark ? <MarkStamp kind="emoji" value={r.mark} size={40} ink={r.ink} /> : null}
+            <MarkRefStamp mark={r.mark} size={40} ink={r.ink} />
             <span className="flex min-w-0 flex-col gap-1">
               <span className="text-serif-m text-ink">{r.title}</span>
               <span className="flex items-center gap-2 text-caption text-ink-3">

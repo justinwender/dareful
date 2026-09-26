@@ -3,18 +3,19 @@
 import { useState, useTransition } from "react";
 import { Avatar } from "@/components/ledger/avatar";
 import { Chip } from "@/components/ledger/chip";
-import { MarkStamp } from "@/components/ledger/mark-stamp";
+import { MarkRefStamp } from "@/components/ledger/mark-stamp";
 import { ProblemSummary } from "@/components/ledger/problem";
 import { Button } from "@/components/ui/button";
 import { joinMarketAction } from "@/lib/actions/join";
 import type { Hue } from "@/lib/ui/hue";
+import type { MarkRef } from "@/lib/ui/mark";
 
 export type InvitePreviewData = {
   dareId: string;
   inviter: { name: string; hue: Hue };
   groupLabel: string | null;
   question: string;
-  mark: string | null;
+  mark: MarkRef | null;
   /** "Four friends are in". Words, never who: someone outside never sees who is in. */
   countLine: string | null;
   decidesLine: string | null;
@@ -44,7 +45,7 @@ export function InvitePreview({ data, viewerName }: { data: InvitePreviewData; v
           {data.groupLabel ? <Chip>{data.groupLabel}</Chip> : null}
         </div>
         <h1 className="flex items-start gap-3 text-serif-l text-ink">
-          {data.mark ? <MarkStamp kind="emoji" value={data.mark} size={44} /> : null}
+          <MarkRefStamp mark={data.mark} size={44} />
           <span>{data.question}</span>
         </h1>
         {data.countLine ? <p className="text-body-sm text-ink-2">{data.countLine}</p> : null}

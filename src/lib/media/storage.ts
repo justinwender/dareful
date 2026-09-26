@@ -32,7 +32,7 @@ function headers(key: string, extra: Record<string, string> = {}): Record<string
 }
 
 /** Writes one object. A key is written once; a second write to the same key is refused, never overwritten. */
-export async function putObject(key: string, bytes: Buffer, contentType: string): Promise<void> {
+export async function putObject(key: string, bytes: Buffer, contentType: "image/jpeg" | "image/png"): Promise<void> {
   const { url, key: secret } = config();
   const res = await fetch(`${url}/storage/v1/object/${BUCKET}/${key}`, {
     method: "POST",
@@ -54,6 +54,18 @@ export async function signedUrl(key: string, seconds: number = SIGNED_URL_SECOND
   const json = (await res.json()) as { signedURL?: string };
   if (!json.signedURL) throw new Error(`storage sign ${key}: no url in the answer`);
   return `${url}/storage/v1${json.signedURL}`;
+}
+
+/**
+ * Reads one private object, for the server's own use: the tile renderer drawing a sticker mark, and the model
+ * reading a screenshot attached to what happened. Never handed to a browser; a person's view goes through the
+ * signed URL above.
+ */
+export async function getObject(key: string): Promise<Buffer> {
+  const { url, key: secret } = config();
+  const res = await fetch(`${url}/storage/v1/object/authenticated/${BUCKET}/${key}`, { headers: headers(secret) });
+  if (!res.ok) throw new Error(`storage get ${key}: ${res.status}`);
+  return Buffer.from(await res.arrayBuffer());
 }
 
 /** Removes objects, for a write that half succeeded. Never called for anything a person can see. */

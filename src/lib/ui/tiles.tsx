@@ -32,7 +32,10 @@ export type AskTile = {
   kind: "ask";
   asker: { name: string; hue: Hue };
   frame: string;
+  /** An emoji mark, drawn as text with the emoji font. */
   mark: string | null;
+  /** A sticker mark: its 256px derivative with the die-cut edge, as a data URL, drawn as an image (3.28). */
+  markImage: string | null;
   ink: InkName;
   closes: string | null;
   /** A number question: the empty field with the unit in serif stands where the odds line would (3.27). */
@@ -41,7 +44,10 @@ export type AskTile = {
 export type CalledTile = {
   kind: "called";
   mark: string | null;
+  markImage: string | null;
   ink: InkName;
+  /** Whether the market has photos. The tile says so and never shows one (docs/decisions.md, the media phase). */
+  photos: boolean;
   outcome: 0 | 1;
   outcomeLine: string;
   pins: Array<{ name: string; hue: Hue; percent: number; caller: boolean }>;
@@ -51,7 +57,9 @@ export type CalledTile = {
 export type NumberTile = {
   kind: "number";
   mark: string | null;
+  markImage: string | null;
   ink: InkName;
+  photos: boolean;
   /** "14 shirts." */
   outcomeLine: string;
   ruler: { leftLabel: string; rightLabel: string; answerPermille: number; pins: Array<{ name: string; hue: Hue; xPermille: number; closest: boolean }> };
@@ -60,6 +68,39 @@ export type NumberTile = {
 export type Tile = AskTile | CalledTile | NumberTile;
 
 const initial = (name: string) => name.trim().charAt(0).toUpperCase();
+
+/** What a market's mark says on a tile when it has photos: a reason to tap through, never the photo itself. */
+export const PHOTOS_LINE = "With photos from that night.";
+
+/** The mark's own box: an emoji as text, or a sticker as its derivative fit to 80% of the box (1.7). Nothing for no mark. */
+function markBox(t: { mark: string | null; markImage: string | null }, size: number, glyph: number, ground: string) {
+  if (!t.mark && !t.markImage) return null;
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: size, height: size, borderRadius: Math.round(size * 0.18), background: ground, fontSize: glyph, lineHeight: 1 }}>
+      {t.markImage ? (
+        // The renderer draws elements to a PNG; there is no page for next/image to optimise for.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={t.markImage} width={Math.round(size * 0.8)} height={Math.round(size * 0.8)} style={{ objectFit: "contain" }} alt="" />
+      ) : (
+        t.mark
+      )}
+    </div>
+  );
+}
+
+/** A bare mark at a glyph size on the asking tile's odds line: the sticker drawn at that size, the emoji as text. */
+function bareMark(t: { mark: string | null; markImage: string | null }, size: number, opacity: number) {
+  return (
+    <div style={{ display: "flex", fontSize: size, opacity, lineHeight: 1 }}>
+      {t.markImage ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={t.markImage} width={size} height={size} style={{ objectFit: "contain" }} alt="" />
+      ) : (
+        t.mark
+      )}
+    </div>
+  );
+}
 
 function avatar(name: string, hue: Hue, size: number, ring?: string) {
   // The renderer refuses a style key set to undefined, so the ring is added only when there is one.
@@ -165,9 +206,7 @@ function ask(t: AskTile) {
       {t.unit !== null ? (
         // A number question's empty answer: the 88px mark stamp, an empty 210 by 96 field with a cream caret, and the unit in serif.
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 24, height: 110 }}>
-          {t.mark ? (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 88, height: 88, borderRadius: 16, background: layers.ground, fontSize: 56, lineHeight: 1 }}>{t.mark}</div>
-          ) : null}
+          {markBox(t, 88, 56, layers.ground)}
           <div style={{ display: "flex", alignItems: "center", width: 210, height: 96, borderRadius: 16, background: layers.ground, paddingLeft: 28 }}>
             <div style={{ display: "flex", width: 4, height: 56, background: CREAM, borderRadius: 2 }} />
           </div>
@@ -175,7 +214,7 @@ function ask(t: AskTile) {
         </div>
       ) : (
         <>
-      {t.mark ? (
+      {t.mark || t.markImage ? (
         <div
           style={{
             display: "flex",
@@ -184,19 +223,8 @@ function ask(t: AskTile) {
             height: 110,
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              fontSize: 36,
-              opacity: 0.35,
-              lineHeight: 1,
-            }}
-          >
-            {t.mark}
-          </div>
-          <div style={{ display: "flex", fontSize: 100, lineHeight: 1 }}>
-            {t.mark}
-          </div>
+          {bareMark(t, 36, 0.35)}
+          {bareMark(t, 100, 1)}
         </div>
       ) : null}
       <div style={{ display: "flex", gap: 8 }}>
@@ -254,23 +282,7 @@ function called(t: CalledTile) {
       key="outcome"
       style={{ display: "flex", alignItems: "center", gap: 24 }}
     >
-      {t.mark ? (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 88,
-            height: 88,
-            borderRadius: 16,
-            background: layers.ground,
-            fontSize: 56,
-            lineHeight: 1,
-          }}
-        >
-          {t.mark}
-        </div>
-      ) : null}
+      {markBox(t, 88, 56, layers.ground)}
       <div style={{ display: "flex", fontFamily: "Young Serif", fontSize: 76 }}>
         {t.outcomeLine}
       </div>
@@ -381,7 +393,18 @@ function called(t: CalledTile) {
     >
       {t.line}
     </div>,
+    ...photosLine(t, layers.hi),
   ]);
+}
+
+/** The line that says there are photos, on a result tile only; the photo itself never leaves the door (docs/decisions.md, the media phase). */
+function photosLine(t: { photos: boolean }, color: string): React.ReactNode[] {
+  if (!t.photos) return [];
+  return [
+    <div key="photos" style={{ display: "flex", fontSize: 30, fontWeight: 600, color, justifyContent: "center", width: SAFE.w }}>
+      {PHOTOS_LINE}
+    </div>,
+  ];
 }
 
 /** A number question's result tile without a photo: the mark and the answer on one line, the ruler with the cream answer tick, and who was closest. */
@@ -392,9 +415,7 @@ function numberTile(t: NumberTile) {
   const w = SAFE.w - inset * 2;
   return frame(t.ink, [
     <div key="outcome" style={{ display: "flex", alignItems: "center", gap: 24 }}>
-      {t.mark ? (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 88, height: 88, borderRadius: 16, background: layers.ground, fontSize: 56, lineHeight: 1 }}>{t.mark}</div>
-      ) : null}
+      {markBox(t, 88, 56, layers.ground)}
       <div style={{ display: "flex", fontFamily: "Young Serif", fontSize: 72 }}>{t.outcomeLine}</div>
     </div>,
     <div key="ruler" style={{ display: "flex", flexDirection: "column", width: SAFE.w, gap: 14 }}>
@@ -415,6 +436,7 @@ function numberTile(t: NumberTile) {
     <div key="who" style={{ display: "flex", fontSize: 34, fontWeight: 600, textAlign: "center", justifyContent: "center", width: SAFE.w }}>
       {t.line}
     </div>,
+    ...photosLine(t, layers.hi),
   ]);
 }
 

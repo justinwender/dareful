@@ -17,7 +17,8 @@
  */
 import { randomUUID } from "node:crypto";
 import { drawable, emojiInk } from "@/lib/ui/emoji-ink";
-import { inkFor, inkOf, type InkName } from "@/lib/ui/ink";
+import { inkFor, inkOf, isInkName, type InkName } from "@/lib/ui/ink";
+import { pictureMarkById } from "@/lib/media/marks";
 import { and, asc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { decodeEventLog, keccak256, stringToHex, verifyTypedData, type Address, type Hex } from "viem";
 import { db, schema } from "@/db";
@@ -170,6 +171,8 @@ export function voteTypedData(d: DareRow, outcome: bigint) {
 
 // ------------------------------------------------------------------------------------------------ creating
 
+export type MarkInput = { kind: "emoji"; value: string } | { kind: "sticker"; id: string };
+
 export type DraftInput = {
   /** Made by the client on the question step, so the ink previewed there is the one stored; a fresh one otherwise. */
   id?: string;
@@ -186,7 +189,8 @@ export type DraftInput = {
   mode?: "quick" | "careful";
   stalemate?: "arbitrate" | "void";
   revealMode?: "open" | "blind";
-  markEmoji?: string | null;
+  /** An emoji (drawable by the tile renderer) or one of the creator's own stickers. */
+  mark?: MarkInput | null;
   /** The asker's IANA zone, for the absolute close time on the link tile (docs/design.md 3.27). */
   zone?: string | null;
   /** Yes-or-no by default. A number market carries its unit and its scoring scale (docs/design.md 3.26). */
@@ -224,9 +228,12 @@ export async function draftMarket(input: DraftInput): Promise<DareRow> {
     .select({ n: sql<number>`count(*)::int` })
     .from(schema.groupMembers)
     .where(and(eq(schema.groupMembers.groupId, input.groupId), isNotNull(schema.groupMembers.userId), isNull(schema.groupMembers.leftAt)));
-  const mark = input.markEmoji?.trim() || null;
+  const emoji = input.mark?.kind === "emoji" ? input.mark.value.trim() || null : null;
   // A mark the tile renderer's font cannot draw would be a blank box in the group chat (docs/design.md 1.8).
-  if (mark && !drawable(mark)) throw new MarketError("That mark can't be drawn on the link. Pick another.", "bad_input");
+  if (emoji && !drawable(emoji)) throw new MarketError("That mark can't be drawn on the link. Pick another.", "bad_input");
+  // A sticker is the creator's own (3.28: "Your stickers"); its ink was measured from its pixels when it was made.
+  const sticker = input.mark?.kind === "sticker" ? await pictureMarkById(input.mark.id) : null;
+  if (input.mark?.kind === "sticker" && (!sticker || sticker.ownerId !== input.creatorId)) throw new MarketError("That sticker isn't one of yours.", "bad_input");
   // The market's ink (docs/design.md 1.8): the mark's hue, or a hash of the id, balanced against the inks of the
   // questions still open between these people. Decided once, here, and stored, so balance never re-reads pixels.
   const id = input.id && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.id) ? input.id.toLowerCase() : randomUUID();
@@ -234,7 +241,7 @@ export async function draftMarket(input: DraftInput): Promise<DareRow> {
     .select({ id: schema.dares.id, ink: schema.dares.ink })
     .from(schema.dares)
     .where(and(eq(schema.dares.groupId, input.groupId), isNotNull(schema.dares.creatorSignature), isNull(schema.dares.resolvedAt)));
-  const chosen = inkFor({ markInk: mark ? emojiInk(mark) : null, id, takenInGroup: openHere.map((o) => inkOf(o)) });
+  const chosen = inkFor({ markInk: emoji ? emojiInk(emoji) : sticker && isInkName(sticker.ink) ? sticker.ink : null, id, takenInGroup: openHere.map((o) => inkOf(o)) });
   const [row] = await db
     .insert(schema.dares)
     .values({
@@ -260,8 +267,8 @@ export async function draftMarket(input: DraftInput): Promise<DareRow> {
       revealMode: input.revealMode ?? "open",
       resolvesBy: pace === "argument" ? null : input.resolvesBy,
       threshold: Math.floor(n / 2) + 1,
-      markKind: mark ? "emoji" : null,
-      markValue: mark,
+      markKind: emoji ? "emoji" : sticker ? "sticker" : null,
+      markValue: emoji ?? sticker?.id ?? null,
     })
     .returning();
   if (!row) throw new MarketError("Couldn't save that.", "chain");

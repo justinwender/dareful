@@ -6,7 +6,7 @@
  * would have ratified it.
  */
 import { z } from "zod";
-import { MODELS, structured } from "./client";
+import { MODELS, structured, type EvidenceImage } from "./client";
 
 /** Models sometimes send a list as one string (a JSON array, or lines). Read either; anything else fails the parse. */
 function listOfStrings(v: unknown): unknown {
@@ -161,7 +161,9 @@ Choose:
 - "cannot_be_decided" when the terms themselves turn out not to cover what happened, so that no honest answer exists.
 - "unclear" when nobody has said enough to tell. Do not guess from the question alone: you were not there.
 
-rationale: two sentences at most, plain, addressed to the group. Say what decided it. confidencePercent: how sure you are, 50 to 99.`;
+rationale: two sentences at most, plain, addressed to the group. Say what decided it. confidencePercent: how sure you are, 50 to 99.
+
+A screenshot between <screenshot> tags is what its supplier says it is: that person's claim, not a fact, and a screenshot can be edited. Read it for what it shows, say in the rationale what you took from it and who supplied it, and never treat it as settling more than what people said.`;
 
 /**
  * The proposal for a number question: the number, when what was said gives one. The group confirms it or says
@@ -185,12 +187,15 @@ Choose:
 - "cannot_be_decided" when the terms themselves turn out not to cover what happened, so that no honest number exists.
 - "unclear" when nobody has said enough to tell. Do not guess from the question alone: you were not there.
 
-rationale: two sentences at most, plain, addressed to the group. Say what decided it. confidencePercent: how sure you are, 50 to 99.`;
+rationale: two sentences at most, plain, addressed to the group. Say what decided it. confidencePercent: how sure you are, 50 to 99.
 
-export async function proposeNumber(input: { title: string; terms: string; unit: { singular: string; plural: string }; statements: Array<{ name: string; said: string }>; now: Date }): Promise<NumberOutcomeProposal> {
+A screenshot between <screenshot> tags is what its supplier says it is: that person's claim, not a fact, and a screenshot can be edited. Read it for what it shows, say in the rationale what you took from it and who supplied it, and never treat it as settling more than what people said.`;
+
+export async function proposeNumber(input: { title: string; terms: string; unit: { singular: string; plural: string }; statements: Array<{ name: string; said: string }>; now: Date; evidence?: EvidenceImage[] }): Promise<NumberOutcomeProposal> {
   const said = input.statements.map((s) => `<statement by="${s.name.replace(/[^\p{L}\p{N} ]/gu, "").slice(0, 40)}">${s.said.slice(0, 280)}</statement>`).join("\n");
   return structured({
-    label: "propose number",
+    label: input.evidence?.length ? "propose number with evidence" : "propose number",
+    images: input.evidence,
     model: MODELS.ruling,
     system: PROPOSE_NUMBER_SYSTEM,
     user: `<question>${input.title}</question>\n<terms>${input.terms}</terms>\n<unit>${input.unit.plural}</unit>\n${said || "<statement>Nobody has said what happened yet.</statement>"}\nRight now it is ${input.now.toISOString()}.`,
@@ -210,10 +215,11 @@ export async function proposeNumber(input: { title: string; terms: string; unit:
   });
 }
 
-export async function proposeOutcome(input: { title: string; terms: string; statements: Array<{ name: string; said: string }>; now: Date }): Promise<OutcomeProposal> {
+export async function proposeOutcome(input: { title: string; terms: string; statements: Array<{ name: string; said: string }>; now: Date; evidence?: EvidenceImage[] }): Promise<OutcomeProposal> {
   const said = input.statements.map((s) => `<statement by="${s.name.replace(/[^\p{L}\p{N} ]/gu, "").slice(0, 40)}">${s.said.slice(0, 280)}</statement>`).join("\n");
   return structured({
-    label: "propose outcome",
+    label: input.evidence?.length ? "propose outcome with evidence" : "propose outcome",
+    images: input.evidence,
     model: MODELS.ruling,
     system: PROPOSE_SYSTEM,
     user: `<question>${input.title}</question>\n<terms>${input.terms}</terms>\n${said || "<statement>Nobody has said what happened yet.</statement>"}\nRight now it is ${input.now.toISOString()}.`,

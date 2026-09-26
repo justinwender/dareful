@@ -136,6 +136,8 @@ async function removeEverything(): Promise<void> {
       await tx.delete(schema.notificationLog).where(inArray(schema.notificationLog.dareId, ids));
       await tx.delete(schema.roomCodes).where(inArray(schema.roomCodes.dareId, ids));
       await tx.delete(schema.dareNumberSeries).where(inArray(schema.dareNumberSeries.dareId, ids));
+      // Photos on a market (memories and evidence) hang off the market and go before it.
+      await tx.delete(schema.media).where(inArray(schema.media.dareId, ids));
       await tx.delete(schema.dareVotes).where(inArray(schema.dareVotes.dareId, ids));
       await tx.delete(schema.dareStatements).where(inArray(schema.dareStatements.dareId, ids));
       await tx.delete(schema.darePositions).where(inArray(schema.darePositions.dareId, ids));
@@ -192,6 +194,8 @@ async function removeEverything(): Promise<void> {
     }
     if (u.length) {
       await tx.delete(schema.denominations).where(inArray(schema.denominations.createdBy, u));
+      // A temporary user's stickers are theirs alone; nothing else points at them once their markets are gone.
+      await tx.delete(schema.pictureMarks).where(inArray(schema.pictureMarks.ownerId, u));
       await tx.delete(schema.users).where(inArray(schema.users.id, u));
     }
   });

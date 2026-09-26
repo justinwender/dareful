@@ -6,7 +6,12 @@ import { db, schema } from "@/db";
 import { SignInButton } from "@/components/auth/sign-in-button";
 import { Avatar } from "@/components/ledger/avatar";
 import { Chip } from "@/components/ledger/chip";
-import { MarkStamp } from "@/components/ledger/mark-stamp";
+import { MarkRefStamp } from "@/components/ledger/mark-stamp";
+import { MediaFrame } from "@/components/ledger/media-frame";
+import { AddPhoto } from "@/components/markets/add-photo";
+import { mediaOnMarket } from "@/lib/media";
+import { storageConfigured } from "@/lib/media/storage";
+import { markRefOf } from "@/lib/ui/mark";
 import {
   LiveDot,
   StateMark,
@@ -77,6 +82,7 @@ import {
   closesLabel,
   dayLabel,
   firstName,
+  fromThatNight,
   lockedLabel,
   untilLabel,
 } from "@/lib/ui/copy";
@@ -215,7 +221,7 @@ export default async function MarketPage({
               },
               groupLabel: group?.name ?? null,
               question: d.title,
-              mark: d.markKind === "emoji" ? d.markValue : null,
+              mark: markRefOf(d),
               countLine:
                 inCount === 0
                   ? null
@@ -241,7 +247,7 @@ export default async function MarketPage({
 
   const denomination = await denominationById(d.denomId);
   if (!denomination) notFound();
-  const [positions, votes, statements, seats] = await Promise.all([
+  const [positions, votes, statements, seats, media] = await Promise.all([
     positionsOf(d.id),
     votesOf(d.id),
     db
@@ -268,6 +274,8 @@ export default async function MarketPage({
           isNull(schema.groupMembers.leftAt),
         ),
       ),
+    // Photos on the market (docs/marks-and-memories.md): memories for the frame, screenshots for the claim; told apart by their role.
+    mediaOnMarket(d.id),
   ]);
   const ids = Array.from(
     new Set([
@@ -648,11 +656,7 @@ export default async function MarketPage({
   const band = (
     <section className="-mx-2 flex flex-col gap-3 rounded-card bg-field p-4 pb-[18px]">
       <div className="flex items-center justify-between gap-3">
-        {d.markKind === "emoji" && d.markValue ? (
-          <MarkStamp kind="emoji" value={d.markValue} size={44} onGround />
-        ) : (
-          <span />
-        )}
+        {markRefOf(d) ? <MarkRefStamp mark={markRefOf(d)} size={44} onGround /> : <span />}
         <span className="flex items-center gap-2 text-label text-ink-2">
           {bandLive ? <LiveDot /> : null}
           <StateMark
@@ -698,6 +702,19 @@ export default async function MarketPage({
           {claimSaid ? (
             <p className="text-body-sm text-ink-2">{claimSaid}</p>
           ) : null}
+          {media.evidence.some((e) => e.author.id === claimant.userId) ? (
+            // What they attached (3.25: the 72px clip on the claim card): evidence, by them, and never the frame's.
+            <ul className="flex flex-wrap gap-2" aria-label={`What ${first(claimant.userId)} attached`}>
+              {media.evidence
+                .filter((e) => e.author.id === claimant.userId)
+                .map((e) => (
+                  <li key={e.id}>
+                    {/* eslint-disable-next-line @next/next/no-img-element -- behind the door, a signed URL that expires */}
+                    <img src={`/api/media/${e.id}?size=thumb`} alt={`A screenshot ${first(claimant.userId)} attached`} width={72} height={72} data-evidence={e.id} className="h-[72px] w-[72px] rounded-button bg-surface-2 object-cover" />
+                  </li>
+                ))}
+            </ul>
+          ) : null}
         </div>
       </section>
     ) : null;
@@ -720,6 +737,7 @@ export default async function MarketPage({
           name: first(s.userId),
           said: s.statement,
         }))}
+        evidence={media.evidence.map((e) => ({ id: e.id, by: first(e.author.id) }))}
         proposal={
           d.aiRationale
             ? {
@@ -730,8 +748,8 @@ export default async function MarketPage({
                     : word(d.aiOutcome) === "void"
                       ? "The app thinks the terms don’t settle it."
                       : soft
-                        ? `The app leans ${word(d.aiOutcome)}, ${Math.round((d.aiConfidenceBps ?? 0) / 100)} to ${100 - Math.round((d.aiConfidenceBps ?? 0) / 100)}.`
-                        : `The app thinks: ${word(d.aiOutcome)}.`,
+                        ? `The app leans ${SAID(word(d.aiOutcome) ?? "void")}, ${Math.round((d.aiConfidenceBps ?? 0) / 100)} to ${100 - Math.round((d.aiConfidenceBps ?? 0) / 100)}.`
+                        : `The app thinks: ${SAID(word(d.aiOutcome) ?? "void")}.`,
                 rationale: d.aiRationale,
               }
             : null
@@ -796,6 +814,9 @@ export default async function MarketPage({
               <section className="flex flex-col gap-4">
                 <p className="text-serif-l text-ink">{answerLine}</p>
                 {numberUnit && closestLine ? <p className="text-caption text-ink-2">{closestLine}</p> : null}
+                {/* The memory it leaves (3.25, 3.8): the frame at 200px with its credit and counter, only when there is one; then "Add yours" for anyone who was in it. */}
+                {media.memories.length > 0 ? <MediaFrame items={media.memories.map((m) => ({ id: m.id, author: { name: m.author.displayName, hue: hueFor(m.author.id) } }))} height={200} inset /> : null}
+                {mine && storageConfigured() && d.resolvedAt ? <AddPhoto dareId={d.id} label={`Add yours from ${fromThatNight(d.resolvedAt, now, clock.zone)}`} /> : null}
                 {numberUnit && rulerData ? (
                   <Ruler ruler={rulerData} state="resolved" size="screen" surface="var(--ground)" />
                 ) : (
@@ -1025,7 +1046,7 @@ export default async function MarketPage({
           {callSheet}
           {settledSheet}
           {/* A market in voting goes stale on screen: a light poll of Postgres, never the indexer, while it is locked and this screen is visible. */}
-          {state === "locked" ? <VotePoll dareId={d.id} pulse={pulseOf({ votes, statements, resolvedAt: d.resolvedAt, aiProposedAt: d.aiProposedAt })} /> : null}
+          {state === "locked" ? <VotePoll dareId={d.id} pulse={pulseOf({ votes, statements, resolvedAt: d.resolvedAt, aiProposedAt: d.aiProposedAt, evidence: media.evidence.map((e) => e.id) })} /> : null}
         </div>
       </Screen>
     </div>

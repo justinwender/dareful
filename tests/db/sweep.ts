@@ -26,6 +26,11 @@ async function main(): Promise<void> {
     const asked = await tx.select({ id: D.id }).from(D).where(or(u.length ? inArray(D.creatorId, u) : sql`false`, g.length ? inArray(D.groupId, g) : sql`false`));
     if (asked.length) {
       const ids = asked.map((d) => d.id);
+      await tx.delete(schema.notificationLog).where(inArray(schema.notificationLog.dareId, ids));
+      await tx.delete(schema.roomCodes).where(inArray(schema.roomCodes.dareId, ids));
+      await tx.delete(schema.dareNumberSeries).where(inArray(schema.dareNumberSeries.dareId, ids));
+      // Photos on a market (memories and evidence) hang off the market and go before it.
+      await tx.delete(schema.media).where(inArray(schema.media.dareId, ids));
       await tx.delete(schema.dareVotes).where(inArray(schema.dareVotes.dareId, ids));
       await tx.delete(schema.dareStatements).where(inArray(schema.dareStatements.dareId, ids));
       await tx.delete(schema.darePositions).where(inArray(schema.darePositions.dareId, ids));
@@ -72,6 +77,7 @@ async function main(): Promise<void> {
       await tx.update(schema.participantClaims).set({ mergedInto: null }).where(inArray(schema.participantClaims.id, c));
       await tx.delete(schema.participantClaims).where(inArray(schema.participantClaims.id, c));
     }
+    await tx.delete(schema.pictureMarks).where(inArray(schema.pictureMarks.ownerId, u));
     await tx.delete(schema.users).where(inArray(schema.users.id, u));
   });
   console.log(`swept ${u.length} temporary users, ${c.length} ghosts, ${g.length} groups`);

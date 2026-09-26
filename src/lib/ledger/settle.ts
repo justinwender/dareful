@@ -15,6 +15,7 @@ import { arbitrate as askArbitrator, arbitrateNumber, ruleClaim } from "@/lib/ai
 import { contracts } from "@/lib/chain/contracts";
 import { gasFor } from "@/lib/chain/gas";
 import { submit } from "@/lib/chain/relayer";
+import { evidenceFor } from "@/lib/media/evidence";
 import { bufferToHex } from "./ids";
 import { isMember } from "./groups";
 import { lockMarket, marketById, MarketError, mirrorSettlement, positionsOf, reconcileFromIndexer, settlementFromReceipt, stateOf, toChainOutcome, unitOf, VOID_OUTCOME, votesOf, type DareRow } from "./markets";
@@ -104,9 +105,11 @@ export async function arbitrateMarket(dareId: string, byUserId: string | null, n
   const updates = said.filter((s) => s.kind === "update").map((s) => ({ name: nameOf(s.userId), said: s.statement }));
   const statements = said.filter((s) => s.kind === "statement").map((s) => ({ name: nameOf(s.userId), said: s.statement }));
   const unit = unitOf(d);
+  // Screenshots attached to what happened, each labelled with who supplied it: a claim by that person, weighed as one.
+  const evidence = await evidenceFor(d.id).catch(() => []);
   const heard = await (unit
-    ? arbitrateNumber({ title: d.title, terms: d.termsText, unit, positions: positions.map((p) => ({ name: nameOf(p.userId as string), number: p.value.toString() })), updates, statements }).then((r) => ({ voided: r.outcome === "cannot_decide" || r.number === null, outcome: r.outcome === "number" && r.number !== null ? BigInt(r.number) : VOID_OUTCOME, ruling: r.ruling, word: "number" as const }))
-    : askArbitrator({ title: d.title, terms: d.termsText, positions: positions.map((p) => ({ name: nameOf(p.userId as string), percent: Math.round(Number(p.value) / 100) })), updates, statements }).then((r) => ({ voided: r.outcome === "cannot_decide", outcome: r.outcome === "cannot_decide" ? VOID_OUTCOME : r.outcome === "yes" ? 1n : 0n, ruling: r.ruling, word: r.outcome === "yes" ? ("yes" as const) : ("no" as const) }))
+    ? arbitrateNumber({ title: d.title, terms: d.termsText, unit, positions: positions.map((p) => ({ name: nameOf(p.userId as string), number: p.value.toString() })), updates, statements, evidence }).then((r) => ({ voided: r.outcome === "cannot_decide" || r.number === null, outcome: r.outcome === "number" && r.number !== null ? BigInt(r.number) : VOID_OUTCOME, ruling: r.ruling, word: "number" as const }))
+    : askArbitrator({ title: d.title, terms: d.termsText, positions: positions.map((p) => ({ name: nameOf(p.userId as string), percent: Math.round(Number(p.value) / 100) })), updates, statements, evidence }).then((r) => ({ voided: r.outcome === "cannot_decide", outcome: r.outcome === "cannot_decide" ? VOID_OUTCOME : r.outcome === "yes" ? 1n : 0n, ruling: r.ruling, word: r.outcome === "yes" ? ("yes" as const) : ("no" as const) }))
   ).catch((err: unknown) => {
     console.error("the arbitrator did not answer", { dareId, err });
     throw new MarketError("The app couldn't hear it just now. Nothing changed. Try again in a minute.", "chain");

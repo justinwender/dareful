@@ -8,6 +8,7 @@
  */
 import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { memoriesOnMarkets } from "@/lib/media";
 import { denominationsByIds, type DenominationRow } from "./denominations";
 import { inkOf, type InkName } from "@/lib/ui/ink";
 import { stateOf, unitOf, VOID_OUTCOME, type DareRow, type MarketState, type PositionRow, type Unit } from "./markets";
@@ -35,6 +36,8 @@ export type MarketCardData = {
   /** How many of the group have called it, and who first said what happened. For the "Needs you" context line. */
   votesCast: number;
   saidBy: string | null;
+  /** The memories on a settled market (docs/marks-and-memories.md), oldest first, for the frame on its story (3.4). Never evidence. */
+  media: Array<{ id: string; author: { id: string; displayName: string } }>;
 };
 
 const percentOf = (p: PositionRow) => Number(p.value) / 100;
@@ -73,6 +76,7 @@ export async function marketCards(input: { viewerId: string; groupId?: string; w
   const users = userIds.length ? await db.select({ id: schema.users.id, displayName: schema.users.displayName }).from(schema.users).where(inArray(schema.users.id, userIds)) : [];
   const nameOf = new Map(users.map((u) => [u.id, u.displayName]));
   const denoms = await denominationsByIds(Array.from(new Set(dares.map((d) => d.denomId))));
+  const memories = await memoriesOnMarkets(dares.filter((d) => stateOf(d) === "resolved").map((d) => d.id));
 
   const out: MarketCardData[] = [];
   for (const d of dares) {
@@ -105,6 +109,7 @@ export async function marketCards(input: { viewerId: string; groupId?: string; w
       votesCast: votes.filter((v) => v.dareId === d.id).length,
       saidBy: ((u) => (u ? (nameOf.get(u) ?? null) : null))(said.find((x) => x.dareId === d.id)?.userId),
       needsYou: state === "open" && !iAmIn ? "Put your number in" : state === "locked" && !votes.some((v) => v.dareId === d.id && v.userId === input.viewerId) ? "Say how it came out" : null,
+      media: (memories.get(d.id) ?? []).map((m) => ({ id: m.id, author: m.author })),
     });
   }
   return out;

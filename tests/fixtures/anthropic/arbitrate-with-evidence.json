@@ -1,0 +1,45 @@
+{
+  "model": "claude-fable-5-1",
+  "id": "msg_011CfQv8VrQdQcMcCcM3vDXW",
+  "type": "message",
+  "role": "assistant",
+  "content": [
+    {
+      "type": "thinking",
+      "thinking": "",
+      "signature": "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"
+    },
+    {
+      "type": "tool_use",
+      "id": "toolu_011cL7DQxkrphzSDoto6oiA8",
+      "name": "arbitrate",
+      "input": {
+        "outcome": "yes",
+        "ruling": "The terms turn on one thing: the final score, and whether Riverside's margin was four or more. The only record of that score in front of me is the screenshot Sam supplied, which is marked FINAL and reads Riverside 21, Harbor 17, a four-point margin. Theo's case is that the score ended 21 to 18 after a late free throw and that the board was captured before it went in; but the image is labeled FINAL, which on its face is not a mid-play capture, and no other record of an 18 was put in front of me. Because Theo disputes the screenshot, I give it less weight than if it were accepted, yet it remains the only evidence of the final score, and it satisfies the terms. The answer is yes."
+      },
+      "caller": {
+        "type": "direct"
+      }
+    }
+  ],
+  "container": null,
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "stop_details": null,
+  "usage": {
+    "input_tokens": 1483,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "cache_creation": {
+      "ephemeral_5m_input_tokens": 0,
+      "ephemeral_1h_input_tokens": 0
+    },
+    "output_tokens": 1167,
+    "output_tokens_details": {
+      "thinking_tokens": 870
+    },
+    "service_tier": "standard",
+    "inference_geo": "global"
+  },
+  "diagnostics": null
+}

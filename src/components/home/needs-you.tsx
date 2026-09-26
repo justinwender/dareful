@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { MarkStamp } from "@/components/ledger/mark-stamp";
+import { MarkRefStamp } from "@/components/ledger/mark-stamp";
 import { ObligationToken } from "@/components/ledger/obligation-token";
 import { LiveDot, StateMark } from "@/components/ledger/state-mark";
 import { LinkPending } from "@/components/ui/link-pending";
@@ -24,7 +24,7 @@ export function NeedsYou({ rows, viewer, showAll, allHref }: { rows: NeedRow[]; 
       <h2 className="text-label text-ink-2">Needs you</h2>
       <div className="overflow-hidden rounded-card border border-line bg-surface">
         {shown.map((r, i) => {
-          const stamp = r.question && r.mark ? <MarkStamp kind="emoji" value={r.mark} size={40} ink={r.ink} /> : null;
+          const stamp = r.question && r.mark ? <MarkRefStamp mark={r.mark} size={40} ink={r.ink} /> : null;
           return (
             <Link prefetch={false} key={`${r.kind}-${r.key}`} href={r.href} className={`relative grid items-center gap-3 py-[14px] pr-[14px] pl-4 ${stamp ? "grid-cols-[40px_minmax(0,1fr)_auto]" : "grid-cols-[minmax(0,1fr)_auto]"} ${i > 0 ? "border-t border-line" : ""}`}>
               <LinkPending />

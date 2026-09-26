@@ -452,13 +452,13 @@ export const dares = pgTable(
      * rows from before; those tiles say the time in UTC and say so.
      */
     zone: text("zone"),
-    /** 'emoji' | 'image' | null for no mark. Blank is the default and stays blank. */
+    /** 'emoji' | 'image' | 'sticker' | null for no mark. Blank is the default and stays blank. */
     markKind: text("mark_kind"),
-    /** The emoji, or a media id as text for a picture mark. */
+    /** The emoji, or a `picture_marks` id as text for a picture or a sticker (docs/decisions.md 2026-09-18). */
     markValue: text("mark_value"),
   },
   (t) => [
-    check("dares_mark_kind_known", sql`${t.markKind} is null or ${t.markKind} in ('emoji', 'image')`),
+    check("dares_mark_kind_known", sql`${t.markKind} is null or ${t.markKind} in ('emoji', 'image', 'sticker')`),
     check("dares_mark_both_or_neither", sql`(${t.markKind} is null) = (${t.markValue} is null)`),
     check("dares_kind_known", sql`${t.kind} in ('binary', 'numeric', 'categorical')`),
     check("dares_range_source_known", sql`${t.rangeSource} is null or ${t.rangeSource} in ('asker', 'ai')`),
@@ -633,15 +633,56 @@ export const media = pgTable(
       .references(() => users.id),
     /** From EXIF when present. */
     capturedAt: ts("captured_at"),
+    /**
+     * 'memory' | 'evidence' (docs/decisions.md, the media phase). A memory is a photo of the night, added to a
+     * settled market and shown in its frame. Evidence is a screenshot attached to "what happened" while the
+     * question is being called: read by the outcome proposal and the arbitrator, shown beside the claim, and
+     * never in the frame. Set by the control it came through, stored so no query has to infer it.
+     */
+    role: text("role").notNull().default("memory"),
     createdAt: ts("created_at").notNull().defaultNow(),
   },
   (t) => [
     check("media_parent_xor", sql`(${t.dareId} is null) <> (${t.obligationId} is null)`),
+    check("media_role_known", sql`${t.role} in ('memory', 'evidence')`),
+    check("media_evidence_on_market", sql`${t.role} = 'memory' or ${t.dareId} is not null`),
     check("media_kind_known", sql`${t.kind} in ('photo', 'video')`),
     check("media_dimensions_positive", sql`${t.width} > 0 and ${t.height} > 0`),
     check("media_duration_video_only", sql`${t.kind} = 'video' or ${t.durationMs} is null`),
     index("media_dare_created").on(t.dareId, t.createdAt),
     index("media_obligation_created").on(t.obligationId, t.createdAt),
+  ],
+).enableRLS();
+
+/**
+ * Picture marks (docs/marks-and-memories.md; docs/design.md 1.7, 3.28; docs/decisions.md 2026-09-18): a sticker
+ * (a cutout with transparency) or a square picture someone made, to use as a market's mark. Their own table, not
+ * `media`: a mark has no author credit, no capture time and no counter, and it belongs to the person who made it,
+ * not to one event. `source_key` is the 512px PNG with alpha; `stamp_key` the 256px derivative with the cream
+ * die-cut edge baked in. `ink` is measured from the opaque pixels at upload, or null when too few carry colour
+ * (the market then hashes). Both objects live in the private bucket behind `/api/mark/[id]`.
+ */
+export const pictureMarks = pgTable(
+  "picture_marks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id),
+    /** 'sticker' | 'image'. */
+    kind: text("kind").notNull(),
+    sourceKey: text("source_key").notNull(),
+    stampKey: text("stamp_key").notNull(),
+    width: integer("width").notNull(),
+    height: integer("height").notNull(),
+    ink: text("ink"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    check("picture_marks_kind_known", sql`${t.kind} in ('sticker', 'image')`),
+    check("picture_marks_ink_known", sql`${t.ink} is null or ${t.ink} in ('clay', 'ochre', 'olive', 'sea', 'slate', 'iris', 'plum', 'rose')`),
+    check("picture_marks_dimensions_positive", sql`${t.width} > 0 and ${t.height} > 0`),
+    index("picture_marks_owner_created").on(t.ownerId, t.createdAt),
   ],
 ).enableRLS();
 

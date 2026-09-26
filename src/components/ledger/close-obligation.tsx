@@ -10,28 +10,12 @@ import { signingProblem, useSigner } from "@/components/ledger/use-signer";
 import { ledgerTypes } from "@/lib/chain/typed-data";
 import { addSettlementPhotoAction } from "@/lib/actions/media";
 import { closeObligationAction, closePayloadAction } from "@/lib/actions/obligations";
+import { shrinkPhoto as shrink } from "@/lib/ui/shrink-photo";
 import { CoveredCard, type CoveredCardProps } from "./covered-card";
 import { StateMark } from "./state-mark";
 
 type Phase = "idle" | "signing" | "sending" | "photo";
 type Reason = "settled" | "forgiven";
-
-/** Over this the phone shrinks the photo first: the platform's own cap on a request is 4.5MB. */
-const SHRINK_OVER = 3.5 * 1024 * 1024;
-const SHRINK_EDGE = 2048;
-
-async function shrink(file: File): Promise<Blob> {
-  if (file.size <= SHRINK_OVER) return file;
-  const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
-  const scale = Math.min(1, SHRINK_EDGE / Math.max(bitmap.width, bitmap.height));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-  canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return file;
-  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  return new Promise<Blob>((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("could not shrink the photo"))), "image/jpeg", 0.86));
-}
 
 /**
  * The creditor's row on the person view, and the sheet behind it (docs/design.md 6.3: "Person view → the

@@ -30,14 +30,15 @@ function anthropic(): Anthropic {
  * then parsed with the caller's Zod schema: a shape the model invented, or no tool call at all, throws and never
  * reaches the caller.
  */
-export async function structured<T>(req: { label: string; model: string; system: string; user: string; toolName: string; toolDescription: string; inputSchema: Record<string, unknown>; shape: z.ZodType<T>; timeoutMs: number; maxTokens?: number }): Promise<T> {
+export async function structured<T>(req: { label: string; model: string; system: string; user: string; toolName: string; toolDescription: string; inputSchema: Record<string, unknown>; shape: z.ZodType<T>; timeoutMs: number; maxTokens?: number; /** Screenshots attached to what happened, each labelled with who supplied it (`evidenceBlocks`). */ images?: EvidenceImage[] }): Promise<T> {
+  const content = req.images && req.images.length > 0 ? [{ type: "text" as const, text: req.user }, ...evidenceBlocks(req.images)] : req.user;
   const ask = (forced: boolean) =>
     anthropic().messages.create(
       {
         model: req.model,
         max_tokens: req.maxTokens ?? 900,
         system: forced ? req.system : `${req.system}\n\nAnswer by calling the ${req.toolName} tool exactly once, and write nothing else.`,
-        messages: [{ role: "user", content: req.user }],
+        messages: [{ role: "user", content }],
         tools: [{ name: req.toolName, description: req.toolDescription, input_schema: { type: "object", ...req.inputSchema } }],
         tool_choice: forced ? { type: "tool", name: req.toolName } : { type: "auto" },
       },
@@ -56,6 +57,24 @@ export async function structured<T>(req: { label: string; model: string; system:
   // An answer cut off by the token limit is a tool call with fields missing. Say that, rather than a parse error.
   if (res.stop_reason === "max_tokens") throw new Error(`the model ran out of room before finishing (${req.label})`);
   return answerFrom(res, req.toolName, req.shape, req.label);
+}
+
+export type EvidenceImage = { /** Who attached it, as a first name: the label the model reads it under. */ by: string; mediaType: "image/jpeg" | "image/png" | "image/webp" | "image/gif"; base64: string };
+export type EvidenceBlock = { type: "text"; text: string } | { type: "image"; source: { type: "base64"; media_type: EvidenceImage["mediaType"]; data: string } };
+
+/**
+ * A screenshot attached to what happened, as the model receives it: inside a tag that names who supplied it, so
+ * it is read as that person's claim and never as a bare fact (PLANNING.md open question 14; docs/decisions.md,
+ * the media phase). The tag's name is cleaned the way every other name in a prompt is. Pure, so the shape has
+ * a test: an image never travels without its supplier.
+ */
+export function evidenceBlocks(images: readonly EvidenceImage[]): EvidenceBlock[] {
+  const clean = (s: string) => s.replace(/[^\p{L}\p{N} ]/gu, "").slice(0, 40) || "Someone";
+  return images.flatMap((img): EvidenceBlock[] => [
+    { type: "text", text: `<screenshot by="${clean(img.by)}">` },
+    { type: "image", source: { type: "base64", media_type: img.mediaType, data: img.base64 } },
+    { type: "text", text: "</screenshot>" },
+  ]);
 }
 
 /**

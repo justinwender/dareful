@@ -9,6 +9,10 @@ import { isHex, type Hex } from "viem";
 import { z } from "zod";
 import { isInkName } from "@/lib/ui/ink";
 import { plainNumberScope, plainScope, proposeNumber, proposeOutcome, scopeMarket, scopeNumber } from "@/lib/ai/markets";
+import { addMarketPhoto, MediaError } from "@/lib/media";
+import { evidenceFor } from "@/lib/media/evidence";
+import { MAX_UPLOAD_BYTES } from "@/lib/media/pipeline";
+import { StorageUnavailable } from "@/lib/media/storage";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { checkScale, parseAskerScale } from "@/lib/ledger/scale";
 import { MAX_NUMBER } from "@/lib/ledger/scoring";
@@ -102,7 +106,8 @@ const Draft = z.object({
   title: z.string().trim().min(3).max(140),
   terms: z.string().trim().min(3).max(800),
   resolvesBy: z.string().datetime().nullable(),
-  markEmoji: z.string().trim().max(16).optional(),
+  /** The mark (3.29): an emoji, or one of this person's stickers (3.28) by its id. */
+  mark: z.discriminatedUnion("kind", [z.object({ kind: z.literal("emoji"), value: z.string().trim().min(1).max(16) }), z.object({ kind: z.literal("sticker"), id: uuid })]).optional(),
   /** The id the client made up front, so the ink it previewed on the question step is the ink that is stored (docs/design.md 3.29). */
   id: z.string().uuid().optional(),
   /** A number question: its unit, the asker's scale as typed (blank for the model's), and what the model said under its token. */
@@ -162,7 +167,7 @@ export async function draftMarketAction(input: z.infer<typeof Draft>): Promise<{
       criterion: d.argument?.criterion ?? null,
       mode: d.mode,
       stalemate: d.stalemate,
-      markEmoji: d.markEmoji,
+      mark: d.mark ?? null,
       revealMode: d.blind ? "blind" : "open",
       zone: await viewerZone(),
     });
@@ -251,18 +256,29 @@ export async function lockMarketAction(rawId: string): Promise<{ ok: true } | { 
 }
 
 /**
- * Someone says what happened, in a line. That is what the outcome proposal reads: the model was not there, so
- * with nothing said it proposes nothing, and the ballot opens with nothing picked.
+ * Someone says what happened, in a line, and may attach a screenshot to it (PLANNING.md open question 14; a
+ * scoreboard, a message). That is what the outcome proposal reads: the model was not there, so with nothing
+ * said it proposes nothing, and the ballot opens with nothing picked. The screenshot is evidence, never a
+ * memory: it goes through the same pipeline with its role on the row, and never into the frame. One proposal
+ * is written after both have landed.
  */
-export async function sayWhatHappenedAction(rawId: string, rawText: string): Promise<{ ok: true } | { error: string }> {
+export async function sayWhatHappenedAction(form: FormData): Promise<{ ok: true } | { error: string }> {
   const user = await requireUser();
-  const id = uuid.safeParse(rawId);
-  const text = z.string().trim().min(2).max(280).safeParse(rawText);
+  const id = uuid.safeParse(form.get("dareId"));
+  const raw = form.get("text");
+  const text = z.string().trim().max(280).safeParse(typeof raw === "string" ? raw : "");
+  const file = form.get("screenshot");
+  const screenshot = file instanceof File && file.size > 0 ? file : null;
   if (!id.success || !text.success) return { error: "Say what happened in a line." };
+  if (text.data.length < 2 && !screenshot) return { error: "Say what happened in a line." };
+  if (screenshot && screenshot.size > MAX_UPLOAD_BYTES) return { error: "That screenshot is too big to send." };
   try {
-    await sayWhatHappened(id.data, user.id, text.data);
+    if (text.data.length >= 2) await sayWhatHappened(id.data, user.id, text.data);
+    if (screenshot) await addMarketPhoto({ dareId: id.data, authorId: user.id, bytes: Buffer.from(await screenshot.arrayBuffer()), viewerZone: await viewerZone(), role: "evidence" });
     await refreshProposal(id.data);
   } catch (err) {
+    if (err instanceof MediaError) return { error: err.message };
+    if (err instanceof StorageUnavailable) return { error: "Screenshots are off right now." };
     return { error: say(err, "Couldn't save that.") };
   }
   revalidatePath(`/m/${id.data}`);
@@ -282,9 +298,10 @@ async function refreshProposal(dareId: string): Promise<void> {
     .orderBy(asc(schema.dareStatements.statedAt));
   try {
     const unit = unitOf(d);
+    const evidence = await evidenceFor(dareId).catch(() => []);
     const p = unit
-      ? await proposeNumber({ title: d.title, terms: d.termsText, unit, statements: said, now: new Date() }).then((r) => ({ outcome: r.outcome === "number" && r.number !== null ? BigInt(r.number) : r.outcome === "cannot_be_decided" ? VOID_OUTCOME : null, confidencePercent: r.confidencePercent, rationale: r.rationale }))
-      : await proposeOutcome({ title: d.title, terms: d.termsText, statements: said, now: new Date() }).then((r) => ({ outcome: r.outcome === "yes" ? 1n : r.outcome === "no" ? 0n : r.outcome === "cannot_be_decided" ? VOID_OUTCOME : null, confidencePercent: r.confidencePercent, rationale: r.rationale }));
+      ? await proposeNumber({ title: d.title, terms: d.termsText, unit, statements: said, now: new Date(), evidence }).then((r) => ({ outcome: r.outcome === "number" && r.number !== null ? BigInt(r.number) : r.outcome === "cannot_be_decided" ? VOID_OUTCOME : null, confidencePercent: r.confidencePercent, rationale: r.rationale }))
+      : await proposeOutcome({ title: d.title, terms: d.termsText, statements: said, now: new Date(), evidence }).then((r) => ({ outcome: r.outcome === "yes" ? 1n : r.outcome === "no" ? 0n : r.outcome === "cannot_be_decided" ? VOID_OUTCOME : null, confidencePercent: r.confidencePercent, rationale: r.rationale }));
     const outcome = p.outcome;
     await db
       .update(schema.dares)

@@ -4,7 +4,7 @@ import { useMemo, useRef, useState, useTransition, type CSSProperties, type Reac
 import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/ledger/avatar";
 import { Chip } from "@/components/ledger/chip";
-import { MarkStamp } from "@/components/ledger/mark-stamp";
+import { MarkRefStamp } from "@/components/ledger/mark-stamp";
 import { FIELD_PROBLEM_CLASS, Problem, ProblemSummary } from "@/components/ledger/problem";
 import { Screen } from "@/components/ledger/screen";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,8 @@ import { emojiInk } from "@/lib/ui/emoji-ink";
 import type { Hue } from "@/lib/ui/hue";
 import { inkFor, inkVars, type InkName } from "@/lib/ui/ink";
 import { cn } from "@/lib/utils";
-import { MarkPicker } from "./mark-picker";
+import { MarkPicker, type Sticker } from "./mark-picker";
+import { refOfPicked, type PickedMark } from "@/lib/ui/mark";
 
 type SetOption = { groupId: string; label: string; caption: string; avatars: Array<{ name: string; hue: Hue }>; offerName: boolean; size: number; units: Array<{ id: string; label: string; template: string | null }>; /** The inks of the questions still open in this set, for balance (1.8, rule 4). */ takenInks: InkName[] };
 type Person = { id: string; name: string; hue: Hue };
@@ -41,7 +42,7 @@ const COUNT = ["", "", "two", "three", "four", "five", "six", "seven", "eight", 
  * screen says so. The last set of people is preselected: the common case is the same people as last time, and
  * it should cost one tap in total.
  */
-export function AskForm({ sets, people, initialLine = "", initialPace = "dare", me, chrome }: { sets: SetOption[]; people: Person[]; initialLine?: string; initialPace?: "dare" | "argument"; me: { hue: Hue }; /** The screen's top bar, rendered by the page; the form owns the screen so a picked mark can retint all of it (3.29). */ chrome: ReactNode }) {
+export function AskForm({ sets, people, initialLine = "", initialPace = "dare", me, chrome, stickers = [], canPaste = false }: { sets: SetOption[]; people: Person[]; initialLine?: string; initialPace?: "dare" | "argument"; me: { hue: Hue }; /** The screen's top bar, rendered by the page; the form owns the screen so a picked mark can retint all of it (3.29). */ chrome: ReactNode; /** This person's stickers for the picker (3.28), and whether a cutout can be pasted at all. */ stickers?: Sticker[]; canPaste?: boolean }) {
   const router = useRouter();
   const [step, setStep] = useState<"question" | "declined" | "criterion" | "careful" | "who" | "terms">("question");
   // Two paces, one object (PLANNING.md 8a): something that will happen, or a claim to settle now.
@@ -49,8 +50,8 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
   // Yes or no, or a number (docs/design.md 3.26). Chosen before the write-up, since the terms say how the answer is counted.
   const [kind, setKind] = useState<"binary" | "numeric">("binary");
   // The mark (3.29), and the id the market will have, made here so the ink previewed is the ink stored.
-  const [mark, setMark] = useState<string | null>(null);
-  const [markName, setMarkName] = useState<string | null>(null);
+  const [mark, setMark] = useState<PickedMark | null>(null);
+  const markName = mark ? (mark.kind === "emoji" ? (mark.name ? mark.name.charAt(0).toUpperCase() + mark.name.slice(1) : "Your mark") : "Your sticker") : null;
   const [pickingMark, setPickingMark] = useState(false);
   const [draftId] = useState(() => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : null));
   const [unitWords, setUnitWords] = useState({ singular: "", plural: "" });
@@ -87,7 +88,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
   // who's-in step against the questions still open between the same people. The server computes it again the same way and stores that.
   const previewInk = useMemo<InkName | null>(() => {
     if (!mark || !draftId) return null;
-    return inkFor({ markInk: emojiInk(mark), id: draftId, takenInGroup: step === "question" ? [] : (selectedSet?.takenInks ?? []) }).ink;
+    return inkFor({ markInk: mark.kind === "emoji" ? emojiInk(mark.value) : mark.ink, id: draftId, takenInGroup: step === "question" ? [] : (selectedSet?.takenInks ?? []) }).ink;
   }, [mark, draftId, step, selectedSet]);
   const room: CSSProperties | undefined = previewInk ? (inkVars(previewInk) as CSSProperties) : undefined;
 
@@ -169,7 +170,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
         unit,
         title,
         terms: finalTerms,
-        markEmoji: mark ?? undefined,
+        mark: mark ? (mark.kind === "emoji" ? { kind: "emoji", value: mark.value } : { kind: "sticker", id: mark.id }) : undefined,
         number: numeric ? { unit: { singular: unitWords.singular.trim().toLowerCase(), plural: unitWords.plural.trim().toLowerCase() || unitWords.singular.trim().toLowerCase() }, scale: scale.trim(), model: scope?.number?.model ?? null } : undefined,
         resolvesBy: arguing ? null : new Date(Date.now() + hours * 3_600_000).toISOString(),
         blind: arguing ? false : blind,
@@ -206,7 +207,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
         <section className="-mx-2 flex flex-col gap-4 rounded-card bg-field p-4 pb-5">
           <button type="button" aria-haspopup="dialog" aria-expanded={pickingMark} onClick={() => setPickingMark(true)} className="flex items-center gap-4 rounded-button text-left">
             {mark ? (
-              <MarkStamp kind="emoji" value={mark} size={64} onGround />
+              <MarkRefStamp mark={refOfPicked(mark)} size={64} onGround />
             ) : (
               <span aria-hidden="true" className="flex h-16 w-16 shrink-0 items-center justify-center rounded-panel border-[1.5px] border-dashed border-line-strong text-ink-2">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -216,7 +217,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
             )}
             <span className="flex min-w-0 flex-col">
               <span className="text-body-strong text-ink">{mark ? "Mark" : "Add a mark"}</span>
-              <span className="text-caption text-ink-2">{mark ? `${markName ?? "Your mark"} · tap to change` : "Optional. It picks this market’s colour."}</span>
+              <span className="text-caption text-ink-2">{mark ? `${markName} · tap to change` : "Optional. It picks this market’s colour."}</span>
             </span>
           </button>
           <div className="flex flex-col gap-2">
@@ -232,10 +233,9 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
           onClose={() => setPickingMark(false)}
           value={mark}
           hue={me.hue}
-          onPick={(glyph, name) => {
-            setMark(glyph);
-            setMarkName(glyph ? (name ? name.charAt(0).toUpperCase() + name.slice(1) : null) : null);
-          }}
+          stickers={stickers}
+          canPaste={canPaste}
+          onPick={setMark}
         />
         <div role="group" aria-label="What kind of thing" className="flex flex-wrap gap-2">
           <button type="button" aria-pressed={pace === "dare"} onClick={() => setPace("dare")} className="rounded-pill">

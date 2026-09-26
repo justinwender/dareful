@@ -6,3 +6,7 @@
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('media', 'media', false, 5242880, array['image/jpeg'])
 on conflict (id) do nothing;
+
+-- The media phase (docs/decisions.md): a sticker is a PNG with an alpha channel (docs/design.md 3.28), so the
+-- bucket admits PNG beside JPEG. Applied once through the Supabase MCP, after the bucket above.
+update storage.buckets set allowed_mime_types = array['image/jpeg', 'image/png'] where id = 'media';

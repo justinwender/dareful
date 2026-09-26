@@ -8,6 +8,7 @@
 import { and, desc, eq, inArray, isNotNull, isNull, ne, or } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { inkOf, type InkName } from "@/lib/ui/ink";
+import { markRefOf, type MarkRef } from "@/lib/ui/mark";
 import { bytes16ToUuid, uuidToBytes16 } from "./ids";
 import { denominationsByIds, type DenominationRow } from "./denominations";
 import { obligationsById, openTouching } from "./envio";
@@ -18,14 +19,14 @@ import { pendingForDebtor, type ProposalRow } from "./proposals";
 type Person = { id: string; displayName: string };
 
 /** What the row's state mark says (docs/design.md 3.23), and the market's mark and ink for its 40px stamp (3.15). */
-type QuestionLook = { mark: string | null; ink: InkName; state: "open" | "locked" | "voting" | "draft" };
+type QuestionLook = { mark: MarkRef | null; ink: InkName; state: "open" | "locked" | "voting" | "draft" };
 
 export type NeedRow =
   | ({ kind: "vote" | "enter" | "lock"; key: string; href: string; verb: string; context: string; subject: string; question: true; deadline: Date | null; since: Date; groupId: string } & QuestionLook)
   | ({ kind: "finish"; key: string; href: string; verb: string; context: string; subject: string; question: true; deadline: null; since: Date; groupId: string } & QuestionLook)
   | { kind: "yep"; key: string; href: string; verb: string; context: string; subject: string; question: false; deadline: null; since: Date; groupId: string; proposal: ProposalRow; creditor: Person; denomination: DenominationRow };
 
-const lookOf = (d: { id: string; ink?: string | null; markKind?: string | null; markValue?: string | null }, state: QuestionLook["state"]): QuestionLook => ({ mark: d.markKind === "emoji" && d.markValue ? d.markValue : null, ink: inkOf({ id: d.id, ink: d.ink ?? null }), state });
+const lookOf = (d: { id: string; ink?: string | null; markKind?: string | null; markValue?: string | null }, state: QuestionLook["state"]): QuestionLook => ({ mark: markRefOf(d), ink: inkOf({ id: d.id, ink: d.ink ?? null }), state });
 
 /** Fastest to finish first, when nothing else separates two rows: a yep is one tap, a draft is a screen. */
 const EFFORT: Record<NeedRow["kind"], number> = { yep: 0, vote: 1, enter: 2, lock: 3, finish: 4 };
@@ -79,7 +80,7 @@ export function needFromMarket(m: Pick<MarketCardData, "dare" | "state" | "peopl
 export type PersonRow = { user: Person; token: { ownerId: string; denomination: DenominationRow; quantity: bigint } | null };
 
 /** A question in flight this person has already acted on: where it stands, and no action (docs/design.md 4.7). */
-export type RunningRow = { id: string; title: string; mark: string | null; ink: InkName; state: "in" | "locked" | "voting"; caption: string };
+export type RunningRow = { id: string; title: string; mark: MarkRef | null; ink: InkName; state: "in" | "locked" | "voting"; caption: string };
 
 export type HomeData = {
   needs: NeedRow[];
@@ -131,7 +132,7 @@ async function questionsFor(me: { id: string }, opts: { now: Date; closes: (at: 
   for (const m of cards) {
     const n = needFromMarket(m, me.id, voted.has(m.dare.id), opts.now, opts.closes);
     if (n) needs.push({ ...n, groupId: m.dare.groupId } as NeedRow);
-    else if (m.state === "open" || m.state === "locked") running.push({ id: m.dare.id, title: m.dare.title, mark: m.dare.markKind === "emoji" ? m.dare.markValue : null, ink: m.ink, state: m.state === "locked" ? (m.votesCast > 0 ? "voting" : "locked") : "in", caption: runningCaption(m, opts.closes) });
+    else if (m.state === "open" || m.state === "locked") running.push({ id: m.dare.id, title: m.dare.title, mark: markRefOf(m.dare), ink: m.ink, state: m.state === "locked" ? (m.votesCast > 0 ? "voting" : "locked") : "in", caption: runningCaption(m, opts.closes) });
     else over.push(m);
   }
   return { needs, running, over };

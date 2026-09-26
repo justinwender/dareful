@@ -5,6 +5,8 @@ import { currentUser } from "@/lib/auth/session";
 import { denominationsForGroup } from "@/lib/ledger/denominations";
 import { peopleForUser, peopleSetsFor } from "@/lib/ledger/groups";
 import { openInksByGroup } from "@/lib/ledger/markets";
+import { stickersOf } from "@/lib/media/marks";
+import { storageConfigured } from "@/lib/media/storage";
 import { setCaption } from "@/lib/ui/copy";
 import { hueFor } from "@/lib/ui/hue";
 import { viewerClock } from "@/lib/ui/zone";
@@ -35,5 +37,6 @@ export default async function AskPage({ searchParams }: { searchParams: Promise<
     })),
   );
   // The form owns the screen (docs/design.md 3.29): a picked mark retints the band, the ground and the sheet, so the room is the form's to paint.
-  return <AskForm chrome={<TopBar back title={pace === "argument" ? "Settle an argument" : "Ask something"} />} me={{ hue: hueFor(me.id) }} sets={options} people={people.map((p) => ({ id: p.user.id, name: p.user.displayName, hue: hueFor(p.user.id) }))} initialLine={sp.line} initialPace={pace} />;
+  const stickers = await stickersOf(me.id);
+  return <AskForm chrome={<TopBar back title={pace === "argument" ? "Settle an argument" : "Ask something"} />} me={{ hue: hueFor(me.id) }} sets={options} people={people.map((p) => ({ id: p.user.id, name: p.user.displayName, hue: hueFor(p.user.id) }))} initialLine={sp.line} initialPace={pace} stickers={stickers} canPaste={storageConfigured()} />;
 }

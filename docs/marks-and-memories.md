@@ -195,7 +195,11 @@ obligation rather than putting bytes anywhere near the chain.
 **In the hackathon build.** Marks on markets and denominations, emoji only, through the picker.
 The derived ink on every market, from the emoji table. Photos on resolved markets with
 the full-width frame, credit and counter. "Add yours" on a resolved market. The asking tile and
-the result tile, with the emoji font loaded in the server renderer.
+the result tile, with the emoji font loaded in the server renderer. (Corrected 2026-09-25: an
+earlier draft of this list had the frame in the share card; a tile never carries a photo, since
+a preview reaches people outside the market. It says there are photos instead. Stickers by paste,
+and a screenshot as evidence with what happened, moved up into the hackathon build in the media
+phase; docs/decisions.md has the reasoning.)
 
 **After.** Picture marks and stickers once the upload pipeline exists (paste first, then
 tap-to-cut), video with inline playback, the "a year ago tonight" card, night-level grouping

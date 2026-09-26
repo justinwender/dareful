@@ -19,7 +19,9 @@ import {
   sayWhatHappenedAction,
   stateCaseAction,
 } from "@/lib/actions/markets";
+import { attachEvidenceAction } from "@/lib/actions/media";
 import { daresTypes } from "@/lib/chain/typed-data";
+import { shrinkPhoto } from "@/lib/ui/shrink-photo";
 import { countWord } from "@/lib/ledger/weight";
 import { unitPhrase } from "@/lib/ledger/number-axis";
 import type { Hue } from "@/lib/ui/hue";
@@ -53,6 +55,8 @@ export type CallSheetProps = {
   votes: Array<{ name: string; hue: Hue; outcome: Word }>;
   /** What happened, in each person's words. */
   statements: Array<{ name: string; said: string }>;
+  /** Screenshots attached to what happened, each with who supplied it: a claim by that person, shown as one (docs/decisions.md, the media phase). */
+  evidence?: Array<{ id: string; by: string }>;
   /** The app's read of it, where there is one: the claim when nobody has said anything yet, a caption otherwise. */
   proposal: {
     outcome: Word | null;
@@ -91,6 +95,8 @@ export function CallSheet(props: CallSheetProps) {
   const [picking, setPicking] = useState(false);
   const [raised, setRaised] = useState(false);
   const [line, setLine] = useState("");
+  // A screenshot to go with the line (PLANNING.md open question 14): evidence, read by the proposal and the arbitrator, never a memory.
+  const [shot, setShot] = useState<{ file: File; preview: string } | null>(null);
   const [choice, setChoice] = useState<Word | null>(null);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -146,11 +152,16 @@ export function CallSheet(props: CallSheetProps) {
   async function say() {
     const call: Word | null = unit ? (typed !== null ? `n:${typed.toString()}` : null) : pick;
     setProblem(null);
-    if (line.trim().length >= 2) {
+    if (line.trim().length >= 2 || shot) {
       setBusy(true);
-      const r = await sayWhatHappenedAction(dareId, line);
+      const form = new FormData();
+      form.set("dareId", dareId);
+      form.set("text", line);
+      if (shot) form.set("screenshot", await shrinkPhoto(shot.file), "screenshot.jpg");
+      const r = await sayWhatHappenedAction(form);
       setBusy(false);
       if ("error" in r) return setProblem(r.error);
+      setShot(null);
     }
     // On a number question the number a dissenter saw is optional (3.24): words alone go on the record and cast nothing.
     if (!call) {
@@ -262,6 +273,7 @@ export function CallSheet(props: CallSheetProps) {
           <span className="text-ink">{s.name}:</span> {s.said}
         </p>
       ))}
+      {props.evidence?.length ? <Attached evidence={props.evidence} /> : null}
       {proposal?.rationale ? (
         <p className="text-caption text-ink-3">
           {proposal.line} {proposal.rationale}
@@ -334,6 +346,7 @@ export function CallSheet(props: CallSheetProps) {
                 placeholder="Out cold by the second act"
                 className="h-12 rounded-button border border-line bg-ground px-4 text-body text-ink placeholder:text-ink-3"
               />
+              <ScreenshotRow shot={shot} disabled={busy} onPick={(f) => setShot(f)} />
             </div>
           }
           foot={
@@ -471,11 +484,60 @@ export function CallSheet(props: CallSheetProps) {
   );
 }
 
-/** One line of a case for the tiebreaker: a different kind from "what happened", handed to the arbitrator labelled. */
+/**
+ * The screenshot row under "what happened" and under a case: the phone's library, never the camera (a screenshot
+ * already exists), shown back at 44px before it goes anywhere. Words on it are a control's, so the budget does
+ * not count them (4.8).
+ */
+function ScreenshotRow({ shot, disabled, onPick }: { shot: { file: File; preview: string } | null; disabled: boolean; onPick: (shot: { file: File; preview: string } | null) => void }) {
+  return (
+    <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-button bg-surface-2 px-3 py-1 text-body-sm font-semibold text-ink">
+      {shot ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={shot.preview} alt="" width={44} height={44} className="h-11 w-11 shrink-0 rounded-stamp-28 object-cover" />
+      ) : (
+        <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-ink-2">
+          <rect x="5" y="3" width="14" height="18" rx="2" />
+          <path d="M9 7h6M9 11h6M9 15h3" />
+        </svg>
+      )}
+      <span className="min-w-0 flex-1">{shot ? "Change the screenshot" : "Attach a screenshot"}</span>
+      <input
+        type="file"
+        accept="image/*"
+        className="sr-only"
+        disabled={disabled}
+        onChange={(e) => {
+          const f = e.target.files?.[0] ?? null;
+          if (shot) URL.revokeObjectURL(shot.preview);
+          onPick(f ? { file: f, preview: URL.createObjectURL(f) } : null);
+        }}
+      />
+    </label>
+  );
+}
+
+/** What has been attached so far, 44px each, with who supplied it: the thing the arbitrator will be told too. */
+function Attached({ evidence }: { evidence: Array<{ id: string; by: string }> }) {
+  return (
+    <ul className="flex flex-wrap gap-2" aria-label="Screenshots attached">
+      {evidence.map((e) => (
+        <li key={e.id} className="flex items-center gap-2 text-caption text-ink-3">
+          {/* eslint-disable-next-line @next/next/no-img-element -- behind the door, a signed URL that expires */}
+          <img src={`/api/media/${e.id}?size=thumb`} alt={`A screenshot ${e.by} attached`} width={44} height={44} loading="lazy" data-evidence={e.id} className="h-11 w-11 rounded-stamp-28 bg-surface-2 object-cover" />
+          <span>{e.by}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** One line of a case for the tiebreaker: a different kind from "what happened", handed to the arbitrator labelled. A screenshot may go with it. */
 function CaseForm({ dareId, mine }: { dareId: string; mine: string | null }) {
   const router = useRouter();
   const [text, setText] = useState(mine ?? "");
   const [saved, setSaved] = useState(Boolean(mine));
+  const [shot, setShot] = useState<{ file: File; preview: string } | null>(null);
   const [field, setField] = useState<string | null>(null);
   const [saving, start] = useTransition();
   return (
@@ -489,6 +551,14 @@ function CaseForm({ dareId, mine }: { dareId: string; mine: string | null }) {
         start(async () => {
           const r = await stateCaseAction(dareId, text);
           if ("error" in r) return setField(r.error);
+          if (shot) {
+            const form = new FormData();
+            form.set("dareId", dareId);
+            form.set("screenshot", await shrinkPhoto(shot.file), "screenshot.jpg");
+            const a = await attachEvidenceAction(form);
+            if ("error" in a) return setField(a.error);
+            setShot(null);
+          }
           setSaved(true);
           router.refresh();
         });
@@ -520,6 +590,7 @@ function CaseForm({ dareId, mine }: { dareId: string; mine: string | null }) {
           {saved ? "Saved" : "Save"}
         </Button>
       </div>
+      <ScreenshotRow shot={shot} disabled={saving} onPick={(f) => (setShot(f), setSaved(false))} />
       <Problem id="my-case-problem" message={field} />
     </form>
   );

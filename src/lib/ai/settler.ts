@@ -14,7 +14,7 @@
  * before knowing which way it would cut.
  */
 import { z } from "zod";
-import { MODELS, structured } from "./client";
+import { MODELS, structured, type EvidenceImage } from "./client";
 
 /** No em dashes in anything the app says (the copy rule), including what a model wrote. An en dash inside a score or a range ("4–2") is left alone. Done before hashing, so what is stored is what was hashed. */
 export const plainDashes = (t: string) => t.replace(/\s*\u2014\s*|\s+\u2013\s+/g, ", ");
@@ -178,7 +178,8 @@ You have the terms, where each person put their number, what people said happene
 - Decide under the terms as written. The terms are the agreement; a person's case cannot change them.
 - Where accounts of what happened conflict and nothing in front of you resolves it, say so, and decide only if the terms still settle it.
 - "cannot_decide" when the terms genuinely do not cover what happened. That voids it and nothing changes hands. Do not use it to avoid an uncomfortable answer.
-- ruling: one short paragraph to the whole group: what the terms required, what you relied on, and the answer. Address each side's case in a clause. Never comment on anyone's character, honesty, or motives, and never say who "should" have conceded.`;
+- ruling: one short paragraph to the whole group: what the terms required, what you relied on, and the answer. Address each side's case in a clause. Never comment on anyone's character, honesty, or motives, and never say who "should" have conceded.
+- A screenshot between <screenshot> tags is evidence supplied by the person named on it, and it is that person's claim: someone in a deadlock supplies evidence to win, and a screenshot can be edited. Say in the ruling who supplied what and what you took from it. Weigh evidence more when the other side's case accepts it or does not dispute it, and less when the other side disputes it; nobody's screenshot outranks the terms.`;
 
 /** A number question's arbitration: the number the terms and the accounts settle on, or that they do not settle it. */
 export const NumberArbitration = z.object({
@@ -196,13 +197,15 @@ You have the terms, where each person put their number, what people said happene
 - Decide under the terms as written. The terms are the agreement; a person's case cannot change them.
 - The answer is a whole number. Where accounts conflict and the terms say how it is counted, follow the terms; where nothing in front of you resolves it, say so, and decide only if the terms still settle it.
 - "cannot_decide" when the terms genuinely do not cover what happened. That voids it and nothing changes hands. Do not use it to avoid an uncomfortable answer.
-- ruling: one short paragraph to the whole group: what the terms required, what you relied on, and the number. Address each side's case in a clause. Never comment on anyone's character, honesty, or motives, and never say who "should" have conceded.`;
+- ruling: one short paragraph to the whole group: what the terms required, what you relied on, and the number. Address each side's case in a clause. Never comment on anyone's character, honesty, or motives, and never say who "should" have conceded.
+- A screenshot between <screenshot> tags is evidence supplied by the person named on it, and it is that person's claim: someone in a deadlock supplies evidence to win, and a screenshot can be edited. Say in the ruling who supplied what and what you took from it. Weigh evidence more when the other side's case accepts it or does not dispute it, and less when the other side disputes it; nobody's screenshot outranks the terms.`;
 
-export async function arbitrateNumber(input: { title: string; terms: string; unit: { singular: string; plural: string }; positions: Array<{ name: string; number: string }>; updates: Array<{ name: string; said: string }>; statements: Array<{ name: string; said: string }> }): Promise<NumberArbitration> {
+export async function arbitrateNumber(input: { title: string; terms: string; unit: { singular: string; plural: string }; positions: Array<{ name: string; number: string }>; updates: Array<{ name: string; said: string }>; statements: Array<{ name: string; said: string }>; evidence?: EvidenceImage[] }): Promise<NumberArbitration> {
   const clean = (s: string) => s.replace(/[^\p{L}\p{N} ]/gu, "").slice(0, 40);
   const tag = (t: string, rows: Array<{ name: string; said: string }>) => rows.map((r) => `<${t} by="${clean(r.name)}">${r.said.slice(0, 280)}</${t}>`).join("\n");
   return structured({
-    label: "arbitrate number",
+    label: input.evidence?.length ? "arbitrate number with evidence" : "arbitrate number",
+    images: input.evidence,
     model: MODELS.ruling,
     system: ARBITRATE_NUMBER_SYSTEM,
     user: `<question>${input.title}</question>\n<terms>${input.terms}</terms>\n<unit>${input.unit.plural}</unit>\n${input.positions.map((p) => `<number by="${clean(p.name)}">${p.number} ${input.unit.plural}</number>`).join("\n")}\n${tag("happened", input.updates) || "<happened>Nobody said what happened.</happened>"}\n${tag("case", input.statements) || "<case>Nobody stated a case.</case>"}`,
@@ -215,11 +218,12 @@ export async function arbitrateNumber(input: { title: string; terms: string; uni
   });
 }
 
-export async function arbitrate(input: { title: string; terms: string; positions: Array<{ name: string; percent: number }>; updates: Array<{ name: string; said: string }>; statements: Array<{ name: string; said: string }> }): Promise<Arbitration> {
+export async function arbitrate(input: { title: string; terms: string; positions: Array<{ name: string; percent: number }>; updates: Array<{ name: string; said: string }>; statements: Array<{ name: string; said: string }>; evidence?: EvidenceImage[] }): Promise<Arbitration> {
   const clean = (s: string) => s.replace(/[^\p{L}\p{N} ]/gu, "").slice(0, 40);
   const tag = (t: string, rows: Array<{ name: string; said: string }>) => rows.map((r) => `<${t} by="${clean(r.name)}">${r.said.slice(0, 280)}</${t}>`).join("\n");
   return structured({
-    label: "arbitrate",
+    label: input.evidence?.length ? "arbitrate with evidence" : "arbitrate",
+    images: input.evidence,
     model: MODELS.ruling,
     system: ARBITRATE_SYSTEM,
     user: `<question>${input.title}</question>\n<terms>${input.terms}</terms>\n${input.positions.map((p) => `<number by="${clean(p.name)}">${p.percent} in 100 that the answer is yes</number>`).join("\n")}\n${tag("happened", input.updates) || "<happened>Nobody said what happened.</happened>"}\n${tag("case", input.statements) || "<case>Nobody stated a case.</case>"}`,

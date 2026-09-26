@@ -4,7 +4,8 @@ import { LinkPending } from "@/components/ui/link-pending";
 import { AvatarStack } from "@/components/ledger/avatar";
 import { Chip } from "@/components/ledger/chip";
 import { CloseObligation } from "@/components/ledger/close-obligation";
-import { MarkStamp } from "@/components/ledger/mark-stamp";
+import { MarkRefStamp } from "@/components/ledger/mark-stamp";
+import { MediaFrame } from "@/components/ledger/media-frame";
 import { ObligationToken } from "@/components/ledger/obligation-token";
 import { StateMark, type MarketMark } from "@/components/ledger/state-mark";
 import { When } from "@/components/ledger/when";
@@ -12,12 +13,13 @@ import type { DenominationRow } from "@/lib/ledger/denominations";
 import { gotSentence } from "@/lib/ui/copy";
 import { hueFor } from "@/lib/ui/hue";
 import type { InkName } from "@/lib/ui/ink";
+import type { MarkRef } from "@/lib/ui/mark";
 import { CallLine, Ruler, type Pin, type RulerData } from "./call-line";
 
 export type MarketCardProps = {
   id: string;
   title: string;
-  mark: string | null;
+  mark: MarkRef | null;
   ink: InkName;
   groupName: string | null;
   state: "open" | "locked" | "resolved" | "voided" | "expired";
@@ -43,6 +45,8 @@ export type MarketCardProps = {
   consequenceStates?: Record<string, "open" | "settled" | "forgiven">;
   /** Given, a consequence the viewer is owed and that is still open becomes the move to settle it or call it even (6.3). */
   close?: { domain: TypedDataDomain; photosOn: boolean };
+  /** The memories on a settled market: the frame at 180px between the question and the outcome (3.4), nothing when there are none. */
+  media?: Array<{ id: string; author: { id: string; displayName: string } }>;
 };
 
 /** The market's state as its mark (3.23): the sentence the kicker used to spend on it is gone. */
@@ -69,13 +73,14 @@ export function MarketCard(p: MarketCardProps) {
         <div className="flex items-center justify-between gap-2">
           <span className="inline-flex min-w-0 items-center gap-2 text-label text-ink-2">
             <StateMark state={mark} hue={mark === "in" ? hueFor(p.viewerId) : undefined} />
-            {p.mark ? <MarkStamp kind="emoji" value={p.mark} size={20} ink={p.ink} /> : <AskGlyph />}
+            {p.mark ? <MarkRefStamp mark={p.mark} size={20} ink={p.ink} /> : <AskGlyph />}
             {p.argument ? <span>Argument</span> : null}
             {p.clockLine ? <span className="truncate">{p.clockLine}</span> : null}
           </span>
           {p.groupName ? <Chip>{p.groupName}</Chip> : null}
         </div>
         <h3 className="text-serif-l text-ink">{p.title}</h3>
+        {p.state === "resolved" && p.media && p.media.length > 0 ? <MediaFrame items={p.media.map((m) => ({ id: m.id, author: { name: m.author.displayName, hue: hueFor(m.author.id) } }))} height={180} interactive={false} className="-mx-4" /> : null}
 
         {p.state === "open" ? (
           <div className="flex items-center gap-3">

@@ -1,6 +1,7 @@
 import type { MarketCardData } from "@/lib/ledger/market-view";
 import { ruler, unitPhrase } from "@/lib/ledger/number-axis";
 import { closesLabel } from "@/lib/ui/copy";
+import { markRefOf } from "@/lib/ui/mark";
 import { MarketCard, type MarketCardProps } from "./market-card";
 import type { RulerData } from "./call-line";
 
@@ -23,7 +24,8 @@ export function MarketCardFrom({ m, viewerId, clock, consequenceStates, close }:
       close={close}
       id={m.dare.id}
       title={m.dare.title}
-      mark={m.dare.markKind === "emoji" ? m.dare.markValue : null}
+      mark={markRefOf(m.dare)}
+      media={m.media}
       groupName={m.groupName}
       state={m.state}
       ink={m.ink}

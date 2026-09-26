@@ -1159,7 +1159,10 @@ same for one recipient or twelve.
 ended" from the settled sheet. With a photo: the photo full-bleed, the mark stamp top left of
 the safe square, and a bottom band on `rgba(<ground>, 0.9)` with the outcome in serif at 76px
 ("He did.") and who called it with their avatar ("Priya called it. Out cold, 1h 12m in.").
-Without one: the market's field, the mark and the outcome on one line, the call line with 52px
+(Corrected 2026-09-25, the media phase: the photo never rides the tile. A tile is frozen into a
+chat that can include people outside the market and gets forwarded further, so the tile with
+photos is the tile without one plus a line under it, "With photos from that night."; tapping
+through is where visibility is enforced. See docs/decisions.md.) Without one: the market's field, the mark and the outcome on one line, the call line with 52px
 pins where the person who called it wears an extra cream ring, the No and Yes labels, and "John
 called it at 10%." at 34px 600.
 

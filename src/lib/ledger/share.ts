@@ -14,6 +14,9 @@ import { clockOf, firstName } from "@/lib/ui/copy";
 import { hueFor } from "@/lib/ui/hue";
 import { inkOf } from "@/lib/ui/ink";
 import type { Tile } from "@/lib/ui/tiles";
+import { memoriesOnMarkets } from "@/lib/media";
+import { pictureMarkById } from "@/lib/media/marks";
+import { getObject } from "@/lib/media/storage";
 import { ruler, unitPhrase, withSeparators } from "./number-axis";
 
 /** What a share route shows a visitor with no session: the card, and the text metadata beside it. */
@@ -159,6 +162,8 @@ export async function marketTile(rawId: string): Promise<Tile | null> {
   const d = rows[0];
   if (!d || !d.opened) return null;
   const mark = d.markKind === "emoji" ? d.markValue : null;
+  // A sticker mark rides the tile as its derivative (3.27, 3.28): read from the bucket by the server, never by a preview bot.
+  const markImage = d.markKind === "sticker" && d.markValue ? await stickerDataUrl(d.markValue) : null;
   const ink = inkOf(d);
   const unit = d.kind === "numeric" ? { singular: d.outcomeLabels[0] ?? "", plural: d.outcomeLabels[1] ?? d.outcomeLabels[0] ?? "" } : null;
   const answered = d.resolvedAt && d.resolvedOutcome !== null && d.resolvedOutcome >= 0n;
@@ -187,6 +192,7 @@ export async function marketTile(rawId: string): Promise<Tile | null> {
             ? "Name a number."
             : "What are the odds?",
       mark,
+      markImage,
       ink,
       closes:
         d.resolvesBy && !d.resolvedAt
@@ -210,6 +216,8 @@ export async function marketTile(rawId: string): Promise<Tile | null> {
       p.score !== null && (m === null || (m.score ?? -1) < p.score) ? p : m,
     null,
   );
+  // Whether there are photos: the tile says so as a reason to tap through, and never carries one (docs/decisions.md, the media phase).
+  const photos = (await memoriesOnMarkets([d.id])).get(d.id)?.length ? true : false;
   if (unit && d.resolvedOutcome !== null) {
     // The number tile (3.27): the answer as the outcome, the ruler with the cream tick, whoever was closest ringed. The scale is not on it.
     const answer = d.resolvedOutcome;
@@ -219,7 +227,9 @@ export async function marketTile(rawId: string): Promise<Tile | null> {
     return {
       kind: "number",
       mark,
+      markImage,
       ink,
+      photos,
       outcomeLine: `${unitPhrase(answer, unit)}.`,
       ruler: {
         leftLabel: r?.leftLabel ?? "",
@@ -236,7 +246,9 @@ export async function marketTile(rawId: string): Promise<Tile | null> {
   return {
     kind: "called",
     mark,
+    markImage,
     ink,
+    photos,
     outcome: outcome ?? 0,
     outcomeLine: outcome === 1 ? "Yes." : "No.",
     pins: positions.map((p) => ({
@@ -251,6 +263,18 @@ export async function marketTile(rawId: string): Promise<Tile | null> {
         ? `Settled by the tiebreaker everyone agreed to. ${closest}`.trim()
         : closest,
   };
+}
+
+/** A sticker's 256px derivative as a data URL for the renderer, or null when it cannot be read: the tile then draws no mark rather than a broken one. */
+async function stickerDataUrl(id: string): Promise<string | null> {
+  try {
+    const mark = await pictureMarkById(id);
+    if (!mark) return null;
+    return `data:image/png;base64,${(await getObject(mark.stampKey)).toString("base64")}`;
+  } catch (err) {
+    console.error("the tile could not read a sticker", { id, err: err instanceof Error ? err.message : err });
+    return null;
+  }
 }
 
 /** "Closes Fri, Sep 25, 10:40pm" in the asker's zone; a row from before zones were kept says the time in UTC and says so. */
