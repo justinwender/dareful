@@ -672,9 +672,11 @@ The items are in the single checklist below (30 through 40).
 - **The relayer had nothing keeping two senders apart** on the nonce; found by inspection, not by the failure, and fixed with a lock and a retry.
 - **The game's terms step read badly with two kinds chosen** ("and the play-by-play the first drive"); one rule now writes the line.
 
+- **The gate's second check, first run, in the real localhost session** (later the same day): with the console set up and the door deployed, "Turn on for the ledger wallet" on `/dev/delegation` ran Dynamic's reshare with no Dynamic sheet on screen and the SDK reported ledger delegated, governance pending. Dynamic delivered the created event to production three times and got 400 each time: the real event carries the user id inside `data` and null at the top, where the documentation's example had it at the top. Fixed (the shape is recorded, `tests/fixtures/dynamic/delegation-created.json`); the fresh delivery needs the deploy. The tab's cached SDK settings had to be refreshed by hand before the SDK believed delegated access was on.
+
 ### What needs the owner, a phone or a second person
 
-The gate's checks 2 to 4 need delegated access enabled in Dynamic's console (the exact steps are in the phase's report), the deploy of the webhook door, and a real session on localhost to trigger delegation from `/dev/delegation`; then `scripts/dev/delegation-gate.ts` prints the three results. The rest of the phase is not built until they pass. The phone checks are in the single checklist (41 to 46).
+The gate's check 2 needs the corrected door deployed, then a fresh delegation from `/dev/delegation` (turn it off, then on again, in the localhost session); checks 3 and 4 follow from `scripts/dev/delegation-gate.ts` once the row is stored. The rest of the phase is not built until they pass. The phone checks are in the single checklist (41 to 46).
 
 ## The final test: one checklist
 

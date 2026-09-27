@@ -117,12 +117,17 @@ export function verifyWebhookSignature(secret: string, rawBody: string | Buffer,
 const Envelope = z.object({ alg: z.string(), iv: z.string(), ct: z.string(), tag: z.string(), ek: z.string(), kid: z.string().optional() });
 export type Envelope = z.infer<typeof Envelope>;
 
+/**
+ * The real delivery (tests/fixtures/dynamic/delegation-created.json, recorded from the sandbox on 2026-09-27)
+ * carries `userId` as null at the top level and the user's id inside `data`; the documentation's example had it
+ * at the top. Both are read, `data` first.
+ */
 const Created = z.object({
   eventName: z.literal("wallet.delegation.created"),
   eventId: z.string().min(1),
   messageId: z.string().optional(),
   timestamp: z.string().min(1),
-  userId: z.string().min(1),
+  userId: z.string().nullable().optional(),
   data: z.object({
     chain: z.string().optional(),
     walletId: z.string().min(1),
@@ -138,8 +143,8 @@ const Revoked = z.object({
   eventId: z.string().min(1),
   messageId: z.string().optional(),
   timestamp: z.string().min(1),
-  userId: z.string().min(1),
-  data: z.object({ walletId: z.string().min(1), chain: z.string().optional() }),
+  userId: z.string().nullable().optional(),
+  data: z.object({ walletId: z.string().min(1), chain: z.string().optional(), userId: z.string().optional() }),
 });
 /** Anything else Dynamic sends this door, the `ping` it registers with above all, is read for its name and ignored. */
 const Other = z.object({ eventName: z.string() });
@@ -210,19 +215,24 @@ export async function receiveDelegationEvent(rawBody: string, signature: string 
   } catch {
     return { ok: false, status: 400, reason: "not JSON" };
   }
-  const ev = parseDelegationEvent(parsed);
-  if (!ev) return { ok: false, status: 400, reason: "not an event" };
+  const named = Other.safeParse(parsed);
+  if (!named.success) return { ok: false, status: 400, reason: "not an event" };
   // The reachability ping arrives when the endpoint is registered, before its secret can be anywhere; it carries nothing, so it needs no signature.
-  if (ev.kind === "other" && ev.name === "ping") return { ok: true, kind: "ignored" };
+  if (named.data.eventName === "ping") return { ok: true, kind: "ignored" };
+  // The signature before the shape: an unsigned body learns nothing about what the door expects.
   const secret = deps.secret ?? process.env.DYNAMIC_WEBHOOK_SECRET ?? "";
   if (!secret) return { ok: false, status: 500, reason: "no webhook secret configured" };
   if (!verifyWebhookSignature(secret, rawBody, signature)) return { ok: false, status: 401, reason: "bad signature" };
+  const ev = parseDelegationEvent(parsed);
+  if (!ev) return { ok: false, status: 400, reason: "not an event" };
   if (ev.kind === "other") return { ok: true, kind: "ignored" };
   const e = ev.event;
   const now = deps.now ?? new Date();
   const eventAt = new Date(e.timestamp);
   if (Number.isNaN(eventAt.getTime())) return { ok: false, status: 400, reason: "no event time" };
-  const [user] = await db.select({ id: schema.users.id, ledgerWallet: schema.users.ledgerWallet, governanceWallet: schema.users.governanceWallet }).from(schema.users).where(eq(schema.users.dynamicUserId, e.userId));
+  const dynamicUserId = e.data.userId ?? e.userId ?? "";
+  if (!dynamicUserId) return { ok: false, status: 400, reason: "no user on the event" };
+  const [user] = await db.select({ id: schema.users.id, ledgerWallet: schema.users.ledgerWallet, governanceWallet: schema.users.governanceWallet }).from(schema.users).where(eq(schema.users.dynamicUserId, dynamicUserId));
   if (!user) return { ok: false, status: 422, reason: "no such user" };
   const D = schema.delegations;
   const [row] = await db.select({ eventId: D.eventId, eventAt: D.eventAt }).from(D).where(and(eq(D.userId, user.id), eq(D.walletId, e.data.walletId)));
@@ -298,9 +308,12 @@ export type SignatureRequest = {
 };
 
 type DelegatedClientModule = typeof import("@dynamic-labs-wallet/node-evm");
+type DelegatedClient = ReturnType<DelegatedClientModule["createDelegatedEvmWalletClient"]>;
+/** What signing needs from Dynamic: its package and a client on it. Loaded when first needed; a platform where the package cannot load (its native binary missing) fails here, and only here. */
+export type SignerLoad = () => Promise<{ mod: Pick<DelegatedClientModule, "delegatedSignTypedData">; client: DelegatedClient }>;
 
-let clientCache: ReturnType<DelegatedClientModule["createDelegatedEvmWalletClient"]> | undefined;
-async function delegatedClient(): Promise<{ mod: DelegatedClientModule; client: NonNullable<typeof clientCache> }> {
+let clientCache: DelegatedClient | undefined;
+const delegatedClient: SignerLoad = async () => {
   const mod = await import("@dynamic-labs-wallet/node-evm");
   if (!clientCache) {
     const environmentId = process.env.NEXT_PUBLIC_DYNAMIC_ENVIRONMENT_ID ?? "";
@@ -309,7 +322,7 @@ async function delegatedClient(): Promise<{ mod: DelegatedClientModule; client: 
     clientCache = mod.createDelegatedEvmWalletClient({ environmentId, apiKey });
   }
   return { mod, client: clientCache };
-}
+};
 
 /** Whether this person's ledger wallet has a usable delegation, for the screens that decide whether to prompt. Reads nothing secret. */
 export async function hasDelegation(userId: string): Promise<boolean> {
@@ -323,7 +336,7 @@ export async function hasDelegation(userId: string): Promise<boolean> {
  * any lookup, by address, so no caller can reach it by mistake; an address that is neither wallet is refused
  * the same way; the ledger wallet without a usable row is `DelegationUnavailable`, which means a prompt.
  */
-export async function delegatedWalletFor(userId: string, address: string): Promise<DelegatedWallet> {
+export async function delegatedWalletFor(userId: string, address: string, deps: { load?: SignerLoad } = {}): Promise<DelegatedWallet> {
   const [user] = await db.select({ ledgerWallet: schema.users.ledgerWallet, governanceWallet: schema.users.governanceWallet }).from(schema.users).where(eq(schema.users.id, userId));
   if (!user) throw new DelegationUnavailable(userId, "no such user");
   const refusal = delegationRefusal({ address, ledgerWallet: user.ledgerWallet, governanceWallet: user.governanceWallet });
@@ -356,7 +369,7 @@ export async function delegatedWalletFor(userId: string, address: string): Promi
     shareSetId,
     address: row.walletAddress,
     async sign(typedData, request) {
-      const { mod, client } = await delegatedClient();
+      const { mod, client } = await (deps.load ?? delegatedClient)();
       const signature = (await mod.delegatedSignTypedData(client, {
         walletId,
         shareSetId: shareSetId ?? undefined,
@@ -380,8 +393,23 @@ export async function delegatedWalletFor(userId: string, address: string): Promi
   };
 }
 
-/** The one call the ledger's actions make: a delegated signature, or `DelegationUnavailable`, which means a prompt. */
-export async function signWithDelegation(req: { userId: string; address: string; typedData: TypedDataDefinition; request: SignatureRequest }): Promise<Hex> {
-  const wallet = await delegatedWalletFor(req.userId, req.address);
-  return wallet.sign(req.typedData, req.request);
+/**
+ * The one call the ledger's actions make: a delegated signature, or null, which means the client prompts as
+ * before. Every failure lands here as null and never as a thrown error, so nothing about delegation can fail
+ * the person's action: no row, a revoked one, material that will not open, the package failing to load (its
+ * native binary missing on the platform), Dynamic refusing, timing out or being unreachable, a signature that
+ * recovers to the wrong key. A failure that is not the routine "no delegation" is logged in one line without
+ * anything from the material, since a signer that silently stopped signing would otherwise look like everyone
+ * revoking at once. Asking for the governance wallet is a bug in the caller: it is logged as one and still a
+ * prompt, which for a vote is the right thing anyway.
+ */
+export async function trySignWithDelegation(req: { userId: string; address: string; typedData: TypedDataDefinition; request: SignatureRequest }, deps: { load?: SignerLoad } = {}): Promise<Hex | null> {
+  try {
+    const wallet = await delegatedWalletFor(req.userId, req.address, deps);
+    return await wallet.sign(req.typedData, req.request);
+  } catch (err) {
+    if (err instanceof GovernanceNeverDelegated) console.error(`delegation: ${req.request.request} asked to sign ${req.request.action} with the governance wallet; a prompt instead`);
+    else if (!(err instanceof DelegationUnavailable)) console.warn(`delegation: ${req.request.request} falls back to a prompt for ${req.request.action}: ${err instanceof Error ? `${err.name}: ${err.message.slice(0, 120)}` : "unknown failure"}`);
+    return null;
+  }
 }

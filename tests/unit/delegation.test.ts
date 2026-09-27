@@ -8,6 +8,7 @@
  */
 import assert from "node:assert/strict";
 import { createHmac, randomBytes } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { delegationPrivateKeyPem, delegationRefusal, open, parseDelegationEvent, seal, verifyWebhookSignature } from "@/lib/chain/delegated-signer";
 
@@ -72,6 +73,10 @@ test("Dynamic's events parse by name: created carries two envelopes, revoked a w
   const revoked = parseDelegationEvent({ eventName: "wallet.delegation.revoked", eventId: "3f0a1b1c-0000-4000-8000-aaaaaaaaaaaa", timestamp: "2025-10-01T16:00:00.000Z", userId: "7eb7843b-2a4d-4f69-b95e-d219f0662fda", data: { walletId: "25193936-3ecd-4c1b-84e6-9eabc82e53c2", chain: "EVM" } });
   assert.ok(revoked && revoked.kind === "revoked");
   assert.equal(revoked.event.data.walletId, "25193936-3ecd-4c1b-84e6-9eabc82e53c2");
+  // The real delivery, recorded from the sandbox (its ciphertexts blanked): the user id is null at the top and inside `data`.
+  const real = parseDelegationEvent(JSON.parse(readFileSync(new URL("../fixtures/dynamic/delegation-created.json", import.meta.url), "utf8")));
+  assert.ok(real && real.kind === "created", "the recorded delivery is a created event");
+  assert.deepEqual([real.event.userId, typeof real.event.data.userId, real.event.data.encryptedDelegatedShare.alg, typeof real.event.data.shareSetId], [null, "string", "HYBRID-RSA-AES-256", "string"], "read as Dynamic actually sends it");
   assert.deepEqual(parseDelegationEvent({ eventName: "ping" }), { kind: "other", name: "ping" });
   assert.equal(parseDelegationEvent({ eventName: "wallet.delegation.created", eventId: "x", timestamp: "t", userId: "u", data: { walletId: "w", publicKey: "0x1" } }), null, "a created event without its envelopes is not one");
   assert.equal(parseDelegationEvent({ eventName: "wallet.delegation.revoked", eventId: "x" }), null, "a revocation without a wallet is not one");

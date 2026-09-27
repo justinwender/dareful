@@ -5,7 +5,7 @@
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isNonceProblem, sendWithNonceRetry } from "@/lib/chain/relayer";
+import { isNonceProblem, SendTimedOut, sendWithNonceRetry, withTimeout } from "@/lib/chain/relayer";
 
 const failing = (message: string) => Object.assign(new Error(message), { name: "TransactionExecutionError" });
 
@@ -49,4 +49,14 @@ test("a nonce collision is retried with the next nonce, a few times, and any oth
     /execution reverted/,
   );
   assert.deepEqual(once, [7]);
+});
+
+
+test("a send that hangs is given up after the timeout, so a stalled node never holds the lock; a send that answers in time is untouched", async () => {
+  const never = new Promise<string>(() => undefined);
+  const t0 = Date.now();
+  await assert.rejects(withTimeout(never, 120), (err: unknown) => err instanceof SendTimedOut && /120ms/.test(err.message));
+  assert.ok(Date.now() - t0 < 2_000, "given up at the timeout, not later");
+  assert.equal(await withTimeout(Promise.resolve("0xhash"), 120), "0xhash");
+  await assert.rejects(withTimeout(Promise.reject(new Error("execution reverted")), 120), /execution reverted/, "a real failure keeps its own words");
 });

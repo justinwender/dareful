@@ -13,7 +13,8 @@ import { after, before, test } from "node:test";
 import { and, eq } from "drizzle-orm";
 import { decryptDelegatedWebhookData } from "@dynamic-labs-wallet/node";
 import { db, schema } from "@/db";
-import { DelegationUnavailable, delegatedWalletFor, GovernanceNeverDelegated, hasDelegation, open, receiveDelegationEvent, storeKey } from "@/lib/chain/delegated-signer";
+import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
+import { DelegationUnavailable, delegatedWalletFor, GovernanceNeverDelegated, hasDelegation, open, receiveDelegationEvent, storeKey, trySignWithDelegation, type SignerLoad } from "@/lib/chain/delegated-signer";
 import { cleanup, tempSigner, type Signer } from "./fixture";
 
 const SECRET = "whsec_test_delegation";
@@ -30,15 +31,20 @@ function envelope(plain: string) {
   return { alg: "HYBRID-RSA-AES-256", iv: iv.toString("base64url"), ct: ct.toString("base64url"), tag: cipher.getAuthTag().toString("base64url"), ek: ek.toString("base64url") };
 }
 const signed = (body: string) => `sha256=${createHmac("sha256", SECRET).update(body).digest("hex")}`;
+/** Shaped as the real delivery is (tests/fixtures/dynamic/delegation-created.json): the user id null at the top and inside `data`. */
 const created = (who: Signer, walletId: string, address: string, eventId: string, timestamp: string, share = { pubkey: { pubkey: "AQ" }, secretShare: `share-for-${walletId}` }) =>
   JSON.stringify({
+    environmentId: "61d68110-0000-4000-8000-000000000000",
+    environmentName: "sandbox",
+    messageId: `msg-${eventId}`,
     eventName: "wallet.delegation.created",
+    webhookId: "a25ee919-0000-4000-8000-000000000000",
     eventId,
     timestamp,
-    userId: who.user.dynamicUserId,
-    data: { chain: "EVM", walletId, shareSetId: `set-${walletId}`, publicKey: address, userId: who.user.dynamicUserId, encryptedDelegatedShare: envelope(JSON.stringify(share)), encryptedWalletApiKey: envelope(`key-for-${walletId}`) },
+    userId: null,
+    data: { publicKey: address, encryptedDelegatedShare: envelope(JSON.stringify(share)), shareSetId: `set-${walletId}`, chain: "EVM", userId: who.user.dynamicUserId, walletId, encryptedWalletApiKey: { ...envelope(`key-for-${walletId}`), kid: "dynamic_rsa_test" } },
   });
-const revoked = (who: Signer, walletId: string, eventId: string, timestamp: string) => JSON.stringify({ eventName: "wallet.delegation.revoked", eventId, timestamp, userId: who.user.dynamicUserId, data: { walletId, chain: "EVM" } });
+const revoked = (who: Signer, walletId: string, eventId: string, timestamp: string) => JSON.stringify({ eventName: "wallet.delegation.revoked", eventId, timestamp, userId: null, data: { walletId, chain: "EVM", userId: who.user.dynamicUserId } });
 /** The receiver's own decrypt runs; Dynamic's is asked separately below, on the same envelopes, as the oracle. */
 const deps = { secret: SECRET, privateKeyPem };
 
@@ -65,6 +71,9 @@ test("the receiver: a ledger wallet's event is verified over its bytes, decrypte
   assert.deepEqual(await receiveDelegationEvent(body, "sha256=" + "0".repeat(64), deps), { ok: false, status: 401, reason: "bad signature" });
   assert.deepEqual(await receiveDelegationEvent(`${body} `, signed(body), deps), { ok: false, status: 401, reason: "bad signature" }, "the bytes hashed are the bytes received");
   assert.deepEqual(await receiveDelegationEvent("{", signed("{"), deps), { ok: false, status: 400, reason: "not JSON" });
+  const malformed = '{"eventName":"wallet.delegation.created","eventId":"x"}';
+  assert.deepEqual(await receiveDelegationEvent(malformed, null, deps), { ok: false, status: 401, reason: "bad signature" }, "an unsigned body learns nothing about the shape the door expects");
+  assert.deepEqual(await receiveDelegationEvent(malformed, signed(malformed), deps), { ok: false, status: 400, reason: "not an event" }, "a signed one that is malformed is said to be");
   assert.deepEqual(await receiveDelegationEvent('{"eventName":"ping"}', null, deps), { ok: true, kind: "ignored" }, "the reachability ping needs no signature and does nothing");
   assert.deepEqual(await receiveDelegationEvent(body, signed(body), deps), { ok: true, kind: "stored", walletId: ledgerId });
   const [row] = await db.select().from(D).where(and(eq(D.userId, me.user.id), eq(D.walletId, ledgerId)));
@@ -96,8 +105,8 @@ test("the receiver: a ledger wallet's event is verified over its bytes, decrypte
   // A third address is refused the same way; an event about nobody we know is 422, so Dynamic keeps it to replay.
   const third = created(me, "w-3", "0x0000000000000000000000000000000000000003", "evt-3", "2026-09-27T10:02:00.000Z");
   assert.deepEqual(await receiveDelegationEvent(third, signed(third), exploding), { ok: true, kind: "refused", walletId: "w-3" });
-  const nobody = JSON.parse(body) as { userId: string };
-  nobody.userId = "tmp-check:nobody";
+  const nobody = JSON.parse(body) as { data: { userId?: string } };
+  nobody.data.userId = "tmp-check:nobody";
   const nb = JSON.stringify(nobody);
   assert.deepEqual(await receiveDelegationEvent(nb, signed(nb), deps), { ok: false, status: 422, reason: "no such user" });
   // Material that will not decrypt is a 400, never a stored blank.
@@ -105,6 +114,25 @@ test("the receiver: a ledger wallet's event is verified over its bytes, decrypte
   const again = created(me, ledgerId, me.user.ledgerWallet, "evt-4", "2026-09-27T10:03:00.000Z");
   assert.deepEqual(await receiveDelegationEvent(again, signed(again), wrongKey), { ok: false, status: 400, reason: "could not decrypt" });
   assert.equal((await db.select({ eventId: D.eventId }).from(D).where(and(eq(D.userId, me.user.id), eq(D.walletId, ledgerId))))[0]?.eventId, "evt-1", "unchanged");
+});
+
+const CHECK = { domain: { name: "Dareful delegation check", version: "1" }, types: { Check: [{ name: "at", type: "uint256" }] }, primaryType: "Check", message: { at: 7n } } as const;
+/** Dynamic's delegated signing, stood in for by a key of the test's own: the temp signer's ledger account for the honest case, a stranger's for the wrong one. */
+const signingWith = (account: PrivateKeyAccount): SignerLoad => async () => ({ client: {} as Awaited<ReturnType<SignerLoad>>["client"], mod: { delegatedSignTypedData: async (_c, { typedData }) => account.signTypedData(typedData as unknown as Parameters<PrivateKeyAccount["signTypedData"]>[0]) } });
+
+test("every signer failure is a prompt, never a failed action: the package not loading, Dynamic refusing, a wrong signer; and a signature that is made is recorded with its request", async () => {
+  const S = schema.delegatedSignatures;
+  const request = { action: "check" as const, subject: "gate", request: "tests/db/delegation.test.ts", requestId: "req-1" };
+  const ask = (load: SignerLoad) => trySignWithDelegation({ userId: me.user.id, address: me.user.ledgerWallet, typedData: CHECK, request }, { load });
+  assert.equal(await ask(async () => { throw new Error("Cannot find module './native/libmpc_executor_linux_x86_64_nodejs.node'"); }), null, "the package's binary missing on the platform: a prompt");
+  assert.equal(await ask(async () => ({ client: {} as Awaited<ReturnType<SignerLoad>>["client"], mod: { delegatedSignTypedData: async () => { throw new Error("wallet not found or access denied"); } } })), null, "Dynamic refusing: a prompt");
+  assert.equal(await ask(signingWith(privateKeyToAccount(generatePrivateKey()))), null, "a signature from the wrong key: a prompt, and never returned");
+  assert.equal((await db.select().from(S).where(eq(S.userId, me.user.id))).length, 0, "nothing recorded for any of those");
+  assert.equal(await trySignWithDelegation({ userId: me.user.id, address: me.user.governanceWallet, typedData: CHECK, request }, { load: signingWith(me.governance) }), null, "the governance wallet: a prompt, whatever the caller meant, and never its signature");
+  const signature = await ask(signingWith(me.ledger));
+  assert.ok(signature && signature.startsWith("0x"), "the honest case signs");
+  const [row] = await db.select().from(S).where(eq(S.userId, me.user.id));
+  assert.deepEqual([row?.action, row?.subject, row?.request, row?.requestId, row?.walletId, row?.digest.length], ["check", "gate", "tests/db/delegation.test.ts", "req-1", `w-ledger-${me.user.id.slice(0, 8)}`, 32], "recorded with the request that caused it");
 });
 
 test("the signer: the governance address is refused before any lookup; the ledger wallet's delegation opens; revocation wipes the material and turns prompts back on", async () => {

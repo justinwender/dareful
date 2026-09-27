@@ -93,17 +93,39 @@ export async function sendWithNonceRetry<T>(send: (nonce: number) => Promise<T>,
   }
 }
 
+/** How long the locked part of a send may take: a nonce read and one broadcast, seconds when the node answers, before the lock is given up rather than held by a hung call. */
+export const SEND_TIMEOUT_MS = 15_000;
+
+export class SendTimedOut extends Error {
+  constructor(ms: number) {
+    super(`the send did not finish within ${ms}ms; the lock was released, and the transaction may or may not have been broadcast`);
+    this.name = "SendTimedOut";
+  }
+}
+
+/** The promise, or `SendTimedOut` once `ms` have passed, whichever is first; the late result is dropped. */
+export function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const clock = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new SendTimedOut(ms)), ms);
+  });
+  return Promise.race([p, clock]).finally(() => clearTimeout(timer));
+}
+
 /**
  * One relayer key, many senders: every serverless instance, the tick, the development machine and its tests.
  * Two of them reading the pending nonce in the same second would send with the same one, and the second would
  * fail loudly for a person (docs/decisions.md 2026-09-27). So the nonce is read and the transaction sent under
  * one transaction-scoped lock in the shared database, the only thing every sender shares; the receipt is
- * waited for outside it, and a process that dies holding it releases it with its transaction.
+ * waited for outside it, and a process that dies holding it releases it with its transaction. A hung node
+ * cannot hold it either: the locked part is given up after `SEND_TIMEOUT_MS`, so one stalled call never stalls
+ * every send behind it (a transaction that was broadcast before the stall is counted by the next sender's
+ * pending-nonce read, or caught by its retry).
  */
-export async function withSendLock<T>(fn: () => Promise<T>): Promise<T> {
+export async function withSendLock<T>(fn: () => Promise<T>, timeoutMs = SEND_TIMEOUT_MS): Promise<T> {
   return db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended('relayer-send', 0))`);
-    return fn();
+    return withTimeout(fn(), timeoutMs);
   });
 }
 

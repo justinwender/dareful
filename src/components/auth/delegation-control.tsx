@@ -23,7 +23,10 @@ export function DelegationControl({ stored }: { stored: boolean }) {
   if (!me) return null;
   const statuses = getWalletsDelegatedStatus();
   const label = (address: string) => (address.toLowerCase() === me.ledgerWallet.toLowerCase() ? "ledger" : address.toLowerCase() === me.governanceWallet.toLowerCase() ? "governance" : "other");
-  const ledger = { chainName: ChainEnum.Evm, accountAddress: me.ledgerWallet };
+  // The SDK matches a wallet by its own address and chain, exactly as it holds them (checksummed, `ChainEnum.Evm`); the
+  // users row keeps the address lowercase, so the SDK's entry for the ledger wallet is found by address, never by case.
+  const ledgerEntry = statuses.find((w) => label(w.address) === "ledger");
+  const ledger = ledgerEntry ? { chainName: ledgerEntry.chain as ChainEnum, accountAddress: ledgerEntry.address } : { chainName: ChainEnum.Evm, accountAddress: me.ledgerWallet };
 
   async function run(which: "on" | "off") {
     setBusy(which);

@@ -15,7 +15,7 @@
  *   4. export: whether Dynamic lets the delegated materials export the ledger wallet's private key. Whatever
  *      comes back is discarded at once. No code path in the app calls export.
  */
-import { eq, or } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { recoverTypedDataAddress, type Hex } from "viem";
 import { db, schema } from "@/db";
 import { delegatedWalletFor, GovernanceNeverDelegated, open, storeKey } from "@/lib/chain/delegated-signer";
@@ -58,7 +58,8 @@ async function dynamicWallets(dynamicUserId: string): Promise<Wallet[]> {
 async function main(): Promise<void> {
   const who = process.argv[2];
   if (!who) throw new Error("say whose delegation to check: a display name or a user id");
-  const [user] = await db.select().from(schema.users).where(or(eq(schema.users.displayName, who), eq(schema.users.id, who)));
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(who);
+  const [user] = await db.select().from(schema.users).where(isUuid ? eq(schema.users.id, who) : eq(schema.users.displayName, who));
   if (!user) throw new Error(`no user ${who}`);
   const ledger = user.ledgerWallet.toLowerCase();
   const governance = user.governanceWallet.toLowerCase();
