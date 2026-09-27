@@ -11,6 +11,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 const DIR = "tests/fixtures/sports";
 const ESPN = (sport: string, league: string, date: string) => `https://site.api.espn.com/apis/site/v2/sports/${sport}/${league}/scoreboard?dates=${date}`;
 const BDL = (path: string, date: string) => `https://api.balldontlie.io/${path}/games?dates[]=${date}&per_page=25`;
+const SUMMARY = (sport: string, league: string, event: string) => `https://site.api.espn.com/apis/site/v2/sports/${sport}/${league}/summary?event=${event}`;
 
 async function save(name: string, url: string, headers: Record<string, string> = {}): Promise<void> {
   const r = await fetch(url, { headers });
@@ -39,6 +40,13 @@ async function main(): Promise<void> {
     await save("espn-nba-final", ESPN("basketball", "nba", "20260410"));
     await save("espn-nhl-scheduled", ESPN("hockey", "nhl", "20261008"));
     await save("espn-empty", ESPN("hockey", "nhl", "20260715"));
+    // A finished game's summary (the play-by-play the first-drive question is read from) and a scheduled game's, which has none.
+    await save("espn-nfl-summary-final", SUMMARY("football", "nfl", "401872948"));
+    await save("espn-nfl-summary-scheduled", SUMMARY("football", "nfl", "401872956"));
+  }
+  if (which === "summary") {
+    await save("espn-nfl-summary-final", SUMMARY("football", "nfl", "401872948"));
+    await save("espn-nfl-summary-scheduled", SUMMARY("football", "nfl", "401872956"));
   }
   if (which === "all" || which === "balldontlie") {
     const key = process.env.BALLDONTLIE_API_KEY;

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { MarkRefStamp } from "@/components/ledger/mark-stamp";
 import { ObligationToken } from "@/components/ledger/obligation-token";
 import { LiveDot, StateMark } from "@/components/ledger/state-mark";
+import { TeamPair } from "@/components/ledger/team-stamp";
 import { LinkPending } from "@/components/ui/link-pending";
 import type { NeedRow } from "@/lib/ledger/home";
 import { hueFor } from "@/lib/ui/hue";
@@ -24,6 +25,29 @@ export function NeedsYou({ rows, viewer, showAll, allHref }: { rows: NeedRow[]; 
       <h2 className="text-label text-ink-2">Needs you</h2>
       <div className="overflow-hidden rounded-card border border-line bg-surface">
         {shown.map((r, i) => {
+          if (r.kind === "game") {
+            // Two links side by side, never one inside the other: the row opens the game page, the verb the pressing question.
+            return (
+              <div key={`game-${r.key}`} data-game-need="" className={`relative grid grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-3 py-[14px] pr-[14px] pl-4 ${i > 0 ? "border-t border-line" : ""}`}>
+                <Link prefetch={false} href={r.href} className="absolute inset-0" aria-label={r.subject}>
+                  <LinkPending />
+                </Link>
+                <TeamPair away={r.game.away} home={r.game.home} size={28} overlap />
+                <span className="pointer-events-none flex min-w-0 flex-col gap-1">
+                  <span className="text-body-strong text-ink">{r.subject}</span>
+                  <span className="flex items-center gap-2 text-caption text-ink-3">
+                    {r.deadline ? <LiveDot /> : null}
+                    <StateMark state={r.game.state} />
+                    <span className="truncate">{r.context}</span>
+                  </span>
+                </span>
+                <Link prefetch={false} href={r.game.questionHref} className="relative link-row">
+                  <LinkPending />
+                  {r.verb}
+                </Link>
+              </div>
+            );
+          }
           const stamp = r.question && r.mark ? <MarkRefStamp mark={r.mark} size={40} ink={r.ink} /> : null;
           return (
             <Link prefetch={false} key={`${r.kind}-${r.key}`} href={r.href} className={`relative grid items-center gap-3 py-[14px] pr-[14px] pl-4 ${stamp ? "grid-cols-[40px_minmax(0,1fr)_auto]" : "grid-cols-[minmax(0,1fr)_auto]"} ${i > 0 ? "border-t border-line" : ""}`}>

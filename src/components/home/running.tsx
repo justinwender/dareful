@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { MarkRefStamp } from "@/components/ledger/mark-stamp";
 import { StateMark } from "@/components/ledger/state-mark";
+import { TeamPair } from "@/components/ledger/team-stamp";
 import { LinkPending } from "@/components/ui/link-pending";
 import type { RunningRow } from "@/lib/ledger/home";
 import { hueFor } from "@/lib/ui/hue";
@@ -18,11 +19,12 @@ export function Running({ rows, viewerId }: { rows: RunningRow[]; viewerId: stri
       <h2 className="text-label text-ink-2">Running</h2>
       <div className="overflow-hidden rounded-card border border-line bg-surface">
         {rows.map((r, i) => (
-          <Link prefetch={false} key={r.id} href={`/m/${r.id}`} className={`relative grid items-center gap-3 px-4 py-[14px] ${r.mark ? "grid-cols-[40px_minmax(0,1fr)]" : "grid-cols-[minmax(0,1fr)]"} ${i > 0 ? "border-t border-line" : ""}`}>
+          <Link prefetch={false} key={r.id} href={r.game ? r.game.href : `/m/${r.id}`} data-game-running={r.game ? "" : undefined} className={`relative grid items-center gap-3 px-4 py-[14px] ${r.mark || r.game ? "grid-cols-[40px_minmax(0,1fr)]" : "grid-cols-[minmax(0,1fr)]"} ${i > 0 ? "border-t border-line" : ""}`}>
             <LinkPending />
-            <MarkRefStamp mark={r.mark} size={40} ink={r.ink} />
+            {r.game ? <TeamPair away={r.game.away} home={r.game.home} size={28} overlap /> : <MarkRefStamp mark={r.mark} size={40} ink={r.ink} />}
             <span className="flex min-w-0 flex-col gap-1">
-              <span className="text-serif-m text-ink">{r.title}</span>
+              {/* A game is a subject, not a question (4.7): body 600 where a question takes the serif. */}
+              <span className={r.game ? "text-body-strong text-ink" : "text-serif-m text-ink"}>{r.title}</span>
               <span className="flex items-center gap-2 text-caption text-ink-3">
                 <StateMark state={r.state} hue={r.state === "in" ? hueFor(viewerId) : undefined} />
                 <span className="truncate">{r.caption}</span>

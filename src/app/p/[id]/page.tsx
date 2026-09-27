@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { MarketCardFrom } from "@/components/markets/market-card-from";
+import { GameCard } from "@/components/on/game-card";
 import { Avatar } from "@/components/ledger/avatar";
 import { CloseObligation } from "@/components/ledger/close-obligation";
 import { CoveredCard } from "@/components/ledger/covered-card";
@@ -85,6 +86,7 @@ export default async function PersonPage({ params, searchParams }: { params: Pro
           <div className="flex flex-col gap-3">
             {timeline.map((e) => {
               if (e.kind === "market") return <MarketCardFrom key={`m-${e.market.dare.id}`} m={e.market} viewerId={me.id} clock={clock} consequenceStates={view.consequenceStates} close={{ domain, photosOn }} />;
+              if (e.kind === "game") return <GameCard key={`g-${e.game.id}-${e.game.groupId}`} game={e.game} markets={e.markets} groupName={e.groupName} at={e.at} clock={clock} viewerId={me.id} themId={them.id} themName={them.displayName} consequenceStates={view.consequenceStates} close={{ domain, photosOn }} />;
               if (e.kind === "proposal") {
                 const debtor = byId.get(e.proposal.fromUser ?? "");
                 const creditor = byId.get(e.proposal.toUser ?? "");

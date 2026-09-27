@@ -1,12 +1,13 @@
 /**
- * What a final score answers, and when the backstop may act on it (docs/decisions.md, public markets). Pure, so
- * every ending has a test. The who-wins question is the chance the home team wins; a tie would be the exact
- * middle, which the deployed contract cannot score (tests/db/scoring-chain.test.ts), so until the redeploy a tie
- * goes unsettled with no toll. The margin is signed, home minus away, and stored shifted up by half its scale,
- * which changes no score. Nothing here reads a `winner` flag: a result is a completed game's two scores.
+ * What a final score answers, what the play-by-play answers, and when the backstop may act on either
+ * (docs/decisions.md, public markets and the game page). Pure, so every ending has a test. The who-wins question
+ * is the chance the home team wins; a tie would be the exact middle, which the deployed contract cannot score
+ * (tests/db/scoring-chain.test.ts), so until the redeploy a tie voids with no toll. The margin is signed, home
+ * minus away, and stored shifted up by half its scale, which changes no score. Nothing here reads a `winner`
+ * flag: a result is a completed game's two scores.
  */
 import { VOID_OUTCOME } from "@/lib/ledger/markets";
-import type { FinalScore } from "./types";
+import { DRIVE_ANSWERS, type DriveAnswer, type FinalScore } from "./types";
 
 export type ScoreOutcome = { outcome: bigint; tie: boolean; floored: boolean };
 
@@ -25,6 +26,13 @@ export function outcomeFor(t: { key: string; shift: bigint | null; decidedByScor
   return null;
 }
 
+/** The chain's outcome for the first-drive question: the answer's index in the template's list, or null for no recognised result. */
+export function driveOutcome(answers: readonly string[], result: DriveAnswer | null): bigint | null {
+  if (result === null || !(DRIVE_ANSWERS as readonly string[]).includes(result)) return null;
+  const i = answers.indexOf(result);
+  return i < 0 ? null : BigInt(i);
+}
+
 /** A signed margin as the chain stores it: shifted up by half the scale; null when it sits below what the field takes. */
 export function toStored(signed: bigint, shift: bigint): bigint | null {
   const stored = signed + shift;
@@ -33,9 +41,9 @@ export function toStored(signed: bigint, shift: bigint): bigint | null {
 /** A stored margin back to its sign. */
 export const fromStored = (stored: bigint, shift: bigint): bigint => stored - shift;
 
-/** "Giants by 7", "Titans by 3", "Level": a signed margin in words, never a sign in front of a number. */
+/** "Giants by 7", "Titans by 3", "A tie": a signed margin in words, never a sign in front of a number (docs/design.md 3.40). */
 export function marginWords(signed: bigint, home: string, away: string): string {
-  if (signed === 0n) return "Level";
+  if (signed === 0n) return "A tie";
   return signed > 0n ? `${home} by ${signed}` : `${away} by ${-signed}`;
 }
 
@@ -49,6 +57,9 @@ export const WARN_BEFORE_MS = 6 * 3_600_000;
 export const SAY_YOURSELF_AFTER_MS = 2 * 3_600_000;
 /** How long after a final's first read it is read once more, to catch a correction, before polling stops. */
 export const CONFIRM_AFTER_MS = 30 * 60_000;
+
+/** Which of the feed's endings a market took (docs/design.md 3.35), kept on the row for the settled screen's line. */
+export type FeedEnding = "agreed" | "alone" | "conflict" | "tie" | "drive" | "drive_unknown";
 
 export type Backstop = { act: "wait" } | { act: "settle"; final: FinalScore; alone: boolean } | { act: "void"; why: "conflict" };
 
@@ -66,6 +77,20 @@ export function backstopDecision(input: { finalSeenAt: Date; confirmedAt: Date |
     return since >= AGREE_AFTER_MS ? { act: "settle", final: input.final, alone: false } : { act: "wait" };
   }
   if (since >= ALONE_AFTER_MS && input.confirmedAt !== null) return { act: "settle", final: input.final, alone: true };
+  return { act: "wait" };
+}
+
+export type DriveBackstop = { act: "wait" } | { act: "settle"; outcome: bigint } | { act: "void"; why: "unknown" };
+
+/**
+ * The first drive's backstop (docs/decisions.md, the game page): one source only, since the second source's free
+ * key has no play-by-play, so a recognised result settles three days after it was first read once a later read
+ * found it unchanged; a result the adapter does not recognise, or none at all, three days after the game was
+ * complete, voids with no toll rather than waiting forever. Before its time, it waits.
+ */
+export function driveBackstopDecision(input: { outcome: bigint | null; seenAt: Date | null; confirmedAt: Date | null; completeAt: Date | null; now: Date }): DriveBackstop {
+  if (input.outcome !== null && input.seenAt && input.confirmedAt && input.now.getTime() - input.seenAt.getTime() >= ALONE_AFTER_MS) return { act: "settle", outcome: input.outcome };
+  if (input.outcome === null && input.completeAt && input.now.getTime() - input.completeAt.getTime() >= ALONE_AFTER_MS) return { act: "void", why: "unknown" };
   return { act: "wait" };
 }
 

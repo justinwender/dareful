@@ -1,5 +1,7 @@
 import { Avatar } from "@/components/ledger/avatar";
+import { TeamStamp } from "@/components/ledger/team-stamp";
 import { hueFor } from "@/lib/ui/hue";
+import type { TeamFace } from "@/lib/ui/team";
 
 export type Pin = { id: string; name: string; percent: number };
 
@@ -8,7 +10,7 @@ export type Pin = { id: string; name: string; percent: number };
  * entering a blind market; full pins once everyone is in; and when it has resolved, the true half takes the
  * wash and the true end a solid cream cap. Pins closer than 6 points cluster once there are more than six.
  */
-export function CallLine({ pins, state, outcome, size = "card", surface = "var(--surface)" }: { pins: Pin[]; state: "hidden" | "in" | "resolved"; outcome?: 0 | 1; size?: "card" | "screen"; surface?: string }) {
+export function CallLine({ pins, state, outcome, size = "card", surface = "var(--surface)", ends }: { pins: Pin[]; state: "hidden" | "in" | "resolved"; outcome?: 0 | 1; size?: "card" | "screen"; surface?: string; /** Between two teams (3.40): the away side at the low end and the home side at the high end, each a 20px stamp with its name, "Even" in the middle; the winner's name in ink once resolved. */ ends?: { away: TeamFace; home: TeamFace } | null }) {
   const pin = size === "card" ? 24 : 32;
   const track = size === "card" ? 6 : 8;
   if (state === "hidden") {
@@ -47,16 +49,30 @@ export function CallLine({ pins, state, outcome, size = "card", surface = "var(-
           </span>
         ))}
       </div>
+      {ends ? (
+        <div className="flex items-center justify-between text-caption text-ink-3">
+          <span className="inline-flex items-center gap-1.5">
+            <TeamStamp team={ends.away} size={20} />
+            {state === "resolved" && outcome === 0 ? <b className="font-semibold text-ink">{ends.away.name}</b> : ends.away.name}
+          </span>
+          <span>Even</span>
+          <span className="inline-flex items-center gap-1.5">
+            {state === "resolved" && outcome === 1 ? <b className="font-semibold text-ink">{ends.home.name}</b> : ends.home.name}
+            <TeamStamp team={ends.home} size={20} />
+          </span>
+        </div>
+      ) : (
       <div className="flex justify-between text-caption text-ink-3">
         <span>{state === "resolved" && outcome === 0 ? <b className="font-semibold text-ink">No</b> : state === "resolved" ? "Said no" : "No"}</span>
         <span>even</span>
         <span>{state === "resolved" && outcome === 1 ? <b className="font-semibold text-ink">Yes</b> : state === "resolved" ? "Said yes" : "Yes"}</span>
       </div>
+      )}
     </div>
   );
 }
 
-export type RulerData = { leftLabel: string; rightLabel: string; pins: Array<{ id: string; name: string; value: string; xPermille: number; off: "low" | "high" | null }>; answer: { value: string; xPermille: number } | null };
+export type RulerData = { leftLabel: string; rightLabel: string; /** The margin's ruler is centred on a tie (3.40): "Tie" in the middle, and the answer's words under its tick. */ midLabel?: string | null; answerLabel?: string | null; pins: Array<{ id: string; name: string; value: string; xPermille: number; off: "low" | "high" | null }>; answer: { value: string; xPermille: number } | null };
 
 /**
  * The ruler (docs/design.md 3.5, number markets): the call line become a number line. Its ends are the lowest
@@ -102,8 +118,14 @@ export function Ruler({ ruler, size = "card", surface = "var(--surface)", state 
       </div>
       <div className="flex justify-between text-caption text-ink-3 tabular-nums">
         <span>{offLow.length ? `← ${(offLow[0] as { value: string }).value}` : ruler.leftLabel}</span>
+        {ruler.midLabel ? <span>{ruler.midLabel}</span> : null}
         <span>{offHigh.length ? `${(offHigh[0] as { value: string }).value} →` : ruler.rightLabel}</span>
       </div>
+      {ruler.answer && state === "resolved" && ruler.answerLabel ? (
+        <p className="relative h-[18px] text-caption font-semibold text-ink" aria-hidden="true">
+          <span className="absolute -translate-x-1/2 whitespace-nowrap" style={{ left: `clamp(40px, ${ruler.answer.xPermille / 10}%, calc(100% - 40px))` }}>{ruler.answerLabel}</span>
+        </p>
+      ) : null}
     </div>
   );
 }

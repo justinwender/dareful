@@ -13,7 +13,7 @@ import { marketById, quorumOf, tally, VOID_OUTCOME, votesOf } from "@/lib/ledger
 import { firstName } from "@/lib/ui/copy";
 import { sendEmail, sendPush } from "./channels";
 import { positionsOf } from "@/lib/ledger/markets";
-import { backstopResultNotice, backstopWarningNotice, closedNotice, deadlineNotice, rulingNotice, joinedNotice, nettedNotice, nudgeNotice, nudgeSeq, nudgeTargets, openedNotice, recipientsAfterVote, resultNotice, voteRequest, type Notice } from "./messages";
+import { backstopResultNotice, backstopWarningNotice, closedNotice, deadlineNotice, rulingNotice, joinedNotice, nettedNotice, nudgeNotice, nudgeSeq, nudgeTargets, openedNotice, pushElseEmail, recipientsAfterVote, resultNotice, voteRequest, type BackstopHow, type Notice, type WarningFlavour } from "./messages";
 
 /** Claims the (person, market, kind, count) slot; false if it was already told. This is what makes a retry silent. */
 export async function claimNotice(userId: string, dareId: string, kind: "vote_request" | "result" | "opened" | "joined" | "nudge" | "deadline" | "ruling" | "backstop_warning" | "backstop_result", seq: number, causedBy: string): Promise<string | null> {
@@ -33,8 +33,19 @@ export async function claimPairNotice(userId: string, causedBy: string, now: Dat
   return row?.id ?? null;
 }
 
-async function deliver(userId: string, logId: string, notice: Notice): Promise<void> {
-  const [push, email] = await Promise.all([sendPush(userId, notice).catch(() => false), sendEmail(userId, notice).catch(() => false)]);
+/**
+ * Sends on the channels. The two backstop notices go by push where the person allowed it, else by email, never
+ * both (docs/design.md 4.10); everything else goes on every channel that takes it, since a channel that drops it
+ * is the reason "Needs you" exists.
+ */
+async function deliver(userId: string, logId: string, notice: Notice, mode: "every" | "push-else-email" = "every"): Promise<void> {
+  let push = false;
+  let email = false;
+  if (mode === "push-else-email") {
+    ({ push, email } = await pushElseEmail(() => sendPush(userId, notice), () => sendEmail(userId, notice)));
+  } else {
+    [push, email] = await Promise.all([sendPush(userId, notice).catch(() => false), sendEmail(userId, notice).catch(() => false)]);
+  }
   const channels = [push ? "push" : null, email ? "email" : null].filter((c): c is string => c !== null);
   if (channels.length > 0) await db.update(schema.notificationLog).set({ channels }).where(eq(schema.notificationLog.id, logId));
 }
@@ -192,18 +203,21 @@ export async function notifyRuling(dareId: string, askedBy: string | null): Prom
 }
 
 /**
- * One warning before a backstop acts, to everyone in the question (docs/decisions.md, public markets). Caused, as
- * the deadline notice is, by the asker's own act of setting the rule everyone then agreed to; push and email only.
+ * One warning before a backstop acts (docs/design.md 4.10), to everyone in the question who could still vote and
+ * hasn't: the tiebreaker everyone agreed to, the final score, the play-by-play, or the void rule, about to act
+ * for them. Caused, as the deadline notice is, by the asker's own act of setting the rule everyone then agreed
+ * to; by push, else email, never both; and never a second.
  */
-export async function notifyBackstopWarning(dareId: string, flavour: "tiebreaker" | "score" | "void"): Promise<void> {
+export async function notifyBackstopWarning(dareId: string, flavour: WarningFlavour, actsAt: Date, now: Date = new Date()): Promise<void> {
   try {
     const d = await marketById(dareId);
     if (!d || d.resolvedAt) return;
-    const positions = await positionsOf(dareId);
+    const [positions, votes] = await Promise.all([positionsOf(dareId), votesOf(dareId)]);
+    const voted = new Set(votes.map((v) => v.userId));
     await Promise.all(
-      positions.map((p) => p.userId).filter((x): x is string => x !== null).map(async (userId) => {
+      positions.map((p) => p.userId).filter((x): x is string => x !== null && !voted.has(x)).map(async (userId) => {
         const id = await claimNotice(userId, dareId, "backstop_warning", 0, d.creatorId);
-        if (id) await deliver(userId, id, backstopWarningNotice({ title: d.title, flavour, marketId: d.id, appUrl: APP_URL() }));
+        if (id) await deliver(userId, id, backstopWarningNotice({ title: d.title, flavour, actsAt, now, zone: d.zone ?? "UTC", marketId: d.id, appUrl: APP_URL() }), "push-else-email");
       }),
     );
   } catch (err) {
@@ -211,17 +225,31 @@ export async function notifyBackstopWarning(dareId: string, flavour: "tiebreaker
   }
 }
 
-/** The notice after the final score or the void rule ended a question nobody called: everyone in it hears, once. */
+/**
+ * The one notice after a backstop has acted (docs/design.md 4.10): the feed settled it or could not, the tick's
+ * tiebreaker ruled or found the terms don't decide it, or the void rule let it go unsettled. To everyone in it,
+ * once, in place of the ordinary result notice; by push, else email.
+ */
 export async function notifyBackstopResult(dareId: string): Promise<void> {
   try {
     const d = await marketById(dareId);
-    if (!d || !d.resolvedAt || (d.resolvedBy !== "feed" && d.resolvedBy !== "expired")) return;
-    const how = d.resolvedBy === "expired" ? "expired" : d.resolvedOutcome === VOID_OUTCOME ? "feed_void" : "feed";
+    if (!d || !d.resolvedAt) return;
+    const how: BackstopHow | null =
+      d.resolvedBy === "expired"
+        ? "expired"
+        : d.resolvedBy === "feed"
+          ? ((d.feedEnding as BackstopHow | null) ?? (d.resolvedOutcome === VOID_OUTCOME ? "conflict" : "agreed"))
+          : d.resolvedBy === "arbitration"
+            ? d.resolvedOutcome === VOID_OUTCOME
+              ? "tiebreaker_void"
+              : "tiebreaker"
+            : null;
+    if (!how) return;
     const positions = await positionsOf(dareId);
     await Promise.all(
       positions.map((p) => p.userId).filter((x): x is string => x !== null).map(async (userId) => {
         const id = await claimNotice(userId, dareId, "backstop_result", 0, d.creatorId);
-        if (id) await deliver(userId, id, backstopResultNotice({ title: d.title, how, marketId: d.id, appUrl: APP_URL() }));
+        if (id) await deliver(userId, id, backstopResultNotice({ title: d.title, how, marketId: d.id, appUrl: APP_URL() }), "push-else-email");
       }),
     );
   } catch (err) {

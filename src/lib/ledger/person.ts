@@ -13,6 +13,9 @@ import { obligationsById, openBetween, type EnvioObligation } from "./envio";
 import { bytes16ToUuid, uuidToBytes16 } from "./ids";
 import { marketCards, type MarketCardData } from "./market-view";
 import { pendingBetween, type ProposalRow } from "./proposals";
+import { gamesOfMarkets } from "@/lib/sports";
+import { scoreLine } from "@/lib/sports/results";
+import type { TeamFace } from "@/lib/ui/team";
 
 export type UserRow = typeof schema.users.$inferSelect;
 export type ObligationRow = typeof schema.obligations.$inferSelect;
@@ -67,7 +70,9 @@ export type TimelineEvent =
   | { kind: "obligation"; at: Date; obligation: ObligationRow; denomination: DenominationRow; open: bigint; settled: bigint; forgiven: bigint; netted: bigint; groupName: string | null }
   | { kind: "proposal"; at: Date; proposal: ProposalRow; denomination: DenominationRow; groupName: string | null }
   /** A market both people were in: one story, with only what it left between these two beneath it. */
-  | { kind: "market"; at: Date; market: MarketCardData };
+  | { kind: "market"; at: Date; market: MarketCardData }
+  /** A game with more than one question between these two (3.4): one story for the night, its questions inside it. */
+  | { kind: "game"; at: Date; game: { id: string; groupId: string; name: string; away: TeamFace; home: TeamFace; score: string | null; over: boolean }; markets: MarketCardData[]; groupName: string | null };
 
 /** One unit in one set of people that goes both ways between these two: what one signature cancels (docs/design.md 2.1; PLANNING.md 5a `net`). */
 export type NettableLine = { groupId: string; denomId: string; denomination: DenominationRow; groupLabel: string | null; meOwes: bigint; theyOwe: bigint; cancels: bigint };
@@ -99,7 +104,7 @@ export function rallyRows(pickups: Array<{ userId: string; at: Date }>, meId: st
 }
 
 export type SharedContext = { groupId: string; label: string; count: number; unnamed: boolean };
-const contextOf = (e: TimelineEvent): string => (e.kind === "market" ? e.market.dare.groupId : e.kind === "proposal" ? e.proposal.groupId : e.obligation.groupId);
+const contextOf = (e: TimelineEvent): string => (e.kind === "market" ? e.market.dare.groupId : e.kind === "game" ? e.game.groupId : e.kind === "proposal" ? e.proposal.groupId : e.obligation.groupId);
 
 /**
  * docs/design.md 3.21. Counts of shared events per set of people, most first, so the band can answer the one
@@ -188,7 +193,26 @@ export async function personView(me: UserRow, them: UserRow): Promise<PersonView
     if (!denomination) continue;
     timeline.push({ kind: "proposal", at: p.createdAt, proposal: p, denomination, groupName: groupNames.get(p.groupId) ?? null });
   }
-  for (const m of markets) timeline.push({ kind: "market", at: m.at, market: m });
+  // A game with more than one question between these two is one story (3.4); a game with one is that question's ordinary story.
+  const fromGames = markets.filter((m) => m.dare.templateId);
+  const games = fromGames.length ? await gamesOfMarkets(fromGames.map((m) => m.dare.id)) : new Map();
+  const byGame = new Map<string, MarketCardData[]>();
+  for (const m of markets) {
+    const g = games.get(m.dare.id);
+    if (!g) continue;
+    const key = `${g.game.id}:${m.dare.groupId}`;
+    byGame.set(key, [...(byGame.get(key) ?? []), m]);
+  }
+  const grouped = new Set<string>();
+  for (const list of byGame.values()) if (list.length > 1) for (const m of list) grouped.add(m.dare.id);
+  for (const m of markets) if (!grouped.has(m.dare.id)) timeline.push({ kind: "market", at: m.at, market: m });
+  for (const [, list] of byGame) {
+    if (list.length < 2) continue;
+    const g = games.get(list[0]!.dare.id)!.game;
+    const sorted = [...list].sort((a, b) => (games.get(a.dare.id)?.template.sort ?? 0) - (games.get(b.dare.id)?.template.sort ?? 0));
+    const at = list.reduce((m, x) => (x.at > m ? x.at : m), list[0]!.at);
+    timeline.push({ kind: "game", at, game: { id: g.id, groupId: list[0]!.dare.groupId, name: g.name, away: { abbr: g.awayAbbr, name: g.awayShort, color: g.awayColor }, home: { abbr: g.homeAbbr, name: g.homeShort, color: g.homeColor }, score: g.finalSeenAt && g.homeScore !== null && g.awayScore !== null ? scoreLine({ home: g.homeScore, away: g.awayScore }, g.homeShort, g.awayShort) : null, over: g.completed || list.every((x) => x.state === "resolved" || x.state === "voided" || x.state === "expired") }, markets: sorted, groupName: null });
+  }
   // The offchain timestamp, never the chain timestamp.
   timeline.sort((x, y) => y.at.getTime() - x.at.getTime());
 
@@ -198,6 +222,7 @@ export async function personView(me: UserRow, them: UserRow): Promise<PersonView
   for (const e of timeline) {
     const label = labels.get(contextOf(e))?.label ?? null;
     if (e.kind === "market") e.market = { ...e.market, groupName: label };
+    else if (e.kind === "game") e.groupName = label;
     else e.groupName = label;
   }
 

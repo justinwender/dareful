@@ -97,6 +97,9 @@ const CONTROLS = new Set([
   "src/components/markets/mark-picker.tsx",
   // The pick-one entry's rows (3.30): every word in them is inside a control, the answers as radio rows.
   "src/components/markets/pick-one-entry.tsx",
+  // A team stamp is a mark, outside the type floor and the budget (1.7); the line between two teams is a control (3.40).
+  "src/components/ledger/team-stamp.tsx",
+  "src/components/markets/team-line.tsx",
 ]);
 /** Rendered to an image, never to the screen. */
 const RENDERERS = [/opengraph-image\.tsx$/, /^src\/app\/icons\//];

@@ -12,6 +12,7 @@
 import { ImageResponse } from "next/og";
 import type { Hue } from "./hue";
 import { INKS, type InkName } from "./ink";
+import { stampFill, stampGlyph, stampInk, stampRadius, type TeamFace } from "./team";
 
 export const tileSize = { width: 1200, height: 630 };
 const SAFE = { x: 285, w: 630 };
@@ -42,6 +43,19 @@ export type AskTile = {
   unit: string | null;
   /** A pick-one question: the answers themselves, all of them, stand where the odds line would (3.27). */
   answers?: TileAnswer[] | null;
+  /** Between two teams (3.40): the two stamps at 88px at the ends of the empty line, each with its name under it; the margin's line carries a tie tick at the middle. */
+  teams?: { away: TeamFace; home: TeamFace; margin: boolean } | null;
+};
+/** A game's asking tile (3.27): "Priya asks", the two stamps either side of the game in serif, the chosen questions as rows, and the close time. */
+export type GameTile = {
+  kind: "game";
+  asker: { name: string; hue: Hue };
+  ink: InkName;
+  away: TeamFace;
+  home: TeamFace;
+  name: string;
+  questions: string[];
+  closes: string | null;
 };
 /** An answer on a tile: the words, and the person with their avatar where it is a person. */
 export type TileAnswer = { text: string; person: { name: string; hue: Hue } | null };
@@ -68,6 +82,8 @@ export type CalledTile = {
   outcomeLine: string;
   pins: Array<{ name: string; hue: Hue; percent: number; caller: boolean }>;
   line: string;
+  /** Between two teams (3.40): the stamps and names at the ends instead of No and Yes. */
+  teams?: { away: TeamFace; home: TeamFace } | null;
 };
 /** A number question's result tile (3.27): the answer as its outcome, the ruler with the answer tick, and who was closest. */
 export type NumberTile = {
@@ -78,10 +94,19 @@ export type NumberTile = {
   photos: boolean;
   /** "14 shirts." */
   outcomeLine: string;
-  ruler: { leftLabel: string; rightLabel: string; answerPermille: number; pins: Array<{ name: string; hue: Hue; xPermille: number; closest: boolean }> };
+  ruler: { leftLabel: string; rightLabel: string; midLabel?: string | null; answerPermille: number; pins: Array<{ name: string; hue: Hue; xPermille: number; closest: boolean }> };
   line: string;
 };
-export type Tile = AskTile | CalledTile | NumberTile | PickTile;
+export type Tile = AskTile | CalledTile | NumberTile | PickTile | GameTile;
+
+/** A team stamp on a tile (1.7): the abbreviation on the team's colour, the inset ring, a quarter radius; never a logo. */
+function teamStamp(team: TeamFace, size: number) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: size, height: size, borderRadius: stampRadius(size), background: team.color ? stampFill(team.color) : "#121110", color: stampInk(team.color), fontSize: stampGlyph(size, team.abbr), fontWeight: 600, boxShadow: "inset 0 0 0 2px rgba(242, 237, 227, 0.16)", textTransform: "uppercase", letterSpacing: 1 }}>
+      {team.abbr}
+    </div>
+  );
+}
 
 const initial = (name: string) => name.trim().charAt(0).toUpperCase();
 
@@ -231,6 +256,25 @@ function ask(t: AskTile) {
           </div>
           <div style={{ display: "flex", fontFamily: "Young Serif", fontSize: 44, color: CREAM }}>{t.unit}</div>
         </div>
+      ) : t.teams ? (
+        // Between two teams (3.27, 3.40): the two stamps at 88px at the ends of the empty line, equal, with the names under; the margin's line has a tie tick at the middle.
+        <>
+          <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", height: 110 }}>
+            {teamStamp(t.teams.away, 88)}
+            {teamStamp(t.teams.home, 88)}
+          </div>
+          <div style={{ position: "relative", display: "flex", gap: 8 }}>
+            {Array.from({ length: 10 }, (_, i) => (
+              <div key={i} style={{ display: "flex", flex: 1, height: 12, borderRadius: 6, background: layers.ground }} />
+            ))}
+            {t.teams.margin ? <div style={{ position: "absolute", left: SAFE.w / 2 - 1, top: -8, width: 2, height: 28, background: CREAM, opacity: 0.6, display: "flex" }} /> : null}
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 40, fontWeight: 600, color: CREAM }}>
+            <div style={{ display: "flex" }}>{t.teams.away.name}</div>
+            <div style={{ display: "flex", fontSize: 28, color: layers.hi, alignItems: "center" }}>{t.teams.margin ? "Tie" : "Even"}</div>
+            <div style={{ display: "flex" }}>{t.teams.home.name}</div>
+          </div>
+        </>
       ) : (
         <>
       {t.mark || t.markImage ? (
@@ -425,6 +469,19 @@ function called(t: CalledTile) {
           </div>
         ))}
       </div>
+      {t.teams ? (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 28 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, color: t.outcome === 0 ? CREAM : layers.hi }}>
+            {teamStamp(t.teams.away, 44)}
+            {t.teams.away.name}
+          </div>
+          <div style={{ display: "flex", color: layers.hi }}>Even</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, color: t.outcome === 1 ? CREAM : layers.hi }}>
+            {t.teams.home.name}
+            {teamStamp(t.teams.home, 44)}
+          </div>
+        </div>
+      ) : (
       <div
         style={{
           display: "flex",
@@ -450,6 +507,7 @@ function called(t: CalledTile) {
           Yes
         </div>
       </div>
+      )}
     </div>,
     <div
       key="who"
@@ -508,6 +566,7 @@ function numberTile(t: NumberTile) {
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 28, color: layers.hi }}>
         <div style={{ display: "flex" }}>{t.ruler.leftLabel}</div>
+        {t.ruler.midLabel ? <div style={{ display: "flex" }}>{t.ruler.midLabel}</div> : null}
         <div style={{ display: "flex" }}>{t.ruler.rightLabel}</div>
       </div>
     </div>,
@@ -517,8 +576,32 @@ function numberTile(t: NumberTile) {
   ]);
 }
 
+/** A game's asking tile (3.27): "Priya asks", the two stamps at 88px either side of the game in serif at 52px, the chosen questions as up to four rows at 40px 600, and the close time. */
+function gameTile(t: GameTile) {
+  const layers = INKS[t.ink];
+  return frame(t.ink, [
+    <div key="asker" style={{ display: "flex", alignItems: "center", gap: 20 }}>
+      {avatar(t.asker.name, t.asker.hue, 64)}
+      <div style={{ display: "flex", fontSize: 48, fontWeight: 600 }}>{t.asker.name} asks</div>
+    </div>,
+    <div key="game" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 24, width: SAFE.w }}>
+      {teamStamp(t.away, 88)}
+      <div style={{ display: "flex", fontFamily: "Young Serif", fontSize: 52, textAlign: "center" }}>{t.name}</div>
+      {teamStamp(t.home, 88)}
+    </div>,
+    <div key="questions" style={{ display: "flex", flexDirection: "column", width: 480, gap: 4 }}>
+      {t.questions.slice(0, 4).map((q, i) => (
+        <div key={i} style={{ display: "flex", fontSize: 40, fontWeight: 600, color: CREAM, lineHeight: 1.2 }}>
+          {q}
+        </div>
+      ))}
+    </div>,
+    ...(t.closes ? [<div key="closes" style={{ display: "flex", fontSize: 40, fontWeight: 600, color: layers.hi }}>{t.closes}</div>] : []),
+  ]);
+}
+
 export function renderTile(tile: Tile, fonts: TileFonts): ImageResponse {
-  return new ImageResponse(tile.kind === "ask" ? ask(tile) : tile.kind === "number" ? numberTile(tile) : tile.kind === "pick" ? pickTile(tile) : called(tile), {
+  return new ImageResponse(tile.kind === "ask" ? ask(tile) : tile.kind === "number" ? numberTile(tile) : tile.kind === "pick" ? pickTile(tile) : tile.kind === "game" ? gameTile(tile) : called(tile), {
     ...tileSize,
     emoji: "noto",
     fonts: [

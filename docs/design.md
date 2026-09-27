@@ -19,10 +19,11 @@ below match the artboards:
 - `DockStates` (the sheet through a market's life), the link tiles (`TileAsk`, `TileAskRange`,
   `TilePhoto`, `TileCalled`, `TileInChat`), and the ink boards (`Inks`, `InkCompare`).
 - New rows under the inks: pick-one markets (`PickOneMarket`, interactive; `PickOneEntry`;
-  `PickOneResolve`), What's on (`WhatsOn`; `WhatsOnFlow`; `WhatsOnStates`; `FeedBallot`), You
-  (`You`; `YouEarly`), a row for the contract redeploy only (`SpreadRedeploy`), which must not
-  be built before it, and a last row for after submission, the light theme (`LightScreens`,
-  `LightRules`).
+  `PickOneResolve`), What's on (`WhatsOn`, as games; `GamePage`; `WhoWins`; `Margin`; `Endings`;
+  `Notices`; `WhatsOnStates`; `FeedBallot`; and `WhatsOnFlow`, starting a game with one
+  question), You (`You`; `YouEarly`), a row for the contract redeploy only (`SpreadRedeploy`),
+  which must not be built before it, and a last row for after submission, the light theme
+  (`LightScreens`, `LightRules`).
 
 Market colours on boards other than `Inks` and `MarkPicker` are illustrative and were drawn
 before the emoji ink table existed (1.8). Where a board and `src/lib/ui/emoji-inks.json`
@@ -39,30 +40,49 @@ built after submission.
 
 ### What changed in this revision
 
-This revision covers the ninth design session only. Everything not listed here is unchanged from
-the copy in the repository. Each item says what it asks of existing code.
+This revision covers the tenth design session only. Everything not listed here is unchanged from
+the copy in the repository. Each item says what it asks of existing code. Public markets are
+being built underneath this design: the feed, the backstop and the two new kinds of market exist
+in code, and this revision gives them their screens.
 
-1. A photo while the market is open (new 3.39; 3.8, 3.24, 6.3). The "you're in" sheet gains a
-   camera button beside "Send it to the chat", for people who have entered and only while the
-   market is open. What it takes is a memory, never evidence, and only the person who took it
-   sees it until the market ends; then it joins the frame after the claim's attachment. Someone
-   who isn't in sees no camera at all, so entering stays the open screen's only move. Built
-   code: the sheet's row gains the button; `addMarketPhoto` accepts an open market from someone
-   with a position, with `role = 'memory'`; a photo added before the end is visible to its
-   author alone until then; the frame already orders memories by when they were added.
-2. The light theme, for after submission (new section 8). Follows the phone, with an override on
-   You. The primary action is graphite, the value extreme on a light ground; the eight inks keep
-   their hues at light layers; citron keeps its colour and gains a graphite edge; the grain is
-   recalibrated as a dark tile. Built code: none before submission. After it, a second set of
-   values for the same custom properties plus four drawn rules (8.8).
-3. No glass (1.5). Frosted and translucent surfaces stay out of both themes, with the reasons
-   written down, so a later pass doesn't reach for them.
-4. Cleanups. 4.7 said every row with a clock carries the citron dot, which contradicted 3.15's
-   one dot per viewport; it now points at 3.15. 1.1's Light column is marked as the value half
-   of section 8, and its citron value is replaced (8.5).
-5. Canvas. New `OpenPhoto`, at the end of the screens row. A new last row for after submission:
-   `LightScreens` (Now, a market in its ink, and board 14, in light) and `LightRules`. The
-   export at `docs/design/reference/design.html` is regenerated.
+1. What's on is a list of games (3.32). One row per game, whatever it has questions about. "Most
+   asked" counts groups that started anything on a game, with the same floor of ten; the
+   schedule by day is unchanged. Built code: the list's row is a game, and the popularity count
+   moves from the question to the game.
+2. The game page (3.33, rewritten). Tapping a game opens an index: the two teams and the time,
+   then one collapsed card per question the group is running, each opening its own ordinary
+   market screen with its own sheet. The asker picks the questions from the game's menu (who
+   wins, the margin, total points, and the first drive where there is play-by-play); anyone in
+   the group can add another until kickoff, when everything closes. A game is one row on Now,
+   one story in a timeline, and one night once it is over (4.7, 3.4, 3.37). Built code: a new
+   screen; the market screen is unchanged.
+3. Two sliders between two teams (new 3.40; 1.7, 3.7, 3.27, 4.5). Who wins and the margin share
+   one picture: a team stamp at each end, growing as the slider leans its way and equal at the
+   middle, with the fill running from the middle. A team stamp is the feed's abbreviation on the
+   team's colour, never a logo. A tie is drawn both ways, scored at the middle and as a void,
+   for the developer to say which the contract can take.
+4. When nobody votes on a What's on market (3.35). Three endings, each with its own line: both
+   results agree (a day), one result that holds (three days), results that disagree (void, and
+   nobody's fault). The consent is a sentence in the entry sheet, directly above the button that
+   gives it.
+5. One warning, one notice (new 4.10). Before a backstop acts, one warning, framed as the
+   backstop everyone agreed to about to act for them; after it settles, one notice. Push, else
+   email. Written for What's on and for every other market.
+6. No sportsbook words (4.6). "Spread" is gone from every screen: multi-choice's "Spread it" is
+   "Divide it" (3.36), and the weight line's "No spread at all." is "Everyone on one number."
+   (3.22). A margin is said in words ("Bills by 7"), never with a sign or a half point.
+7. Canvas. `WhatsOn` redrawn as games; new `GamePage`, `WhoWins`, `Margin`, `Endings` and
+   `Notices` in the What's on row; `SpreadRedeploy` and `WeightSpec` lose the word "spread". The
+   export at `docs/design/reference/design.html` is regenerated, and it was opened in a browser
+   to check that every new board draws.
+8. The older What's on boards follow the games. `FirstRun`, `WhatsOnStates`, `FeedBallot` and
+   `WhatsOnFlow` still drew yes-or-no questions about one team ("Do the Giants win?"). They now
+   draw games and the slider between the two teams: the first-run starters and the launch and
+   failed states are game rows (3.14, 3.32), the ballot names a team ("That's right, the Giants
+   won", 3.35), and `WhatsOnFlow` is starting a game with one question, step by step, with the
+   terms step written out in 3.38 for the first time. The curation example of an edge case is no
+   longer "A tie counts as no." (3.32), and the tie row's wording is fixed both ways (3.40).
+   Built code: nothing beyond items 1 to 3.
 
 ---
 
@@ -308,6 +328,18 @@ there is no stamp at all: a filled square inside a 32px capsule is a box in a bo
 reads on its own. Emoji only for now, and not yet reachable: no screen makes a unit with a label
 of its own, so the picker has nowhere to open from for a unit (3.29). Picture and sticker marks
 for units use the same two rows once that screen exists.
+
+**Team stamps.** On What's on, a team appears as a stamp: the abbreviation the feed supplies
+("BUF", "KC") on the team's colour, which the feed also supplies. The abbreviation is Hanken 700
+at 0.42 of the stamp for two letters and 0.36 for three, in whichever of `#121110` and `#F2EDE3`
+has more contrast with the colour, and the stamp carries a 1px inset ring at
+`rgba(242,237,227,0.16)`, so a navy or maroon team keeps its edge on the dark ground. The radius
+is a quarter of the size. Sizes: 20px only beside the team's name in words, 28px in a list row,
+44px in a game's header, and 18 to 60px on a slider (3.40). A stamp is a mark, outside the type
+floor and the budget, which is why its smallest size never appears without the name beside it.
+No team logos anywhere: they are trademarks the leagues police, and a logo that grows and
+shrinks is exactly the kind of use that draws attention. Abbreviations and names, used to say
+who is playing, are fine. A team's colour appears only inside its stamp (4.5).
 
 ### 1.8 Market inks
 
@@ -580,6 +612,15 @@ Kinds and states:
 - **Voided**: subject line, "Nobody could tell, so it's void," no consequences, no toll, and no
   explanation of who failed to resolve it. **Expired** reads "Never settled." the same way.
   Either can carry a frame, since an ended market takes photos whatever its ending (3.37).
+- **A game** (What's on, more than one question in the same group): one story for the night. The
+  link: a kicker with the two 20px team stamps and "What's on · Chiefs at Bills", the final
+  score as the subject in `serif-l` ("Bills 24, Chiefs 17."), the frame at 180 with the photos
+  from every question of the game, one line per question (the question in `body` 600, then its
+  outcome in the market's words and what the two people in view said: "Bills by 7 · you said
+  Bills by 3, Gabe said Chiefs by 1"), and when. Tapping it opens the game page (3.33). Under
+  the link, the consequences between the two people in view, one row per unit summed across the
+  game's questions; settling a summed row closes each obligation in it. A game with one question
+  is that question's ordinary story.
 - **Loading**: only when the card is loading into a screen that is already on display (5.3); the
   card shape with 8px and 12px `--line`/`--line-strong` bars in place of text, hatched block in
   place of media, no shimmer, minimum 200ms on screen. A navigation never renders this.
@@ -648,11 +689,13 @@ screen: "Only 20%, and still closer than Gabe and John."); **tie** (same rank nu
 prefix, order alphabetically); **long name** (truncate at one line); **nine rows** (8px vertical
 padding, nothing else changes); **number market** ("said 17" under the name and "off by 3" on
 the right; the gap bar runs on the ruler's scale (3.5) from their number to a 3px cream tick at
-the answer, and there is no 50% tick); **pick one** (no closest-first list: everyone who called
-it scores the same, so 3.25 shows who called it instead); **multi-choice, for the redeploy
-only** (3.36: "spread it" or "picked Priya" under the name, and "gave it 30%" or "picked it" on
-the right; the gap bar runs from what they gave the answer that happened to a 3px cream tick at
-100%, and the 1px tick sits at the even split).
+the answer, and there is no 50% tick); **between two teams** (3.40: "said Bills 70%" and "off by
+30", with the gap bar running to the winner's end, or to the middle for a tie; for the margin,
+"said Bills by 9" and "off by 2" on the axis centred on a tie); **pick one** (no closest-first
+list: everyone who called it scores the same, so 3.25 shows who called it instead);
+**multi-choice, for the redeploy only** (3.36: "divided it" or "picked Priya" under the name,
+and "gave it 30%" or "picked it" on the right; the gap bar runs from what they gave the answer
+that happened to a 3px cream tick at 100%, and the 1px tick sits at the even split).
 
 ### 3.8 Media frame
 
@@ -846,13 +889,13 @@ the reveal as well as the receipt: other people's weight is never visible before
   "Nothing happens here until somebody else is in it.", one `body` line in `--ink-2` ("Ask your
   group chat something, or join something one of them already asked."), the chalk "Ask
   something", the compact code field (3.16) under the `label` "Someone sent you a code?", and
-  three questions from What's on as 40px-stamp rows in `body` 600, under "Or start from
-  something everyone's watching" and followed by a tertiary "See everything on What's on"
-  (3.32). These were fixed starters: the row component is unchanged and only its label and
-  source are new. The three are the most asked, or the next to close while there is too little
-  to rank on (3.32). If nothing is curated, the old starters return. This is a bonus on the
-  empty state; What's on itself lives on its tab. The Start button is hidden on this screen,
-  because "Ask something" is already the chalk.
+  three games from What's on as game rows (3.32), under "Or start from something everyone's
+  watching" and followed by a tertiary "See everything on What's on" (3.32). These were fixed
+  starters: the row component is unchanged and only its label and source are new. The three are
+  the most asked, or the next to close while there is too little to rank on (3.32). If nothing
+  is curated, the old starters return. This is a bonus on the empty state; What's on itself
+  lives on its tab. The Start button is hidden on this screen, because "Ask something" is
+  already the chalk.
 - **A person with no shared history**: identity block, "Nothing between you two yet," and a
   single starter.
 - **A story with no media**: nothing. No frame, no prompt in the timeline. Adding lives on the
@@ -956,11 +999,12 @@ that has not been named takes a dashed border and shows first names instead
 ("Priya, Gabe and you"), which is the same "not a settled thing yet" meaning the system
 already uses for upcoming plans.
 
-A context chip appears in exactly three places: on an event row, where it says which set of
-people an event came out of; in the shared-context band on a person view (3.21); and in the
-same-people picker (3.20). It is never a list on home, and tapping one never navigates into a
-group as a place. On the person view it filters the timeline; on an event row it is a label
-and is not interactive.
+A context chip appears in exactly four places: on an event row, where it says which set of
+people an event came out of; in the shared-context band on a person view (3.21); in the
+same-people picker (3.20); and under a game page's header, when you are on the game with more
+than one group, to switch between them (3.33). It is never a list on home, and tapping one never
+navigates into a group as a place. On the person view it filters the timeline; on an event row
+it is a label and is not interactive.
 
 States: **unselected**; **selected** (`--surface-2` fill, `--ink-3` border, and a 44px Clear
 tertiary appears beside the row); **unnamed set** (dashed border, first names, three names
@@ -1049,12 +1093,12 @@ odds line in the sheet (3.13, changing). Positions are editable until lock and n
 States: **one entry** (your column alone at full height, no marker; the marker appears from the
 third entry); **one stake over half the total** (the caption says so in words, because the
 picture alone reads as agreement); **everyone on one number** (one full column, marker on it,
-caption "No spread at all."); **blind until lock** (outlined columns with no heights, your own
-bucket marked with your avatar and a 5px cap in your hue, a centred lock chip "Numbers show when
-everyone's in", a count of who is in, and no group's number); **locked** (unchanged picture,
-Change gone, the entry line keeps "You're in at 70%" and its caption reads "2 beers · locked at
-10:40pm", nothing greyed); **settled** (replaced by the call line and closest first); **number
-market** (below); **nine or more entries** (unchanged).
+caption "Everyone on one number."); **blind until lock** (outlined columns with no heights, your
+own bucket marked with your avatar and a 5px cap in your hue, a centred lock chip "Numbers show
+when everyone's in", a count of who is in, and no group's number); **locked** (unchanged
+picture, Change gone, the entry line keeps "You're in at 70%" and its caption reads "2 beers ·
+locked at 10:40pm", nothing greyed); **settled** (replaced by the call line and closest first);
+**number market** (below); **nine or more entries** (unchanged).
 
 **Number markets.** The same row of columns, on an axis taken from what people entered. The
 asker's scoring scale (3.26) never draws anything here: the display and the scoring are
@@ -1063,10 +1107,10 @@ deliberately different, and the display does not try to reflect the scoring.
 - **Ends.** `lo` and `hi` are the lowest and highest on-axis entries. If `hi − lo < 2`, pad by
   one on each side, never below 0. Everyone on 14 draws 13 to 15; a single entry draws your
   number with one either side, your column in the middle at full height.
-- **A narrow spread gets a column per value.** When `hi − lo + 1 ≤ 10`, draw `n = hi − lo + 1`
+- **A narrow range gets a column per value.** When `hi − lo + 1 ≤ 10`, draw `n = hi − lo + 1`
   columns, one per whole number, with the same 3px gap. Label every column when `n ≤ 7`,
   otherwise the two ends and the middle.
-- **A wide spread gets ten slices.** Otherwise `w = (hi − lo) / 10` and `bucket(v) =
+- **A wide range gets ten slices.** Otherwise `w = (hi − lo) / 10` and `bucket(v) =
   clamp(ceil((v − lo) / w), 1, 10)`, so `lo` joins the first slice. Labels: `lo` at the left,
   the rounded midpoint in the centre, `hi` at the right.
 - **The unit** rides the right-end label only ("40 people"). Every other label, and the marker's
@@ -1421,6 +1465,18 @@ time under them. The result tile without a photo carries the answer as its outco
 washed, and "Theo called it." at 34px 600 ("Theo and Maya called it.", "Nobody called it.").
 Neither tile shows a share. The photos line works the same on every kind.
 
+Tiles between two teams (3.40). The asking tile for who wins has the frame line "Who wins?" and,
+as its empty answer, the two team stamps at 88px at the ends of the empty line, equal, each with
+its team's name under it at 40px 600; the margin's asking tile says "By how much?" over the same
+picture with a tie tick at the middle. The result tile for who wins says the winner as its
+outcome ("Bills won.", or "A tie.") over the line between the stamps, the winner's half washed
+and the cap at its end, or on the middle for a tie; for the margin, "Bills by 7." over the axis
+centred on a tie, the real margin as the cream tick. Stamps on tiles follow 1.7, and there is
+never a logo. When a game is started with more than one question, the link sent is the game
+page's, and its asking tile puts the game where the question would be: "Priya asks", the two
+stamps at 88px either side of "Chiefs at Bills" in serif at 52px, the chosen questions as up to
+four rows at 40px 600, and the close time.
+
 Rendering: server-side (Satori or equivalent) with Noto Color Emoji loaded for emoji marks and a
 sticker's 256px derivative read from the bucket on the server. Both fail silently when
 forgotten.
@@ -1641,85 +1697,73 @@ the entering moment.
 
 ### 3.32 What's on
 
-A set of shared questions about things everyone is watching, such as a game or an awards show.
-Each is a template: its question, terms and close time are written once by the team. A person
-browses them, picks one that fits their friends, and asks those friends exactly as they would
-ask anything; settlement stays between those friends. Boards: `WhatsOn`; `WhatsOnFlow` for
-picking one; `WhatsOnStates` for launch, empty and failed; `FeedBallot` for voting (3.35).
+Things everyone is watching, mostly games, each with a small menu of questions to ask your
+friends. A person browses games, starts one with their friends by choosing which questions to
+ask, and settlement stays between those friends. Boards: `WhatsOn` (the tab, as games),
+`GamePage` (3.33), `WhoWins` and `Margin` (3.40), `Endings` and `FeedBallot` (3.35), and
+`WhatsOnStates` (launch, empty and failed), and `WhatsOnFlow` (starting a game with one
+question, 3.38).
 
-**It never looks like a market against the world.** The line sits at beliefs about the outcome,
-not at use. What must never appear is any aggregate of what people think will happen: odds, a
-price, a percentage, a share, "most picked", or how any group called it, voted or settled. What
-may appear is how much a question is being used. A count of friend groups arguing about a
-question says nothing about what any of them believe, so it tells nobody anything about the
-outcome and does not compete with settling only among friends; it is also what makes the tab
-feel like a shared moment. The last revision drew the line at any aggregate across groups, which
-was too wide.
+**It never looks like a market against the world, or like a sportsbook.** The line sits at
+beliefs about the outcome, not at use. What must never appear is any aggregate of what people
+think will happen: odds, a price, a percentage, a share, "most picked", or how any group called
+it, voted or settled. What may appear is how much a game is being used. A count of friend groups
+on a game says nothing about what any of them believe, and it is what makes the tab feel like a
+shared moment. No sportsbook words anywhere (4.6).
 
-- No number about anyone's belief, anywhere on What's on or on a question's page: no
-  percentages, no shares, nothing picked. The one cross-group number allowed is a count of
-  groups using a question.
-- The order is popularity, with time as its fallback and its frame, as the tab below describes.
-  Popularity is the number of friend groups that have started a market from the question since
-  it opened, counting a market once it has a second person in. It is never the number of people,
-  and never anything they picked.
-- What a person sees about use is limited to markets they can already see. A row reads "You're
-  in this with the Friday crew", with the you're-in mark, when a market started from it includes
-  them, and tapping that row opens that market instead of the question's page.
-- Nothing about any particular group the person is not in: no names, no picks, no results. The
-  count is the only thing that crosses groups, and it counts groups, never what they said.
-- Once an event is over, its questions drop off. A finished event leaves nothing behind on
-  What's on, least of all how groups did.
+- No number about anyone's belief on What's on, or on a game's page before you are in the
+  question: no percentages, no shares, nothing picked. The one cross-group number is a count of
+  groups.
+- Popularity is the number of friend groups that have started anything on a game since it was
+  listed, counting a group once one of its markets on the game has a second person in. It is
+  never the number of people, never the number of questions, and never anything they picked.
+- What a person sees about use is limited to games they are already on. A row reads "You're on
+  this with the Friday crew", with the you're-in mark, when a group they are in has started the
+  game, and tapping it opens that group's game page.
+- Nothing about any group the person is not in: no names, no picks, no results.
+- A game leaves the list when it starts, since everything on it closed at kickoff. A finished
+  game leaves nothing behind on What's on.
 
 **The tab** (`WhatsOn`):
 
 - Header: "What's on" as the root's `label`, then one `body-sm` line in `--ink-2`: "Things
   everyone's watching, to argue about with your friends. Whatever you pick stays between you."
-  The second sentence is the product's difference, said once, at the place someone might wonder
-  about it.
-- **Most asked** comes first: a `label` and one card holding up to three questions, the
-  most-used first, each row carrying its count and when it closes ("Asked in 214 groups ·
-  Tuesday, first pitch"). A question qualifies once 10 groups have used it; the section shows
-  however many qualify, up to three, and is not rendered at all when none do. Ten is the floor
-  because below it a count is noise, a small one beside a question reads as nobody caring, and a
-  count of two or three can tell someone whose group it is. It is a shortcut, so its rows also
-  appear under their day.
-- Then the schedule: sections by day ("Sunday, Sep 27") in `label`, soonest first. Each event is
-  a card: its name in `body` 600, its time and place in `caption`, a hairline, then one row per
-  question: the 40px stamp on the question's field colour, the question in `serif-m`, and a meta
-  line in `caption`. Inside an event, questions go most-used first, falling back to the
-  curators' order. The meta line gives the count once a question has 10 groups ("Asked in 41
-  groups · A number"), its kind and close below that ("Pick one · closes at kickoff"), and your
-  own use in place of either ("You're in this with the Friday crew"). The whole row is the
-  button; there are no action buttons in rows, because What's on is browsed and the one move
-  lives on the question's page.
+- One row per game, never one per question: a game with four questions would otherwise fill the
+  tab. The row, a `button` with a chevron: the two 28px team stamps side by side with a 4px gap,
+  away first as in "Chiefs at Bills"; the game in `body` 600 ("Chiefs at Bills"); and a meta
+  line in `caption` `--ink-3`: the start time, then the count once ten groups are on it ("Sun
+  4:25pm · Asked in 214 groups"), or, in place of both, your own use ("You're on this with the
+  Friday crew", after the you're-in mark). What's on is browsed, and the move lives on the game
+  page. A curated event with no teams, such as an awards show, takes the same row with its
+  curated mark's 40px stamp where the team stamps would be. That row is for after submission:
+  every What's on row the build lists comes from the feed, and nothing stands behind a curated
+  event yet (the launch frame's "Tuesday's Wild Card games" is drawn, not built).
+- **Most asked** comes first: a `label` and one card holding up to three games, the most-used
+  first. A game qualifies once 10 groups have started anything on it; the section shows however
+  many qualify, up to three, and is not rendered when none do. Ten is the floor because below it
+  a count is noise, a small one reads as nobody caring, and a count of two or three can tell
+  someone whose group it is. It is a shortcut, so its games also appear under their day.
+- Then the schedule, unchanged in shape: sections by day ("Sunday, Sep 27") in `label`, soonest
+  first, each one card of game rows in start order.
 - Why popularity sits over a schedule rather than replacing it: a popular Tuesday game and a
-  quieter Sunday one both matter, and the Sunday one closes first. Ordering the whole list by
-  popularity would bury the question about to close; ordering it all by time would hide what
-  everyone is talking about. Most asked gives popularity the top of the screen, and the schedule
-  keeps every question findable by when it closes.
-- At launch, almost no question has been used, so Most asked isn't there and what remains is the
-  schedule (`WhatsOnStates`, A). A list ordered by time is exactly what a schedule looks like,
-  so the fallback never reads as a broken ranking, and counts appear row by row as questions
-  cross 10 groups.
-- Events come from the sports feed as well as by hand, so What's on lists upcoming games and
-  drops each one at its close. Nothing already started or finished is ever shown.
-- Nothing upcoming (`WhatsOnStates`, B): the header and one card with one line, "Nothing on
-  right now. Games show up here a few days before they start."
-- The feed fails (C): the 5.1 form-level block at the top of the list, "Couldn't get the latest
-  games." over "These were right as of 2:10pm." and a 44px "Try again", then whatever was saved
-  and is still before its close, plus anything curated by hand. When nothing saved is still open
-  (D), the block alone, reading "Couldn't load what's on." It never shows an event whose close
-  has passed, saved or not.
-- No badge, dot or count on the tab, ever. New questions arrive silently, never appear in Needs
-  you, and never send a push.
+  quieter Sunday one both matter, and the Sunday one closes first. Most asked gives popularity
+  the top, and the schedule keeps every game findable by when it starts.
+- At launch almost nothing has been started, so Most asked isn't there and what remains is the
+  schedule (`WhatsOnStates`, A), which never reads as a broken ranking.
+- Games come from the sports feed, with anything curated by hand beside them, and each leaves
+  the list at its start.
+- Nothing upcoming (`WhatsOnStates`, B), the feed failing (C) and nothing saved (D) keep their
+  states and their words, and the saved games under the failure are game rows like any other. A
+  curated event with no teams appears in A, under Tuesday, and waits for after submission.
+- No badge, dot or count on the tab, ever. New games arrive silently, never appear in Needs you,
+  and never send a push.
 
 **Curation**, by hand for the hackathon, alongside the games the feed lists. Public events only.
 Nothing involving minors, so no school or youth sport. No sponsored placement and no paid
 ordering. Every question must resolve from a public result, with its edge case written into its
-terms ("A tie counts as no."). Also out, added here beyond the brief: anything about injury,
-health, or anyone's private life. All three kinds are allowed, and pick-one follows the
-six-answer limit.
+terms ("If no game goes past nine innings, it's no."). Also out, added here beyond the brief:
+anything about injury, health, or anyone's private life. A game's menu is fixed (3.33); a
+curated event's menu is its curated questions, of any kind, with pick-one at six answers.
 
 **Why a tab.** What's on has to be visible at all times, including to someone whose Now is full.
 I weighed three homes:
@@ -1742,39 +1786,90 @@ eye starts, and leaves the two tabs about people together. Its icon is a ticket 
 the other tab icons at a 1.8px stroke on a 24px grid. It is shell furniture, like the three
 existing tab icons, so the closed set of eight structural icons does not change.
 
-### 3.33 A public question's page, and asking your friends
+### 3.33 The game page
 
-`WhatsOnFlow`, four frames.
+Tapping a game opens its page. It is an index, never a new kind of market screen: a header with
+the two teams and the time, then a short stack of cards, one per question the group is running.
+Each card is collapsed to the question and where it stands, and tapping one opens that
+question's ordinary market screen with its own pinned sheet (3.24). The page has no pinned sheet
+while the game is ahead, so three sheets never share one screen. Board: `GamePage`, four frames.
 
-**The page.** A task screen in the question's ink; a template carries a curated mark, so its ink
-comes from the table like any market's (1.8). Header: back and nothing else. The band: the 44px
-stamp; on the right, the event's day and time in `label`; the question in `serif-l`; and, where
-a market has its asker line, the ticket glyph at 16px with "From What's on · Titans at Giants"
-in `caption` `--ink-2`. Then the details `dl` with the written terms (Counts if, Decided, the
-edge case, Closes). A question a final score can answer says so in Decided ("By the final
-score"), and that row is what its ballot later credits (3.35). One caption above the sheet:
-"Only the people you ask see what anyone picks." Sheet: a chalk "Ask your friends". When a
-market you are in already came from this question, its row sits between the band and the terms
-("You're in this with the Friday crew", which opens it), and the chalk still asks a different
-set of friends.
+**Whose page.** A game page belongs to one group: the game and the set of people it was started
+with. From What's on, a game you are on with one group opens that group's page; with two or
+more, the most recent, with the groups as context chips (3.19) under the header to switch
+between; with none, the start below.
 
-**Asking your friends** is the who's-in step (3.20), unchanged. The band shows the template's
-question, with "From What's on" where "Edit" would be. Then the terms step: the written rows in
-`--ink-2` and not tappable, the rows people set themselves (Stakes) as usual, and one caption,
-"What's on wrote the wording, so everyone reads the same terms." Then "Send it". That creates an
-ordinary market: its asker is whoever sent it ("You asked the Friday crew"), its close time is
-the template's, its ink is balanced on the who's-in step like any other (1.8), and everything
-after that already exists.
+**The header** is a band on `--surface-2`, since the page is the neutral room and each question
+keeps its own ink (7, step 5): the two 44px team stamps on the left, the start time in `label`
+`--ink-2` on the right ("Sun 4:25pm"), the game in `serif-l` ("Chiefs at Bills"), and one
+`caption` saying who asked and when everything closes ("You asked the Friday crew. Everything
+closes at kickoff."). Controls: back, and More once the game has been started. The questions in
+the cards are `body` 600, because the title takes the screen's serif (1.2).
 
-**Why the wording is locked.** Curated terms are written to resolve cleanly against a public
-result, with the edge case settled in advance. An edited question is the likeliest route to a
-void, and a void counts against the asker (3.34).
+**Starting a game** (frame A). Groups have no admins, and that stays: whoever starts a game from
+What's on is its asker, and the asker already chooses the question, so they choose which
+questions to start with. The group sees only those. Under the header, "What to ask" in `label`,
+then the game's menu as 56px checkbox rows (`role="checkbox"`): a 28px glyph, the question's
+short name in `body` 600 over one `caption` saying what kind it is, and 3.20's 24px selection
+circle on the right. "Who wins" is checked when the page opens, the common case at one tap. The
+sheet: one caption, "Your friends see only the ones you pick.", and the chalk "Next: who's in",
+disabled with nothing checked. Then who's in (3.20), with the band showing the game, and the
+terms step: each chosen question's written terms in `--ink-2`, locked as What's on terms are
+(they are written to resolve cleanly against a public result), one Stakes row that applies to
+every question started together, and the consent line (3.35). "Send it" creates one ordinary
+market per checked question, all with the same people, all closing at kickoff. With more than
+one, the link sent to the chat is the game page's (3.27); someone arriving from it lands on the
+page and enters each question from its card, with the usual arriving-from-a-link sheet (3.17) on
+the question they open. `WhatsOnFlow` draws the whole start for one question (3.38).
 
-**Once it is running**, it looks like any other market, with one extra details row: "Question
-from | What's on". There is no badge on the band, no link to other groups and no public result.
-The moment someone picks a question, it belongs to them and their friends, and a badge would
-make it look like a shared market. The link tiles are the kind's usual tiles, and nothing on
-them says where the question came from.
+**The menu**, fixed per sport and written by What's on:
+
+| Menu row | Question | Kind | Offered |
+| --- | --- | --- | --- |
+| Who wins | "Who wins, Chiefs or Bills?" | Between two teams (3.40) | Always |
+| By how much | "By how much, Chiefs or Bills?" | The margin (3.40) | Always |
+| Total points | "How many points, Chiefs and Bills together?" | A number (3.26), unit "points" (runs or goals by sport) | Always |
+| The Bills' first drive | "How does the Bills' first drive end?" | Pick one: Touchdown, Field goal, Punt, Turnover, Something else | Only for games with play-by-play |
+
+Everything closes when the game starts. Questions on quarters and halves are for after
+submission (7), and they close at the start like the rest, so nothing is ever entered while a
+game is being played.
+
+**Once started** (frames B and C). "Questions" in `label`, then one card per running question in
+the menu's order. A card is one `button` on `--surface` with a 1px line and radius 12: the
+question's 40px stamp on its field, the question in `body` 600, a meta line in `caption`
+`--ink-3` saying where it stands, and a chevron. For the two sliders, a 20px-tall line under
+that: the two 20px team stamps at its ends, a 6px track on the question's field with a 1px tick
+at the middle, and, once you're in, a 12px dot in your hue at your value and a 2px `--ink` tick
+at the group's number.
+
+Where it stands, in the meta line:
+
+| State | Meta line |
+| --- | --- |
+| Open, not in | Open mark, "Closes at kickoff · 3 of 6 in", with the citron dot if it is the soonest thing waiting on you (3.15). No numbers: nobody sees where anyone landed before they are in |
+| Open, you're in | You're-in mark, your entry and the count: "You're in at Bills 70% · 5 of 6 in", "You're in: Field goal · 5 of 6 in" |
+| Locked | Locked mark, "Waiting on the final score" |
+| Voting | In-voting mark and the clock ("Voting ends Mon 7:45pm"), with the citron dot when it is your vote |
+| Settled | Resolved mark in the question's ink, the outcome in the market's words, then your line: "Bills won · you were closest", "Bills by 7 · Theo was closest", "41 · you were off by 6", "Field goal · you called it" |
+| Voided | Voided mark and the reason in three words or fewer: "Void · results disagreed", "Void · a tie" |
+
+**One question against four.** With one question running, the page is that one card and, under
+"Add another" in `label`, the rest of the menu as dashed 64px rows (the dashed border that means
+not happened yet, 1.5): a 40px dashed square with a plus, the question's short name in `body`
+600 over its kind in `caption`, and "Add" in 13px 600 on the right. Anyone in the group can add
+one, the way anyone can ask a market: tapping a dashed row opens the terms step for that
+question with the same people already chosen. With all four running there is nothing to add, and
+the stack is the page. The dashed rows leave at kickoff.
+
+**Elsewhere.** On Now, a game with more than one question in a group is one row, never one per
+question (4.7). In a timeline it is one story (3.4). A question's own market screen, when it
+came from a game, carries one 44px row under its band, "Part of Chiefs at Bills" in `body-sm`
+600, after the two 20px stamps, with a chevron, back to the game page, on a 1px line at radius
+10. It shows with one question too, since the page is where the rest of the menu waits. A game
+with one question is that question everywhere, apart from this page.
+
+**Once the game is over**, the page is the night (3.37, frame D).
 
 ### 3.34 You: how your calls land
 
@@ -1839,8 +1934,9 @@ with anyone else.
 
 - This counts the questions you asked that ended, and how many resolved without a void. A void
   by quorum vote, or by an arbitrator finding the terms undecidable, counts against the asker.
-  Expiry counts against nobody and is left out of both numbers. There is no floor, because this
-  means something from the first question.
+  Expiry counts against nobody and is left out of both numbers, and so does a What's on void,
+  whether the two results disagreed or the terms voided a tie (3.35, 3.40). There is no floor,
+  because this means something from the first question.
 - The headline in `body` 600 puts the count first and never uses a percentage: "11 of the 12
   questions you asked ended cleanly." With one: "The one question you asked ended cleanly."
 - The picture is one 16px state mark per counted question, in the order they ended: the resolved
@@ -1878,12 +1974,14 @@ one tap. Board: `FeedBallot`.
   shows the score as the thing the terms named. Nothing on it says the app decided.
 - **The source card** stands where a person's claim card stands (3.25) and differs from it in
   every channel that says who is speaking: no avatar and no "says". It has a kicker with the
-  ticket glyph, "From the final score"; the score as two `body` 600 rows, team and number, the
-  losing side in `--ink-2`; and one caption, "Final, Sun 4:12pm. The terms said the final score
-  decides." It has no clip, because nothing was filmed.
+  ticket glyph, "From the final score"; the score as two `body` 600 rows, each a 20px team
+  stamp, the team and its number, winner first and the losing side in `--ink-2`; and one
+  caption, "Final, Sun 4:12pm. The terms said the final score decides." It has no clip, because
+  nothing was filmed.
 - **The sheet** is the ordinary voting sheet: the count line ("Nobody has said yet. Two of you
-  and it settles."), a chalk that names the outcome in the voter's voice ("That's right, they
-  won"), and "Not how I saw it", which works as it does anywhere.
+  and it settles."), a chalk that names the outcome in the voter's voice and names the team
+  ("That's right, the Giants won"; for a margin "That's right, Giants by 7"; for a number
+  "That's right, 41"), and "Not how I saw it", which works as it does anywhere.
 - **Telling the two apart.** A question a final score can't answer, such as the first drive,
   never gets a source card. It waits for someone to say what happened, and the ballot opens on
   that person's claim card, with their avatar, "Maya says a field goal" and the clip if there is
@@ -1893,22 +1991,40 @@ one tap. Board: `FeedBallot`.
 - **Closed, waiting on the score.** The sheet reads "The final score will propose what
   happened." For two hours past the event's expected end, that is all; then a tertiary "Say it
   yourself" appears and opens the ordinary claim, in case the feed is late or has nothing.
-- **Nobody votes.** The 24-hour arbitration backstop rules using the same result. The settled
-  screen says so without making the app the judge: the outcome ("Yes. Giants 24, Titans 17."),
-  then "Decided by the final score, as the terms said. Nobody voted within a day." Everything
-  after that follows as usual: the call line or ruler, closest first, who's got who.
+- **The consent, at entry.** Every entry on a What's on market consents to the final score as
+  the tiebreaker, so the terms say so where people actually read them: in the entry sheet,
+  directly above the primary that gives the consent, one `body-sm` line in `--ink` after the
+  16px ticket glyph, "If nobody votes, the final score settles it." The details' "If it's
+  unclear" row carries the whole rule: "The final score. If the two results we check disagree,
+  it's void." Board: `Endings`, frame 1.
+- **Nobody votes.** The market still ends, one of three ways, and the settled screen says which
+  in one `caption` line after the 14px ticket glyph, under the outcome and its caption
+  (`Endings`, frames 2 to 4):
+  - Both results agree: it settles after a day. "Decided by the final score, as the terms said.
+    Nobody voted within a day."
+  - Only one result exists, which is always true for hockey: it settles after three days if that
+    result has not changed. "Decided by the final score, as the terms said. Nobody voted, and
+    the score held for three days."
+  - The two results disagree: it voids. The outcome line is "No final score to go by." and its
+    caption "The two results we check disagreed, so it's void. Nothing changes hands, and it
+    counts against nobody." Nobody wrote anything wrong, so it never counts against the asker
+    (3.34).
+- After the line, everything follows as usual: the call line or ruler, closest first, who's got
+  who. A void has none of those, and its sheet holds only the photo move (3.37). Before any of
+  the three acts there is one warning, and after it one notice (4.10).
 
-### 3.36 Multi-choice spreading (for the contract redeploy; do not build yet)
+### 3.36 Multi-choice: dividing a stake (for the contract redeploy; do not build yet)
 
 This section is for the contract redeploy. It is not part of the current build, and nothing in
 it should be built before the redeploy ships. Its board, `SpreadRedeploy`, carries the same
 warning.
 
 - **One kind of market, chosen at entry.** Everyone picks one by default, exactly as in 3.30,
-  and anyone who wants to can spread their answer instead. The asker doesn't decide for the
-  group; the person who cares about nuance opts in. Under the answers sits one tertiary, "Spread
-  it instead".
-- **Spreading.** The sheet raises to "Spread it". Each answer is a row with its value in
+  and anyone who wants to can divide their stake across the answers instead. The asker doesn't
+  decide for the group; the person who cares about nuance opts in. Under the answers sits one
+  tertiary, "Divide it instead". The word "spread" never appears on screen: it is a sportsbook
+  word (4.6).
+- **Dividing.** The sheet raises to "Divide it". Each answer is a row with its value in
   `numeral` 15 on the right and a bar underneath: a native `range` per row, step 1, a 44px hit
   area, a 20px chalk thumb and a fill in your hue. Values start at the even split (20% each with
   five answers; with a remainder, the first answers take the extra points, so 34, 33 and 33 for
@@ -1917,13 +2033,13 @@ warning.
   pill at the top right, "15% left to place", ringed in your hue, or "All 100% placed" when
   nothing is free. Raising takes only from what is left, and each bar stops at its ceiling,
   marked with a 2px tick at its value plus what is left. The primary is enabled only at nothing
-  left, "I'm in with this spread, 2 beers"; otherwise it is disabled and reads "Place the last
+  left, "I'm in, divided like this, 2 beers"; otherwise it is disabled and reads "Place the last
   15%". Two tertiaries: "Start from 1% each" sets every answer to the floor and puts the rest in
   the pill (95% with five answers), for someone who would rather build up than trade down; "Back
   to one pick" returns to picking.
 - **Why a pool rather than taking proportionally.** Taking proportionally from the rest keeps
   the total at 100 without a pool, but it moves numbers the person never touched. That is the
-  reason pick one lost its implicit spread: the app deciding something the person never said.
+  reason pick one lost its implicit division: the app deciding something the person never said.
   Taking from the largest answer, or from a neighbour, fails the same way. With a pool, every
   number on the screen is one the person set, or the even start they accepted, and it is still
   one hand and two drags: lower one, raise another.
@@ -1931,13 +2047,13 @@ warning.
   person's score depends only on what they gave the answer that happened. Its one hazard is that
   0% on the true answer is punished without limit, and the floor bounds the loss. A bar can't be
   dragged below 1%, and no value ever reads 0.
-- **Where the stake sits.** A pick puts its whole stake on one bar (3.31). A spread puts stake ×
-  share on every answer, drawn in your hue on each bar it touched, so the slivers return here,
-  because here the person set them.
-- **The entry line** reads "You spread it, most on John" over "John 60 · Nobody 25 · 5 each on
+- **Where the stake sits.** A pick puts its whole stake on one bar (3.31). A divided stake puts
+  stake × share on every answer, drawn in your hue on each bar it touched, so the slivers return
+  here, because here the person set them.
+- **The entry line** reads "You divided it, most on John" over "John 60 · Nobody 25 · 5 each on
   the rest · 2 beers".
 - **Settled.** Closest first, ranked by how much each person gave the answer that happened;
-  under the logarithmic score that order is exactly the score. A spreader's row reads "spread
+  under the logarithmic score that order is exactly the score. A divider's row reads "divided
   it" under the name and "gave it 30%" on the right. A picker's reads "picked Priya", with
   "picked it" on the right when that was the answer. The gap bar runs from what they gave to a
   cream tick at 100%, the 1px tick sits at the even split, and ties share a rank with "=".
@@ -2031,6 +2147,19 @@ the photos, and drops the ranking. Top to bottom:
 
 Closest first leaves the memory screen: the call line already shows where everyone was, and
 months later the ranking is not why anyone opened it. Sizes: 13, 15, 17 and serif 26.
+
+**A game's night.** Once a game with more than one question is over, its game page is the
+night's memory and follows the memory screen, not the settled one (`GamePage`, frame D). The
+header's title becomes the final score in `serif-l` ("Bills 24, Chiefs 17.") and its line the
+date and who asked. Then the frame at 260px with the photos from every question of the game in
+one place: each question's claim attachments first (a question settled by the score has none),
+then every memory in the order added, credited, with one counter across them all. Then
+"Questions" and the settled cards, whose meta lines give each outcome and your line (3.33). Then
+who's got who across the night, one row per pair and unit summed over the questions. Then "The
+rest of that night", which leaves out the game's own questions. The page now has a sheet, the
+photo move alone ("Add yours from Sunday"); a photo added there attaches to the game's first
+question, so it shows in that question's frame and in the night's. Each question's own screen
+keeps its own photos, and its "Part of Chiefs at Bills" row leads back here.
 
 **The claim card** (3.25; `Voting`, `PickOneResolve`, `FeedBallot`): the market's surface, a 1px
 line, radius 12, 12px padding, 12px from the screen edges, a 12px gap between its two parts. On
@@ -2170,12 +2299,28 @@ got who lists at most three rows owed to one person; the rest collapse into one 
 them ("Maya and Priya have got him too."), and the list ends "Everyone else called it even."
 when anyone is square.
 
-**Starting from a public question** (`WhatsOnFlow`, 3.33). The who's-in band keeps the page's
-layout: the clock top right, and "From What's on · Titans at Giants" with the ticket glyph where
-the asker line goes. On the terms step the asker line becomes the chosen set, as 22px avatars
-and its name ("Friday crew"). The Stakes row is a full-width button showing the unit ("Beers")
-with a chevron, and it opens a modal sheet with the units this person uses and a cap ("Up to 2
-each").
+**Starting a game with one question** (`WhatsOnFlow`). The start 3.33 gives, drawn for the
+common case, with Jets at Giants. The game's header band stays at the top for the first three
+steps: the two 44px stamps, the time, "Jets at Giants" in `serif-l`, and the caption "Everything
+closes at kickoff." until people are chosen, then their stacked avatars and the group's name.
+
+1. What to ask: the menu, with Who wins ticked as the page opens. Sheet: "Your friends see only
+   the ones you pick." and the chalk "Next: who's in".
+2. Who's in (3.20): "Who's in?" in `body` 600, the caption "Everyone you pick gets the link.
+   Nobody needs an account to look.", then the saved groups and "Someone else" as a dashed row.
+   Sheet: "You can add anyone else right up until kickoff." and "Set the terms".
+3. The terms: the question in `body` 600 after its menu glyph ("Who wins, Jets or Giants?"),
+   then its written rows in `--ink-2`, locked. Counts if: "The team with more points when the
+   game ends, overtime included." If it's a tie: "It's void." (3.40; "It's scored at the
+   middle." once the contract redeploy can score the middle). If it's unclear: "The final score. If the two results we check disagree, it's void."
+   Closes: "At kickoff, Sun 1:00pm". Then the one Stakes row in a card of its own, since it
+   covers every question started together. Sheet: "What's on wrote the wording, so everyone
+   reads the same terms.", the consent line (3.35), and "Send it". With more questions, each
+   gets its heading and rows, in the menu's order, over the one Stakes card.
+4. Running: the question's own market screen. Its band, the "Part of Jets at Giants" row (3.33),
+   the entry line ("You're in at Giants 70%"), the weight line from one team to the other
+   (3.40), and the details "Decided: By the final score" and "Question from: What's on". Sheet:
+   "Anyone with the link can get in until kickoff." and "Send it to the chat".
 
 **You** (`You`, `YouEarly`): as 3.34 gives it.
 
@@ -2244,6 +2389,91 @@ tonight" goes.
 itself goes at lock. Taking a photo sends nobody anything. An argument locks the moment the
 second person is in, so its open window is usually seconds, and the button follows the same
 rule. Type: the section's words are 13, and nothing new joins the screen's sizes.
+
+### 3.40 Between two teams: who wins and the margin
+
+Both new kinds of What's on market sit between the two teams, so they share one picture: a line
+from one team to the other, with a team stamp (1.7) at each end. Boards: `WhoWins` (entering,
+in, won, a tie at the middle, a tie that voids) and `Margin` (entering, in, settled).
+
+**The shared language.** Away on the left, home on the right, in the order of "Chiefs at Bills",
+on every screen and tile. The stamps replace the odds line's single riding mark: each sits at
+its own end, bottom-anchored 30px above the base, growing as the slider moves toward it and
+shrinking as it moves away, equal at the middle. With v running from 0 at the left team to 1 at
+the right, the right stamp is 18 + 42v px and the left 18 + 42(1 − v): both 39px at the middle,
+60 against 18 at an end. Size only, with no fading, because a team's colour is its identity and
+dimming one would read as calling it the loser. The track is the odds line's ten segments, but
+the fill runs from the middle to the thumb in your hue, since the choice is which way and how
+far. A 1px `--ink` tick at 0.5 opacity, 16px tall, marks the middle. The thumb, the native range
+and the riding pill are the odds line's (3.13), and the pill names a team.
+
+**Who wins.** The position is how likely the right-hand team is to win, as a whole percent,
+scored as a yes-or-no market with the right-hand team winning as yes, however the build stores
+it.
+
+- The pill reads the team the thumb leans to and its chance ("Bills 70%", "Chiefs 60%"), and
+  "Even" at 50. The header reads "Who wins?" and, on the right, a word band for the lean: 0
+  "Chiefs, no doubt"; 1–15 "Chiefs, surely"; 16–44 "Leaning Chiefs"; 45–55 "Close to even";
+  56–84 "Leaning Bills"; 85–99 "Bills, surely"; 100 "Bills, no doubt". Under the line: the two
+  names at the ends and "Even" in the middle.
+- Nothing starts at the middle: the line has no thumb until it is touched, both stamps sit at
+  39px, and the primary reads "Slide to pick a side", disabled.
+- Entering: "I'm in: Bills 70%, 1 beer". The entry line: "You're in at Bills 70%".
+- The weight line (3.22) keeps its ten columns, labelled with the two names and "Even", and its
+  marker chip names the team the group leans to ("Bills 62%").
+- Settled, a team won (frame 3): the outcome line "Bills won.", the final score as its caption
+  ("Bills 24, Chiefs 17."), then the call line between the two teams: the winner's half takes
+  the wash and its end the cream cap, and under it the two 20px stamps with their names and
+  "Even", the winner's name in `--ink` 600. Closest first ranks by distance from the winner's
+  end ("said Bills 85%", "off by 15"; a lean the other way reads "said Chiefs 55%").
+- A tie, scored at the exact middle (frame 4; for the contract redeploy, and not built before
+  it): the outcome line "A tie.", its caption the score
+  and the rule: "Chiefs 20, Bills 20. A tie is scored at the middle, so whoever was nearest even
+  did best." No wash on either half; the cream cap stands on the middle, 6px wide and 40px tall,
+  and "Even" takes `--ink` 600. Closest first ranks by distance from 50, and whoever is nearest
+  even wears the extra cream ring. This needs the contract to take a middle result; an
+  argument's split ruling already settles between the ends.
+- A tie, if the contract cannot take a middle result (frame 5): an NFL tie voids. The voided
+  mark and "Voided Sun at 8:02pm"; the outcome line "A tie."; the caption "Chiefs 20, Bills 20.
+  The terms make a tie void, so nothing changes hands, and it counts against nobody."; the call
+  line with its pins and no wash or cap; no closest first; the sheet holds only the photo move.
+  Such games' terms say so in the "If it's a tie" row, "It's void."; where a tie is scored at
+  the middle, the row reads "It's scored at the middle." The deployed contract cannot take a
+  middle result (checked by read-only call, tests/db/scoring-chain.test.ts), so the void version
+  is the one built; the middle version stays drawn, marked for the redeploy on its board, since
+  the redeploy is exactly when it becomes buildable.
+- Sports that can't end tied (basketball, baseball, and hockey, which the score settles in
+  overtime or a shootout) never show either.
+
+**The margin.** A number market between the teams: how many points the right-hand team wins by,
+where a win for the left-hand team is a margin the other way and a tie is zero. People can go as
+far either way as they like.
+
+- It is always said in words: "Bills by 7", "Chiefs by 3", "A tie". Never a plus or minus sign,
+  never a half point, never a sportsbook word (4.6). However the build stores the sign, the
+  screen says the team.
+- The entry is the shared line, centred on a tie: the header "By how much?", the pill "Bills by
+  7" ("A tie" at zero), and under the line "Chiefs by 35+", "Tie" and "Bills by 35+". The line
+  covers the sport's usual range either way (35 for football, 30 for basketball, 8 for baseball,
+  5 for hockey), one step per point. Past an end, the number is typed: tapping the pill turns it
+  into a numeric field with the keypad, and a two-way choice of team under it. One caption: "Any
+  margin. Tap the number to type one." The far-off limit (3.26) applies, from the model's most
+  likely margin.
+- Entering: "I'm in: Bills by 7, 1 beer". The entry line: "You're in at Bills by 7".
+- The weight line is 3.22's number market with one change: the axis stays centred on a tie, as
+  wide as the furthest entry either way and the same distance the other way, so "Tie" is always
+  the middle label and the ends read "Chiefs by 10" and "Bills by 10". The marker is the
+  stake-weighted median, its chip in words ("Bills by 4").
+- Settled (frame 3): the outcome line is the margin in words ("Bills by 7."), its caption the
+  final score and who was closest ("Bills 24, Chiefs 17. Theo was closest, off by 2."), then the
+  ruler (3.5) centred on a tie and as wide either way as the furthest pin or the answer, "Tie"
+  in the middle, the ends in words, and the real margin as the cream answer tick with its label
+  under it in `--ink` 600 ("Bills by 7"). Closest first ranks by distance ("said Bills by 9",
+  "off by 2"). A tie is a margin of zero, so its tick stands on "Tie".
+
+**Team colours stay in the stamps.** The fill, the wash, the columns and the marker keep their
+usual colours, so the market's ink still carries place and a team never colours the screen
+(4.5).
 
 ---
 
@@ -2317,6 +2547,8 @@ Four channels, and each one carries exactly one thing.
   ink levels on the surfaces.
 - Hue carries identity. The six person hues mean a person and nothing else, with one borrowed
   case: the "you're in" mark and your riding percent take your own hue, which is still identity.
+  A team's colour is identity too, and it appears only inside its stamp (1.7): never a fill, a
+  wash, a line or type.
 - Form carries state. Ring, half ring, bar, broken ring, disc, slash (3.23). A state that seems
   to need a new colour needs a new mark instead.
 - Ink carries place. A market's ink says which market you are standing in and nothing more:
@@ -2352,6 +2584,13 @@ belief about an outcome is ever allowed: no odds, prices, percentages, "most pic
 group called it. A dissent without a number is "a note", never "a vote" (3.24). A ruling is
 credited to the agreement, never to the app: "the tiebreaker everyone agreed to", on the settled
 screen, in the details' "If it's unclear" row, on the arbitration sheet and on the result tile.
+
+No sportsbook words, anywhere, and on What's on above all: never spread, moneyline, a line or
+the over and under, parlay, pick'em, juice, vig, handicap, favourite, underdog, push (for a
+tie), action, lock (for a sure thing), bet or wager. A margin is said in words ("Bills by 7"),
+never with a sign or a half point. "Cover" keeps its meaning in this product, paying for
+someone, and is never used about a game. "Stake" and "what's riding" stay, because they are
+about friends putting something on it.
 
 Sentence case everywhere. Contractions. Second person for the viewer, first names for everyone
 else. A line opens with a number only when the number is what the line is about: a count, where
@@ -2392,6 +2631,16 @@ something is what made it unreadable. Now holds three sections, in this order:
    `serif-m` questions above it, a second serif size on the one screen everyone opens (4.8). The
    `Now` board always drew rows.
 
+**Games on Now.** A game with more than one question in the same group is one row, in the
+section its most pressing question belongs to, never one row per question. The row's 40px stamp
+slot holds the two 28px team stamps overlapping by 16px; the subject is the game in `body` 600
+("Chiefs at Bills"), since it is not a question; and the meta line is the most pressing
+question's reason or clock, then how many questions ("Voting ends at 7:45pm · 3 questions",
+"You're in 3 of 4 · kickoff 4:25pm"), or in Just happened the final score ("Final: Bills 24,
+Chiefs 17"). In Needs you, the row's button is that question's verb (Vote, Enter) and opens that
+question; the row itself opens the game page. A game with one question is that question's
+ordinary row.
+
 People is a tab rather than a section, because the person view is where the thesis lives and
 it should be one tap from the root rather than a scroll and a tap. Where a list of people does
 appear, people with something open get a row each and everyone who is square collapses into a
@@ -2412,9 +2661,9 @@ you. If it is something the group did, it goes in Just happened. If it is a way 
 someone, it goes in People. If it is organisational, or about the account, or about a group as
 an object, it does not go on home at all.
 
-Public questions are not on Now, except as the first-run starters (3.14). They have their own
-tab (6.2, rule 6), and a permanent block on Now would push the rows only this person can move
-below things nobody is waiting on them for.
+Games nobody has started with you are not on Now, except as the first-run starters (3.14). They
+have their own tab (6.2, rule 6), and a permanent block on Now would push the rows only this
+person can move below things nobody is waiting on them for.
 
 Two rules generalise out of this and apply everywhere:
 
@@ -2487,23 +2736,27 @@ The canvas after this revision, outside controls and tokens:
 | `SettledPhotos`, all four | 13 · 15 · 17 · serif 26 at most | 4 |
 | `FarOff`, both | 13 · 15 · 17 · serif 26 (blocked); 13 · 17 · serif 26 (fixed) | 4, then 3 |
 | `OpenPhoto`, all four | 13 · 17 · serif 26 | 3 |
+| `GamePage`, all four | 13 · 17 · serif 26, plus 15 in the night's who's got who | 3 or 4 |
+| `WhoWins`, all five | 13 · 15 · 17 · serif 26 | 4 |
+| `Margin`, all three | 13 · 15 · 17 · serif 26 | 4 |
+| `Endings`, all four | 13 · 15 · 17 · serif 26 | 4 |
 | `LightScreens` (after submission) | the same sizes as `Now`, `OpenPhoto` frame 3 and `Leaderboard` | 3, 3 and 4 |
 | `DockStates`, all seven | 13 · 17 · serif 26 | 3 |
 | `PickOneMarket` | entering: 13 · 17 · serif 26; in: 13 · 15 · 17 · serif 26 | 3, then 4 |
 | `PickOneEntry`, frames 1 to 5 | 13 · 17 · serif 26, plus 15 once the shares show (frame 4) | 3 or 4 |
 | `PickOneResolve`, all four | 13 · 15 · 17 · serif 26 | 4 |
-| `WhatsOn` | 13 · 15 · 17 · serif 17 | 4 |
-| `WhatsOnFlow`, all four | 13 · 17 · serif 26 | 3 |
+| `WhatsOn` (as games) | 13 · 15 · 17 | 3 |
+| `WhatsOnFlow`, all four | 13 · 17 · serif 26 (the menu, who's in); 13 · 15 · 17 · serif 26 (the terms, running) | 3, then 4 |
 | `You` | 13 · 17 · serif 26 | 3 |
 | `YouEarly` | 13 · 17 | 2 |
 | `PickOneMarket`, `PickOneEntry`, `PickOneResolve` (redrawn) | 13 · 17 · serif 26, plus 15 once shares show | 3 or 4 |
-| `WhatsOn` (redrawn), `WhatsOnStates` | 13 · 15 · 17 · serif 17 | 4 |
-| `FeedBallot` | 13 · 17 · serif 26, plus 15 where shares or a caption line show | 3 or 4 |
+| `WhatsOnStates` (as games) | 13 · 15 · 17 | 3 |
+| `FeedBallot` | 13 · 17 · serif 26, plus 15 where shares or who's got who show | 3 or 4 |
 | `SpreadRedeploy` (for the redeploy) | 13 · 15 · 17 · serif 26 | 4 |
 
 The screens at the cap each read as one serif line, a subject line, a supporting line and
-metadata, which is the shape the cap is meant to allow. On `WhatsOn` those four are the
-questions in `serif-m`, the event names, the one intro line, and captions.
+metadata, which is the shape the cap is meant to allow. What's on's lists carry no serif at all,
+because a game's name is a subject line and not a question (4.1).
 
 **The three day-one baselines, resolved.** The build held Now, the claimant screen and the ask
 flow above the budget from the first day it counted sizes (2026-09-25), and the log names each
@@ -2564,6 +2817,8 @@ Keep, at the point of consequence:
 - "Numbers show when everyone's in." Inside the blind lock chip.
 - "Yours to change until it closes." Under your own entry line.
 - "Nobody needs an account to look." On the who's-in step.
+- "If nobody votes, the final score settles it." In a What's on market's entry sheet, above the
+  primary, because the backstop rests on that consent (3.35).
 - "We text a code. No password, nothing to download." When joining from a link.
 - The weight-line caption, but only when one stake is more than half the total.
 
@@ -2578,6 +2833,51 @@ Cut:
 
 Everything the product needs to say about how it works, beyond the lines above, belongs in the
 details sheet on the market, where someone can go looking for it.
+
+### 4.10 One warning, one notice
+
+Every market has a backstop, agreed to in every entry: for What's on, the final score (3.35);
+for every other market, what the asker chose when asking, the tiebreaker or closing for good.
+When nobody decides, the backstop acts for them. Around that moment the app sends exactly two
+things. Board: `Notices`.
+
+- **One warning, before.** Six hours before the backstop acts, to everyone who could still vote
+  and hasn't. It names the backstop everyone agreed to and says it is about to act for them. It
+  never says time is running out. It is not sent when the votes already cast would decide the
+  market, since then the backstop won't act.
+- **One notice, after.** When the backstop has acted, to everyone in the market. It replaces the
+  ordinary result notice rather than adding to it.
+- **Never a second reminder.** No repeat, no follow-up, nothing in Needs you beyond the row
+  already there, and no badge.
+- **Push, else email, never both.** Push where the person allowed it, email otherwise. No text
+  message and no in-app banner.
+- **Never at night.** A warning that would land between 11pm and 8am in the person's zone goes
+  at 8pm the evening before.
+- **What they carry.** The question as the title and one sentence as the body. Nothing about the
+  answer, the stakes or anyone's number (3.27). A clock time is allowed, since it says when the
+  agreement acts; it follows 3.23's clocks, with the day when it isn't today. Tapping opens the
+  market's screen. The email's subject is the sentence, its body the question in serif, the
+  sentence, one button ("Open it") and one line under it: "You get this because you're in this
+  question. It's the only one before it settles."
+
+The words:
+
+| Backstop | When | Sentence |
+| --- | --- | --- |
+| The final score | Before | "Nobody has voted. The final score you all agreed to settles it at 7:45pm." |
+| The final score | Before, the results disagree | "Nobody has voted, and the two results we check disagree. At 11:30pm it becomes void, as the terms said." |
+| The final score | After, both results agreed | "Decided by the final score, as everyone agreed." |
+| The final score | After, one result held three days | "Decided by the final score, as everyone agreed. It held for three days." |
+| The final score | After, the results disagreed | "Void. The two results we check disagreed, so nothing changes hands, and it counts against nobody." |
+| The tiebreaker | Before | "It hasn't been decided. At 11pm the tiebreaker everyone agreed to makes the call." |
+| The tiebreaker | After, it decided | "Decided by the tiebreaker everyone agreed to." |
+| The tiebreaker | After, the terms don't decide it | "Void. The tiebreaker everyone agreed to found the terms don't decide it, so nothing changes hands." |
+| Closing for good | Before | "It hasn't been decided. At 9am it closes for good, as everyone agreed, and nothing changes hands." |
+| Closing for good | After | "Closed for good. Nobody said what happened, so nothing changes hands." |
+
+The tiebreaker's void counts against the asker (3.34), and its notice doesn't say so, because a
+notice is no place to assign it. The What's on void counts against nobody, and its notice says
+so, because the asker would otherwise reasonably wonder.
 
 ---
 
@@ -2720,13 +3020,14 @@ it. Groups are not a destination for the reasons in 4.7.
 | --- | --- |
 | Asking something | Start sheet → ask flow |
 | Asking a pick-one question | The ask flow's question step, "Pick one" and the answers (3.29) |
-| Browsing public questions | What's on tab (3.32) |
-| Starting from a public question | What's on → the question's page → who's in → terms (3.33) |
+| Browsing games | What's on tab, one row per game (3.32) |
+| Starting a game | What's on → the game page → pick the questions → who's in → terms (3.33) |
+| Adding a question to a game | The game page's dashed rows, anyone in the group, until kickoff (3.33) |
 | Picking a mark | The ask flow's question step, then the picker sheet (3.29); the same picker wherever a unit is made |
 | Joining by link | Deep link → the market's own screen, the sheet holding the empty odds line (3.17) |
 | Joining by code | Start sheet → join; plus the field on an empty Now |
 | Putting your odds in | Market screen, the sheet (3.13, 3.26) |
-| Picking an answer | Market screen, the sheet (3.30); spreading it only after the contract redeploy (3.36) |
+| Picking an answer | Market screen, the sheet (3.30); dividing it only after the contract redeploy (3.36) |
 | Confirming a public result | Market screen, voting state, the sheet, on the source card (3.35) |
 | Voting | Market screen, voting state, the sheet |
 | Saying what happened, with photos or screenshots | Market screen, closed state, a well in the sheet (3.24) |
@@ -2778,10 +3079,11 @@ the pick-one asking and result tiles (3.27 specifies them), the light theme beyo
 proving screens (section 8), and any desktop layout. Every one of them has an address in 6.3, so
 a later phase has somewhere to put its screens without reopening the structure.
 
-Drawn, but not to be built yet: multi-choice spreading (3.36, `SpreadRedeploy`), which waits for
+Drawn, but not to be built yet: multi-choice dividing (3.36, `SpreadRedeploy`), which waits for
 the contract redeploy. So does a stake of nothing: boards that draw "Just pride" show the
 redeploy (3.3). The light theme (section 8, `LightScreens`, `LightRules`) waits for after
-submission.
+submission. So do questions on quarters and halves (3.33), which are not drawn, and which close
+at the game's start like the rest.
 
 Group management has come off this list rather than moving up it. Leaving, archiving, renaming
 and the group view do not exist, because a group is not a navigable object: there is no place to

@@ -40,6 +40,10 @@ import { numberAxis, serialiseAxis, unitPhrase, withSeparators } from "@/lib/led
 import { pulseOf } from "@/lib/ledger/pulse";
 import { templateOfMarket } from "@/lib/sports";
 import { SAY_YOURSELF_AFTER_MS, scoreLine } from "@/lib/sports/results";
+import { CAN_TIE, CONSENT, DRIVE_CONSENT, SLIDER_REACH, TIE_VOID, UNCLEAR_BY_PLAYS, UNCLEAR_BY_SCORE } from "@/lib/sports/templates";
+import type { Sport } from "@/lib/sports/types";
+import { TeamStamp } from "@/components/ledger/team-stamp";
+import { leanPill, type TeamFace } from "@/lib/ui/team";
 import { farOffThreshold } from "@/lib/ledger/scale";
 import { InvitePreview } from "@/components/markets/invite-preview";
 import { RoomCode } from "@/components/markets/room-code";
@@ -201,6 +205,13 @@ export default async function MarketPage({
   const decidedByScore = fromTemplate?.template.decidedByScore === true;
   const game = fromTemplate?.game ?? null;
   const feedFinal = game && game.finalSeenAt && game.homeScore !== null && game.awayScore !== null ? { home: game.homeScore, away: game.awayScore } : null;
+  // Whether the feed settles it at all (the score, or the play-by-play for the first drive), and the two teams as stamps (3.40).
+  const decidedByFeed = fromTemplate?.template.decidedByFeed === true;
+  const firstDrive = fromTemplate?.template.key === "first_drive";
+  const twoTeams = fromTemplate?.template.key === "home_wins" || fromTemplate?.template.key === "margin";
+  const teams: { away: TeamFace; home: TeamFace; reach: number } | null = game && twoTeams ? { away: { abbr: game.awayAbbr, name: game.awayShort, color: game.awayColor }, home: { abbr: game.homeAbbr, name: game.homeShort, color: game.homeColor }, reach: SLIDER_REACH[game.sport as Sport] ?? 35 } : null;
+  const whoWins = teams !== null && fromTemplate?.template.key === "home_wins";
+  const feedEnding = d.feedEnding;
   // On a signed margin the unit carries its shift and the two sides, so every number on this screen reads "Giants by 7".
   const numberUnit = ((u) => (u && fromTemplate?.template.key === "margin" && fromTemplate.template.shift !== null && game ? { ...u, margin: { shift: fromTemplate.template.shift.toString(), home: game.homeShort, away: game.awayShort } } : u))(unitOf(d));
   const answers = answersOf(d);
@@ -348,7 +359,7 @@ export default async function MarketPage({
   const answerNumber = numberUnit && d.resolvedOutcome !== null && d.resolvedOutcome !== VOID_OUTCOME && state === "resolved" ? d.resolvedOutcome : null;
   const rulerData = numberUnit && show ? rulerFor({ unit: numberUnit, answer: answerNumber === null ? null : answerNumber.toString(), people: positions.map((p) => ({ id: p.userId as string, name: person.get(p.userId as string)?.displayName ?? "Someone", percent: null, number: p.value.toString(), pick: null })) }) : null;
   /** "14 shirts · $5", "70% · $5", "John · $5": a person's number, or their pick, and what they put on it. */
-  const numberWords = (v: bigint) => (pickAnswers ? (pickAnswers.find((a) => a.index === Number(v))?.text ?? "?") : numberUnit ? unitPhrase(v, numberUnit) : `${Number(v) / 100}%`);
+  const numberWords = (v: bigint) => (pickAnswers ? (pickAnswers.find((a) => a.index === Number(v))?.text ?? "?") : numberUnit ? unitPhrase(v, numberUnit) : whoWins && teams ? leanPill(Number(v) / 100, teams.away.name, teams.home.name) : `${Number(v) / 100}%`);
   // The pick-one picture (3.25, 3.31): who picked each answer, and each answer's share of everything riding.
   const pickers = pickAnswers ? pickAnswers.map((a) => positions.filter((p) => Number(p.value) === a.index).map((p) => ({ name: person.get(p.userId as string)?.displayName ?? "Someone", hue: hueFor(p.userId as string) }))) : [];
   const pickShares = pickAnswers ? answerShares(pickAnswers.map((a) => positions.filter((p) => Number(p.value) === a.index).reduce((sum, p) => sum + p.stake, 0n))) : [];
@@ -524,7 +535,8 @@ export default async function MarketPage({
       }
       picture={picture}
       numberUnit={numberUnit}
-      ends={fromTemplate?.template.key === "home_wins" && game ? { low: game.awayShort, high: game.homeShort } : null}
+      teams={teams}
+      consent={decidedByFeed ? (firstDrive ? DRIVE_CONSENT : CONSENT) : null}
       pickOne={pickAnswers ? { answers: pickAnswers } : null}
       mark={d.markKind === "emoji" ? d.markValue : null}
       argument={argument}
@@ -612,6 +624,8 @@ export default async function MarketPage({
       <dd className="text-body text-ink">
         {decidedByScore ? (
           "By the final score, once the game is over"
+        ) : firstDrive ? (
+          "By the play-by-play, once the game is over"
         ) : d.resolvesBy ? (
           <>
             by{" "}
@@ -649,13 +663,22 @@ export default async function MarketPage({
           <dd className="text-body text-ink">Off by {withSeparators(d.range)} {d.range === 1n ? numberUnit.singular : numberUnit.plural} or more scores nothing. Closer scores more.</dd>
         </>
       ) : null}
+      {whoWins && game && CAN_TIE[game.sport as Sport] ? (
+        // The tie row (3.40): the deployed contract cannot score the middle, so a football tie is void.
+        <>
+          <dt className="text-label text-ink-3">If it’s a tie</dt>
+          <dd className="text-body text-ink">{TIE_VOID}</dd>
+        </>
+      ) : null}
       <dt className="text-label text-ink-3">If it’s unclear</dt>
       <dd className="text-body text-ink">
         {decidedByScore
-          ? "If nobody votes, the final score decides."
-          : d.stalemate === "void"
-            ? "It’s called off and nothing changes hands."
-            : "Everyone says their piece and the tiebreaker everyone agreed to calls it."}
+          ? UNCLEAR_BY_SCORE
+          : firstDrive
+            ? UNCLEAR_BY_PLAYS
+            : d.stalemate === "void"
+              ? "It’s called off and nothing changes hands."
+              : "Everyone says their piece and the tiebreaker everyone agreed to calls it."}
       </dd>
     </dl>
   );
@@ -774,28 +797,46 @@ export default async function MarketPage({
   // The source card (3.35): where a person's claim card stands, once the final score is in and before anyone has
   // said. No avatar and no "says": the score the terms named is speaking, not a person.
   const finalLabel = game?.finalSeenAt ? `${game.finalSeenAt.toLocaleDateString("en-US", { timeZone: clock.zone, weekday: "short" })} ${clockOf(game.finalSeenAt, clock.zone)}` : null;
+  const ticket = (
+    <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+      <path d="M4 9a2 2 0 0 0 2-2V6h12v1a2 2 0 0 0 2 2v6a2 2 0 0 0-2 2v1H6v-1a2 2 0 0 0-2-2z" />
+      <path d="M12 7v10" strokeDasharray="1.5 2.5" />
+    </svg>
+  );
+  const homeFace: TeamFace | null = game ? { abbr: game.homeAbbr, name: game.homeShort, color: game.homeColor } : null;
+  const awayFace: TeamFace | null = game ? { abbr: game.awayAbbr, name: game.awayShort, color: game.awayColor } : null;
   const sourceCard =
-    state === "locked" && decidedByScore && feedFinal && game && votes.length === 0 ? (
+    state === "locked" && decidedByScore && feedFinal && game && homeFace && awayFace && votes.length === 0 ? (
       <section className="flex flex-col gap-2 rounded-card border border-line bg-surface p-3" data-source-card="">
         <p className="flex items-center gap-2 text-label text-ink-3">
-          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M4 9a2 2 0 0 0 2-2V6h12v1a2 2 0 0 0 2 2v6a2 2 0 0 0-2 2v1H6v-1a2 2 0 0 0-2-2z" />
-            <path d="M12 7v10" strokeDasharray="1.5 2.5" />
-          </svg>
+          {ticket}
           <span>From the final score</span>
         </p>
         {[
-          { name: game.homeShort, score: feedFinal.home },
-          { name: game.awayShort, score: feedFinal.away },
+          { face: homeFace, score: feedFinal.home },
+          { face: awayFace, score: feedFinal.away },
         ]
           .sort((a, b) => b.score - a.score)
           .map((row, i) => (
-            <p key={row.name} className={`flex items-baseline justify-between text-body-strong ${i === 0 && feedFinal.home !== feedFinal.away ? "text-ink" : "text-ink-2"}`}>
-              <span>{row.name}</span>
+            <p key={row.face.abbr} className={`flex items-center justify-between gap-3 text-body-strong ${i === 0 && feedFinal.home !== feedFinal.away ? "text-ink" : "text-ink-2"}`}>
+              <span className="inline-flex items-center gap-2">
+                <TeamStamp team={row.face} size={20} />
+                {row.face.name}
+              </span>
               <span className="tabular-nums">{row.score}</span>
             </p>
           ))}
         <p className="text-caption text-ink-3">{finalLabel ? `Final, ${finalLabel}. ` : "Final. "}The terms said the final score decides.</p>
+      </section>
+    ) : state === "locked" && firstDrive && game && game.firstDriveResult && d.feedOutcome !== null && votes.length === 0 ? (
+      // The play-by-play's card (docs/decisions.md, the game page): the first drive as the source recorded it, no avatar and no "says".
+      <section className="flex flex-col gap-2 rounded-card border border-line bg-surface p-3" data-source-card="plays">
+        <p className="flex items-center gap-2 text-label text-ink-3">
+          {ticket}
+          <span>From the play-by-play</span>
+        </p>
+        <p className="text-body-strong text-ink">{game.firstDriveResult}</p>
+        <p className="text-caption text-ink-3">The terms said the play-by-play decides.</p>
       </section>
     ) : null;
   // The claim card while voting (3.25): who first said how it came out, and what they said happened.
@@ -854,19 +895,23 @@ export default async function MarketPage({
         evidence={media.evidence.map((e) => ({ id: e.id, by: first(e.author.id) }))}
         wells={wells}
         answers={pickAnswers}
+        teams={teams}
         myNote={myVote === null && statements.some((s) => s.userId === me.id)}
         feed={
-          decidedByScore && game
+          decidedByFeed && game
             ? {
+                source: firstDrive ? "plays" : "score",
                 waiting: d.feedOutcome === null,
                 canSayYourself: now.getTime() >= game.expectedEndAt.getTime() + SAY_YOURSELF_AFTER_MS,
-                tie: d.feedOutcome === VOID_OUTCOME && feedFinal ? `${scoreLine(feedFinal, game.homeShort, game.awayShort)}. The final score can’t settle a tie until the app can score one, so this one is called off in a day with nothing changing hands, and it counts against nobody.` : null,
+                tie: d.feedOutcome === VOID_OUTCOME && feedFinal ? `${scoreLine(feedFinal, game.homeShort, game.awayShort)}. The terms make a tie void, so nothing changes hands, and it counts against nobody.` : null,
               }
             : null
         }
         proposal={
           decidedByScore && d.feedOutcome !== null && d.feedOutcome !== VOID_OUTCOME && feedFinal && game
             ? { outcome: word(d.feedOutcome), line: `From the final score: ${scoreLine(feedFinal, game.homeShort, game.awayShort)}.`, rationale: null }
+            : firstDrive && d.feedOutcome !== null && d.feedOutcome !== VOID_OUTCOME && game?.firstDriveResult
+              ? { outcome: word(d.feedOutcome), line: `From the play-by-play: ${game.firstDriveResult}.`, rationale: null }
             : d.aiRationale
             ? {
                 outcome: word(d.aiOutcome),
@@ -919,7 +964,18 @@ export default async function MarketPage({
   const calledLine = pickAnswers ? calledItLine(pickCallers, pickCallers.includes("You")) : "";
   const answerLine = pickAnswers && pickedIndex !== null ? pickAnswerLine(pickAnswers.find((a) => a.index === pickedIndex)?.text ?? "Decided", claimantSaid) : answerNumber !== null && numberUnit ? `${unitPhrase(answerNumber, numberUnit)}${claimantSaid && claimantSaid.length <= 60 ? `, ${claimantSaid.charAt(0).toLowerCase()}${claimantSaid.slice(1).replace(/[.!]+$/, "")}.` : "."}` : outcomeLine(d, outcome === "yes");
   const offBy = (p: (typeof positions)[number]) => (answerNumber === null ? 0n : p.value > answerNumber ? p.value - answerNumber : answerNumber - p.value);
-  const closestLine = pickAnswers ? calledLine : closest ? (numberUnit ? `${first(closest.userId as string)} ${closest.userId === me.id ? "were" : "was"} closest, ${offBy(closest) === 0n ? "dead on" : `off by ${withSeparators(offBy(closest))}`}.` : `${first(closest.userId as string)} ${closest.userId === me.id ? "were" : "was"} closest, at ${Number(closest.value) / 100}%.`) : "";
+  const closestLine = pickAnswers ? calledLine : closest ? (numberUnit ? `${first(closest.userId as string)} ${closest.userId === me.id ? "were" : "was"} closest, ${offBy(closest) === 0n ? "dead on" : `off by ${withSeparators(offBy(closest))}`}.` : `${first(closest.userId as string)} ${closest.userId === me.id ? "were" : "was"} closest, at ${whoWins && teams ? leanPill(Number(closest.value) / 100, teams.away.name, teams.home.name) : `${Number(closest.value) / 100}%`}.`) : "";
+  // The final score as the settled line's caption on a question the score answered (3.40): "Giants 24, Titans 17."
+  const scoreCaption = game && feedFinal && (decidedByScore || twoTeams) && ended ? `${scoreLine(feedFinal, game.homeShort, game.awayShort)}.` : null;
+  // The feed's ending, in one line after the ticket glyph (3.35, Endings): which of its three ways it took, or the play-by-play's.
+  const endingLine =
+    state === "resolved" && d.resolvedBy === "feed"
+      ? feedEnding === "alone"
+        ? "Decided by the final score, as the terms said. Nobody voted, and the score held for three days."
+        : feedEnding === "drive"
+          ? "Decided by the play-by-play, as the terms said. Nobody voted, and it held for three days."
+          : "Decided by the final score, as the terms said. Nobody voted within a day."
+      : null;
   const ending: "settled" | "void" | "expired" = state === "voided" ? "void" : state === "expired" ? "expired" : "settled";
   const settledSheet = ended ? (
     <SettledSheet
@@ -938,14 +994,16 @@ export default async function MarketPage({
       ? d.resolvedBy === "arbitration"
         ? "The terms didn’t decide it. Nothing changes hands."
         : d.resolvedBy === "feed"
-          ? "The final score couldn’t settle it. Nothing changes hands, and it counts against nobody."
+          ? feedEnding === "tie"
+            ? `${scoreCaption ? `${scoreCaption} ` : ""}The terms make a tie void, so nothing changes hands, and it counts against nobody.`
+            : feedEnding === "drive_unknown"
+              ? "The play-by-play couldn’t say how it ended, so it’s void. Nothing changes hands, and it counts against nobody."
+              : "The two results we check disagreed, so it’s void. Nothing changes hands, and it counts against nobody."
           : "Nothing changes hands."
       : state === "expired"
         ? "Nobody said what happened before it closed for good."
-        : numberUnit || pickAnswers
-          ? closestLine
-          : (claimantSaid ?? "");
-  const endedOutcome = state === "voided" ? "Nobody could tell." : state === "expired" ? "Never settled." : answerLine;
+        : [scoreCaption, numberUnit || pickAnswers || whoWins ? closestLine : (claimantSaid ?? "")].filter(Boolean).join(" ");
+  const endedOutcome = state === "voided" ? (d.resolvedBy === "feed" && feedEnding === "tie" ? "A tie." : d.resolvedBy === "feed" && feedEnding === "drive_unknown" ? "No first drive to go by." : d.resolvedBy === "feed" ? "No final score to go by." : "Nobody could tell.") : state === "expired" ? "Never settled." : answerLine;
   const lineOrRuler = (resolved: boolean) =>
     pickAnswers ? (
       // The pick-one rows (3.25) where the call line would be: washed on the answer that happened, and on a void nothing washed.
@@ -953,7 +1011,7 @@ export default async function MarketPage({
     ) : numberUnit ? (
       rulerData ? <Ruler ruler={rulerData} state={resolved ? "resolved" : undefined} size="screen" surface="var(--ground)" /> : null
     ) : (
-      <CallLine pins={pins} state={resolved ? "resolved" : "in"} outcome={resolved && outcome ? (outcome === "yes" ? 1 : 0) : undefined} size="screen" surface="var(--ground)" />
+      <CallLine pins={pins} state={resolved ? "resolved" : "in"} outcome={resolved && outcome ? (outcome === "yes" ? 1 : 0) : undefined} size="screen" surface="var(--ground)" ends={teams} />
     );
   const settledOutcome = state === "resolved" && outcome !== null && outcome !== "void";
   const participants = positions.map((p) => p.userId as string);
@@ -969,8 +1027,8 @@ export default async function MarketPage({
       </section>
       <section className="flex flex-col gap-2">
         <p className="text-serif-l text-ink">{endedOutcome}</p>
-        {[state === "resolved" && !numberUnit && !pickAnswers ? claimantSaid : null, state === "resolved" ? closestLine || null : endedCaption].filter(Boolean).length > 0 ? (
-          <p className="text-body text-ink-2">{[state === "resolved" && !numberUnit && !pickAnswers ? claimantSaid : null, state === "resolved" ? closestLine || null : endedCaption].filter(Boolean).join(" ")}</p>
+        {[scoreCaption, state === "resolved" && !numberUnit && !pickAnswers ? claimantSaid : null, state === "resolved" ? closestLine || null : endedCaption].filter(Boolean).length > 0 ? (
+          <p className="text-body text-ink-2">{[state === "resolved" && scoreCaption ? scoreCaption : null, state === "resolved" && !numberUnit && !pickAnswers ? claimantSaid : null, state === "resolved" ? closestLine || null : endedCaption].filter(Boolean).join(" ")}</p>
         ) : null}
       </section>
       <section className="flex flex-col gap-3">{lineOrRuler(settledOutcome)}</section>
@@ -1009,6 +1067,12 @@ export default async function MarketPage({
       <section className="flex flex-col gap-4">
         <p className="text-serif-l text-ink">{endedOutcome}</p>
         {endedCaption ? <p className="text-caption text-ink-2">{endedCaption}</p> : null}
+        {endingLine ? (
+          <p className="flex items-center gap-2 text-caption text-ink-3" data-feed-ending={feedEnding ?? ""}>
+            {ticket}
+            <span>{endingLine}</span>
+          </p>
+        ) : null}
         {frameOrSlot(200)}
         {pickAnswers && settledOutcome ? null : lineOrRuler(settledOutcome)}
       </section>
@@ -1031,6 +1095,7 @@ export default async function MarketPage({
             {numberUnit && rulerData && rulerData.answer ? (
               <NumberLeaderboard
                 viewerId={me.id}
+                said={numberUnit.margin ? (v) => unitPhrase(BigInt(v), numberUnit) : undefined}
                 answer={rulerData.answer}
                 standings={positions.map((p) => ({
                   userId: p.userId as string,
@@ -1043,6 +1108,7 @@ export default async function MarketPage({
             ) : (
               <Leaderboard
                 viewerId={me.id}
+                ends={teams ? { away: teams.away.name, home: teams.home.name } : null}
                 outcome={outcome === "yes" ? 1 : 0}
                 standings={positions.map((p) => ({
                   userId: p.userId as string,
@@ -1072,6 +1138,22 @@ export default async function MarketPage({
         <TopBar back right={group?.name ? <Chip>{group.name}</Chip> : null} />
         <div className="flex flex-col gap-7 py-2">
           {band}
+          {game && awayFace && homeFace ? (
+            // Part of a game (3.33): one 44px row back to the game page, with the two 20px stamps and a chevron; shown with one question too, since the page is where the rest of the menu waits.
+            <Link prefetch={false} href={`/on/${game.id}?g=${d.groupId}`} className="relative -mt-3 flex h-11 items-center justify-between gap-3 rounded-button border border-line px-3" data-part-of={game.id}>
+              <LinkPending />
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="inline-flex items-center gap-1">
+                  <TeamStamp team={awayFace} size={20} />
+                  <TeamStamp team={homeFace} size={20} />
+                </span>
+                <span className="truncate text-body-sm font-semibold text-ink">Part of {game.name}</span>
+              </span>
+              <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-ink-3">
+                <path d="M9 5l7 7-7 7" />
+              </svg>
+            </Link>
+          ) : null}
 
           {endedBody}
 
@@ -1150,6 +1232,7 @@ export default async function MarketPage({
                     state="in"
                     size="screen"
                     surface="var(--ground)"
+                    ends={teams}
                   />
                 )}
                 <ul className="flex flex-col">
@@ -1187,11 +1270,11 @@ export default async function MarketPage({
           {d.rulingText && (state === "resolved" || state === "voided") ? (
             <section className="flex flex-col gap-2 rounded-card border border-line bg-surface px-4 py-[14px]" data-ruling={d.resolvedBy ?? ""}>
               <h2 className="text-body-strong text-ink">
-                {d.resolvedBy === "feed" ? "Decided by the final score, as the terms said" : "Settled by the tiebreaker everyone agreed to"}
+                {d.resolvedBy === "feed" ? (firstDrive ? "Decided by the play-by-play, as the terms said" : "Decided by the final score, as the terms said") : "Settled by the tiebreaker everyone agreed to"}
               </h2>
               <p className="text-body-sm text-ink-2">{d.rulingText}</p>
               <p className="text-caption text-ink-3">
-                {d.resolvedBy === "feed" ? "Nobody called it in time, so the final score did, the way everyone agreed at entry. On the permanent record, word for word." : "On the permanent record, word for word."}
+                {d.resolvedBy === "feed" ? `Nobody called it in time, so the ${firstDrive ? "play-by-play" : "final score"} did, the way everyone agreed at entry. On the permanent record, word for word.` : "On the permanent record, word for word."}
               </p>
             </section>
           ) : null}

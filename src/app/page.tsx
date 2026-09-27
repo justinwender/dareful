@@ -13,6 +13,9 @@ import { SuggestedGhost } from "@/components/ledger/suggested-ghost";
 import { currentUser } from "@/lib/auth/session";
 import { boundPendingForDebtor, suggestedGhostsFor } from "@/lib/ledger/claims";
 import { viewerClock } from "@/lib/ui/zone";
+import { starterGames } from "@/lib/sports";
+import { rowData } from "@/components/on/game-row";
+import { hueFor } from "@/lib/ui/hue";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +35,7 @@ export default async function Now({ searchParams }: { searchParams: Promise<{ al
   const empty = !home.hasAnything && suggested.length === 0 && waiting.length === 0;
   const today = <h2 className="pt-5 text-label text-ink-3">{todayLabel(now, clock.zone)}</h2>;
 
-  if (empty) return <FirstRun today={todayLabel(now, clock.zone)} />;
+  if (empty) return <FirstRun today={todayLabel(now, clock.zone)} games={(await starterGames(now)).map((g) => rowData(g, clock.zone, null, null))} viewerHue={hueFor(user.id)} />;
 
   return (
     <Screen>

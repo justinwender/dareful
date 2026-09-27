@@ -3,7 +3,8 @@
  * every message names a person and what they just did (Principle 1); someone who has voted is never asked
  * again; and once it is decided, everyone who had not voted gets the result instead of a request.
  */
-export type Notice = { title: string; body: string; url: string };
+/** What a channel sends: the title, one body, the address it opens; and, for the two backstop notices, the email's own subject and footer (docs/design.md 4.10). */
+export type Notice = { title: string; body: string; url: string; email?: { subject: string; footer: string } };
 
 const short = (title: string) => {
   const t = title.trim().replace(/\?+$/, "");
@@ -126,28 +127,114 @@ export function nettedNotice(input: { name: string; personId: string; appUrl: st
 }
 
 /**
- * The one warning before a backstop acts (docs/decisions.md, public markets): the tiebreaker everyone agreed
- * to, the final score, or the void rule, about to settle a question nobody has called. Provisional copy, flagged
- * for the design session's pass. Never a second reminder: the person-triggered nudge covers everything else.
+ * A clock for a notice (docs/design.md 4.10, 3.23): "at 7:45pm" today, "tomorrow at 7:45pm", "Monday at 7:45pm"
+ * within the week, "Oct 2 at 7:45pm" after that, in the person's zone. It says when the agreement acts, which is
+ * allowed; it never counts down.
  */
-export function backstopWarningNotice(input: { title: string; flavour: "tiebreaker" | "score" | "void"; marketId: string; appUrl: string }): Notice {
+export function clockWithDay(at: Date, now: Date, zone: string): string {
+  const day = (d: Date) => d.toLocaleDateString("en-US", { timeZone: zone, year: "numeric", month: "numeric", day: "numeric" });
+  const clock = at.toLocaleTimeString("en-US", { timeZone: zone, hour: "numeric", minute: "2-digit" }).replace(":00", "").replace(" ", "").toLowerCase();
+  if (day(at) === day(now)) return `at ${clock}`;
+  if (day(at) === day(new Date(now.getTime() + 86_400_000))) return `tomorrow at ${clock}`;
+  const days = Math.round((Date.parse(day(at)) - Date.parse(day(now))) / 86_400_000);
+  if (days > 1 && days < 7) return `${at.toLocaleDateString("en-US", { timeZone: zone, weekday: "long" })} at ${clock}`;
+  return `${at.toLocaleDateString("en-US", { timeZone: zone, month: "short", day: "numeric" })} at ${clock}`;
+}
+
+/** The wall clock of an instant in a zone. */
+function wallClock(at: Date, zone: string): { y: number; m: number; d: number; h: number } {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: zone, year: "numeric", month: "numeric", day: "numeric", hour: "numeric", hourCycle: "h23" }).formatToParts(at);
+  const n = (type: string) => Number(parts.find((x) => x.type === type)?.value ?? "0");
+  return { y: n("year"), m: n("month"), d: n("day"), h: n("hour") };
+}
+/** The instant at a wall-clock hour on a calendar day in a zone, found by correcting a UTC guess by the zone's offset there. */
+function atWallClock(y: number, m: number, d: number, h: number, zone: string): Date {
+  let guess = new Date(Date.UTC(y, m - 1, d, h));
+  for (let i = 0; i < 2; i++) {
+    const w = wallClock(guess, zone);
+    const asUtc = Date.UTC(w.y, w.m - 1, w.d, w.h);
+    guess = new Date(guess.getTime() - (asUtc - Date.UTC(y, m - 1, d, h)));
+  }
+  return guess;
+}
+
+/** The hours a warning never lands in, in the person's zone (docs/design.md 4.10): eleven at night to eight in the morning. */
+export const NIGHT_FROM = 23;
+export const NIGHT_UNTIL = 8;
+export const EVENING_HOUR = 20;
+export const WARN_BEFORE_MS = 6 * 3_600_000;
+
+/**
+ * When the one warning goes (docs/design.md 4.10): six hours before the backstop acts, and never at night. A
+ * warning that would land between 11pm and 8am in the person's zone goes at 8pm the evening before instead.
+ */
+export function warningSendTime(actsAt: Date, zone: string): Date {
+  const at = new Date(actsAt.getTime() - WARN_BEFORE_MS);
+  const w = wallClock(at, zone);
+  if (w.h >= NIGHT_FROM) return atWallClock(w.y, w.m, w.d, EVENING_HOUR, zone);
+  if (w.h < NIGHT_UNTIL) {
+    const previous = wallClock(new Date(at.getTime() - 86_400_000), zone);
+    return atWallClock(previous.y, previous.m, previous.d, EVENING_HOUR, zone);
+  }
+  return at;
+}
+
+/** Which backstop a warning is about (docs/design.md 4.10): the final score, the two results disagreeing, the play-by-play, the tiebreaker, or closing for good. */
+export type WarningFlavour = "score" | "score_conflict" | "drive" | "tiebreaker" | "void";
+
+/**
+ * The one warning before a backstop acts (docs/design.md 4.10), to everyone who could still vote and hasn't: it
+ * names the backstop everyone agreed to and says it is about to act for them. Never that time is running out.
+ * The question is the title and one sentence the body; a clock time is allowed, since it says when the agreement
+ * acts. The email's subject is the sentence; its body the question, the sentence, "Open it", and the one line.
+ */
+export function backstopWarningNotice(input: { title: string; flavour: WarningFlavour; actsAt: Date; now: Date; zone: string; marketId: string; appUrl: string }): Notice {
+  const when = clockWithDay(input.actsAt, input.now, input.zone);
+  const capital = when.charAt(0).toUpperCase() + when.slice(1);
   const body =
     input.flavour === "score"
-      ? "In about six hours the final score settles it, the way everyone agreed going in, unless someone calls it first."
-      : input.flavour === "void"
-        ? "In about six hours it goes unsettled and nothing changes hands, unless someone calls it first."
-        : "In about six hours the tiebreaker everyone agreed to calls it, unless someone says how it came out first.";
-  return { title: `Nobody’s called “${short(input.title)}” yet`, body, url: `${input.appUrl}/m/${input.marketId}#ballot` };
+      ? `Nobody has voted. The final score you all agreed to settles it ${when}.`
+      : input.flavour === "score_conflict"
+        ? `Nobody has voted, and the two results we check disagree. ${capital} it becomes void, as the terms said.`
+        : input.flavour === "drive"
+          ? `Nobody has voted. The play-by-play you all agreed to settles it ${when}.`
+          : input.flavour === "void"
+            ? `It hasn’t been decided. ${capital} it closes for good, as everyone agreed, and nothing changes hands.`
+            : `It hasn’t been decided. ${capital} the tiebreaker everyone agreed to makes the call.`;
+  return { title: input.title, body, url: `${input.appUrl}/m/${input.marketId}#ballot`, email: { subject: body, footer: BACKSTOP_FOOTER } };
+}
+const BACKSTOP_FOOTER = "You get this because you’re in this question. It’s the only one before it settles.";
+
+/** How a backstop ended it (docs/design.md 4.10): the feed's endings, the tiebreaker's two, and closing for good. */
+export type BackstopHow = "agreed" | "alone" | "conflict" | "tie" | "drive" | "drive_unknown" | "tiebreaker" | "tiebreaker_void" | "expired";
+
+/**
+ * The one notice after a backstop has acted (docs/design.md 4.10), to everyone in the market, in place of the
+ * ordinary result notice. The question is the title and one sentence the body: never a number, never a score.
+ * The tiebreaker's void counts against the asker and its notice does not say so; the feed's void counts against
+ * nobody and its notice says so, because the asker would otherwise reasonably wonder.
+ */
+export function backstopResultNotice(input: { title: string; how: BackstopHow; marketId: string; appUrl: string }): Notice {
+  const body: Record<BackstopHow, string> = {
+    agreed: "Decided by the final score, as everyone agreed.",
+    alone: "Decided by the final score, as everyone agreed. It held for three days.",
+    conflict: "Void. The two results we check disagreed, so nothing changes hands, and it counts against nobody.",
+    tie: "Void. The game ended in a tie, which the terms make void, so nothing changes hands, and it counts against nobody.",
+    drive: "Decided by the play-by-play, as everyone agreed. It held for three days.",
+    drive_unknown: "Void. The play-by-play couldn’t say how the first drive ended, so nothing changes hands, and it counts against nobody.",
+    tiebreaker: "Decided by the tiebreaker everyone agreed to.",
+    tiebreaker_void: "Void. The tiebreaker everyone agreed to found the terms don’t decide it, so nothing changes hands.",
+    expired: "Closed for good. Nobody said what happened, so nothing changes hands.",
+  };
+  return { title: input.title, body: body[input.how], url: `${input.appUrl}/m/${input.marketId}`, email: { subject: body[input.how], footer: BACKSTOP_FOOTER } };
 }
 
 /**
- * The notice after a backstop has acted: the final score settled it, or could not, or the void rule let it go
- * unsettled. Provisional copy, flagged for the design session's pass. The tiebreaker's own notice is the ruling
- * notice above. Never a number, never a score: the screen has them.
+ * Push, else email, never both (docs/design.md 4.10): the two backstop notices go by push where the person
+ * allowed it, and by email only where push took nothing. Pure over the two senders, so the rule has a test.
  */
-export function backstopResultNotice(input: { title: string; how: "feed" | "feed_void" | "expired"; marketId: string; appUrl: string }): Notice {
-  const url = `${input.appUrl}/m/${input.marketId}`;
-  if (input.how === "feed") return { title: `“${short(input.title)}” is decided`, body: "Decided by the final score, as the terms said. Nobody called it in time. Have a look at who was closest.", url };
-  if (input.how === "feed_void") return { title: `“${short(input.title)}” went unsettled`, body: "The final score couldn’t settle it, so nothing changes hands. The reason is on the screen.", url };
-  return { title: `“${short(input.title)}” went unsettled`, body: "Nobody said how it came out in time, so it goes unsettled and nothing changes hands, as everyone agreed going in.", url };
+export async function pushElseEmail(push: () => Promise<boolean>, email: () => Promise<boolean>): Promise<{ push: boolean; email: boolean }> {
+  const p = await push().catch(() => false);
+  if (p) return { push: true, email: false };
+  return { push: false, email: await email().catch(() => false) };
 }

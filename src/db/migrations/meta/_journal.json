@@ -176,6 +176,13 @@
       "when": 1790455906885,
       "tag": "0024_whats_on",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1790460769714,
+      "tag": "0025_game_page",
+      "breakpoints": true
     }
   ]
 }

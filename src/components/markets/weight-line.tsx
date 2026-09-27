@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Avatar } from "@/components/ledger/avatar";
 import { hueVar, type Hue } from "@/lib/ui/hue";
+import { leanPill } from "@/lib/ui/team";
 import { cn } from "@/lib/utils";
 
 /** One of the ten buckets, with what is riding there as a decimal string so no float touches a stake. */
@@ -22,6 +23,8 @@ export type WeightLineProps = {
   caption: string;
   /** The entering moment (3.13): columns grow from segments, your share fills, your avatar rises, the marker draws last. */
   rise?: boolean;
+  /** Between two teams (3.40): the columns labelled with the two names and "Even", and the marker chip naming the team the group leans to ("Bills 62%"). */
+  ends?: { away: string; home: string } | null;
 };
 
 /** `bucket(v) = ceil(v / 10)`, with 0 joining the first bucket (3.22). */
@@ -43,6 +46,7 @@ export function WeightLine({
   heading,
   caption,
   rise = false,
+  ends = null,
 }: WeightLineProps) {
   // The rise plays once, from the resting geometry of the odds line: 6px segments become columns.
   const [risen, setRisen] = useState(!rise);
@@ -91,7 +95,7 @@ export function WeightLine({
             }}
           >
             <span className="flex h-[22px] items-center whitespace-nowrap rounded-pill bg-ink px-2 text-label text-ground">
-              {group.percent}%
+              {ends ? leanPill(group.percent, ends.away, ends.home) : `${group.percent}%`}
             </span>
             <span className="w-[2px] flex-1 bg-ink" />
           </div>
@@ -193,9 +197,9 @@ export function WeightLine({
         aria-hidden="true"
         className="flex justify-between text-caption text-ink-3 tabular-nums"
       >
-        <span>0%</span>
-        <span>50%</span>
-        <span>100%</span>
+        <span>{ends ? ends.away : "0%"}</span>
+        <span>{ends ? "Even" : "50%"}</span>
+        <span>{ends ? ends.home : "100%"}</span>
       </p>
       <p className="text-caption text-ink-3">
         {blind ? `${blind.inCount} of ${blind.ofCount} in.` : caption}

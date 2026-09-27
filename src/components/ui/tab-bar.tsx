@@ -9,15 +9,18 @@ import { ROOT_KEY, type RootPath } from "@/lib/ui/root";
 import { cn } from "@/lib/utils";
 
 /**
- * The shell (docs/design.md section 6): three destinations and one button. The bar renders on the three roots and
+ * The shell (docs/design.md section 6): four destinations and one button. The bar renders on the four roots and
  * nowhere else; a task screen hides it and puts its one move where the bar would be. Each root renders the bar
  * itself, which is what keeps it off every other screen, and remembers itself as the root that "back" lands on.
+ * What's on is the second tab (3.32): the one destination holding things nothing in the app has pointed you to.
+ * Its icon is a ticket stub at the same 1.8px stroke on the 24px grid; no badge, dot or count on it, ever.
  *
  * The citron dot on Now means one thing: something with a clock is waiting on this person. No number, ever.
  */
 export const TAB_BAR_HEIGHT = 64;
 const TABS: Array<{ href: RootPath; label: string }> = [
   { href: "/", label: "Now" },
+  { href: "/on", label: "What’s on" },
   { href: "/people", label: "People" },
   { href: "/you", label: "You" },
 ];
@@ -37,7 +40,7 @@ export function TabBar({ active, live, start }: { active: RootPath; live: boolea
       <div aria-hidden="true" style={{ height: `calc(${TAB_BAR_HEIGHT + (start ? 88 : 16)}px + env(safe-area-inset-bottom))` }} />
       {start ? <StartButton /> : null}
       <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)]">
-        <div className="mx-auto grid w-full max-w-[430px] grid-cols-3" style={{ height: TAB_BAR_HEIGHT }}>
+        <div className="mx-auto grid w-full max-w-[430px] grid-cols-4" style={{ height: TAB_BAR_HEIGHT }}>
           {TABS.map((t) => {
             const on = t.href === active;
             const dot = t.href === "/" && live;
@@ -66,6 +69,11 @@ function TabGlyph({ tab }: { tab: RootPath }) {
         <>
           <circle cx="12" cy="12" r="8.5" />
           <path d="M12 7.5V12l3 2" />
+        </>
+      ) : tab === "/on" ? (
+        <>
+          <path d="M4 9a2 2 0 0 0 2-2V6h12v1a2 2 0 0 0 2 2v6a2 2 0 0 0-2 2v1H6v-1a2 2 0 0 0-2-2z" />
+          <path d="M12 7v10" strokeDasharray="1.5 2.5" />
         </>
       ) : tab === "/people" ? (
         <>

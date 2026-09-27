@@ -9,20 +9,17 @@ import { FIELD_PROBLEM_CLASS, Problem, ProblemSummary } from "@/components/ledge
 import { Screen } from "@/components/ledger/screen";
 import { Button } from "@/components/ui/button";
 import { PinnedSheet } from "@/components/ui/pinned-sheet";
-import { dismissNamePromptAction, nameGroupAction } from "@/lib/actions/join";
 import { carefulQuestionsAction, draftFromTemplateAction, draftMarketAction, scopeMarketAction, triageAction, type ScopeResult, type TriageResult } from "@/lib/actions/markets";
 import { emojiInk } from "@/lib/ui/emoji-ink";
 import type { Hue } from "@/lib/ui/hue";
 import { inkFor, inkVars, type InkName } from "@/lib/ui/ink";
 import { cn } from "@/lib/utils";
 import { MarkPicker, type Sticker } from "./mark-picker";
+import { WhoStep, type Person, type SetOption, type Who } from "./who-step";
 import { refOfPicked, type PickedMark } from "@/lib/ui/mark";
 import { firstName } from "@/lib/ui/copy";
 import { MAX_ANSWER_LENGTH, MAX_ANSWERS, MIN_ANSWERS } from "@/lib/ledger/pick-one";
 
-type SetOption = { groupId: string; label: string; caption: string; avatars: Array<{ name: string; hue: Hue }>; offerName: boolean; size: number; units: Array<{ id: string; label: string; template: string | null }>; /** The inks of the questions still open in this set, for balance (1.8, rule 4). */ takenInks: InkName[] };
-type Person = { id: string; name: string; hue: Hue };
-type Who = { kind: "set"; groupId: string } | { kind: "people"; userIds: string[] } | { kind: "link" };
 type Unit = { kind: "usd" } | { kind: "existing"; id: string } | { kind: "new"; template: "beer" | "round" | "coffee" | "next_time"; label: string };
 const PRESETS = [
   { template: "beer", label: "beers" },
@@ -35,7 +32,6 @@ const WHEN = [
   { label: "This week", hours: 24 * 7 },
   { label: "This month", hours: 24 * 30 },
 ];
-const COUNT = ["", "", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"];
 
 /**
  * Asking, in three steps: the question, who's in, the terms (PLANNING.md 8a; docs/design.md 3.20 and section 7).
@@ -79,10 +75,6 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
   const [thinking, startThinking] = useTransition();
   const [line, setLine] = useState(initialLine.slice(0, 280));
   const [who, setWho] = useState<Who>(sets[0] ? { kind: "set", groupId: sets[0].groupId } : { kind: "link" });
-  const [picking, setPicking] = useState(sets.length === 0 && people.length > 0);
-  const [named, setNamed] = useState<Record<string, string>>({});
-  const [waved, setWaved] = useState<Record<string, boolean>>({});
-  const [newName, setNewName] = useState("");
   const [scope, setScope] = useState<ScopeResult | null>(null);
   const scoping = useRef<Promise<void> | null>(null);
   const [title, setTitle] = useState("");
@@ -94,7 +86,6 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
   const [problem, setProblem] = useState<string | null>(null);
   const [waiting, startWait] = useTransition();
   const [saving, startSave] = useTransition();
-  const [namingBusy, startNaming] = useTransition();
   const selectedSet = who.kind === "set" ? sets.find((s) => s.groupId === who.groupId) : undefined;
   const numeric = pace === "dare" && kind === "numeric";
   const pickOne = pace === "dare" && kind === "categorical";
@@ -543,122 +534,10 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
   );
 
   if (step === "who") {
-    const circle = (on: boolean) => (
-      <span aria-hidden="true" className={cn("flex h-6 w-6 shrink-0 items-center justify-center rounded-pill", on ? "bg-ink text-ground" : "border-[1.5px] border-line-strong")}>
-        {on ? (
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M5 12l5 5 9-10" />
-          </svg>
-        ) : null}
-      </span>
-    );
     return wrap(
       <div className="flex flex-col gap-6">
         {question}
-        <div className="flex flex-col gap-2">
-          <h1 className="text-body-strong text-ink">{pace === "argument" ? "Who’s on the other side?" : "Who’s in?"}</h1>
-          <p className="text-body-sm text-ink-2">{pace === "argument" ? "An argument is between two of you. Anyone else in the set can watch, and helps call it." : "Everyone you pick hears about it. Nobody needs an account to look."}</p>
-        </div>
-        <div role="group" aria-label="Who's in" className="flex flex-col gap-2">
-          {sets.map((s) => {
-            const on = who.kind === "set" && who.groupId === s.groupId;
-            const label = named[s.groupId] ?? s.label;
-            return (
-              <div key={s.groupId} className="flex flex-col gap-2">
-                <button type="button" aria-pressed={on} onClick={() => (setWho({ kind: "set", groupId: s.groupId }), setPicking(false))} className={cn("grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-card border border-line px-[14px] py-3 text-left", on && "bg-surface shadow-[inset_0_0_0_1px_rgba(185,165,243,0.5)]")}>
-                  <span className="flex">
-                    {s.avatars.slice(0, 3).map((a, i) => (
-                      <span key={i} style={{ marginLeft: i === 0 ? 0 : -10 }}>
-                        <Avatar name={a.name} hue={a.hue} size={32} ring={on ? "var(--surface)" : "var(--ground)"} />
-                      </span>
-                    ))}
-                    {s.avatars.length > 3 ? <span className="-ml-[10px] flex h-8 w-8 items-center justify-center rounded-pill bg-surface-2 text-label text-ink-2">+{s.avatars.length - 3}</span> : null}
-                  </span>
-                  <span className="flex min-w-0 flex-col">
-                    <span className="truncate text-body-strong text-ink">{label}</span>
-                    <span className="truncate text-caption text-ink-3">{s.caption}</span>
-                  </span>
-                  {circle(on)}
-                </button>
-                {/* Offered once a set is asking its second question, under its row, and it never blocks (3.20). */}
-                {on && s.offerName && !named[s.groupId] && !waved[s.groupId] ? (
-                  <form
-                    className="flex flex-col gap-3 rounded-card border border-dashed border-line-strong bg-surface px-4 py-3"
-                    noValidate
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      const name = newName.trim();
-                      if (name.length < 2) return;
-                      startNaming(async () => {
-                        const r = await nameGroupAction(s.groupId, name);
-                        if ("ok" in r) setNamed((n) => ({ ...n, [s.groupId]: name }));
-                      });
-                    }}
-                  >
-                    <label htmlFor={`name-${s.groupId}`} className="text-body-sm text-ink-2">
-                      Second time with these {COUNT[s.size] ?? "few"}. Want to call them something?
-                    </label>
-                    <div className="flex gap-2">
-                      <input id={`name-${s.groupId}`} value={newName} onChange={(e) => setNewName(e.target.value)} maxLength={40} placeholder="Friday crew" className="h-12 min-w-0 flex-1 rounded-button border border-line bg-ground px-4 text-body text-ink placeholder:text-ink-3" />
-                      <Button type="submit" variant="secondary" loading={namingBusy}>
-                        Save
-                      </Button>
-                    </div>
-                    <Button
-                      variant="tertiary"
-                      className="self-start"
-                      onClick={() => {
-                        setWaved((w) => ({ ...w, [s.groupId]: true }));
-                        void dismissNamePromptAction(s.groupId);
-                      }}
-                    >
-                      Not now
-                    </Button>
-                  </form>
-                ) : null}
-              </div>
-            );
-          })}
-
-          {people.length > 0 ? (
-            <div className="flex flex-col gap-2">
-              <button type="button" aria-expanded={picking} onClick={() => (setPicking(true), setWho({ kind: "people", userIds: who.kind === "people" ? who.userIds : [] }))} className={cn("grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-card border border-dashed border-line-strong px-[14px] py-3 text-left", who.kind === "people" && "bg-surface")}>
-                <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-pill border border-dashed border-line-strong text-ink-2">
-                  +
-                </span>
-                <span className="flex min-w-0 flex-col">
-                  <span className="text-body-strong text-ink">Someone else</span>
-                  <span className="text-caption text-ink-3">Pick people, or just send the link around</span>
-                </span>
-                {circle(who.kind === "people")}
-              </button>
-              {picking && who.kind === "people" ? (
-                <ul className="flex flex-col rounded-card border border-line">
-                  {people.map((p, i) => {
-                    const on = who.userIds.includes(p.id);
-                    return (
-                      <li key={p.id} className={i > 0 ? "border-t border-line" : undefined}>
-                        <button type="button" aria-pressed={on} onClick={() => setWho({ kind: "people", userIds: on ? who.userIds.filter((x) => x !== p.id) : [...who.userIds, p.id].slice(0, 11) })} className="flex min-h-12 w-full items-center gap-3 px-[14px] text-left">
-                          <Avatar name={p.name} hue={p.hue} size={28} />
-                          <span className="min-w-0 flex-1 truncate text-body-sm text-ink">{p.name}</span>
-                          {circle(on)}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              ) : null}
-            </div>
-          ) : null}
-
-          <button type="button" aria-pressed={who.kind === "link"} onClick={() => (setWho({ kind: "link" }), setPicking(false))} className={cn("grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-card border border-dashed border-line-strong px-[14px] py-3 text-left", who.kind === "link" && "bg-surface")}>
-            <span className="flex min-w-0 flex-col">
-              <span className="text-body-strong text-ink">Whoever I send it to</span>
-              <span className="text-caption text-ink-3">You get a link and a code. Whoever joins is in.</span>
-            </span>
-            {circle(who.kind === "link")}
-          </button>
-        </div>
+        <WhoStep sets={sets} people={people} who={who} onWho={setWho} argument={pace === "argument"} />
         <PinnedSheet
           label="Next"
           low={

@@ -30,7 +30,8 @@ import type { Hue } from "@/lib/ui/hue";
 import { cn } from "@/lib/utils";
 import type { Signing } from "./market-actions";
 import { NumberEntry } from "./number-entry";
-import { MarginEntry } from "./margin-entry";
+import { TeamLine } from "./team-line";
+import type { TeamFace } from "@/lib/ui/team";
 import type { PickOneAnswer } from "./pick-one-bars";
 
 /** What a vote names: yes, no, nobody can tell, "n:" and the whole number on a number question, or "a:" and the answer's index on a pick-one question. */
@@ -91,9 +92,11 @@ export type CallSheetProps = {
    * score will propose what happened.") and offers "Say it yourself" only two hours past the game's expected end;
    * a tie the contract cannot score is said and never put to a vote, since the final score voids it with no toll.
    */
-  feed?: { waiting: boolean; canSayYourself: boolean; tie: string | null } | null;
+  feed?: { source: "score" | "plays"; waiting: boolean; canSayYourself: boolean; tie: string | null } | null;
   /** A pick-one question: the answers, in the asker's order. The sheet then takes an answer where it took yes or no (3.24). */
   answers?: PickOneAnswer[] | null;
+  /** Between two teams (3.40): the two stamps for the margin's line, and its reach. */
+  teams?: { away: TeamFace; home: TeamFace; reach: number } | null;
   /** Under the arbitrate rule, once the vote is split: the cases, and whether the app may be asked yet. */
   split: {
     cases: Array<{ name: string; said: string }>;
@@ -217,7 +220,8 @@ export function CallSheet(props: CallSheetProps) {
   /** The number field with the line under it, for the claim and for a dissenter (3.24); the side and the figure on a signed margin. */
   const numberPanel = unit ? (
     unit.margin ? (
-      <MarginEntry value={typed} unit={unit} hue={props.me.hue} home={unit.margin.home} away={unit.margin.away} shift={BigInt(unit.margin.shift)} disabled={busy} onChange={(v) => setTyped(v)} />
+      // The margin (3.40): the same line between the two teams the entry used, centred on a tie; never below the field's floor.
+      <TeamLine mode="margin" value={typed === null ? null : Number(typed)} away={props.teams?.away ?? { abbr: unit.margin.away.slice(0, 3).toUpperCase(), name: unit.margin.away, color: null }} home={props.teams?.home ?? { abbr: unit.margin.home.slice(0, 3).toUpperCase(), name: unit.margin.home, color: null }} reach={props.teams?.reach ?? 35} unit={unit} hue={props.me.hue} disabled={busy} onChange={(v) => setTyped(BigInt(v) < -BigInt((unit.margin as { shift: string }).shift) ? -BigInt((unit.margin as { shift: string }).shift) : BigInt(v))} />
     ) : (
       <NumberEntry header={null} label="What it was" value={typed} unit={unit} hue={props.me.hue} disabled={busy} onChange={(v) => setTyped(v)} />
     )
@@ -372,15 +376,15 @@ export function CallSheet(props: CallSheetProps) {
   if (myVote === null && claim === null && feed?.waiting && !sayingItMyself) {
     return (
       <PinnedSheet
-        label="Waiting on the score"
-        header={<p className="text-body-strong text-ink">The final score will propose what happened.</p>}
+        label={feed.source === "plays" ? "Waiting on the play-by-play" : "Waiting on the score"}
+        header={<p className="text-body-strong text-ink">{feed.source === "plays" ? "The play-by-play will propose what happened." : "The final score will propose what happened."}</p>}
         low={
           feed.canSayYourself ? (
             <Button variant="tertiary" className="self-start" onClick={() => setSayingItMyself(true)}>
               Say it yourself
             </Button>
           ) : (
-            <p className="text-caption text-ink-3">Once the game is over, the score goes on the ballot and everyone confirms it in a tap.</p>
+            <p className="text-caption text-ink-3">{feed.source === "plays" ? "Once the game has its play-by-play, the first drive goes on the ballot and everyone confirms it in a tap." : "Once the game is over, the score goes on the ballot and everyone confirms it in a tap."}</p>
           )
         }
       />
@@ -514,7 +518,7 @@ export function CallSheet(props: CallSheetProps) {
                 <ProblemSummary messages={[choice === null ? problem : null]} />
                 {props.myNote ? <p className="text-caption text-ink-3">You added a note. Only a number counts toward settling it.</p> : null}
                 <Button variant="primary" onClick={() => setChoice(claim)}>
-                  {claim === "void" ? `${label(claim, unit)}, that’s right` : unit || answers ? `That’s right, ${bare(claim, unit)}` : `${label(claim, unit)}, that’s right`}
+                  {claim === "void" ? `${label(claim, unit)}, that’s right` : unit || answers || wells ? `That’s right, ${bare(claim, unit)}` : `${label(claim, unit)}, that’s right`}
                 </Button>
                 <Button variant="secondary" onClick={() => setPicking(true)}>
                   Not how I saw it

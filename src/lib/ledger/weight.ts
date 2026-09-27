@@ -102,6 +102,6 @@ export function weightCaption(input: { entries: Entry[]; viewerId: string; nameO
     const who = heavy.id === input.viewerId ? "You have" : `${input.nameOf(heavy.id)} has`;
     return `${base} ${who} ${input.stakeWords(heavy.stake)} on ${percentOf(heavy.valueBps)}%, more than half of what’s riding, which is why the group’s number sits at ${percentOf(number)}%.`;
   }
-  if (new Set(entries.map((e) => bucketOf(e.valueBps))).size === 1) return `No spread at all. ${base}`;
+  if (new Set(entries.map((e) => bucketOf(e.valueBps))).size === 1) return `Everyone on one number. ${base}`;
   return base;
 }

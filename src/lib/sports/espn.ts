@@ -3,11 +3,17 @@
  * trusted (docs/decisions.md, public markets). The fields are undocumented, so every read is through a loose
  * schema, and three things are read exactly as the real responses showed them (tests/fixtures/sports): the
  * status's own `completed` is the only word that a game is over (`winner` is false on both sides while a game
- * runs), the score is a string, and `playByPlayAvailable` says whether play-by-play exists. Anything missing,
- * malformed or unparseable is no game or no result, never a crash and never a wrong settlement.
+ * runs), the score is a string, and `playByPlayAvailable` says whether play-by-play exists yet, which on every
+ * upcoming game it does not. Anything missing, malformed or unparseable is no game or no result, never a crash
+ * and never a wrong settlement.
+ *
+ * The same source's summary carries the play-by-play once a game has it (`espn-nfl-summary-final`, the Packers
+ * game): its drives in order, each with the source's own word for how it ended. The first drive is the first of
+ * them, and its word is mapped to the question's five answers explicitly (`driveAnswer`); a word the table does
+ * not know is no result, never guessed into "Something else".
  */
 import { z } from "zod";
-import { FeedError, isSport, parseScore, type FeedGame, type GameStatus, type ScheduleSource, type Sport, type Team } from "./types";
+import { DRIVE_ANSWERS, FeedError, isSport, parseColor, parseScore, type DriveAnswer, type FeedGame, type FirstDriveRead, type GameStatus, type PlaySource, type ScheduleSource, type Sport, type Team } from "./types";
 
 export const ESPN_LEAGUES: Record<Sport, string> = { nfl: "football/nfl", mlb: "baseball/mlb", nba: "basketball/nba", nhl: "hockey/nhl" };
 export const ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports";
@@ -17,11 +23,12 @@ const Competitor = z.object({
   homeAway: z.enum(["home", "away"]),
   winner: z.boolean().optional(),
   score: z.unknown().optional(),
-  team: z.object({ id: z.union([z.string(), z.number()]), abbreviation: z.string().optional(), displayName: z.string().optional(), shortDisplayName: z.string().optional(), name: z.string().optional() }),
+  team: z.object({ id: z.union([z.string(), z.number()]), abbreviation: z.string().optional(), displayName: z.string().optional(), shortDisplayName: z.string().optional(), name: z.string().optional(), color: z.unknown().optional() }),
 });
 const Event = z.object({
   id: z.union([z.string(), z.number()]),
   date: z.string(),
+  season: z.object({ type: z.number().optional() }).optional(),
   status: z.object({ type: z.object({ name: z.string().optional(), state: z.string().optional(), completed: z.boolean().optional() }).optional() }).optional(),
   competitions: z.array(z.object({ timeValid: z.boolean().optional(), playByPlayAvailable: z.boolean().optional(), venue: z.object({ fullName: z.string().optional() }).optional(), competitors: z.array(Competitor).optional() })).optional(),
 });
@@ -45,7 +52,7 @@ const teamOf = (c: z.infer<typeof Competitor>): Team | null => {
   const name = c.team.displayName?.trim();
   const short = c.team.shortDisplayName?.trim() || c.team.name?.trim() || name;
   if (!abbr || !name || !short) return null;
-  return { id: String(c.team.id), abbr, name, short };
+  return { id: String(c.team.id), abbr, name, short, color: parseColor(c.team.color) };
 };
 
 /** One event as a game, or null when anything it needs is missing: an unparseable event is skipped, never guessed at. */
@@ -75,6 +82,7 @@ export function gameOf(sport: Sport, raw: unknown): FeedGame | null {
     status,
     completed,
     playByPlay: comp.playByPlayAvailable === true,
+    seasonType: typeof e.season?.type === "number" && Number.isInteger(e.season.type) ? e.season.type : null,
     homeScore: parseScore(home.score),
     awayScore: parseScore(away.score),
   };
@@ -99,22 +107,93 @@ export function scoreboardUrl(sport: Sport, day: string): string {
   return `${ESPN_BASE}/${ESPN_LEAGUES[sport]}/scoreboard?dates=${day}`;
 }
 
+async function fetchJson(url: string, what: string): Promise<unknown> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const r = await fetch(url, { signal: controller.signal, cache: "no-store", headers: { accept: "application/json" } });
+    if (!r.ok) throw new FeedError(`${what}: HTTP ${r.status}`);
+    return await r.json();
+  } catch (err) {
+    throw err instanceof FeedError ? err : new FeedError(`${what}: ${err instanceof Error ? err.message : "unreadable"}`);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** The live adapter. Never called while a person waits: the tick reads it, and "Try again" on the failed-feed state. */
 export const espn: ScheduleSource = {
   name: "espn",
   async listGames(sport, day) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-    let body: unknown;
-    try {
-      const r = await fetch(scoreboardUrl(sport, day), { signal: controller.signal, cache: "no-store", headers: { accept: "application/json" } });
-      if (!r.ok) throw new FeedError(`scoreboard ${sport} ${day}: HTTP ${r.status}`);
-      body = await r.json();
-    } catch (err) {
-      throw err instanceof FeedError ? err : new FeedError(`scoreboard ${sport} ${day}: ${err instanceof Error ? err.message : "unreadable"}`);
-    } finally {
-      clearTimeout(timer);
-    }
-    return parseScoreboard(sport, body);
+    return parseScoreboard(sport, await fetchJson(scoreboardUrl(sport, day), `scoreboard ${sport} ${day}`));
+  },
+};
+
+// ------------------------------------------------------------------------------------------ the play-by-play
+
+/**
+ * The source's words for how a drive ended, mapped to the question's answers exactly as its terms say them (a
+ * missed field goal, a turnover on downs, a safety or the end of the half counts as Something else). Every word
+ * here was seen in a recorded summary or is named by the terms; anything else is no result.
+ */
+const DRIVE_WORDS: Record<string, DriveAnswer> = {
+  TD: "Touchdown",
+  FG: "Field goal",
+  PUNT: "Punt",
+  INT: "Turnover",
+  "INT TD": "Turnover",
+  FUMBLE: "Turnover",
+  "FUMBLE TD": "Turnover",
+  DOWNS: "Something else",
+  "MISSED FG": "Something else",
+  SAFETY: "Something else",
+  "END OF HALF": "Something else",
+  "END OF GAME": "Something else",
+};
+export function driveAnswer(raw: string | null | undefined): DriveAnswer | null {
+  if (typeof raw !== "string") return null;
+  const answer = DRIVE_WORDS[raw.trim().toUpperCase()];
+  return answer && (DRIVE_ANSWERS as readonly string[]).includes(answer) ? answer : null;
+}
+
+const Drive = z.object({
+  result: z.unknown().optional(),
+  team: z.object({ abbreviation: z.string().optional() }).optional(),
+  start: z.object({ period: z.object({ number: z.number().optional() }).optional() }).optional(),
+});
+/** A summary carries `header`; `drives` is absent until the game has play-by-play (tests/fixtures/sports/espn-nfl-summary-scheduled.json). */
+const Summary = z.object({
+  header: z.object({ competitions: z.array(z.object({ status: z.object({ type: z.object({ name: z.string().optional(), state: z.string().optional(), completed: z.boolean().optional() }).optional() }).optional() })).optional() }),
+  drives: z.object({ previous: z.array(z.unknown()).optional() }).optional(),
+});
+
+/**
+ * The first drive from a summary: the first of the drives the source lists, when it began in the first period.
+ * Null while the game has no play-by-play yet (a scheduled game's summary has no `drives`), or when the first
+ * drive is not yet over (it is listed only once it is). A body that is not a summary is a feed error.
+ */
+export function parseSummary(body: unknown): { status: GameStatus; completed: boolean; firstDrive: FirstDriveRead | null } {
+  const p = Summary.safeParse(body);
+  if (!p.success) throw new FeedError("the summary did not have the shape of one");
+  const { status, completed } = statusOf(p.data.header.competitions?.[0]?.status?.type);
+  const first = p.data.drives?.previous?.[0];
+  const d = first === undefined ? null : Drive.safeParse(first);
+  if (!d || !d.success) return { status, completed, firstDrive: null };
+  const raw = typeof d.data.result === "string" ? d.data.result.trim() : "";
+  const period = d.data.start?.period?.number;
+  if (!raw || (period !== undefined && period !== 1)) return { status, completed, firstDrive: null };
+  return { status, completed, firstDrive: { raw, answer: driveAnswer(raw), team: d.data.team?.abbreviation?.trim() || null } };
+}
+
+export function summaryUrl(sport: Sport, sourceId: string): string {
+  if (!isSport(sport) || !/^\d{1,12}$/.test(sourceId)) throw new FeedError("not a sport and an event");
+  return `${ESPN_BASE}/${ESPN_LEAGUES[sport]}/summary?event=${sourceId}`;
+}
+
+/** The live play-by-play, read from the tick for a game a first-drive question rides on, never while a person waits. */
+export const espnPlays: PlaySource = {
+  name: "espn",
+  async firstDriveOf(sport, sourceId) {
+    return parseSummary(await fetchJson(summaryUrl(sport, sourceId), `summary ${sport} ${sourceId}`)).firstDrive;
   },
 };

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Avatar } from "@/components/ledger/avatar";
 import { MarkRefStamp } from "@/components/ledger/mark-stamp";
 import { StateMark } from "@/components/ledger/state-mark";
+import { TeamPair } from "@/components/ledger/team-stamp";
 import { When } from "@/components/ledger/when";
 import { LinkPending } from "@/components/ui/link-pending";
 import type { HomeData } from "@/lib/ledger/home";
@@ -67,6 +68,22 @@ export function JustHappened({ rows, viewerId, clock }: { rows: HomeData["happen
                 ) : (
                   <span />
                 )}
+              </Link>
+            );
+          }
+          if (e.kind === "game") {
+            return (
+              <Link prefetch={false} key={`g-${e.href}`} href={e.href} data-game-happened="" className={`relative grid grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-[14px] ${divider}`}>
+                <LinkPending />
+                <TeamPair away={e.away} home={e.home} size={28} overlap />
+                <span className="flex min-w-0 flex-col gap-1">
+                  <span className="text-body-strong text-ink">{e.name}</span>
+                  <span className="flex items-center gap-2 text-caption text-ink-3">
+                    <StateMark state={e.state} />
+                    <span className="truncate">{e.meta}</span>
+                  </span>
+                </span>
+                <span />
               </Link>
             );
           }

@@ -17,11 +17,11 @@ import { createGroup } from "@/lib/ledger/groups";
 import * as markets from "@/lib/ledger/markets";
 import { arbitrateMarket, cleanResolution, tick } from "@/lib/ledger/settle";
 import { notifyBackstopResult } from "@/lib/notify";
-import { FEED_RULING, feedBackstop, pollFinals, syncSchedule, templateById, useCounts } from "@/lib/sports";
-import { parseScoreboard } from "@/lib/sports/espn";
+import { DRIVE_RULING, FEED_RULING, feedBackstop, gameMarkets, gameUseCounts, pollFinals, pollSummaries, startGame, syncSchedule, templateById, useCounts, whatsOn } from "@/lib/sports";
+import { parseScoreboard, parseSummary } from "@/lib/sports/espn";
 import { AGREE_AFTER_MS, ALONE_AFTER_MS, CONFIRM_AFTER_MS } from "@/lib/sports/results";
-import { SCALES } from "@/lib/sports/templates";
-import type { CheckSource, FeedGame, FinalScore, ScheduleSource, Sport } from "@/lib/sports/types";
+import { CONSENT, SCALES } from "@/lib/sports/templates";
+import { DRIVE_ANSWERS, type CheckSource, type FeedGame, type FinalScore, type PlaySource, type ScheduleSource, type Sport } from "@/lib/sports/types";
 import { cleanup, tempSigner, track, type Signer } from "./fixture";
 
 const H = 3_600_000;
@@ -33,6 +33,8 @@ function recorded(name: string, sport: Sport, at?: (g: FeedGame) => Date): FeedG
 }
 const listing = (games: FeedGame[]): ScheduleSource => ({ name: "espn", listGames: async () => games });
 const checkOf = (final: FinalScore | null): CheckSource => ({ name: "balldontlie", finalOf: async () => final });
+/** The play-by-play as a recorded summary reports it (the Packers game), or nothing yet. */
+const playsOf = (name: string | null): PlaySource => ({ name: "espn", firstDriveOf: async () => (name ? parseSummary(fixture(name)).firstDrive : null) });
 const lockInMirror = (id: string, set: Partial<typeof schema.dares.$inferInsert> = {}) => db.update(schema.dares).set({ lockedAt: new Date(), onchainId: Buffer.from(id.replace(/-/g, "").padEnd(64, "0"), "hex"), ...set }).where(eq(schema.dares.id, id));
 const code = async (fn: () => Promise<unknown>) => fn().then(() => null, (e: unknown) => (e instanceof markets.MarketError ? e.code : `other: ${e instanceof Error ? e.message : e}`));
 const said = async (fn: () => Promise<unknown>) => fn().then(() => null, (e: unknown) => (e instanceof Error ? e.message : String(e)));
@@ -64,12 +66,15 @@ test("the schedule read writes games and their questions; a market drafted from 
   assert.equal(r.games, 2 * 5, "two games, read once a day for five days: the same rows each time");
   const { game, byKey } = await templatesOf(two[0]!.sourceId);
   assert.deepEqual([game.sport, game.status, game.completed, game.timeValid, game.name], ["nfl", "scheduled", false, true, `${two[0]!.away.short} at ${two[0]!.home.short}`]);
-  assert.deepEqual([...byKey.keys()].sort(), ["home_wins", "margin", "total"], "three questions, and no first drive without play-by-play");
+  assert.deepEqual([...byKey.keys()].sort(), ["first_drive", "home_wins", "margin", "total"], "four questions: the first drive by coverage, since the recording is the NFL regular season");
+  assert.deepEqual([game.homeColor !== null, game.awayColor !== null, game.seasonType], [true, true, 2], "each team's colour and the season, off the scoreboard");
   const wins = byKey.get("home_wins")!;
   const d = await markets.draftFromTemplate({ templateId: wins.id, creatorId: asker.user.id, groupId, denomId });
   assert.deepEqual([d.kind, d.templateId, d.resolvesBy?.getTime(), d.stalemate, d.markKind, d.markValue, d.outcomeWords?.length], ["binary", wins.id, soon.getTime(), "arbitrate", "emoji", "🏈", 4], "the kind, the close at the start, the tiebreaker fixed, the sport's mark, the words");
   assert.equal(d.title, wins.title);
-  assert.ok(d.termsText.includes("If nobody votes, the final score decides."), "the consent, in the terms everyone signs");
+  assert.ok(d.termsText.includes(CONSENT), "the consent, in the terms everyone signs");
+  const drive = await markets.draftFromTemplate({ templateId: byKey.get("first_drive")!.id, creatorId: asker.user.id, groupId, denomId });
+  assert.deepEqual([drive.kind, drive.outcomeLabels], ["categorical", [...DRIVE_ANSWERS]], "the first drive: a pick-one question with the five answers");
   const margin = await markets.draftFromTemplate({ templateId: byKey.get("margin")!.id, creatorId: asker.user.id, groupId, denomId });
   assert.deepEqual([margin.kind, margin.range, margin.rangeSource, margin.outcomeLabels, margin.typical], ["numeric", SCALES.nfl.margin, "template", ["point", "points"], null], "the template's scale, as the template's");
   const total = await markets.draftFromTemplate({ templateId: byKey.get("total")!.id, creatorId: asker.user.id, groupId, denomId });
@@ -89,7 +94,19 @@ test("the schedule read writes games and their questions; a market drafted from 
   assert.equal((await useCounts([wins.id])).get(wins.id), 0, "one person in is not a group arguing yet");
   await enter(d, friend, 500n, 3000n);
   assert.equal((await useCounts([wins.id])).get(wins.id), 1);
+  assert.equal((await gameUseCounts([game.id])).get(game.id), 1, "and once per game, however many questions the set runs");
   assert.equal((await templateById(wins.id))?.game.id, game.id);
+  // Starting a game (3.33): one market per chosen question, all with the same people, all closing at kickoff, in the menu's order; a question already running is refused.
+  const begun = await startGame({ gameId: game.id, keys: ["margin", "total"], creatorId: friend.user.id, groupId, denomId, zone: "America/New_York" });
+  assert.deepEqual(begun.map((x) => [x.kind, x.resolvesBy?.getTime(), x.stalemate, x.creatorId]), [["numeric", soon.getTime(), "arbitrate", friend.user.id], ["numeric", soon.getTime(), "arbitrate", friend.user.id]]);
+  assert.equal(await code(() => startGame({ gameId: game.id, keys: ["home_wins"], creatorId: friend.user.id, groupId, denomId, zone: null })), "wrong_state", "who wins is already running with these people");
+  const page = await gameMarkets(game.id, groupId);
+  assert.deepEqual(page.map((p) => p.template.key), ["home_wins", "margin", "total", "first_drive"], "the group's questions on the game, in the menu's order, drafts included");
+  // The tab (3.32): the game listed under its day with the count below the floor kept to itself, and this asker's own use named.
+  const on = await whatsOn({ id: asker.user.id, displayName: asker.user.displayName }, new Date(), "America/New_York");
+  const listed = on.days.flatMap((day) => day.games).find((x) => x.game.id === game.id);
+  assert.ok(listed, "listed under its day");
+  assert.deepEqual([listed!.asked, listed!.yours[0]?.groupId, on.mostAsked.some((x) => x.game.id === game.id)], [null, groupId, false], "one group is below the floor of ten, so no count and no Most asked; the asker's own set is named on the row");
 });
 
 test("a game in progress proposes nothing; a final puts the score's answer on every locked question it decides, follows a correction, and stands once read again", async () => {
@@ -145,10 +162,13 @@ test("a game in progress proposes nothing; a final puts the score's answer on ev
   // The warning before the final score acts: once, nineteen hours after the final, and never again.
   await db.update(schema.sportsGames).set({ finalSeenAt: new Date(Date.now() - 19 * H), finalConfirmedAt: new Date(Date.now() - 18 * H) }).where(eq(schema.sportsGames.id, game.id));
   const warned: string[] = [];
-  const w1 = await tick(new Date(), async () => undefined, { onlyIds: ids, notifyWarning: async (id, flavour) => void warned.push(`${flavour}:${id}`) });
+  // The second source is asked once at warning time, so the warning can say which ending is coming: both agree, so the final score acts a day on.
+  const w1 = await tick(new Date(), async () => undefined, { onlyIds: ids, notifyWarning: async (id, flavour) => void warned.push(`${flavour}:${id}`), check: checkOf({ home: corrected.homeScore!, away: corrected.awayScore! }) });
   assert.deepEqual(w1.warned.map((w) => w.flavour), ["score", "score", "score"], "the final score's warning, on each question the score decides");
   assert.deepEqual(w1.arbitrated, [], "the tiebreaker everyone agreed to is the final score, so the model is never asked");
-  const w2 = await tick(new Date(), async () => undefined, { onlyIds: ids, notifyWarning: async (id, flavour) => void warned.push(`${flavour}:${id}`) });
+  const gw = (await db.select().from(schema.sportsGames).where(eq(schema.sportsGames.id, game.id)))[0]!;
+  assert.deepEqual([gw.checkHomeScore, gw.checkedAt !== null], [corrected.homeScore, true], "the second source's answer kept on the row for the backstop");
+  const w2 = await tick(new Date(), async () => undefined, { onlyIds: ids, notifyWarning: async (id, flavour) => void warned.push(`${flavour}:${id}`), check: checkOf({ home: corrected.homeScore!, away: corrected.awayScore! }) });
   assert.deepEqual([w2.warned, warned.length], [[], 3], "never a second");
 });
 
@@ -160,11 +180,11 @@ test("the backstop on the chain: both sources agreeing settles a day on and coun
   await syncSchedule("nfl", new Date(), listing(one));
   const { game, byKey } = await templatesOf(one[0]!.sourceId);
   const made: Record<string, markets.DareRow> = {};
-  for (const key of ["home_wins", "margin", "total"] as const) {
+  for (const key of ["home_wins", "margin", "total", "first_drive"] as const) {
     const d = await markets.draftFromTemplate({ templateId: byKey.get(key)!.id, creatorId: asker.user.id, groupId, denomId });
     await open(d);
-    await enter(d, asker, 500n, key === "home_wins" ? 8000n : key === "margin" ? 21n : 44n);
-    await enter(d, friend, 500n, key === "home_wins" ? 3000n : key === "margin" ? 10n : 38n);
+    await enter(d, asker, 500n, key === "home_wins" ? 8000n : key === "margin" ? 21n : key === "total" ? 44n : 3n);
+    await enter(d, friend, 500n, key === "home_wins" ? 3000n : key === "margin" ? 10n : key === "total" ? 38n : 0n);
     made[key] = d;
   }
   // Locked on the real chain, then the game is over: the recorded final, seen a day and a bit ago and read again since.
@@ -214,6 +234,28 @@ test("the backstop on the chain: both sources agreeing settles a day on and coun
   const alone = await feedBackstop(later, { check: checkOf(null), onlyIds: ids("total") });
   assert.deepEqual([alone.settled, alone.voided, alone.failed], [ids("total"), [], []], "settled on the scoreboard alone");
   const total = (await markets.marketById(made.total!.id))!;
-  assert.deepEqual([total.resolvedBy, total.resolvedOutcome], ["feed", BigInt(score.home + score.away)]);
+  assert.deepEqual([total.resolvedBy, total.resolvedOutcome, total.feedEnding], ["feed", BigInt(score.home + score.away), "alone"]);
+  assert.deepEqual([won.feedEnding, voided.feedEnding], ["agreed", "conflict"], "each ending kept on the row for the settled screen's line");
   assert.deepEqual(await cleanResolution(asker.user.id), { ended: 2, clean: 2 });
+
+  // 4. The first drive, from the play-by-play: read once the game has it, proposed on the ballot, read again unchanged, and settled three days on, on one source.
+  const drive = made.first_drive!;
+  const noPlays = await pollSummaries(new Date(), { play: playsOf("espn-nfl-summary-scheduled"), onlyIds: [drive.id] });
+  assert.deepEqual([noPlays.read, noPlays.proposed], [[game.id], []], "a summary with no play-by-play yet: read, nothing proposed");
+  await db.update(schema.sportsGames).set({ summaryPolledAt: null }).where(eq(schema.sportsGames.id, game.id));
+  const readAt = new Date(seen.getTime() - 2 * H);
+  const first = await pollSummaries(readAt, { play: playsOf("espn-nfl-summary-final"), onlyIds: [drive.id] });
+  assert.deepEqual(first.proposed, [drive.id], "the Packers game's first drive, an interception, proposed as a turnover");
+  assert.equal((await markets.marketById(drive.id))!.feedOutcome, 3n);
+  const g4 = (await db.select().from(schema.sportsGames).where(eq(schema.sportsGames.id, game.id)))[0]!;
+  assert.deepEqual([g4.firstDriveResult, g4.firstDriveRaw, g4.firstDriveSeenAt?.getTime(), g4.firstDriveConfirmedAt], ["Turnover", "INT", readAt.getTime(), null]);
+  assert.deepEqual(await feedBackstop(new Date(seen.getTime() + ALONE_AFTER_MS), { check: checkOf(null), onlyIds: [drive.id] }), { settled: [], voided: [], failed: [] }, "never on a drive that has not stood a re-read");
+  await pollSummaries(new Date(readAt.getTime() + CONFIRM_AFTER_MS + 60_000), { play: playsOf("espn-nfl-summary-final"), onlyIds: [drive.id] });
+  assert.ok((await db.select().from(schema.sportsGames).where(eq(schema.sportsGames.id, game.id)))[0]!.firstDriveConfirmedAt, "read again, unchanged");
+  const settledDrive = await feedBackstop(new Date(readAt.getTime() + ALONE_AFTER_MS + 60_000), { check: checkOf(null), onlyIds: [drive.id] });
+  assert.deepEqual([settledDrive.settled, settledDrive.voided, settledDrive.failed], [[drive.id], [], []], "settled on the play-by-play alone, three days on");
+  const done = (await markets.marketById(drive.id))!;
+  assert.deepEqual([done.resolvedBy, done.resolvedOutcome, done.feedEnding], ["feed", 3n, "drive"]);
+  assert.ok(done.rulingText?.startsWith(DRIVE_RULING) && done.rulingText.includes("Turnover"));
+  assert.deepEqual(await cleanResolution(asker.user.id), { ended: 3, clean: 3 });
 });

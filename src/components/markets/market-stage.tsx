@@ -13,9 +13,10 @@ import { enterMarketAction, openMarketAction } from "@/lib/actions/markets";
 import { daresTypes } from "@/lib/chain/typed-data";
 import type { Hue } from "@/lib/ui/hue";
 import { OddsHeader, OddsLine } from "./odds-line";
+import { TeamHeader, TeamLine } from "./team-line";
+import { leanPill, type TeamFace } from "@/lib/ui/team";
 import { WeightLine, bucketOfPercent, type WeightBucket } from "./weight-line";
 import { NumberEntry } from "./number-entry";
-import { MarginEntry } from "./margin-entry";
 import { NumberLine } from "./number-line";
 import { PickOneBars, type PickOneAnswer, type PickOneBar } from "./pick-one-bars";
 import { PickOneEntry } from "./pick-one-entry";
@@ -63,8 +64,10 @@ export function MarketStage(props: {
   mark: string | null;
   /** A number question: what the number counts, and on a signed margin its shift and the two sides. Absent on a yes-or-no question. */
   numberUnit?: { singular: string; plural: string; margin?: { shift: string; home: string; away: string } | null } | null;
-  /** A who-wins question (docs/decisions.md, public markets): the two sides at the odds line's ends, the away side low and the home side high. */
-  ends?: { low: string; high: string } | null;
+  /** Between two teams (docs/design.md 3.40): the away side at the low end and the home side at the high end, each a stamp, and the margin's reach either way. */
+  teams?: { away: TeamFace; home: TeamFace; reach: number } | null;
+  /** The consent line in the entry sheet, directly above the primary (3.35, 4.9): "If nobody votes, the final score settles it." */
+  consent?: string | null;
   /** A pick-one question (3.30): its answers, in the asker's order, for the sheet's rows and the bars. */
   pickOne?: { answers: PickOneAnswer[] } | null;
   /** An argument: which side this person starts on, all the way, and which side is already taken. */
@@ -91,6 +94,8 @@ export function MarketStage(props: {
   const { dareId, signing, unit, state, me, mine, picture, mark } = props;
   const numberUnit = props.numberUnit ?? null;
   const pickOne = props.pickOne ?? null;
+  const teams = props.teams ?? null;
+  const shift = numberUnit?.margin ? BigInt(numberUnit.margin.shift) : null;
   // The pick, on a pick-one question (3.30): one answer and nothing else. Nothing is picked until a tap.
   const [pick, setPick] = useState<number | null>(mine?.pick ?? null);
   const router = useRouter();
@@ -146,9 +151,11 @@ export function MarketStage(props: {
   // What this person is saying, as a picture and as words: "70%", "17 shirts", or the answer they picked ("John").
   const answerText = (i: number | null | undefined) => (i === null || i === undefined ? "…" : (pickOne?.answers.find((a) => a.index === i)?.text ?? "…"));
   const picked = pickOne ? pick !== null : numberUnit ? number !== null : value !== null;
-  const sayNumber = (n: bigint) => (pickOne ? answerText(Number(n)) : numberUnit ? unitPhrase(n, numberUnit) : `${n}%`);
-  const mineWords = (m: { percent: number; number?: string; pick?: number }) => (pickOne ? answerText(m.pick) : numberUnit && m.number !== undefined ? unitPhrase(BigInt(m.number), numberUnit) : `${m.percent}%`);
-  /** The pick-one entry line names the answer and nothing else (4.6): "You're in: John". The other two kinds say "You're in at 70%". */
+  /** Between two teams the number is said as a side (3.40): "Bills 70%", "Even"; a margin as "Bills by 7". */
+  const sayPercent = (n: number) => (teams && !numberUnit ? leanPill(n, teams.away.name, teams.home.name) : `${n}%`);
+  const sayNumber = (n: bigint) => (pickOne ? answerText(Number(n)) : numberUnit ? unitPhrase(n, numberUnit) : sayPercent(Number(n)));
+  const mineWords = (m: { percent: number; number?: string; pick?: number }) => (pickOne ? answerText(m.pick) : numberUnit && m.number !== undefined ? unitPhrase(BigInt(m.number), numberUnit) : sayPercent(m.percent));
+  /** The pick-one entry line names the answer and nothing else (4.6): "You're in: John". The other two kinds say "You're in at 70%", "You're in at Bills 70%". */
   const entryLine = (m: { percent: number; number?: string; pick?: number }) => (pickOne ? `You’re in: ${mineWords(m)}` : `You’re in at ${mineWords(m)}`);
   const pickWords = (i: number | null) => (pickOne ? `${answerText(i)}, ${stakeWords(stakeUnits) || "…"}` : `${sayNumber(numberUnit ? (number ?? 0n) : BigInt(value ?? 0))}, ${stakeWords(stakeUnits) || "…"}`);
 
@@ -368,6 +375,7 @@ export function MarketStage(props: {
               : "You’re first in. Height is how much is riding on each number, not how many people picked it."
           }
           rise={justIn !== null && mine === null}
+          ends={teams ? { away: teams.away.name, home: teams.home.name } : null}
         />
         )}
       </section>
@@ -381,7 +389,7 @@ export function MarketStage(props: {
       label="Your number"
       raised={raised}
       onRaise={setRaised}
-      header={pickOne ? <p className="text-body-strong text-ink">Pick one</p> : numberUnit ? <p className="text-body-strong text-ink">What’s your number?</p> : <OddsHeader value={value} />}
+      header={pickOne ? <p className="text-body-strong text-ink">Pick one</p> : teams && numberUnit?.margin && shift !== null ? <TeamHeader mode="margin" value={number === null ? null : Number(number - shift)} away={teams.away} home={teams.home} /> : numberUnit ? <p className="text-body-strong text-ink">What’s your number?</p> : teams ? <TeamHeader mode="wins" value={value} away={teams.away} home={teams.home} /> : <OddsHeader value={value} />}
       low={
         <>
           {pickOne ? (
@@ -398,20 +406,21 @@ export function MarketStage(props: {
           ) : null}
           {numberUnit ? (
             <>
-              {numberUnit.margin ? (
-                // A signed margin (docs/decisions.md, public markets): the side, then by how much; stored shifted up by half the scale.
-                <MarginEntry
-                  value={number === null ? null : number - BigInt(numberUnit.margin.shift)}
+              {numberUnit.margin && shift !== null ? (
+                // The margin (3.40): the line between the two teams, centred on a tie, past an end typed; stored shifted up by half the scale, and never below the field's floor.
+                <TeamLine
+                  mode="margin"
+                  value={number === null ? null : Number(number - shift)}
+                  away={teams?.away ?? { abbr: numberUnit.margin.away.slice(0, 3).toUpperCase(), name: numberUnit.margin.away, color: null }}
+                  home={teams?.home ?? { abbr: numberUnit.margin.home.slice(0, 3).toUpperCase(), name: numberUnit.margin.home, color: null }}
+                  reach={teams?.reach ?? 35}
                   unit={numberUnit}
                   hue={me.hue}
-                  home={numberUnit.margin.home}
-                  away={numberUnit.margin.away}
-                  shift={BigInt(numberUnit.margin.shift)}
-                  problem={blocked}
                   disabled={phase === "entering" && !changing && reading}
                   onChange={(v) => {
-                    setNumber(v === null ? null : v + BigInt((numberUnit.margin as { shift: string }).shift));
-                    if (!raised && v !== null) setRaised(true);
+                    const signed = BigInt(v) < -shift ? -shift : BigInt(v);
+                    setNumber(signed + shift);
+                    if (!raised) setRaised(true);
                   }}
                 />
               ) : (
@@ -471,12 +480,24 @@ export function MarketStage(props: {
               </div>
             </div>
           ) : null}
-          {numberUnit || pickOne ? null : (
+          {numberUnit || pickOne ? null : teams ? (
+          <TeamLine
+            mode="wins"
+            value={value}
+            away={teams.away}
+            home={teams.home}
+            hue={me.hue}
+            disabled={phase === "entering" && !changing && reading}
+            onChange={(v) => {
+              setValue(v);
+              if (!raised) setRaised(true);
+            }}
+          />
+          ) : (
           <OddsLine
             value={value}
             mark={mark}
             hue={me.hue}
-            ends={props.ends ?? null}
             disabled={phase === "entering" && !changing && reading}
             onChange={(v) => {
               setValue(v);
@@ -543,6 +564,16 @@ export function MarketStage(props: {
       foot={
         <>
           <ProblemSummary messages={[problem]} />
+          {props.consent ? (
+            // The consent every entry gives (3.35, 4.9): one line in ink after the 16px ticket glyph, directly above the button that gives it.
+            <p className="flex items-center gap-2 text-body-sm text-ink" data-consent-line="">
+              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+                <path d="M4 9a2 2 0 0 0 2-2V6h12v1a2 2 0 0 0 2 2v6a2 2 0 0 0-2 2v1H6v-1a2 2 0 0 0-2-2z" />
+                <path d="M12 7v10" strokeDasharray="1.5 2.5" />
+              </svg>
+              <span>{props.consent}</span>
+            </p>
+          ) : null}
           {problem && !problem.startsWith("Put") ? (
             <Button
               variant="tertiary"
@@ -586,12 +617,14 @@ export function MarketStage(props: {
               {!picked
                 ? pickOne
                   ? "Pick an answer"
-                  : numberUnit
-                    ? "Type your number"
-                    : "Slide to pick your odds"
+                  : teams
+                    ? "Slide to pick a side"
+                    : numberUnit
+                      ? "Type your number"
+                      : "Slide to pick your odds"
                 : state === "draft"
-                  ? `Looks right. I’m in${pickOne ? ":" : " at"} ${pickWords(pick)}`
-                  : `I’m in${pickOne ? ":" : " at"} ${pickWords(pick)}`}
+                  ? `Looks right. I’m in${pickOne || teams ? ":" : " at"} ${pickWords(pick)}`
+                  : `I’m in${pickOne || teams ? ":" : " at"} ${pickWords(pick)}`}
             </Button>
           )}
         </>

@@ -6,7 +6,7 @@
  *
  *   - Ends: `lo` and `hi` are the lowest and highest on-axis entries, padded by one each side (never below 0)
  *     when they sit within two of each other, so one entry, or everyone on 14, still draws a room.
- *   - A narrow spread (hi - lo + 1 <= 10) gets a column per whole number; a wide one gets ten slices, with `lo`
+ *   - A narrow range (hi - lo + 1 <= 10) gets a column per whole number; a wide one gets ten slices, with `lo`
  *     joining the first.
  *   - One far-off entry does not stretch the axis: with four or more, the highest is off-axis when its gap to the
  *     next is larger than the span of all the rest, checked at the high end first and then the low end over what
@@ -90,6 +90,20 @@ export function splitOffAxis(values: readonly bigint[]): { keep: bigint[]; offHi
   return { keep, offHigh, offLow };
 }
 
+/**
+ * The margin's ends (3.40): centred on a tie (the shift itself, as stored), as far either way as the furthest
+ * entry, at least a point each way, and never below zero, which is as far as the field goes.
+ */
+export function marginEnds(values: readonly bigint[], shift: bigint): { lo: bigint; hi: bigint } {
+  let reach = 1n;
+  for (const v of values) {
+    const d = v > shift ? v - shift : shift - v;
+    if (d > reach) reach = d;
+  }
+  if (reach > shift) reach = shift;
+  return { lo: shift - reach, hi: shift + reach };
+}
+
 /** The ends of an axis over these values, with the padding rule; never below zero. */
 export function axisEnds(values: readonly bigint[]): { lo: bigint; hi: bigint } {
   const s = sorted(values);
@@ -138,12 +152,14 @@ export function weightedMedian(entries: ReadonlyArray<{ stake: bigint; value: bi
 }
 
 export function numberAxis(entries: NumberEntry[], unit: { singular: string; plural: string; margin?: { shift: string; home: string; away: string } | null }): NumberAxis | null {
-  // On a signed margin every label is the sign and the figure, never the shifted number the chain stores.
+  // On a signed margin every label is the sides' words, never a sign and never the shifted number the chain stores (3.40).
   const shift = unit.margin ? BigInt(unit.margin.shift) : null;
-  const num = (v: bigint) => (shift === null ? withSeparators(v) : signedLabel(v, shift));
+  const num = (v: bigint) => (shift === null ? withSeparators(v) : unitPhrase(v, unit));
   if (entries.length === 0) return null;
-  const { keep, offHigh, offLow } = splitOffAxis(entries.map((e) => e.value));
-  const { lo, hi } = axisEnds(keep);
+  const split = shift === null ? splitOffAxis(entries.map((e) => e.value)) : { keep: entries.map((e) => e.value), offHigh: null, offLow: null };
+  const { keep, offHigh, offLow } = split;
+  // The margin's axis stays centred on a tie (3.40): as wide as the furthest entry either way and the same distance the other way.
+  const { lo, hi } = shift === null ? axisEnds(keep) : marginEnds(keep, shift);
   const mode: NumberAxis["mode"] = hi - lo + 1n <= 10n ? "values" : "slices";
   const n = mode === "values" ? Number(hi - lo + 1n) : 10;
   const columns: AxisColumn[] = Array.from({ length: n }, (_, i) => ({ n: i + 1, value: mode === "values" ? lo + BigInt(i) : null, label: null, stake: 0n, heightPermille: 0, people: 0, noStake: 0 }));
@@ -175,7 +191,15 @@ export function numberAxis(entries: NumberEntry[], unit: { singular: string; plu
   // Labels (3.22): every column when seven or fewer per-value columns, else the two ends and the middle; across
   // slices, lo at the left, the rounded midpoint in the centre, hi at the right. The unit rides the right end only.
   const rightEnd = (v: bigint) => (shift === null ? `${withSeparators(v)} ${v === 1n ? unit.singular : unit.plural}`.trim() : unitPhrase(v, unit));
-  if (mode === "values") {
+  if (shift !== null) {
+    // The margin: the two ends in words and "Tie" in the middle, and nothing else, whatever the mode (3.40).
+    const first = columns[0] as AxisColumn;
+    const last = columns[n - 1] as AxisColumn;
+    first.label = num(lo);
+    last.label = num(hi);
+    const mid = mode === "values" ? columns.find((c) => c.value === shift) : (columns[4] as AxisColumn);
+    if (mid && mid !== first && mid !== last) mid.label = "Tie";
+  } else if (mode === "values") {
     const mid = Math.floor((n - 1) / 2);
     for (const c of columns) {
       const v = c.value as bigint;
@@ -194,7 +218,8 @@ export function numberAxis(entries: NumberEntry[], unit: { singular: string; plu
   if (entries.length >= 3) {
     const g = weightedMedian(entries);
     if (g !== null) {
-      const chip = withSeparators(g);
+      // The chip is the median in words on a margin ("Bills by 4"), the number elsewhere.
+      const chip = shift === null ? withSeparators(g) : unitPhrase(g, unit);
       if (off.high && g === off.high.value) marker = { at: "offHigh", xPermille: 500, chip };
       else if (off.low && g === off.low.value) marker = { at: "offLow", xPermille: 500, chip };
       else {
@@ -228,6 +253,8 @@ export type Ruler = {
   hi: bigint;
   leftLabel: string;
   rightLabel: string;
+  /** "Tie", on the margin's ruler, which is centred on one (3.40). */
+  midLabel?: string;
   pins: RulerPin[];
   /** The answer's place, when there is one. Never off the ruler: the answer is never the one pushed off. */
   answer: { value: bigint; xPermille: number } | null;
@@ -238,9 +265,17 @@ export type Ruler = {
  * the answer together, with the padding rule, and the off-axis rule runs over entries and answer together but
  * never pushes the answer off. Positions are thousandths across the track.
  */
-export function ruler(pins: Array<{ id: string; value: bigint }>, answer: bigint | null, unit: { singular: string; plural: string }): Ruler | null {
+export function ruler(pins: Array<{ id: string; value: bigint }>, answer: bigint | null, unit: { singular: string; plural: string; margin?: { shift: string; home: string; away: string } | null }): Ruler | null {
   if (pins.length === 0 && answer === null) return null;
   const values = [...pins.map((p) => p.value), ...(answer === null ? [] : [answer])];
+  if (unit.margin) {
+    // The margin's ruler (3.40): centred on a tie, as wide either way as the furthest pin or the answer, "Tie" in the middle, the ends in words.
+    const shift = BigInt(unit.margin.shift);
+    const { lo, hi } = marginEnds(values, shift);
+    const span = hi - lo;
+    const place = (v: bigint) => (span === 0n ? 500 : Number((((v < lo ? lo : v > hi ? hi : v) - lo) * 1000n) / span));
+    return { lo, hi, leftLabel: unitPhrase(lo, unit), rightLabel: unitPhrase(hi, unit), midLabel: "Tie", pins: pins.map((p) => ({ id: p.id, value: p.value, xPermille: place(p.value), off: null })), answer: answer === null ? null : { value: answer, xPermille: place(answer) } };
+  }
   let { keep, offHigh, offLow } = splitOffAxis(values);
   if (answer !== null && offHigh === answer) {
     keep = sorted([...keep, answer]);
@@ -278,12 +313,12 @@ export function ruler(pins: Array<{ id: string; value: bigint }>, answer: bigint
 
 /**
  * "14 shirts", "1 shirt", "1,240 people": the number with the form of the unit that matches (3.26). On a signed
- * margin the stored number is shifted, and the phrase is the sides' words: "Giants by 7", "Titans by 3", "Level".
+ * margin the stored number is shifted, and the phrase is the sides' words: "Giants by 7", "Titans by 3", "A tie".
  */
 export function unitPhrase(n: bigint, unit: { singular: string; plural: string; margin?: { shift: string; home: string; away: string } | null }): string {
   if (unit.margin) {
     const signed = n - BigInt(unit.margin.shift);
-    if (signed === 0n) return "Level";
+    if (signed === 0n) return "A tie";
     return signed > 0n ? `${unit.margin.home} by ${withSeparators(signed)}` : `${unit.margin.away} by ${withSeparators(-signed)}`;
   }
   return `${withSeparators(n)} ${n === 1n ? unit.singular : unit.plural}`.trim();

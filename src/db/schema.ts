@@ -460,6 +460,13 @@ export const dares = pgTable(
     feedOutcomeAt: ts("feed_outcome_at"),
     /** Set once when everyone in it has been warned that the backstop is about to act (the one warning, never a second). */
     backstopWarnedAt: ts("backstop_warned_at"),
+    /**
+     * Which of the feed's endings it took (docs/design.md 3.35), for the settled screen's line: 'agreed' (both
+     * results, a day on), 'alone' (one result that held three days), 'conflict' (the two disagreed: void), 'tie'
+     * (a tie the contract cannot score: void), 'drive' (the play-by-play, three days on) or 'drive_unknown' (the
+     * play-by-play could not say: void). Null on every other ending.
+     */
+    feedEnding: text("feed_ending"),
     resolvedAt: ts("resolved_at"),
     createdAt: ts("created_at").notNull().defaultNow(),
     /**
@@ -501,6 +508,7 @@ export const dares = pgTable(
     check("dares_tier_known", sql`${t.tier} is null or ${t.tier} in ('checkable', 'contestable')`),
     check("dares_mode_known", sql`${t.mode} in ('quick', 'careful')`),
     check("dares_ruling_both_or_neither", sql`(${t.rulingText} is null) = (${t.rulingHash} is null)`),
+    check("dares_feed_ending_known", sql`${t.feedEnding} is null or ${t.feedEnding} in ('agreed', 'alone', 'conflict', 'tie', 'drive', 'drive_unknown')`),
     check("dares_stalemate_known", sql`${t.stalemate} in ('arbitrate', 'void')`),
     check("dares_reveal_mode_known", sql`${t.revealMode} in ('open', 'blind')`),
     check(
@@ -905,7 +913,12 @@ export const sportsGames = pgTable(
     awayAbbr: text("away_abbr").notNull(),
     awayName: text("away_name").notNull(),
     awayShort: text("away_short").notNull(),
-    /** Whether the source reports play-by-play for it: the first-drive question is offered only where it does. */
+    /** Each team's colour as the feed supplies it, six hex digits: for its stamp and nowhere else (docs/design.md 1.7, 4.5). */
+    homeColor: text("home_color"),
+    awayColor: text("away_color"),
+    /** The feed's season type (2 is the regular season): the first-drive question is offered by coverage, the NFL regular season. */
+    seasonType: smallint("season_type"),
+    /** Whether the source reports play-by-play for it. Read off a game in play or finished; false on every upcoming game, so nothing is gated on it. */
     playByPlay: boolean("play_by_play").notNull().default(false),
     /** 'scheduled' | 'in_progress' | 'final' | 'postponed' | 'canceled' | 'unknown'. */
     status: text("status").notNull().default("scheduled"),
@@ -921,6 +934,17 @@ export const sportsGames = pgTable(
     checkHomeScore: integer("check_home_score"),
     checkAwayScore: integer("check_away_score"),
     checkedAt: ts("checked_at"),
+    /**
+     * The first drive, read from the play-by-play once the game has it (docs/decisions.md, the game page): the
+     * answer it maps to ('Touchdown' | 'Field goal' | 'Punt' | 'Turnover' | 'Something else'), the source's own
+     * word for the record, when it was first read, and when a later read found it unchanged. A result the adapter
+     * does not recognise is no result: the answer stays null and the raw word is kept.
+     */
+    firstDriveResult: text("first_drive_result"),
+    firstDriveRaw: text("first_drive_raw"),
+    firstDriveSeenAt: ts("first_drive_seen_at"),
+    firstDriveConfirmedAt: ts("first_drive_confirmed_at"),
+    summaryPolledAt: ts("summary_polled_at"),
     /** The start plus the sport's usual length: when polling for a final begins. */
     expectedEndAt: ts("expected_end_at").notNull(),
     polledAt: ts("polled_at"),
@@ -935,6 +959,7 @@ export const sportsGames = pgTable(
     check("sports_games_scores_together", sql`(${t.homeScore} is null) = (${t.awayScore} is null)`),
     check("sports_games_check_together", sql`(${t.checkHomeScore} is null) = (${t.checkAwayScore} is null)`),
     check("sports_games_final_has_scores", sql`${t.finalSeenAt} is null or ${t.homeScore} is not null`),
+    check("sports_games_first_drive_known", sql`${t.firstDriveResult} is null or ${t.firstDriveResult} in ('Touchdown', 'Field goal', 'Punt', 'Turnover', 'Something else')`),
   ],
 ).enableRLS();
 
@@ -967,6 +992,8 @@ export const publicQuestions = pgTable(
     shift: money("shift"),
     /** Whether the final score answers it, so the ballot opens on a source card and the feed is its backstop (3.35). */
     decidedByScore: boolean("decided_by_score").notNull().default(false),
+    /** Whether the feed proposes and settles it at all: the score's questions, and the first drive from the play-by-play (docs/decisions.md, the game page). */
+    decidedByFeed: boolean("decided_by_feed").notNull().default(false),
     /** A yes-or-no question's outcomes in its own words (3.25), in the stored order. */
     outcomeWords: text("outcome_words").array(),
     /** The curators' order within a game. */

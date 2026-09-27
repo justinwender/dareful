@@ -7,7 +7,7 @@ import { hueVar, type Hue } from "@/lib/ui/hue";
 
 /**
  * The weight line for a number market (docs/design.md 3.22 "Number markets"): the same row of columns, on an
- * axis taken from what people entered. A narrow spread gets a column per whole number, a wide one ten slices;
+ * axis taken from what people entered. A narrow range gets a column per whole number, a wide one ten slices;
  * one far-off entry becomes an overflow column 6px past the end, labelled with its value and an arrow; the
  * marker is the group's number, the stake-weighted median, which is always one of the entries and so always
  * stands on a column, an off-axis one included. The scoring scale never draws anything here.

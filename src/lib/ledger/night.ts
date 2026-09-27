@@ -4,7 +4,7 @@
  * hours after it ended. Oldest first, at most five, each opening its own event. When the market closed between
  * 5am and 5pm in the viewer's zone the heading is "The rest of that day". Pure rules here, the query beneath.
  */
-import { and, eq, gte, inArray, isNotNull, lte, ne, or } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, lte, ne, notInArray, or } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { frameOnMarkets } from "@/lib/media";
 import { outcomeLine } from "@/lib/ui/outcome-words";
@@ -39,14 +39,15 @@ export function pickNight<T extends { at: Date }>(rows: readonly T[], max = NIGH
   return [...rows].sort((a, b) => a.at.getTime() - b.at.getTime()).slice(0, max);
 }
 
-export async function restOfThatNight(input: { dareId: string; groupIds: string[]; people: string[]; viewerId: string; closedAt: Date; endedAt: Date }): Promise<NightRow[]> {
+export async function restOfThatNight(input: { dareId: string; /** A game's night (3.37) leaves out every one of the game's questions, not only the one opened. */ excludeIds?: string[]; groupIds: string[]; people: string[]; viewerId: string; closedAt: Date; endedAt: Date }): Promise<NightRow[]> {
   const { from, to } = nightWindow(input.closedAt, input.endedAt);
   if (input.groupIds.length === 0) return [];
+  const excluded = Array.from(new Set([input.dareId, ...(input.excludeIds ?? [])]));
   const [dares, obligations] = await Promise.all([
     db
       .select()
       .from(schema.dares)
-      .where(and(inArray(schema.dares.groupId, input.groupIds), ne(schema.dares.id, input.dareId), isNotNull(schema.dares.creatorSignature), or(and(gte(schema.dares.createdAt, from), lte(schema.dares.createdAt, to)), and(gte(schema.dares.resolvedAt, from), lte(schema.dares.resolvedAt, to))))),
+      .where(and(inArray(schema.dares.groupId, input.groupIds), notInArray(schema.dares.id, excluded), isNotNull(schema.dares.creatorSignature), or(and(gte(schema.dares.createdAt, from), lte(schema.dares.createdAt, to)), and(gte(schema.dares.resolvedAt, from), lte(schema.dares.resolvedAt, to))))),
     db
       .select()
       .from(schema.obligations)

@@ -91,7 +91,9 @@ export async function sendEmail(userId: string, notice: Notice): Promise<boolean
   const [user] = await db.select({ dynamicUserId: schema.users.dynamicUserId }).from(schema.users).where(eq(schema.users.id, userId)).limit(1);
   const to = user ? await loginEmail(user.dynamicUserId) : null;
   if (!to) return false;
-  const { error } = await new Resend(key).emails.send({ from, to, subject: notice.title, text: `${notice.body}\n\n${notice.url}\n\nYou're getting this because a friend did something in a question you're part of. Dareful never writes because time passed.` });
+  // A backstop notice carries its own subject and footer (docs/design.md 4.10): the sentence, then the question, the sentence, "Open it" and the one line.
+  const text = notice.email ? `${notice.title}\n\n${notice.body}\n\nOpen it: ${notice.url}\n\n${notice.email.footer}` : `${notice.body}\n\n${notice.url}\n\nYou're getting this because a friend did something in a question you're part of. Dareful never writes because time passed.`;
+  const { error } = await new Resend(key).emails.send({ from, to, subject: notice.email?.subject ?? notice.title, text });
   if (error) console.error("email failed", { userId, name: error.name });
   return !error;
 }

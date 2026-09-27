@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { SignJWT } from "jose";
 import { db, schema } from "@/db";
 import * as claims from "@/lib/ledger/claims";
@@ -61,7 +61,7 @@ let memoryIds: string[] = [], evidenceOnSettledId: string, evidenceId: string, e
 let nia: Signer, cNia: string, calledId: string, calledClipId: string, voidedId: string, memoryId: string;
 let pickOpenId: string, pickBlindId: string, pickLockedId: string, pickVotingId: string, pickSettledId: string;
 let windowId: string, windowPhotoId: string;
-let feedOpenId: string, feedMarginId: string, feedVotingId: string, feedSettledId: string, feedHome = "", feedAway = "", cRae: string;
+let feedOpenId: string, feedMarginId: string, feedVotingId: string, feedSettledId: string, feedHome = "", feedAway = "", feedHomeAbbr = "", feedAwayAbbr = "", cRae: string, feedGameId: string, feedGroupId: string, nightGameId: string, nightGroupId: string;
 const bucketKeys: string[] = [];
 
 before(async () => {
@@ -288,10 +288,14 @@ before(async () => {
   const feedGame = parseScoreboard("nfl", scoreboard).slice(0, 1).map((g) => ({ ...g, sourceId: `test:pages:${randomUUID().slice(0, 8)}:${g.sourceId}`, startsAt: new Date(Date.now() + 5 * 86_400_000) }));
   await syncSchedule("nfl", new Date(), { name: "espn", listGames: async () => feedGame });
   const [gameRow] = await db.select().from(schema.sportsGames).where(eq(schema.sportsGames.sourceId, feedGame[0]!.sourceId));
+  feedGameId = (gameRow as { id: string }).id;
+  feedGroupId = mg.id;
   const templates = await db.select().from(schema.publicQuestions).where(eq(schema.publicQuestions.gameId, (gameRow as { id: string }).id));
   const tpl = (key: string) => templates.find((t) => t.key === key) as { id: string; shift: bigint | null };
   feedHome = feedGame[0]!.home.short;
   feedAway = feedGame[0]!.away.short;
+  feedHomeAbbr = feedGame[0]!.home.abbr;
+  feedAwayAbbr = feedGame[0]!.away.abbr;
   const fromTemplate = async (key: string, by: Signer = asker, inGroup: string = mg.id, denom: string = usd.id) => {
     const d0 = await markets.draftFromTemplate({ templateId: tpl(key).id, creatorId: by.user.id, groupId: inGroup, denomId: denom });
     return markets.openMarket(d0.id, by.user.id, await by.ledger.signTypedData(markets.createTypedData(d0)));
@@ -318,8 +322,29 @@ before(async () => {
   const fs = await fromTemplate("home_wins", nia, fg.id, fgUsd.id);
   await markets.enterMarket({ dareId: fs.id, userId: nia.user.id, stake: 500n, value: 7000n, signature: await nia.ledger.signTypedData(markets.enterTypedData(fs, 500n, 7000n)) });
   await markets.enterMarket({ dareId: fs.id, userId: rae.user.id, stake: 500n, value: 4000n, signature: await rae.ledger.signTypedData(markets.enterTypedData(fs, 500n, 4000n)) });
-  await db.update(schema.dares).set({ lockedAt: new Date(Date.now() - 30 * 3_600_000), resolvesBy: new Date(Date.now() - 30 * 3_600_000), resolvedAt: new Date(Date.now() - 3_600_000), resolvedOutcome: 1n, resolvedBy: "feed", rulingText: `${FEED_RULING} ${feedHome} 24, ${feedAway} 17.`, rulingHash: Buffer.alloc(32, 1) }).where(eq(schema.dares.id, fs.id));
+  await db.update(schema.dares).set({ lockedAt: new Date(Date.now() - 30 * 3_600_000), resolvesBy: new Date(Date.now() - 30 * 3_600_000), resolvedAt: new Date(Date.now() - 3_600_000), resolvedOutcome: 1n, resolvedBy: "feed", feedEnding: "agreed", rulingText: `${FEED_RULING} ${feedHome} 24, ${feedAway} 17.`, rulingHash: Buffer.alloc(32, 1) }).where(eq(schema.dares.id, fs.id));
   feedSettledId = fs.id;
+  // A game that is over (3.37, the night): a second recorded game, started thirty hours ago and complete, with two questions the final score settled in nia and rae's set.
+  // Drafted while the game was ahead (a template refuses a kickoff that has passed), then the game and its questions moved back in time.
+  const nightGame = parseScoreboard("nfl", scoreboard).slice(1, 2).map((g) => ({ ...g, sourceId: `test:pages:${randomUUID().slice(0, 8)}:${g.sourceId}`, startsAt: new Date(Date.now() + 2 * 3_600_000) }));
+  await syncSchedule("nfl", new Date(), { name: "espn", listGames: async () => nightGame });
+  const [nightRow] = await db.select().from(schema.sportsGames).where(eq(schema.sportsGames.sourceId, nightGame[0]!.sourceId));
+  nightGameId = (nightRow as { id: string }).id;
+  nightGroupId = fg.id;
+  const nightTemplates = await db.select().from(schema.publicQuestions).where(eq(schema.publicQuestions.gameId, nightGameId));
+  for (const key of ["home_wins", "total"] as const) {
+    const t = nightTemplates.find((x) => x.key === key) as { id: string };
+    const d0 = await markets.draftFromTemplate({ templateId: t.id, creatorId: nia.user.id, groupId: fg.id, denomId: fgUsd.id });
+    const d = await markets.openMarket(d0.id, nia.user.id, await nia.ledger.signTypedData(markets.createTypedData(d0)));
+    const [a, b] = key === "home_wins" ? [7000n, 4000n] : [44n, 38n];
+    await markets.enterMarket({ dareId: d.id, userId: nia.user.id, stake: 500n, value: a, signature: await nia.ledger.signTypedData(markets.enterTypedData(d, 500n, a)) });
+    await markets.enterMarket({ dareId: d.id, userId: rae.user.id, stake: 500n, value: b, signature: await rae.ledger.signTypedData(markets.enterTypedData(d, 500n, b)) });
+    await db.update(schema.dares).set({ lockedAt: new Date(Date.now() - 30 * 3_600_000), resolvesBy: new Date(Date.now() - 30 * 3_600_000), resolvedAt: new Date(Date.now() - 2 * 3_600_000), resolvedOutcome: key === "home_wins" ? 1n : 41n, resolvedBy: "feed", feedEnding: "agreed", rulingText: `${FEED_RULING} ${nightGame[0]!.home.short} 24, ${nightGame[0]!.away.short} 17.`, rulingHash: Buffer.alloc(32, 1) }).where(eq(schema.dares.id, d.id));
+    // Scored as the chain would have: nia closer on both.
+    await db.update(schema.darePositions).set({ score: 9100, net: 0n }).where(and(eq(schema.darePositions.dareId, d.id), eq(schema.darePositions.userId, nia.user.id)));
+    await db.update(schema.darePositions).set({ score: 6400, net: 0n }).where(and(eq(schema.darePositions.dareId, d.id), eq(schema.darePositions.userId, rae.user.id)));
+  }
+  await db.update(schema.sportsGames).set({ startsAt: new Date(Date.now() - 30 * 3_600_000), status: "final", completed: true, homeScore: 24, awayScore: 17, finalSeenAt: new Date(Date.now() - 26 * 3_600_000), finalConfirmedAt: new Date(Date.now() - 25 * 3_600_000), expectedEndAt: new Date(Date.now() - 27 * 3_600_000) }).where(eq(schema.sportsGames.id, nightGameId));
 });
 after(async () => {
   if (storageConfigured()) await removeObjects([...(photoId ? [thumbKey(photoId)] : []), ...bucketKeys]);
@@ -713,13 +738,13 @@ test("the scheduler's door answers only to its secret, and tells a stranger noth
   assert.equal((await fetch(`${BASE}/api/tick`)).status, 405, "there is nothing to GET");
 });
 
-test("the bar is on the three roots and nowhere else, every other screen has a back control, and signed out there is only the wordmark", async () => {
-  for (const path of ["/", "/people", "/you"]) {
+test("the bar is on the four roots and nowhere else, every other screen has a back control, and signed out there is only the wordmark", async () => {
+  for (const path of ["/", "/on", "/people", "/you"]) {
     const r = await get(path, cAsker);
     assert.ok(/<nav aria-label="Main"/.test(r.html) && /aria-label="Start something"/.test(r.html) && !/aria-label="Back"/.test(r.html), `${path} is a root`);
     assert.equal((r.html.match(/aria-current="page"/g) ?? []).length, 1, `${path} marks one tab as where you are`);
   }
-  for (const path of ["/m/new", "/join", `/m/${marketId}`, "/new", `/p/${friend.user.id}`, "/welcome"]) {
+  for (const path of ["/m/new", "/join", `/m/${marketId}`, "/new", `/p/${friend.user.id}`, "/welcome", `/on/${feedGameId}?g=${feedGroupId}`]) {
     const r = await get(path, cAsker);
     assert.ok(r.status === 200 || r.loc === "/", `${path}: ${r.status}`);
     if (r.status === 200) assert.ok(/aria-label="Back"/.test(r.html) && !/<nav aria-label="Main"/.test(r.html) && !/aria-label="Start something"/.test(r.html), `${path} is a task screen`);
@@ -1159,13 +1184,22 @@ test("a question from What's on: the two sides at the odds line's ends, a signed
   const r = await get(`/m/${feedOpenId}`, cFriend);
   assert.equal(r.status, 200);
   assert.ok(r.text.includes(feedAway) && r.text.includes(feedHome), "the two teams");
-  assert.ok(new RegExp(`<span>${feedAway}</span><span>${feedHome}</span>`).test(r.html), "at the odds line's ends, the away side low and the home side high");
+  assert.ok(new RegExp(`<span>${feedAway}</span><span>Even</span><span>${feedHome}</span>`).test(r.html), "at the line's ends, the away side low, Even in the middle and the home side high (3.40)");
+  assert.ok(r.html.includes(`data-team-stamp="${feedAwayAbbr}"`) && r.html.includes(`data-team-stamp="${feedHomeAbbr}"`), "a team stamp at each end, and no logo");
+  assert.ok(!r.html.includes("teamlogos") && !r.html.includes("<img") , "no logo anywhere on it");
   assert.ok(r.text.includes("Question from") && r.text.includes("What’s on"), "the one extra details row (3.33)");
-  assert.ok(r.text.includes("By the final score, once the game is over") && r.text.includes("If nobody votes, the final score decides."), "decided by the score, and the consent in plain words");
-  assert.ok(!/spread|official/i.test(r.text), "never a sportsbook's word");
+  assert.ok(r.text.includes("By the final score, once the game is over") && r.text.includes("The final score. If the two results we check disagree, it’s void."), "decided by the score, with the whole rule in the details (3.35)");
+  assert.ok(r.html.includes("data-consent-line") && r.text.includes("If nobody votes, the final score settles it."), "the consent line in the entry sheet, directly above the primary (3.35, 4.9)");
+  assert.ok(r.text.includes("If it’s a tie") && r.text.includes("It’s void."), "the tie row (3.40): void, since the deployed contract cannot score the middle");
+  assert.ok(r.html.includes(`data-part-of="${feedGameId}"`) && r.text.includes(`Part of ${feedAway} at ${feedHome}`), "the row back to the game page (3.33)");
+  assert.ok(r.text.includes("Slide to pick a side"), "the primary before any touch");
+  assert.ok(!/spread|official|moneyline|underdog|favourite/i.test(r.text), "never a sportsbook's word");
   const m = await get(`/m/${feedMarginId}`, cAsker);
   assert.equal(m.status, 200);
   assert.ok(m.text.includes(`You’re in at ${feedHome} by 3`), "the entry line in the sides' words, never the shifted number");
+  const mf = await get(`/m/${feedMarginId}`, cFriend);
+  assert.ok(mf.html.includes('data-team-line="margin"') && mf.text.includes(`${feedAway} by 35+`) && mf.text.includes("Tie") && mf.text.includes("Any margin. Tap the number to type one."), "the margin's line between the two teams, centred on a tie, for someone entering (3.40)");
+  assert.ok(!/[+-]\d/.test(m.text.replace(/\d+:\d\d/g, "")), "never a plus or minus sign");
   assert.ok(m.text.includes("Scored on") && m.text.includes("or more scores nothing"), "the template's scale shown like an asker's");
   assert.ok(!m.text.includes("You’re in at 17"), "the stored figure is never shown");
   const ask = await get(`/m/new?template=${(await db.select({ templateId: schema.dares.templateId }).from(schema.dares).where(eq(schema.dares.id, feedOpenId)))[0]?.templateId}`, cAsker);
@@ -1181,13 +1215,74 @@ test("the ballot when a final score answers it: the source card where the claim 
   assert.ok(new RegExp(`${feedHome}\\s*24`).test(r.text) && new RegExp(`${feedAway}\\s*17`).test(r.text), "the two rows, team and number");
   assert.ok(!r.html.includes("says"), "no avatar and no says: the score is speaking, not a person");
   assert.ok(r.text.includes(`From the final score: ${feedHome} 24, ${feedAway} 17.`), "the sheet's header names the score the terms named");
-  assert.ok(r.text.includes(`The ${feedHome} won, that’s right`), "the chalk confirms it in the market's own words");
+  assert.ok(r.text.includes(`That’s right, the ${feedHome} won`), "the chalk names the outcome in the voter's voice and names the team (3.35)");
+  assert.ok(r.html.includes(`data-team-stamp="${feedHomeAbbr}"`), "each row of the source card wears its team's stamp");
   assert.ok(!r.text.includes("Can’t agree?") && !r.text.includes("Let the tiebreaker call it"), "the final score is the tiebreaker: the model is never offered");
   const s = await get(`/m/${feedSettledId}`, cNia);
   assert.equal(s.status, 200);
   assert.ok(s.text.includes(`The ${feedHome} won.`), "the outcome in its own words");
   assert.ok(s.html.includes('data-ruling="feed"') && s.html.includes(">Decided by the final score, as the terms said</h2>") && !s.text.includes("Settled by the tiebreaker everyone agreed to") && s.text.includes("Nobody called it in time"), "the final score's ruling, not the tiebreaker's: the heading itself, since the ruling's own text says the same words");
+  assert.ok(s.html.includes('data-feed-ending="agreed"') && s.text.includes("Decided by the final score, as the terms said. Nobody voted within a day."), "the ending's own line (3.35, Endings)");
+  assert.ok(s.text.includes(`${feedHome} 24, ${feedAway} 17.`), "the final score as the settled line's caption (3.40)");
   assert.ok(s.text.includes("Closest first") && s.text.includes("Who’s got who"), "everything after follows as usual");
+  assert.ok(new RegExp(`said ${feedHome} 70%`).test(s.text) || new RegExp(`said ${feedAway} 60%`).test(s.text), "closest first says a side, never a bare percent (3.7)");
+});
+
+test("What's on lists the games ahead one row each, with the two stamps and a start time, this person's own use named, and no number about anyone's belief", async () => {
+  const r = await get("/on", cAsker);
+  assert.equal(r.status, 200);
+  assert.ok(r.text.includes("What’s on") && r.text.includes("Things everyone’s watching"), "the header and its one line (3.32)");
+  assert.ok(r.html.includes(`data-game-row="${feedGameId}"`), "the game, one row, whatever it has questions about");
+  assert.ok(r.html.includes(`data-team-stamp="${feedAwayAbbr}"`) && !r.html.includes("teamlogos"), "the stamps, never a logo");
+  assert.ok(r.text.includes("You’re on this with"), "the asker's set has started it, so the row says so and opens that page");
+  assert.ok(!/\d+%/.test(r.text) && !/most picked|odds|leaning/i.test(r.text), "nothing about what anyone thinks will happen");
+  assert.ok(!r.html.includes("data-most-asked"), "one group is below the floor of ten: no Most asked");
+  assert.ok(!r.html.includes(`data-game-row="${nightGameId}"`), "a game that has started has left the list");
+  assert.ok(/<nav aria-label="Main"/.test(r.html) && (r.html.match(/aria-current="page"/g) ?? []).length === 1, "a root, with the bar");
+  const stranger = await get("/on", cStranger);
+  assert.ok(stranger.html.includes(`data-game-row="${feedGameId}"`) && !stranger.text.includes("You’re on this with") && !stranger.text.includes("Question check"), "nothing about any group the person is not in");
+});
+
+test("the game page: a header, one collapsed card per question with no number until you are in, the rest of the menu to add, and the start for someone on it with nobody", async () => {
+  const friendly = await get(`/on/${feedGameId}?g=${feedGroupId}`, cFriend);
+  assert.equal(friendly.status, 200);
+  assert.ok(friendly.html.includes(`data-game-header="${feedGameId}"`) && friendly.text.includes(`${feedAway} at ${feedHome}`), "the header with the two teams");
+  assert.ok(friendly.html.includes('data-game-card="home_wins"') && friendly.html.includes('data-game-card="margin"'), "one card per question the set is running");
+  assert.ok(friendly.text.includes("Closes at kickoff · 1 of 2 in") && !/\d+%/.test(friendly.text) && !friendly.text.includes(" by 3"), "no numbers until you are in: not the asker's 70%, not the margin");
+  assert.ok(friendly.html.includes("data-add-another") && friendly.text.includes("Total points") && friendly.text.includes("The first drive"), "the rest of the menu, as rows anyone in the group can add from");
+  assert.ok(!/<nav aria-label="Main"/.test(friendly.html) && /aria-label="Back"/.test(friendly.html), "a task screen with back, not a root");
+  const asker = await get(`/on/${feedGameId}?g=${feedGroupId}`, cAsker);
+  assert.ok(asker.text.includes(`You’re in at ${feedHome} 70% · 1 of 2 in`) && asker.text.includes(`You’re in at ${feedHome} by 3`), "your own entry once you are in, in the market's words");
+  const stranger = await get(`/on/${feedGameId}`, cStranger);
+  assert.ok(stranger.html.includes("data-game-menu") && stranger.text.includes("What to ask") && stranger.text.includes("Who wins") && stranger.text.includes("Your friends see only the ones you pick."), "with none of their sets on it: the start, with the menu");
+  assert.ok(/role="checkbox" aria-checked="true"/.test(stranger.html), "Who wins is ticked as the page opens");
+  const add = await get(`/on/${feedGameId}?g=${feedGroupId}&add=total`, cFriend);
+  assert.ok(add.html.includes('data-game-terms="total"') && add.html.includes("data-game-stakes") && add.html.includes("data-consent-line") && add.text.includes("At kickoff,"), "adding one: the terms step alone, its rows, the one Stakes card and the consent line");
+  const signedOut = await get(`/on/${feedGameId}/${feedGroupId}`);
+  assert.ok(signedOut.status === 200 && signedOut.text.includes(`${feedAway} at ${feedHome}`) && !signedOut.text.includes("Question check") && !signedOut.text.includes("70%"), "a pasted link, signed out: the game and nothing about who is on it");
+});
+
+test("once the game is over its page is the night: the final score as the title, the settled cards, who's got who across the game, and the photo move; Now and a timeline carry a game as one row and one story", async () => {
+  const night = await get(`/on/${nightGameId}?g=${nightGroupId}`, cNia);
+  assert.equal(night.status, 200);
+  assert.ok(night.html.includes("data-game-night"), "the night, not the start");
+  const home = (await db.select({ homeShort: schema.sportsGames.homeShort, awayShort: schema.sportsGames.awayShort }).from(schema.sportsGames).where(eq(schema.sportsGames.id, nightGameId)))[0]!;
+  assert.ok(night.text.includes(`${home.homeShort} 24, ${home.awayShort} 17.`), "the final score in serif where the game's name was");
+  assert.ok(night.html.includes('data-card-state="resolved"') && night.text.includes(`The ${home.homeShort} won · you were closest`) && night.text.includes("41 points · you were off by 3"), "the settled cards, each with its outcome and your line");
+  assert.ok(night.text.includes("Questions") && !night.html.includes("data-add-another"), "nothing left to add");
+  assert.ok(night.html.includes("data-add-photos") && night.text.includes("Add a photo from"), "the sheet holds the photo move alone");
+  // Now: the two questions in one set are one row in Just happened, with the final score.
+  const now = await get("/", cNia);
+  assert.ok(now.html.includes("data-game-happened") && now.text.includes(`Final: ${home.homeShort} 24, ${home.awayShort} 17`), "one row for the game, never one per question (4.7)");
+  // A timeline: one story for the night between the two of them, its questions inside it, the consequences summed across the game.
+  const rae = await db.select({ id: schema.dareVotes.userId }).from(schema.dareVotes).limit(0);
+  void rae;
+  const raeId = (await db.select({ userId: schema.groupMembers.userId }).from(schema.groupMembers).where(and(eq(schema.groupMembers.groupId, nightGroupId), sql`${schema.groupMembers.userId} <> ${nia.user.id}`)))[0]!.userId as string;
+  const story = await get(`/p/${raeId}`, cNia);
+  assert.ok(story.html.includes(`data-game-story="${nightGameId}"`) && story.text.includes("What’s on ·") && story.text.includes(`${home.homeShort} 24, ${home.awayShort} 17.`), "the game as one story (3.4)");
+  assert.equal((story.html.match(new RegExp(`data-game-story="${nightGameId}"`, "g")) ?? []).length, 1, "one story for the game, not one per question");
+  assert.ok(!story.html.includes(`/m/${(await db.select({ id: schema.dares.id }).from(schema.dares).where(and(eq(schema.dares.groupId, nightGroupId), eq(schema.dares.resolvedOutcome, 41n))))[0]?.id}"`), "neither question has a story of its own");
+  assert.ok(story.text.includes("Nothing changes hands between you.") || story.text.includes("across the game"), "the consequences between the two, added up across the game");
 });
 
 test("asking offers pick one beside yes or no and a number", async () => {

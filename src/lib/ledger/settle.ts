@@ -9,6 +9,9 @@
  * the contract would refuse it if it tried.
  */
 import { and, asc, eq, gt, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
+import { warningSendTime, type WarningFlavour } from "@/lib/notify/messages";
+import { agree, AGREE_AFTER_MS, ALONE_AFTER_MS } from "@/lib/sports/results";
+import type { CheckSource, FinalScore, Sport } from "@/lib/sports/types";
 import { keccak256, stringToHex, type Hex } from "viem";
 import { db, schema } from "@/db";
 import { arbitrate as askArbitrator, arbitrateAnswer, arbitrateNumber, ruleClaim } from "@/lib/ai/settler";
@@ -25,11 +28,11 @@ export const ARBITRATION_BACKSTOP_MS = 24 * 3_600_000;
 /** The one warning before a backstop acts goes this long before it (docs/decisions.md, public markets): never a second. */
 export const BACKSTOP_WARNING_MS = 6 * 3_600_000;
 
-/** Whether a market's tiebreaker is the final score rather than the model: a What's on question the score answers. */
+/** Whether a market's tiebreaker is the feed rather than the model: a What's on question the final score or the play-by-play answers. */
 export async function decidedByScore(d: Pick<DareRow, "templateId">): Promise<boolean> {
   if (!d.templateId) return false;
-  const [t] = await db.select({ decidedByScore: schema.publicQuestions.decidedByScore }).from(schema.publicQuestions).where(eq(schema.publicQuestions.id, d.templateId)).limit(1);
-  return t?.decidedByScore === true;
+  const [t] = await db.select({ decidedByFeed: schema.publicQuestions.decidedByFeed }).from(schema.publicQuestions).where(eq(schema.publicQuestions.id, d.templateId)).limit(1);
+  return t?.decidedByFeed === true;
 }
 
 // ------------------------------------------------------------------------------------------------ arguments
@@ -197,9 +200,33 @@ export function cleanResolutionOf(rows: ReadonlyArray<{ outcome: bigint | null; 
 
 // -------------------------------------------------------------------------------------------------- the tick
 
-export type TickReport = { locked: string[]; notified: string[]; expired: string[]; arbitrated: string[]; warned: Array<{ id: string; flavour: BackstopFlavour }>; failed: Array<{ id: string; what: string; why: string }> };
-/** Which backstop a warning is about: the tiebreaker everyone agreed to, the final score, or the void rule. */
-export type BackstopFlavour = "tiebreaker" | "score" | "void";
+export type TickReport = { locked: string[]; notified: string[]; expired: string[]; arbitrated: string[]; warned: Array<{ id: string; flavour: WarningFlavour }>; failed: Array<{ id: string; what: string; why: string }> };
+/** Which backstop a warning is about (docs/design.md 4.10): the final score, the two results disagreeing, the play-by-play, the tiebreaker everyone agreed to, or closing for good. */
+export type BackstopFlavour = WarningFlavour;
+
+/**
+ * When a backstop will act on a question nobody has decided, and which one (docs/design.md 4.10): the tiebreaker
+ * a day after it was due or locked, whichever is later (an argument, a day after it locked); the void rule at its
+ * deadline; the final score a day after the final was seen when a second result exists (agreeing or not), else
+ * three days after; the play-by-play three days after the first drive was read, or three days after the game
+ * was complete when it could not say. Null while nothing is on its way. Pure, so the moments have tests.
+ */
+export function backstopMoment(input: { stalemate: string; pace: string; lockedAt: Date | null; resolvesBy: Date | null; template: { decidedByScore: boolean; decidedByFeed: boolean; key: string } | null; game: { finalSeenAt: Date | null; check: FinalScore | null; firstDriveSeenAt: Date | null; firstDriveResult: string | null } | null; final: FinalScore | null }): { flavour: WarningFlavour; actsAt: Date } | null {
+  if (!input.lockedAt) return null;
+  if (input.template?.decidedByFeed && input.game) {
+    if (!input.game.finalSeenAt) return null;
+    if (input.template.key === "first_drive") {
+      const from = input.game.firstDriveResult ? input.game.firstDriveSeenAt : input.game.finalSeenAt;
+      return from ? { flavour: "drive", actsAt: new Date(from.getTime() + ALONE_AFTER_MS) } : null;
+    }
+    if (input.game.check && input.final) return { flavour: agree(input.game.check, input.final) ? "score" : "score_conflict", actsAt: new Date(input.game.finalSeenAt.getTime() + AGREE_AFTER_MS) };
+    return { flavour: "score", actsAt: new Date(input.game.finalSeenAt.getTime() + ALONE_AFTER_MS) };
+  }
+  if (input.stalemate === "void") return input.resolvesBy ? { flavour: "void", actsAt: input.resolvesBy } : null;
+  if (input.pace === "argument") return { flavour: "tiebreaker", actsAt: new Date(input.lockedAt.getTime() + ARBITRATION_BACKSTOP_MS) };
+  if (!input.resolvesBy) return null;
+  return { flavour: "tiebreaker", actsAt: new Date(Math.max(input.lockedAt.getTime(), input.resolvesBy.getTime()) + ARBITRATION_BACKSTOP_MS) };
+}
 
 /**
  * Everything a timer has to drive, once a minute, idempotently (docs/decisions.md 2026-09-21). Each job is also
@@ -207,9 +234,10 @@ export type BackstopFlavour = "tiebreaker" | "score" | "void";
  * question), so a missed tick delays and never breaks. One market's failure never stops the rest, and no two
  * resolutions ever share a transaction: each is its own `submit`.
  *
- * `notifyDeadline` is passed in so this module does not depend on the notification channels.
+ * `notifyDeadline` is passed in so this module does not depend on the notification channels; `check` is the
+ * second sports source, asked once at warning time so the warning can say which ending is coming.
  */
-export async function tick(now: Date, notifyDeadline: (dareId: string, creatorId: string) => Promise<void>, opts: { limit?: number; onlyIds?: string[]; notifyWarning?: (dareId: string, flavour: BackstopFlavour) => Promise<void> } = {}): Promise<TickReport> {
+export async function tick(now: Date, notifyDeadline: (dareId: string, creatorId: string) => Promise<void>, opts: { limit?: number; onlyIds?: string[]; notifyWarning?: (dareId: string, flavour: WarningFlavour, actsAt: Date) => Promise<void>; check?: CheckSource } = {}): Promise<TickReport> {
   const limit = opts.limit ?? 10;
   // Tests run against the real database, so a test names the questions it made and the tick touches nothing else.
   const mine = opts.onlyIds ? inArray(schema.dares.id, opts.onlyIds.length ? opts.onlyIds : ["00000000-0000-4000-8000-000000000000"]) : undefined;
@@ -261,7 +289,7 @@ export async function tick(now: Date, notifyDeadline: (dareId: string, creatorId
       // Still worth a vote if the votes already there would decide it: never overrule a quorum that exists.
       const d = await marketById(id);
       if (!d) return;
-      // A What's on question the score answers is the feed's to settle (src/lib/sports), on the feed's own clocks.
+      // A What's on question the feed answers is the feed's to settle (src/lib/sports), on the feed's own clocks.
       if (await decidedByScore(d)) return;
       const votes = await votesOf(id);
       const leading = Math.max(0, ...Array.from(votes.reduce((m, v) => m.set(v.outcome.toString(), (m.get(v.outcome.toString()) ?? 0) + 1), new Map<string, number>()).values()));
@@ -271,14 +299,14 @@ export async function tick(now: Date, notifyDeadline: (dareId: string, creatorId
     });
   }
 
-  // 5. One warning before a backstop acts, never a second (docs/decisions.md, public markets): six hours before the
-  // tiebreaker's day is up, before the void rule's deadline, or before the final score's day is up.
+  // 5. One warning before a backstop acts, never a second (docs/design.md 4.10): six hours before the exact moment
+  // it acts, moved to eight the evening before when that would land at night, and not at all when the votes already
+  // cast would decide it. The candidates are everything locked and undecided whose moment could be within reach.
   if (opts.notifyWarning) {
-    const warnBy = new Date(now.getTime() - ARBITRATION_BACKSTOP_MS + BACKSTOP_WARNING_MS);
-    const voidBy = new Date(now.getTime() + BACKSTOP_WARNING_MS);
-    const scoreBy = new Date(now.getTime() - ARBITRATION_BACKSTOP_MS + BACKSTOP_WARNING_MS);
+    // Wide enough to hold the earliest a warning could go (six hours before, moved up to fourteen more by the overnight rule).
+    const reach = new Date(now.getTime() - ARBITRATION_BACKSTOP_MS + BACKSTOP_WARNING_MS + 14 * 3_600_000);
     const toWarn = await db
-      .select({ id: schema.dares.id, stalemate: schema.dares.stalemate, resolvesBy: schema.dares.resolvesBy, templateId: schema.dares.templateId })
+      .select({ dare: schema.dares, template: schema.publicQuestions, game: schema.sportsGames })
       .from(schema.dares)
       .leftJoin(schema.publicQuestions, eq(schema.publicQuestions.id, schema.dares.templateId))
       .leftJoin(schema.sportsGames, eq(schema.sportsGames.id, schema.publicQuestions.gameId))
@@ -289,23 +317,33 @@ export async function tick(now: Date, notifyDeadline: (dareId: string, creatorId
           isNull(schema.dares.resolvedAt),
           isNull(schema.dares.backstopWarnedAt),
           or(
-            // The final score's: a day after the final was seen, less the warning.
-            and(eq(schema.publicQuestions.decidedByScore, true), isNotNull(schema.sportsGames.finalSeenAt), lt(schema.sportsGames.finalSeenAt, scoreBy)),
-            // The tiebreaker's: a day after it was due or locked, whichever is later, less the warning.
-            and(eq(schema.dares.stalemate, "arbitrate"), or(isNull(schema.publicQuestions.decidedByScore), eq(schema.publicQuestions.decidedByScore, false)), lt(schema.dares.lockedAt, warnBy), or(lt(schema.dares.resolvesBy, warnBy), eq(schema.dares.pace, "argument"))),
-            // The void rule's: its deadline, less the warning, while there is still a window.
-            and(eq(schema.dares.stalemate, "void"), isNotNull(schema.dares.resolvesBy), lt(schema.dares.resolvesBy, voidBy), gt(schema.dares.resolvesBy, now)),
+            and(eq(schema.publicQuestions.decidedByFeed, true), isNotNull(schema.sportsGames.finalSeenAt), lt(schema.sportsGames.finalSeenAt, new Date(now.getTime() - AGREE_AFTER_MS + BACKSTOP_WARNING_MS + 14 * 3_600_000))),
+            and(or(isNull(schema.publicQuestions.decidedByFeed), eq(schema.publicQuestions.decidedByFeed, false)), eq(schema.dares.stalemate, "arbitrate"), lt(schema.dares.lockedAt, reach), or(lt(schema.dares.resolvesBy, reach), eq(schema.dares.pace, "argument"))),
+            and(eq(schema.dares.stalemate, "void"), isNotNull(schema.dares.resolvesBy), lt(schema.dares.resolvesBy, new Date(now.getTime() + BACKSTOP_WARNING_MS + 14 * 3_600_000)), gt(schema.dares.resolvesBy, now)),
           ),
         ),
       )
       .limit(limit);
-    for (const row of toWarn) {
-      await attempt(row.id, "warning", async () => {
-        const [claimed] = await db.update(schema.dares).set({ backstopWarnedAt: now }).where(and(eq(schema.dares.id, row.id), isNull(schema.dares.backstopWarnedAt))).returning({ id: schema.dares.id });
+    for (const { dare, template, game } of toWarn) {
+      await attempt(dare.id, "warning", async () => {
+        // The second source, asked once here for a question the score answers, so the warning can say which ending is coming; kept on the row for the backstop.
+        let check: FinalScore | null = game && game.checkHomeScore !== null && game.checkAwayScore !== null ? { home: game.checkHomeScore, away: game.checkAwayScore } : null;
+        const final = game && game.finalSeenAt && game.homeScore !== null && game.awayScore !== null ? { home: game.homeScore, away: game.awayScore } : null;
+        if (game && template?.decidedByScore && final && check === null && game.checkedAt === null && opts.check) {
+          check = await opts.check.finalOf({ sport: game.sport as Sport, startsAt: game.startsAt, homeAbbr: game.homeAbbr, awayAbbr: game.awayAbbr }).catch(() => null);
+          await db.update(schema.sportsGames).set({ checkHomeScore: check?.home ?? null, checkAwayScore: check?.away ?? null, checkedAt: now }).where(eq(schema.sportsGames.id, game.id));
+        }
+        const moment = backstopMoment({ stalemate: dare.stalemate, pace: dare.pace, lockedAt: dare.lockedAt, resolvesBy: dare.resolvesBy, template: template ? { decidedByScore: template.decidedByScore, decidedByFeed: template.decidedByFeed, key: template.key } : null, game: game ? { finalSeenAt: game.finalSeenAt, check, firstDriveSeenAt: game.firstDriveSeenAt, firstDriveResult: game.firstDriveResult } : null, final });
+        if (!moment || now.getTime() < warningSendTime(moment.actsAt, dare.zone ?? "UTC").getTime()) return;
+        const [claimed] = await db.update(schema.dares).set({ backstopWarnedAt: now }).where(and(eq(schema.dares.id, dare.id), isNull(schema.dares.backstopWarnedAt))).returning({ id: schema.dares.id });
         if (!claimed) return;
-        const flavour: BackstopFlavour = row.stalemate === "void" ? "void" : row.templateId && (await decidedByScore(row)) ? "score" : "tiebreaker";
-        await opts.notifyWarning!(row.id, flavour);
-        report.warned.push({ id: row.id, flavour });
+        // Already past, or the votes cast would decide it: the backstop won't act for them, so nothing is sent (and never later).
+        if (now.getTime() >= moment.actsAt.getTime()) return;
+        const votes = await votesOf(dare.id);
+        const leading = Math.max(0, ...Array.from(votes.reduce((m, v) => m.set(v.outcome.toString(), (m.get(v.outcome.toString()) ?? 0) + 1), new Map<string, number>()).values()));
+        if (leading >= dare.threshold) return;
+        await opts.notifyWarning!(dare.id, moment.flavour, moment.actsAt);
+        report.warned.push({ id: dare.id, flavour: moment.flavour });
       });
     }
   }

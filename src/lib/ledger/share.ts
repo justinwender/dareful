@@ -6,7 +6,7 @@
  * gets the plain card, identical for an unknown id, a malformed one, and a closed one.
  */
 import { z } from "zod";
-import { eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { pendingForClaim, readClaimLink } from "@/lib/ledger/claims";
 import { clip, plainCard, type ShareCard } from "@/lib/ui/share-card";
@@ -21,6 +21,7 @@ import { getObject } from "@/lib/media/storage";
 import { ruler, unitPhrase, withSeparators } from "./number-axis";
 import { answersOf } from "./markets";
 import { calledItLine } from "./pick-one";
+import { leanPill, type TeamFace } from "@/lib/ui/team";
 
 /** What a share route shows a visitor with no session: the card, and the text metadata beside it. */
 export type ProposalShare = {
@@ -159,6 +160,7 @@ export async function marketTile(rawId: string): Promise<Tile | null> {
       outcomeLabels: schema.dares.outcomeLabels,
       outcomeWords: schema.dares.outcomeWords,
       answerPeople: schema.dares.answerPeople,
+      templateId: schema.dares.templateId,
     })
     .from(schema.dares)
     .where(eq(schema.dares.id, id.data))
@@ -166,11 +168,15 @@ export async function marketTile(rawId: string): Promise<Tile | null> {
     .catch(() => []);
   const d = rows[0];
   if (!d || !d.opened) return null;
+  // Between two teams (3.40): the game's two stamps and, on the margin, the shift that reads a stored number back as a side.
+  const from = d.templateId ? (await db.select({ key: schema.publicQuestions.key, shift: schema.publicQuestions.shift, game: schema.sportsGames }).from(schema.publicQuestions).innerJoin(schema.sportsGames, eq(schema.sportsGames.id, schema.publicQuestions.gameId)).where(eq(schema.publicQuestions.id, d.templateId)).limit(1))[0] ?? null : null;
+  const teams: { away: TeamFace; home: TeamFace } | null = from && (from.key === "home_wins" || from.key === "margin") ? { away: { abbr: from.game.awayAbbr, name: from.game.awayShort, color: from.game.awayColor }, home: { abbr: from.game.homeAbbr, name: from.game.homeShort, color: from.game.homeColor } } : null;
+  const margin = from && from.key === "margin" && from.shift !== null && teams ? { shift: from.shift.toString(), home: teams.home.name, away: teams.away.name } : null;
   const mark = d.markKind === "emoji" ? d.markValue : null;
   // A sticker mark rides the tile as its derivative (3.27, 3.28): read from the bucket by the server, never by a preview bot.
   const markImage = d.markKind === "sticker" && d.markValue ? await stickerDataUrl(d.markValue) : null;
   const ink = inkOf(d);
-  const unit = d.kind === "numeric" ? { singular: d.outcomeLabels[0] ?? "", plural: d.outcomeLabels[1] ?? d.outcomeLabels[0] ?? "" } : null;
+  const unit = d.kind === "numeric" ? { singular: d.outcomeLabels[0] ?? "", plural: d.outcomeLabels[1] ?? d.outcomeLabels[0] ?? "", margin } : null;
   const answers = answersOf(d);
   // A person answer wears their avatar on the tile (3.27); the name is the one the asker listed, never the account's full name.
   const answerPeople = answers?.some((a) => a.userId)
@@ -202,6 +208,10 @@ export async function marketTile(rawId: string): Promise<Tile | null> {
       frame:
         d.pace === "argument"
           ? "Take the other side."
+          : teams
+            ? margin
+              ? "By how much?"
+              : "Who wins?"
           : d.kind === "numeric"
             ? "Name a number."
             : answers
@@ -214,8 +224,9 @@ export async function marketTile(rawId: string): Promise<Tile | null> {
         d.resolvesBy && !d.resolvedAt
           ? closesAbsolute(d.resolvesBy, d.zone)
           : null,
-      unit: unit ? unit.plural : null,
+      unit: unit && !margin ? unit.plural : null,
       answers: tileAnswers,
+      teams: teams ? { ...teams, margin: margin !== null } : null,
     };
   }
   const positions = await db
@@ -267,6 +278,7 @@ export async function marketTile(rawId: string): Promise<Tile | null> {
       ruler: {
         leftLabel: r?.leftLabel ?? "",
         rightLabel: r?.rightLabel ?? "",
+        midLabel: r?.midLabel ?? null,
         answerPermille: r?.answer?.xPermille ?? 500,
         pins: positions.map((p) => ({ name: p.name, hue: hueFor(p.userId ?? ""), xPermille: r?.pins.find((x) => x.id === (p.userId ?? ""))?.xPermille ?? 500, closest: best !== null && p.userId === best.userId })),
       },
@@ -274,7 +286,7 @@ export async function marketTile(rawId: string): Promise<Tile | null> {
     };
   }
   const closest = best
-    ? `${clip(firstName(best.name), 18)} ${d.resolvedBy === "arbitration" ? "was closest" : "called it"} at ${Number(best.value) / 100}%.`
+    ? `${clip(firstName(best.name), 18)} ${d.resolvedBy === "arbitration" || d.resolvedBy === "feed" ? "was closest" : "called it"} at ${teams ? leanPill(Number(best.value) / 100, teams.away.name, teams.home.name) : `${Number(best.value) / 100}%`}.`
     : "";
   return {
     kind: "called",
@@ -295,7 +307,44 @@ export async function marketTile(rawId: string): Promise<Tile | null> {
     line:
       d.resolvedBy === "arbitration"
         ? `Settled by the tiebreaker everyone agreed to. ${closest}`.trim()
-        : closest,
+        : d.resolvedBy === "feed"
+          ? `Decided by the final score, as the terms said. ${closest}`.trim()
+          : closest,
+    teams,
+  };
+}
+
+/**
+ * A game's asking tile (docs/design.md 3.27): the link sent to the chat when a game is started with more than one
+ * question is the game page's, and its tile puts the game where the question would be: whoever started it, the
+ * two stamps either side of "Chiefs at Bills", the chosen questions as rows, and the close time. Never who is in.
+ * A game nobody has started with these people, or an id that matches nothing, gets nothing (the plain card).
+ */
+export async function gameTile(rawId: string, rawGroupId: string | null): Promise<Tile | null> {
+  const id = z.string().uuid().safeParse(rawId);
+  const groupId = z.string().uuid().safeParse(rawGroupId ?? "");
+  if (!id.success || !groupId.success) return null;
+  const [game] = await db.select().from(schema.sportsGames).where(eq(schema.sportsGames.id, id.data)).limit(1).catch(() => []);
+  if (!game) return null;
+  const rows = await db
+    .select({ id: schema.dares.id, title: schema.dares.title, creatorId: schema.dares.creatorId, ink: schema.dares.ink, zone: schema.dares.zone, createdAt: schema.dares.createdAt, sort: schema.publicQuestions.sort })
+    .from(schema.dares)
+    .innerJoin(schema.publicQuestions, eq(schema.publicQuestions.id, schema.dares.templateId))
+    .where(and(eq(schema.publicQuestions.gameId, id.data), eq(schema.dares.groupId, groupId.data), isNotNull(schema.dares.creatorSignature)))
+    .orderBy(asc(schema.publicQuestions.sort))
+    .catch(() => []);
+  const first = [...rows].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())[0];
+  if (!first) return null;
+  const [creator] = await db.select({ displayName: schema.users.displayName }).from(schema.users).where(eq(schema.users.id, first.creatorId)).limit(1);
+  return {
+    kind: "game",
+    asker: { name: clip(firstName(creator?.displayName ?? "A friend"), 18), hue: hueFor(first.creatorId) },
+    ink: inkOf(first),
+    away: { abbr: game.awayAbbr, name: game.awayShort, color: game.awayColor },
+    home: { abbr: game.homeAbbr, name: game.homeShort, color: game.homeColor },
+    name: game.name,
+    questions: rows.map((r) => clip(r.title, 40)),
+    closes: game.startsAt.getTime() > Date.now() ? closesAbsolute(game.startsAt, first.zone) : null,
   };
 }
 

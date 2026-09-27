@@ -15,21 +15,28 @@ import { obligationsById, openTouching } from "./envio";
 import { membersOfGroups, peopleForUser, setLabel } from "./groups";
 import { marketCards, type MarketCardData } from "./market-view";
 import { pendingForDebtor, type ProposalRow } from "./proposals";
+import { gamesOfMarkets } from "@/lib/sports";
+import { scoreLine } from "@/lib/sports/results";
+import type { TeamFace } from "@/lib/ui/team";
 
 type Person = { id: string; displayName: string };
 
 /** What the row's state mark says (docs/design.md 3.23), and the market's mark and ink for its 40px stamp (3.15). */
 type QuestionLook = { mark: MarkRef | null; ink: InkName; state: "open" | "locked" | "voting" | "draft" };
 
+/** A game on Now (docs/design.md 4.7): the two stamps in the 40px slot, the game as the subject, and the most pressing question's verb and clock. */
+export type GameLook = { away: TeamFace; home: TeamFace; /** How many questions the game runs with these people. */ questions: number; /** The pressing question's screen, which the verb opens; the row itself opens the game page. */ questionHref: string; state: QuestionLook["state"] };
+
 export type NeedRow =
   | ({ kind: "vote" | "enter" | "lock"; key: string; href: string; verb: string; context: string; subject: string; question: true; deadline: Date | null; since: Date; groupId: string } & QuestionLook)
   | ({ kind: "finish"; key: string; href: string; verb: string; context: string; subject: string; question: true; deadline: null; since: Date; groupId: string } & QuestionLook)
-  | { kind: "yep"; key: string; href: string; verb: string; context: string; subject: string; question: false; deadline: null; since: Date; groupId: string; proposal: ProposalRow; creditor: Person; denomination: DenominationRow };
+  | { kind: "yep"; key: string; href: string; verb: string; context: string; subject: string; question: false; deadline: null; since: Date; groupId: string; proposal: ProposalRow; creditor: Person; denomination: DenominationRow }
+  | { kind: "game"; key: string; href: string; verb: string; context: string; subject: string; question: false; deadline: Date | null; since: Date; groupId: string; game: GameLook; /** The pressing question's kind, which decides where the row sorts. */ pressing: "vote" | "enter" | "lock" | "finish" };
 
 const lookOf = (d: { id: string; ink?: string | null; markKind?: string | null; markValue?: string | null }, state: QuestionLook["state"]): QuestionLook => ({ mark: markRefOf(d), ink: inkOf({ id: d.id, ink: d.ink ?? null }), state });
 
 /** Fastest to finish first, when nothing else separates two rows: a yep is one tap, a draft is a screen. */
-const EFFORT: Record<NeedRow["kind"], number> = { yep: 0, vote: 1, enter: 2, lock: 3, finish: 4 };
+const EFFORT: Record<NeedRow["kind"], number> = { yep: 0, vote: 1, enter: 2, lock: 3, finish: 4, game: 2 };
 
 /**
  * Time-bound before open-ended, as priority and never as pressure. A question in voting has a quorum waiting on
@@ -38,10 +45,12 @@ const EFFORT: Record<NeedRow["kind"], number> = { yep: 0, vote: 1, enter: 2, loc
  * then fastest to finish. The order is the whole signal: no countdown, no day count, no ageing, and a deadline
  * that has passed still only sorts (docs/design.md 3.15; docs/decisions.md 2026-09-21).
  */
-const TIER: Record<NeedRow["kind"], number> = { vote: 0, lock: 1, enter: 1, yep: 2, finish: 2 };
-export function orderNeeds<T extends Pick<NeedRow, "deadline" | "since" | "kind">>(rows: T[]): T[] {
+const TIER: Record<NeedRow["kind"], number> = { vote: 0, lock: 1, enter: 1, yep: 2, finish: 2, game: 1 };
+/** A game row sorts as its most pressing question would (4.7). */
+const tierOf = (r: { kind: NeedRow["kind"]; pressing?: "vote" | "enter" | "lock" | "finish" }): number => (r.kind === "game" && r.pressing ? TIER[r.pressing] : TIER[r.kind]);
+export function orderNeeds<T extends Pick<NeedRow, "deadline" | "since" | "kind"> & { pressing?: "vote" | "enter" | "lock" | "finish" }>(rows: T[]): T[] {
   return [...rows].sort((a, b) => {
-    if (TIER[a.kind] !== TIER[b.kind]) return TIER[a.kind] - TIER[b.kind];
+    if (tierOf(a) !== tierOf(b)) return tierOf(a) - tierOf(b);
     const ad = a.deadline?.getTime() ?? Number.POSITIVE_INFINITY;
     const bd = b.deadline?.getTime() ?? Number.POSITIVE_INFINITY;
     if (ad !== bd) return ad - bd;
@@ -79,13 +88,13 @@ export function needFromMarket(m: Pick<MarketCardData, "dare" | "state" | "peopl
 
 export type PersonRow = { user: Person; token: { ownerId: string; denomination: DenominationRow; quantity: bigint } | null };
 
-/** A question in flight this person has already acted on: where it stands, and no action (docs/design.md 4.7). */
-export type RunningRow = { id: string; title: string; mark: MarkRef | null; ink: InkName; state: "in" | "locked" | "voting"; caption: string };
+/** A question in flight this person has already acted on: where it stands, and no action (docs/design.md 4.7). A game with more than one is one row, its href the game page. */
+export type RunningRow = { id: string; title: string; mark: MarkRef | null; ink: InkName; state: "in" | "locked" | "voting"; caption: string; game?: { away: TeamFace; home: TeamFace; href: string } | null };
 
 export type HomeData = {
   needs: NeedRow[];
   running: RunningRow[];
-  happened: Array<{ kind: "market"; at: Date; market: MarketCardData } | { kind: "cover"; at: Date; obligation: typeof schema.obligations.$inferSelect; denomination: DenominationRow; from: Person; to: Person; groupLabel: string | null } | { kind: "closed"; at: Date; obligation: typeof schema.obligations.$inferSelect; denomination: DenominationRow; from: Person; to: Person; groupLabel: string | null; state: "settled" | "forgiven" }>;
+  happened: Array<{ kind: "market"; at: Date; market: MarketCardData } | { kind: "game"; at: Date; href: string; name: string; away: TeamFace; home: TeamFace; /** "Final: Bills 24, Chiefs 17", or how many questions when the score is not in. */ meta: string; state: "resolved" | "voided" | "expired" } | { kind: "cover"; at: Date; obligation: typeof schema.obligations.$inferSelect; denomination: DenominationRow; from: Person; to: Person; groupLabel: string | null } | { kind: "closed"; at: Date; obligation: typeof schema.obligations.$inferSelect; denomination: DenominationRow; from: Person; to: Person; groupLabel: string | null; state: "settled" | "forgiven" }>;
   /** People with something open: a row each. */
   people: PersonRow[];
   /** Everyone who is square: one row, an avatar stack and a sentence, never a column of "nothing open". */
@@ -122,8 +131,76 @@ export function timeBound(rows: Array<Pick<NeedRow, "deadline">>): boolean {
 export type NowData = Pick<HomeData, "needs" | "running" | "happened" | "hasAnything">;
 export type PeopleData = Pick<HomeData, "people" | "square">;
 
+/**
+ * A game with more than one question in the same set of people is one row on Now (docs/design.md 4.7), in the
+ * section its most pressing question belongs to: needs you over running over just happened, and within needs
+ * you the tiers of `orderNeeds`. The row's subject is the game, its meta the pressing question's reason or
+ * clock and how many questions, and its verb the pressing question's. Pure, so the collapse has tests.
+ */
+export function collapseGames<N extends { kind: NeedRow["kind"]; key: string; context: string; deadline: Date | null; since: Date; href: string; verb: string; groupId: string } & Partial<QuestionLook>, R extends { id: string; caption: string; state: RunningRow["state"] }, O extends { dare: { id: string; groupId: string }; at: Date; state: string }>(
+  input: { needs: N[]; running: R[]; over: O[] },
+  games: Map<string, { gameId: string; name: string; away: TeamFace; home: TeamFace; score: string | null }>,
+): { needs: Array<N | Extract<NeedRow, { kind: "game" }>>; running: Array<R | RunningRow>; over: O[]; happened: Array<Extract<HomeData["happened"][number], { kind: "game" }>> } {
+  const groupOf = new Map<string, string>();
+  for (const n of input.needs) groupOf.set(n.key, n.groupId);
+  for (const o of input.over) groupOf.set(o.dare.id, o.dare.groupId);
+  const keyOf = (dareId: string, groupId: string | undefined) => {
+    const g = games.get(dareId);
+    return g && groupId ? `${g.gameId}:${groupId}` : null;
+  };
+  // Count each game's questions across the three lists, by set of people.
+  const counts = new Map<string, number>();
+  const bump = (k: string | null) => k && counts.set(k, (counts.get(k) ?? 0) + 1);
+  for (const n of input.needs) bump(keyOf(n.key, n.groupId));
+  for (const r of input.running) bump(keyOf(r.id, groupOf.get(r.id) ?? runningGroup.get(r.id)));
+  for (const o of input.over) bump(keyOf(o.dare.id, o.dare.groupId));
+  const collapsed = (k: string | null) => k !== null && (counts.get(k) ?? 0) > 1;
+  const seen = new Set<string>();
+  const needs: Array<N | Extract<NeedRow, { kind: "game" }>> = [];
+  for (const n of orderNeeds(input.needs)) {
+    const k = keyOf(n.key, n.groupId);
+    if (!collapsed(k)) {
+      needs.push(n);
+      continue;
+    }
+    if (seen.has(k as string)) continue;
+    seen.add(k as string);
+    const g = games.get(n.key)!;
+    needs.push({ kind: "game", key: k as string, href: `/on/${g.gameId}?g=${n.groupId}`, verb: n.verb, context: `${n.context} · ${counts.get(k as string)} questions`, subject: g.name, question: false, deadline: n.deadline, since: n.since, groupId: n.groupId, game: { away: g.away, home: g.home, questions: counts.get(k as string) ?? 0, questionHref: n.href, state: n.state ?? "open" }, pressing: n.kind === "vote" || n.kind === "lock" || n.kind === "finish" ? n.kind : "enter" });
+  }
+  const running: Array<R | RunningRow> = [];
+  for (const r of input.running) {
+    const groupId = groupOf.get(r.id) ?? runningGroup.get(r.id);
+    const k = keyOf(r.id, groupId);
+    if (!collapsed(k)) {
+      running.push(r);
+      continue;
+    }
+    if (seen.has(k as string)) continue;
+    seen.add(k as string);
+    const g = games.get(r.id)!;
+    running.push({ id: r.id, title: g.name, mark: null, ink: "clay", state: r.state, caption: `${r.caption} · ${counts.get(k as string)} questions`, game: { away: g.away, home: g.home, href: `/on/${g.gameId}?g=${groupId}` } });
+  }
+  const over: O[] = [];
+  const happened: Array<Extract<HomeData["happened"][number], { kind: "game" }>> = [];
+  for (const o of input.over) {
+    const k = keyOf(o.dare.id, o.dare.groupId);
+    if (!collapsed(k)) {
+      over.push(o);
+      continue;
+    }
+    if (seen.has(k as string)) continue;
+    seen.add(k as string);
+    const g = games.get(o.dare.id)!;
+    happened.push({ kind: "game", at: o.at, href: `/on/${g.gameId}?g=${o.dare.groupId}`, name: g.name, away: g.away, home: g.home, meta: g.score ? `Final: ${g.score}` : `${counts.get(k as string)} questions`, state: o.state === "voided" ? "voided" : o.state === "expired" ? "expired" : "resolved" });
+  }
+  return { needs, running, over, happened };
+}
+/** The set of people each running question belongs to, kept beside the rows since a running row does not carry it. */
+const runningGroup = new Map<string, string>();
+
 /** Every question this person can see, sorted into what needs them, what is running, and what is over. */
-async function questionsFor(me: { id: string }, opts: { now: Date; closes: (at: Date) => string }): Promise<{ needs: NeedRow[]; running: RunningRow[]; over: MarketCardData[] }> {
+async function questionsFor(me: { id: string }, opts: { now: Date; closes: (at: Date) => string }): Promise<{ needs: NeedRow[]; running: RunningRow[]; over: MarketCardData[]; gamesOver: Array<Extract<HomeData["happened"][number], { kind: "game" }>> }> {
   const [cards, myVotes] = await Promise.all([marketCards({ viewerId: me.id, limit: 40 }), db.select({ dareId: schema.dareVotes.dareId }).from(schema.dareVotes).where(eq(schema.dareVotes.userId, me.id))]);
   const voted = new Set(myVotes.map((v) => v.dareId));
   const needs: NeedRow[] = [];
@@ -132,10 +209,18 @@ async function questionsFor(me: { id: string }, opts: { now: Date; closes: (at: 
   for (const m of cards) {
     const n = needFromMarket(m, me.id, voted.has(m.dare.id), opts.now, opts.closes);
     if (n) needs.push({ ...n, groupId: m.dare.groupId } as NeedRow);
-    else if (m.state === "open" || m.state === "locked") running.push({ id: m.dare.id, title: m.dare.title, mark: markRefOf(m.dare), ink: m.ink, state: m.state === "locked" ? (m.votesCast > 0 ? "voting" : "locked") : "in", caption: runningCaption(m, opts.closes) });
-    else over.push(m);
+    else if (m.state === "open" || m.state === "locked") {
+      running.push({ id: m.dare.id, title: m.dare.title, mark: markRefOf(m.dare), ink: m.ink, state: m.state === "locked" ? (m.votesCast > 0 ? "voting" : "locked") : "in", caption: runningCaption(m, opts.closes) });
+      runningGroup.set(m.dare.id, m.dare.groupId);
+    } else over.push(m);
   }
-  return { needs, running, over };
+  // A game with more than one question in the same set is one row (4.7).
+  const fromGames = cards.filter((c) => c.dare.templateId);
+  const games = fromGames.length ? await gamesOfMarkets(fromGames.map((c) => c.dare.id)) : new Map();
+  const looks = new Map<string, { gameId: string; name: string; away: TeamFace; home: TeamFace; score: string | null }>();
+  for (const [dareId, { game }] of games) looks.set(dareId, { gameId: game.id, name: game.name, away: { abbr: game.awayAbbr, name: game.awayShort, color: game.awayColor }, home: { abbr: game.homeAbbr, name: game.homeShort, color: game.homeColor }, score: game.finalSeenAt && game.homeScore !== null && game.awayScore !== null ? scoreLine({ home: game.homeScore, away: game.awayScore }, game.homeShort, game.awayShort) : null });
+  const c = collapseGames({ needs, running, over }, looks);
+  return { needs: c.needs as NeedRow[], running: c.running, over: c.over, gamesOver: c.happened };
 }
 
 /** Whether the dot shows on Now. Worked out the same way on every root, from the questions alone. */
@@ -145,7 +230,7 @@ export async function liveFor(me: { id: string }, now: Date): Promise<boolean> {
 
 /** Now: what needs this person, what is running, and what just happened are all in the database; the one indexer read is for how the closed ones closed, and only when there are any. */
 export async function nowFor(me: { id: string; displayName: string }, opts: { now: Date; closes: (at: Date) => string }): Promise<NowData> {
-  const [{ needs, running, over }, pending, drafts, covers, closed] = await Promise.all([
+  const [{ needs, running, over, gamesOver }, pending, drafts, covers, closed] = await Promise.all([
     questionsFor(me, opts),
     pendingForDebtor(me.id),
     db.select().from(schema.dares).where(and(eq(schema.dares.creatorId, me.id), isNull(schema.dares.creatorSignature))).orderBy(desc(schema.dares.createdAt)).limit(6),
@@ -183,7 +268,7 @@ export async function nowFor(me: { id: string; displayName: string }, opts: { no
   }
   for (const d of drafts) needs.push({ kind: "finish", key: d.id, href: `/m/${d.id}`, verb: "Finish", context: "You never sent this one", subject: d.title, question: true, deadline: null, since: d.createdAt, groupId: d.groupId, ...lookOf(d, "draft") });
 
-  const happened: HomeData["happened"] = [];
+  const happened: HomeData["happened"] = [...gamesOver];
   for (const m of over) happened.push({ kind: "market", at: m.at, market: { ...m, groupName: labelOf.get(m.dare.groupId) ?? m.groupName } });
   for (const o of covers) {
     const denomination = denoms.get(o.denomId);

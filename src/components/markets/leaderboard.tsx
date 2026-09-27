@@ -3,6 +3,7 @@ import { ObligationToken } from "@/components/ledger/obligation-token";
 import type { DenominationRow } from "@/lib/ledger/denominations";
 import { gotSentence, possessive } from "@/lib/ui/copy";
 import { hueBar, hueFor, hueRing, hueVar } from "@/lib/ui/hue";
+import { saidLean } from "@/lib/ui/team";
 
 export type Standing = { userId: string; name: string; percent: number; score: number };
 export type Transfer = { fromId: string; toId: string; quantity: bigint };
@@ -19,7 +20,7 @@ export type NumberStanding = { userId: string; name: string; value: string; xPer
  * A number market's rows (3.7): "said 17" under the name and "off by 3" on the right; the gap bar runs on the
  * ruler's scale from their number to a 3px cream tick at the answer, and there is no 50% tick.
  */
-export function NumberLeaderboard({ standings, answer, viewerId }: { standings: NumberStanding[]; answer: { value: string; xPermille: number }; viewerId: string }) {
+export function NumberLeaderboard({ standings, answer, viewerId, said }: { standings: NumberStanding[]; answer: { value: string; xPermille: number }; viewerId: string; /** The words for a number: on a margin "Bills by 9" (3.40), else the number itself. */ said?: (value: string) => string }) {
   const sorted = [...standings].sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
   const dense = sorted.length >= 9;
   const truth = answer.xPermille / 10;
@@ -44,7 +45,7 @@ export function NumberLeaderboard({ standings, answer, viewerId }: { standings: 
               <Avatar name={s.name} hue={hue} size={36} />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-body-strong text-ink">{you ? "You" : s.name}</p>
-                <p className="text-caption text-ink-3">said {s.value}</p>
+                <p className="text-caption text-ink-3">said {said ? said(s.value) : s.value}</p>
               </div>
               <span className="text-numeral-sm text-ink-2">{off === 0n ? "dead on" : `off by ${off.toLocaleString("en-US")}`}</span>
             </div>
@@ -60,7 +61,7 @@ export function NumberLeaderboard({ standings, answer, viewerId }: { standings: 
   );
 }
 
-export function Leaderboard({ standings, outcome, viewerId }: { standings: Standing[]; outcome: 0 | 1; viewerId: string }) {
+export function Leaderboard({ standings, outcome, viewerId, ends }: { standings: Standing[]; outcome: 0 | 1; viewerId: string; /** Between two teams (3.40): "said Bills 70%", and a lean the other way reads "said Chiefs 55%". */ ends?: { away: string; home: string } | null }) {
   const truth = outcome * 100;
   const sorted = [...standings].sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
   const dense = sorted.length >= 9;
@@ -85,7 +86,7 @@ export function Leaderboard({ standings, outcome, viewerId }: { standings: Stand
               <Avatar name={s.name} hue={hue} size={36} />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-body-strong text-ink">{you ? "You" : s.name}</p>
-                <p className="text-caption text-ink-3">said {s.percent}%</p>
+                <p className="text-caption text-ink-3">{ends ? saidLean(s.percent, ends.away, ends.home) : `said ${s.percent}%`}</p>
               </div>
               <span className="text-numeral-sm text-ink-2">{off === 0 ? "dead on" : `off by ${off}`}</span>
             </div>

@@ -72,7 +72,7 @@ test("the caption says in words what the picture says in shapes, and names the o
   assert.equal(say(fence), "Height is how much is riding on each number, not how many people picked it. John has $50 on 20%, more than half of what’s riding, which is why the group’s number sits at 45%.");
   assert.match(say(fence, "john"), /You have \$50 on 2/);
   assert.match(say(fence.slice(0, 1)), /^You’re first in\./);
-  assert.match(say(fence.slice(0, 3)), /^No spread at all\./);
+  assert.match(say(fence.slice(0, 3)), /^Everyone on one number\./);
 });
 
 test("nothing said about the group's number borrows a word from finance", () => {

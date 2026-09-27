@@ -17,7 +17,7 @@ export function rulerFor(m: Pick<MarketCardData, "people" | "unit" | "answer">):
   const r = ruler(pins.map((p) => ({ id: p.id, value: BigInt(p.number) })), m.answer === null ? null : BigInt(m.answer), m.unit);
   if (!r) return null;
   const nameOf = new Map(pins.map((p) => [p.id, p.name]));
-  return { leftLabel: r.leftLabel, rightLabel: r.rightLabel, pins: r.pins.map((p) => ({ id: p.id, name: nameOf.get(p.id) ?? "Someone", value: p.value.toLocaleString("en-US"), xPermille: p.xPermille, off: p.off })), answer: r.answer ? { value: r.answer.value.toString(), xPermille: r.answer.xPermille } : null };
+  return { leftLabel: r.leftLabel, rightLabel: r.rightLabel, midLabel: r.midLabel ?? null, answerLabel: r.answer && m.unit.margin ? unitPhrase(r.answer.value, m.unit) : null, pins: r.pins.map((p) => ({ id: p.id, name: nameOf.get(p.id) ?? "Someone", value: m.unit?.margin ? unitPhrase(p.value, m.unit) : p.value.toLocaleString("en-US"), xPermille: p.xPermille, off: p.off })), answer: r.answer ? { value: r.answer.value.toString(), xPermille: r.answer.xPermille } : null };
 }
 
 /** A pick-one question's rows for a card (3.25): the answers with whoever picked each, where picks may be shown; the viewer reads as "You". */
