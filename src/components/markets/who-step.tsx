@@ -38,7 +38,7 @@ export function WhoStep({ sets, people, who, onWho, argument = false }: { sets: 
     <>
       <div className="flex flex-col gap-2">
         <h1 className="text-body-strong text-ink">{argument ? "Who’s on the other side?" : "Who’s in?"}</h1>
-        <p className="text-body-sm text-ink-2">{argument ? "An argument is between two of you. Anyone else in the set can watch, and helps call it." : "Everyone you pick hears about it. Nobody needs an account to look."}</p>
+        <p className="text-body-sm text-ink-2">{argument ? "An argument is between two of you. Anyone else in the set can watch, and helps call it." : "Everyone you pick gets the link. Nobody needs an account to look."}</p>
       </div>
       <div role="group" aria-label="Who's in" className="flex flex-col gap-2">
         {sets.map((s) => {
@@ -80,7 +80,7 @@ export function WhoStep({ sets, people, who, onWho, argument = false }: { sets: 
                     Second time with these {COUNT[s.size] ?? "few"}. Want to call them something?
                   </label>
                   <div className="flex gap-2">
-                    <input id={`name-${s.groupId}`} value={newName} onChange={(e) => setNewName(e.target.value)} maxLength={40} placeholder="Friday crew" className="h-12 min-w-0 flex-1 rounded-button border border-line bg-ground px-4 text-body text-ink placeholder:text-ink-3" />
+                    <input id={`name-${s.groupId}`} value={newName} onChange={(e) => setNewName(e.target.value)} maxLength={40} className="h-12 min-w-0 flex-1 rounded-button border border-line bg-ground px-4 text-body text-ink placeholder:text-ink-3" />
                     <Button type="submit" variant="secondary" loading={namingBusy}>
                       Save
                     </Button>

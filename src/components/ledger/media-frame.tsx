@@ -7,6 +7,7 @@ import type { Hue } from "@/lib/ui/hue";
 import { cn } from "@/lib/utils";
 import { Avatar } from "./avatar";
 import { PhotoView } from "./photo-view";
+import { usePhotoAdding } from "@/components/markets/photo-adding";
 
 export type FrameItem = { id: string; author: { name: string; hue: Hue }; /** Whether the viewer added it as a memory, so its full-screen view offers "Remove" (3.8). */ removable?: boolean };
 
@@ -24,7 +25,7 @@ export type FrameItem = { id: string; author: { name: string; hue: Hue }; /** Wh
  * is still shown, and a tap on the card goes to the story. Interactive, a tap on the photo opens it full screen
  * (3.8, 3.39), with "Save to your phone" and, for whoever added a memory, "Remove".
  */
-export function MediaFrame({ items, height, interactive = true, inset = false, className }: { items: FrameItem[]; height: 180 | 200 | 240 | 260; interactive?: boolean; /** 12px from the screen's edges, radius 12 (3.8); otherwise edge to edge inside a card. */ inset?: boolean; className?: string }) {
+export function MediaFrame({ items, height, interactive = true, inset = false, add = null, caption = null, className }: { items: FrameItem[]; height: 180 | 200 | 240 | 260; interactive?: boolean; /** 12px from the screen's edges, radius 12 (3.8); otherwise edge to edge inside a card. */ inset?: boolean; /** The add tile at the end of the strip (3.8), for someone who can add: its name says the night. Never pushed off the row: three squares and "+N" before it. */ add?: { night: string } | null; /** One caption under the strip (3.39: "Everyone sees these once it's over."). */ caption?: string | null; className?: string }) {
   const [current, setCurrent] = useState(0);
   const [showAll, setShowAll] = useState(false);
   const [state, setState] = useState<Record<string, "loading" | "ok" | "failed">>({});
@@ -34,7 +35,7 @@ export function MediaFrame({ items, height, interactive = true, inset = false, c
   const shown = items[Math.min(current, items.length - 1)] ?? items[0];
   if (!shown) return null;
   const rest = items.filter((i) => i.id !== shown.id);
-  const { squares, more } = showAll ? { squares: rest, more: 0 } : strip(rest);
+  const { squares, more } = showAll ? { squares: rest, more: 0 } : strip(rest, add ? 3 : 4);
   const src = (id: string) => `/api/media/${id}${tries[id] ? `&try=${tries[id]}` : ""}`.replace("&try", "?try");
   const s = state[shown.id] ?? "loading";
   return (
@@ -87,7 +88,7 @@ export function MediaFrame({ items, height, interactive = true, inset = false, c
         </figcaption>
       </div>
       {viewing ? <PhotoView items={items.map((item, i) => ({ id: item.id, alt: `Photo ${i + 1} of ${items.length}, added by ${firstName(item.author.name)}`, removable: item.removable === true }))} index={Math.min(current, items.length - 1)} onClose={() => setViewing(false)} /> : null}
-      {rest.length > 0 ? (
+      {rest.length > 0 || add ? (
         <div className={cn("flex gap-[6px] overflow-x-auto [scrollbar-width:none]", inset && "px-0")} role={interactive ? "group" : undefined} aria-label={interactive ? "The rest of the photos" : undefined}>
           {squares.map((item) => {
             const index = items.findIndex((i) => i.id === item.id);
@@ -114,8 +115,31 @@ export function MediaFrame({ items, height, interactive = true, inset = false, c
               <span className="flex h-[60px] w-[60px] shrink-0 items-center justify-center rounded-button bg-surface-2 text-label text-ink">+{more}</span>
             )
           ) : null}
+          {add ? <AddTile night={add.night} /> : null}
         </div>
       ) : null}
+      {caption ? <figcaption className="text-caption text-ink-3">{caption}</figcaption> : null}
     </figure>
+  );
+}
+
+/**
+ * The add tile (3.8): a 60px square at the end of the strip, a 1.5px dashed border and no fill, a 22px plus in
+ * ink, named for the night ("Add photos from Friday"). It opens the same picker as the empty slot: the library
+ * once the market has ended, the camera while it is open (3.39). While photos are going up it carries the runner.
+ */
+function AddTile({ night }: { night: string }) {
+  const { pick, pending } = usePhotoAdding();
+  return (
+    <button type="button" onClick={pick} aria-label={`Add photos from ${night}`} aria-busy={pending > 0 || undefined} data-add-tile="" className="relative flex h-[60px] w-[60px] shrink-0 items-center justify-center overflow-hidden rounded-button border-[1.5px] border-dashed border-line-strong text-ink aria-busy:opacity-[0.88]">
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+        <path d="M12 5v14M5 12h14" />
+      </svg>
+      {pending > 0 ? (
+        <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] overflow-hidden bg-surface-2">
+          <span className="absolute inset-y-0 w-1/3 animate-[button-runner_1.2s_linear_infinite] bg-ink" />
+        </span>
+      ) : null}
+    </button>
   );
 }

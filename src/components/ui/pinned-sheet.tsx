@@ -114,6 +114,8 @@ export function PinnedSheet({
             tapped.current = true;
             setRaised(!isRaised);
           }
+          // A touch on the header row raises a lowered sheet (3.30: the pick-one bar); lowering is the grabber's or a swipe's.
+          else if (wasDrag && Math.abs(moved) < 4 && !isRaised) setRaised(true);
           onGrabber.current = false;
         },
         onPointerCancel: () => {
@@ -128,7 +130,7 @@ export function PinnedSheet({
     <>
       <section
         aria-label={label}
-        className="fixed inset-x-0 bottom-0 z-30 flex justify-center"
+        className="fixed inset-x-0 bottom-[var(--viewport-gap)] z-30 flex justify-center"
       >
         <div
           ref={panel}

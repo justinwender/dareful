@@ -9,6 +9,7 @@ import { SignedOut } from "@/components/home/signed-out";
 import { nowFor, timeBound } from "@/lib/ledger/home";
 import { closesLabel, todayLabel } from "@/lib/ui/copy";
 import { TabBar } from "@/components/ui/tab-bar";
+import { ViewportProbe } from "@/components/ui/viewport-probe";
 import { SuggestedGhost } from "@/components/ledger/suggested-ghost";
 import { currentUser } from "@/lib/auth/session";
 import { boundPendingForDebtor, suggestedGhostsFor } from "@/lib/ledger/claims";
@@ -63,6 +64,8 @@ export default async function Now({ searchParams }: { searchParams: Promise<{ al
         <Running rows={home.running} viewerId={user.id} />
 
         <JustHappened rows={home.happened} viewerId={user.id} clock={clock} />
+        {/* An instrument for the installed app's tab bar (docs/testing.md session 21), here as well as on You so a page with the band can be read beside one without; it leaves with the cause. */}
+        <ViewportProbe />
       </div>
       <TabBar active="/" live={timeBound(home.needs)} start />
     </Screen>

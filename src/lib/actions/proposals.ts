@@ -105,14 +105,14 @@ export async function proposeCoverAction(input: ProposeInput): Promise<{ error: 
   redirect(d.who.kind === "new" ? `/o/${made.id}` : pathFor(debtor));
 }
 
-export async function confirmProposalAction(proposalId: string, signature: string): Promise<{ ok: true; txHash: string } | { error: string }> {
+export async function confirmProposalAction(proposalId: string, signature: string): Promise<{ ok: true; txHash: string; /** Sent and still going through (docs/design.md 5.2): the screen moves on, and the thing shows on its way. */ pending?: true } | { error: string }> {
   const user = await requireUser();
   if (!isHex(signature)) return { error: "That didn't come through. Try again." };
   try {
     const result = await confirmProposal(proposalId, user.id, signature);
     return { ok: true, txHash: result.txHash };
   } catch (err) {
-    if (err instanceof SendPending) return { error: pendingCopy(err) };
+    if (err instanceof SendPending) return err.kind === "register" ? { error: pendingCopy(err) } : { ok: true, txHash: err.hash, pending: true };
     if (err instanceof ConfirmError) return { error: err.message };
     return { error: "That didn't go through. Try again." };
   }
@@ -121,7 +121,7 @@ export async function confirmProposalAction(proposalId: string, signature: strin
 const Batch = z.array(z.string().uuid()).min(1).max(CONFIRM_MANY_MAX);
 
 /** Confirm-all: one prompt for the batch. The ids arrive in the order they were signed in. */
-export async function confirmManyAction(proposalIds: string[], signature: string): Promise<{ ok: true; txHash: string; count: number } | { error: string }> {
+export async function confirmManyAction(proposalIds: string[], signature: string): Promise<{ ok: true; txHash: string; count: number; pending?: true } | { error: string }> {
   const user = await requireUser();
   const ids = Batch.safeParse(proposalIds);
   if (!ids.success || !isHex(signature)) return { error: "That didn't come through. Try again." };
@@ -129,7 +129,7 @@ export async function confirmManyAction(proposalIds: string[], signature: string
     const result = await confirmManyProposals(ids.data, user.id, signature);
     return { ok: true, txHash: result.txHash, count: result.obligationIds.length };
   } catch (err) {
-    if (err instanceof SendPending) return { error: pendingCopy(err) };
+    if (err instanceof SendPending) return err.kind === "register" ? { error: pendingCopy(err) } : { ok: true, txHash: err.hash, count: ids.data.length, pending: true };
     if (err instanceof ConfirmError) return { error: err.message };
     return { error: "That didn't go through. Try again." };
   }

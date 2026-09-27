@@ -62,7 +62,7 @@ export default async function WelcomePage() {
         <div className="flex flex-col gap-3">
           <h1 className="text-serif-xl text-ink">{rows.length === 1 ? "Someone got one for you." : "Your friends kept track."}</h1>
           <p className="text-body text-ink-2">
-            {rows.length === 1 ? "Here’s what was waiting." : `Here’s what was waiting: ${rows.length} of them.`} Say yes to what’s right. Tap any one to answer it on its own.
+            {rows.length === 1 ? "Here’s what was waiting." : `Here’s what was waiting: ${rows.length} of them.`}
           </p>
         </div>
         <ConfirmAll payload={payload} />

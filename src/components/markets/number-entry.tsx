@@ -129,7 +129,6 @@ export function NumberEntry({ value, onChange, unit, hue, disabled = false, head
         </div>
         {stepper(1n)}
       </div>
-      <p className="text-[13px] leading-[18px] text-ink-3">Any whole number. Tap it to type.</p>
     </div>
   );
 }

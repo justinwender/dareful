@@ -31,6 +31,8 @@ export type CoveredCardProps = {
   pendingHint?: string;
   /** The settlement photo (Principle 6), as the 84px thumbnail a covered card carries (3.4); the full frame behind it. */
   photo?: { thumb: string; full: string };
+  /** The last tap on it (the yep, the close) is sent and still going through (docs/design.md 5.2): the on-its-way mark in place of the state's, and "on its way" after the words. */
+  onWay?: boolean;
 };
 
 /**
@@ -49,12 +51,13 @@ export function CoveredCard(p: CoveredCardProps) {
   const consequence = gotSentence(p.debtor, p.creditor, p.viewerId);
   // The obligation's state is its mark (docs/design.md 3.23): proposed, open in the owner's hue, settled, forgiven.
   const mark = p.state === "pending" ? ("proposed" as const) : p.state === "settled" ? ("settled" as const) : p.state === "forgiven" ? ("forgiven" as const) : ("owed" as const);
+  const onWayLine = p.onWay ? `${p.state === "pending" ? "Yep" : p.state === "forgiven" ? "Called it even" : "Settled"} · on its way` : null;
 
   const body = (
     <article className="flex flex-col gap-2 rounded-card border border-line bg-surface px-4 py-3.5">
       <div className="flex items-center justify-between gap-2">
         <span className="inline-flex items-center gap-2 text-label text-ink-2">
-          <StateMark state={mark} hue={mark === "owed" ? (p.debtor.ghost ? "stone" : hueFor(p.debtor.id)) : undefined} />
+          <StateMark state={p.onWay ? "onway" : mark} hue={!p.onWay && mark === "owed" ? (p.debtor.ghost ? "stone" : hueFor(p.debtor.id)) : undefined} />
           <CoveredGlyph size={16} />
           Covered
         </span>
@@ -72,7 +75,7 @@ export function CoveredCard(p: CoveredCardProps) {
         ) : null}
       </div>
       <div className="mt-1 flex items-center justify-between gap-3 border-t border-line pt-3">
-        <span className="text-body-sm text-ink-2">{p.state === "pending" && p.debtor.id === p.viewerId ? (p.pendingHint ?? "Tap to confirm") : consequence}</span>
+        <span className="text-body-sm text-ink-2">{onWayLine ?? (p.state === "pending" && p.debtor.id === p.viewerId ? (p.pendingHint ?? "Tap to confirm") : consequence)}</span>
         <ObligationToken
           owner={{ id: p.debtor.id, displayName: p.debtor.displayName, hue: p.debtor.ghost ? "stone" : hueFor(p.debtor.id), ghost: p.debtor.ghost }}
           other={p.creditor}

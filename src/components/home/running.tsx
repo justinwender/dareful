@@ -3,7 +3,7 @@ import { MarkRefStamp } from "@/components/ledger/mark-stamp";
 import { StateMark } from "@/components/ledger/state-mark";
 import { TeamPair } from "@/components/ledger/team-stamp";
 import { LinkPending } from "@/components/ui/link-pending";
-import type { RunningRow } from "@/lib/ledger/home";
+import { ON_WAY, type RunningRow } from "@/lib/ledger/home";
 import { hueFor } from "@/lib/ui/hue";
 
 /**
@@ -26,8 +26,9 @@ export function Running({ rows, viewerId }: { rows: RunningRow[]; viewerId: stri
               {/* A game is a subject, not a question (4.7): body 600 where a question takes the serif. */}
               <span className={r.game ? "text-body-strong text-ink" : "text-serif-m text-ink"}>{r.title}</span>
               <span className="flex items-center gap-2 text-caption text-ink-3">
-                <StateMark state={r.state} hue={r.state === "in" ? hueFor(viewerId) : undefined} />
-                <span className="truncate">{r.caption}</span>
+                {/* While the last tap on it is still going through, the on-its-way mark stands in for the state mark (3.15, 5.2). */}
+                <StateMark state={r.onWay ? "onway" : r.state} hue={!r.onWay && r.state === "in" ? hueFor(viewerId) : undefined} />
+                <span className="truncate">{r.onWay ? `${ON_WAY} · ${r.caption}` : r.caption}</span>
               </span>
             </span>
           </Link>

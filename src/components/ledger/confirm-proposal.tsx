@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { ledgerTypes } from "@/lib/chain/typed-data";
 import { confirmProposalAction, declineProposalAction } from "@/lib/actions/proposals";
 import { ProblemSummary } from "@/components/ledger/problem";
+import { StateMark } from "@/components/ledger/state-mark";
 
 export type ConfirmPayload = {
   proposalId: string;
@@ -62,7 +63,12 @@ export function ConfirmProposal({ payload, again }: { payload: ConfirmPayload; /
 
   return (
     <div className="flex flex-col gap-3">
-      {again ? <p className="text-body-sm text-ink-2">{again}</p> : null}
+      {again ? (
+        <p className="flex items-center gap-2 text-caption text-ink-3" data-confirm-again="">
+          <StateMark state="failed" />
+          <span>{again}</span>
+        </p>
+      ) : null}
       {error ? (
         <ProblemSummary messages={[error]} />
       ) : null}

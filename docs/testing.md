@@ -750,6 +750,31 @@ The owner's check as the brief states it: a market link opened on a real phone i
 
 The notification tap on iOS (55), the keyboard staying on a new answer (56), the band under the tab bar as an iOS 26.0 bug with 26.1 the fix (57), what fails on the unfolded Fold (58), lifting a subject in the installed app (59), and the judges' test account on the console (60).
 
+## Session 21: the eleventh design session's looks, in the real localhost session
+
+**When:** September 27, 2026, after the bugs round was committed. **Who:** the localhost test account against the other test account ("Claude Code"); nobody on a phone. **Checked first:** the four roots compared for the band (docs/decisions.md 2026-09-27, "The band under the tab bar is not the 26.0 bug"), the eleventh session's files swapped in, and the design's items read with their boards' cut list.
+
+### Exercised
+
+- **A market you asked, alone in it:** no sheet once in; the who's-in row with "Just you so far", share as the chalk circle, copy and the code to scan; the code sheet with the question, the 216px code and the six characters ("C 6 Q U 7 3"), closed with Escape; the photo slot last on the screen under the details, with "Everyone sees these once it's over."; the entry line and the weight line above the row.
+- **Copy:** the first tap did nothing visible, because the development browser refuses a clipboard write to a page without focus and the fallback (`prompt()`) threw where the browser does not support it. Fixed to a read-only field of the link under the row; the second tap showed the field with the link. On a phone the write succeeds and the glyph becomes a check (item 62).
+- **A draft:** the band with the dashed edge, "Not sent yet" after the dotted ring, "For Claude and you" after the people glyph, the entry's own sheet, and no paragraph.
+- **A settled question:** the outcome, the empty slot, the call line, the who's-in row with share and copy (no code, since it ended), closest first; no sheet anywhere, and "Send how it ended" gone.
+- **"I got this one" on a person's page:** the chalk at rest; raised, the units (Beer, Round, Coffee, Next time, $, Something else), "$" selected with "How much" and the amount field, then Beer with "How many" reading "1 beer", the token "Claude Code's got you a beer" on the selected row, "Nobody's paying it back" under it, and the primary "I got Claude a beer"; logged, the page re-read with the sheet lowered and the new "Covered" card in today with the proposed token. That cover is real and waits for the other account's yep.
+- **The join screen:** "Got a code?", six boxes, the one caption, "Got a link instead?" with "Paste a link", Join in the sheet.
+- **The named subject:** "Will Nova refuse to come inside when it rains this week" in careful mode brought "Who's Nova?" from a real model call; "A pet" brought three pet questions under the line "Nova is a pet" with Change; Change reopened the three choices, and "A person" brought three different questions (nothing survived the rewrite, so nothing was kept); the flow was left there, unsaved.
+- **Now:** the Start button is a link to the question step named "Ask something"; "Measure the screen" at the bottom; the tab bar pinned at `--viewport-gap`, which is zero here.
+
+### What broke
+
+- The copy fallback, above.
+- The cover sheet's token showed "$0.01" with "$" chosen and no amount typed; it now shows "The amount, once typed" until there is one.
+- Three http expectations were the old design's (the caption before you're in, the Start button's name, the photos' place measured against the streamed payload rather than the text).
+
+### What needs a phone
+
+The band with the probe on both roots (61), the icons and the code sheet (62), photos while open (63), the pick-one sheet's bar (65), "I got this one" on the phone (66), the two marks (67, 68), the heads-up (69) and the named subject (70). The heads-up cannot be seen in the development browser: its permission is refused there, and the sheet asks nothing where a push is impossible.
+
 ## The final test: one checklist
 
 Everything from sessions 11 through 15 that needs a phone, a second person or a real game, in one place, grouped by what it needs, so the final pass on real phones is one document to walk through. Each item says exactly what to check; the session it came from has the detail. Tick them in order within a group; the two-phone items want both phones signed in to two accounts that share a set.
@@ -827,3 +852,13 @@ Everything from sessions 11 through 15 that needs a phone, a second person or a 
 58. **The unfolded Fold** (20): open Now, a question and the ask flow on the inner screen; say which screen fails and what is on it (a screenshot), since two Fold-sized viewports here rendered as a phone does.
 59. **Lifting a subject in the installed app** (20): long-press a photo in a question's frame; expect either the iOS callout with "Copy Subject", or nothing, and say which. The sticker entry point waits for the answer.
 60. **A judge's account** (20): on the console's Test Accounts page, set the static code; sign in on a phone with an email of the form name+dynamic_test@yourdomain and that code; expect the name question and two wallets as any account gets, then the ordinary app.
+61. **The band on People and You** (21): cold start the installed app, open You and tap "Measure the screen", then Now and the same; send both readings. Expect the bar at the very bottom on all four roots. If "100svh / 100lvh / 100dvh" reads the screen's height for lvh and the window's for dvh, the gap applied is their difference and the bar is where the fix put it; if lvh reads the window's height too, the fix is a no-op and the readings decide the next one.
+62. **Sharing in one place** (21): on a question you are in, the three icons at the end of the who's-in row; share opens the phone's share sheet with the question and the link; copy turns to a check for a moment; the code opens the sheet with the mark in the middle of the code and the six characters, and a second phone's camera opens the link page from it.
+63. **Photos while it is open** (21): the slot last on the screen opens the camera itself; the photo lands in the frame with the add tile and the caption; the other participant sees their own slot and nothing of yours; once it ends, your photo joins the frame for everyone.
+64. **The cuts** (21): read the draft, the ask flow, joining, first run, What's on and a game's start for any sentence the cut list removed; expect none, and no example inside any field.
+65. **The pick-one sheet** (21): on a pick-one question you are not in, the sheet opens raised with the answers; swipe it down to the bar ("Pick one" and "3 answers"), touch the bar to raise it, pick one, lower it again and expect your pick's name and a check on the bar with nothing lost.
+66. **"I got this one" on a phone** (21): on a person's page, the chalk at the foot; raised, the units, how many, the two rows with the token, the primary in words; log one and expect the card in today and the other phone's yep row.
+67. **On its way** (21): with the network slow, settle a cover you are owed; expect the card to wear the on-its-way mark with "Settled · on its way" and Now to carry it in Just happened with the mark, then the ordinary card within a minute of the tick, and never a sentence about it.
+68. **Didn't go through** (21): when a told send is dropped, expect the row on Now with the didn't-go-through mark, "Didn't go through" and "Try again", and the same line above the card on the person view; tapping Try again sends it again.
+69. **The heads-up** (21): on the installed app with notifications not yet decided, get into a question; about two seconds after the columns grow, expect "Want a heads-up?" with the two rows, "Turn on notifications" raising the phone's prompt and subscribing, or "No thanks"; then never again, on this phone or another.
+70. **The named subject on a phone** (21): careful mode with a bare name; expect "Who's Nova?" with three choices, then "Nova is a pet" with Change over the questions.

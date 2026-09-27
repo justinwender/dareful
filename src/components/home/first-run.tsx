@@ -10,8 +10,8 @@ import type { Hue } from "@/lib/ui/hue";
 const STARTERS = ["Does John fall asleep during the movie?", "Does anyone actually show up on time Friday?", "Who gets to the bar first?"];
 
 /**
- * Now, before anything (docs/design.md 3.14): the date, the serif-xl headline, one body line, the chalk "Ask
- * something", the compact code field, and three games from What's on as game rows under "Or start from something
+ * Now, before anything (docs/design.md 3.14): the date, the serif-xl headline, the chalk "Ask something", the
+ * compact code field (its six boxes, no line above them: the chalk and the boxes say it, 4.9), and three games from What's on as game rows under "Or start from something
  * everyone's watching", with a tertiary to the tab; the old starters return when nothing is listed. Start stays
  * hidden, because asking is already the chalk. One state of the root, in its own file so the type budget counts
  * it on its own (4.8): its serif 40 never sits beside the live screen's serif 17.
@@ -23,7 +23,6 @@ export function FirstRun({ today, games = [], viewerHue = "stone" }: { today: st
       <div className="flex flex-1 flex-col gap-7 py-6">
         <div className="flex flex-col gap-3">
           <h1 className="text-serif-xl text-ink">Nothing happens here until somebody else is in it.</h1>
-          <p className="text-body text-ink-2">Ask your group chat something, or join something one of them already asked.</p>
         </div>
         <div className="flex flex-col gap-3">
           <ButtonLink prefetch href="/m/new" variant="primary">

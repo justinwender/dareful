@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { TopBar } from "@/components/ledger/screen";
+import { ButtonLink } from "@/components/ui/button";
 import { AskForm } from "@/components/markets/ask-form";
 import { currentUser } from "@/lib/auth/session";
 import { denominationsForGroup } from "@/lib/ledger/denominations";
@@ -58,5 +59,5 @@ export default async function AskPage({ searchParams }: { searchParams: Promise<
   );
   // The form owns the screen (docs/design.md 3.29): a picked mark retints the band, the ground and the sheet, so the room is the form's to paint.
   const stickers = await stickersOf(me.id);
-  return <AskForm chrome={<TopBar back title={template ? "Ask your friends" : pace === "argument" ? "Settle an argument" : "Ask something"} />} me={{ id: me.id, name: me.displayName, hue: hueFor(me.id) }} sets={options} people={people.map((p) => ({ id: p.user.id, name: p.user.displayName, hue: hueFor(p.user.id) }))} initialLine={sp.line} initialPace={template ? "dare" : pace} stickers={stickers} canPaste={storageConfigured()} template={template} />;
+  return <AskForm chrome={<TopBar back title={template ? "Ask your friends" : pace === "argument" ? "Settle an argument" : "Ask something"} right={template ? undefined : <ButtonLink href="/join" variant="tertiary">Got a code?</ButtonLink>} />} me={{ id: me.id, name: me.displayName, hue: hueFor(me.id) }} sets={options} people={people.map((p) => ({ id: p.user.id, name: p.user.displayName, hue: hueFor(p.user.id) }))} initialLine={sp.line} initialPace={template ? "dare" : pace} stickers={stickers} canPaste={storageConfigured()} template={template} />;
 }

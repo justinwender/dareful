@@ -6,11 +6,13 @@ import { Button } from "@/components/ui/button";
 type Reading = Array<[string, string]>;
 
 /**
- * An instrument, not a feature (docs/testing.md, session 9): the numbers that decide why the tab bar sits high in
- * the installed app and nowhere else. Nothing here can run iOS, so the phone has to say what its viewport is:
- * the window's height against the screen's, the visual viewport, both safe-area insets as the browser resolves
- * them, whether the page is standalone, and where the tab bar's box actually ends. Behind a tertiary button on
- * You; to be removed once the cause is written down.
+ * An instrument, not a feature (docs/testing.md, sessions 9 and 21): the numbers that decide why the tab bar
+ * sits high in the installed app on some screens and not others. Nothing here can run iOS, so the phone has
+ * to say what its viewport is: the window's height against the screen's, the three viewport units the
+ * stylesheet's fix rests on (`--viewport-gap`, globals.css), whether this page scrolls at all, both safe-area
+ * insets as the browser resolves them, whether the page is standalone, and where the tab bar's box actually
+ * ends. On You and on Now, so a page with the band can be read beside one without; to be removed once the
+ * cause is written down.
  */
 export function ViewportProbe() {
   const [open, setOpen] = useState(false);
@@ -25,16 +27,39 @@ export function ViewportProbe() {
       const insetTop = parseFloat(getComputedStyle(probe).paddingTop);
       const probeBottom = probe.getBoundingClientRect().bottom;
       probe.remove();
+      // The three viewport heights, read the way the stylesheet reads them (a bare `vh` is the browser's own idea of the large one).
+      const unit = (height: string) => {
+        const el = document.createElement("div");
+        el.style.cssText = `position:fixed;left:0;top:0;width:1px;height:${height};visibility:hidden;pointer-events:none`;
+        document.body.appendChild(el);
+        const h = el.getBoundingClientRect().height;
+        el.remove();
+        return Math.round(h);
+      };
+      const svh = unit("100svh");
+      const lvh = unit("100lvh");
+      const dvh = unit("100dvh");
+      const gapEl = document.createElement("div");
+      gapEl.style.cssText = "position:fixed;left:0;top:0;width:1px;height:0;padding-top:var(--viewport-gap);visibility:hidden;pointer-events:none";
+      document.body.appendChild(gapEl);
+      const gap = parseFloat(getComputedStyle(gapEl).paddingTop);
+      gapEl.remove();
       const nav = document.querySelector('nav[aria-label="Main"]');
       const rect = nav?.getBoundingClientRect();
       const vv = window.visualViewport;
       const standalone = window.matchMedia("(display-mode: standalone)").matches;
       const ios = (navigator as Navigator & { standalone?: boolean }).standalone;
+      const doc = document.documentElement;
       setReading([
+        ["page", window.location.pathname],
         ["window inner", `${window.innerWidth} × ${window.innerHeight}`],
         ["window outer height", `${window.outerHeight}`],
         ["screen", `${screen.width} × ${screen.height} at ${window.devicePixelRatio}x`],
-        ["document client height", `${document.documentElement.clientHeight}`],
+        ["document client height", `${doc.clientHeight}`],
+        ["document scroll height", `${doc.scrollHeight}${doc.scrollHeight > doc.clientHeight ? " (scrolls)" : " (does not scroll)"}`],
+        ["html / body height", `${Math.round(doc.getBoundingClientRect().height)} / ${Math.round(document.body.getBoundingClientRect().height)}`],
+        ["100svh / 100lvh / 100dvh", `${svh} / ${lvh} / ${dvh}`],
+        ["viewport gap applied", `${Number.isNaN(gap) ? "none" : gap}`],
         ["visual viewport", vv ? `${Math.round(vv.width)} × ${Math.round(vv.height)}, top ${vv.offsetTop}, scale ${vv.scale}` : "none"],
         ["inset top / bottom", `${insetTop} / ${insetBottom}`],
         ["fixed bottom:0 lands at", `${Math.round(probeBottom)} of ${window.innerHeight}`],

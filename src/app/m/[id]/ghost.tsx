@@ -6,6 +6,7 @@ import { Screen, TopBar } from "@/components/ledger/screen";
 import { LiveDot, StateMark, type MarketMark } from "@/components/ledger/state-mark";
 import { When } from "@/components/ledger/when";
 import { MarketStage, type StagePicture } from "@/components/markets/market-stage";
+import { WhosInRow } from "@/components/markets/whos-in-row";
 import type { StakeUnit } from "@/components/markets/market-actions";
 import type { PickOneAnswer, PickOneBar } from "@/components/markets/pick-one-bars";
 import { PinnedSheet } from "@/components/ui/pinned-sheet";
@@ -106,6 +107,8 @@ export async function GhostMarketPage({ id, clock }: { id: string; clock: Awaite
   const howItWorks = d.pace === "argument" ? "Two sides. Whoever’s right has got the other." : pickAnswers ? "Everyone picks one. The right pick does best." : numberUnit ? "Everyone puts in a number. Closest does best." : "Everyone puts in their odds. Closest does best.";
   const unclear = decidedByFeed ? (firstDrive ? "The play-by-play settles it." : "The final score settles it.") : d.stalemate === "void" ? "It’s called off and nothing changes hands." : "Everyone says their piece and the tiebreaker everyone agreed to calls it.";
   const until = d.resolvesBy ? untilLabel(d.resolvesBy, now, clock.zone) : "until it closes";
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://dareful.app";
+  const stack = positions.map((p) => ({ name: firstName(person.get(pidOf(p))?.displayName ?? "?"), hue: hueFor(pidOf(p)), ghost: person.get(pidOf(p))?.ghost === true }));
 
   const stage =
     state === "open" ? (
@@ -126,8 +129,6 @@ export async function GhostMarketPage({ id, clock }: { id: string; clock: Awaite
         argument={d.pace === "argument" ? { defaultPercent: positions[0] ? (positions[0].value >= 5000n ? 0 : 100) : 100, otherSays: positions[0] ? { name: first(pidOf(positions[0])), side: positions[0].value >= 5000n ? "yes" : "no" } : null } : null}
         lockedLine={null}
         changeUntil={until}
-        share={null}
-        lock={null}
         farOff={numberUnit && farOffThreshold(d) !== null ? { threshold: (farOffThreshold(d) as bigint).toString(), scale: d.rangeSource === "asker" && d.range !== null ? d.range.toString() : null } : null}
       />
     ) : state === "locked" ? (
@@ -158,11 +159,16 @@ export async function GhostMarketPage({ id, clock }: { id: string; clock: Awaite
               </span>
             </p>
           </section>
-          <section className="flex items-center gap-3" data-friends-in="">
-            {/* The avatars carry initials, and their accessible names are first names: the asker's is the only name on this screen (3.17). */}
-            {positions.length > 0 ? <AvatarStack people={positions.map((p) => ({ name: firstName(person.get(pidOf(p))?.displayName ?? "?"), hue: hueFor(pidOf(p)), ghost: person.get(pidOf(p))?.ghost === true }))} size={28} ring="var(--ground)" /> : null}
-            <p className="text-caption text-ink-2">{mine ? (positions.length === 1 ? "You’re the first one in" : `${friendsIn(positions.length - 1)}, and you`) : friendsIn(positions.length)}</p>
-          </section>
+          {mine ? (
+            // In (3.17, frame 6): the who's-in row with its icons. The code is the asker's to make, so share and copy alone here.
+            <WhosInRow people={stack} count={positions.length === 1 ? "Just you so far" : `${positions.length} of you in`} share={{ url: `${appUrl}/m/${d.id}`, title: d.title }} code={null} />
+          ) : (
+            <section className="flex items-center gap-3" data-friends-in="">
+              {/* The avatars carry initials, and their accessible names are first names: the asker's is the only name on this screen (3.17). */}
+              {positions.length > 0 ? <AvatarStack people={stack} size={28} ring="var(--ground)" /> : null}
+              <p className="text-caption text-ink-2">{friendsIn(positions.length)}</p>
+            </section>
+          )}
           <dl className="grid grid-cols-[96px_minmax(0,1fr)] gap-x-3 gap-y-2 rounded-card border border-line bg-surface px-4 py-[14px]">
             <dt className="text-label text-ink-3">Decided</dt>
             <dd className="text-body text-ink">
@@ -183,7 +189,6 @@ export async function GhostMarketPage({ id, clock }: { id: string; clock: Awaite
             <dd className="text-body text-ink">{unclear}</dd>
           </dl>
           <div className="flex flex-col items-start gap-2">
-            {mine ? <p className="text-body-sm text-ink-2">Sign in any time, with the number you gave or from this phone, and this stays yours.</p> : null}
             <SignInButton variant="tertiary" label={mine ? "Sign in" : "I have an account"} />
           </div>
         </div>

@@ -5,7 +5,7 @@ import { StateMark } from "@/components/ledger/state-mark";
 import { TeamPair } from "@/components/ledger/team-stamp";
 import { When } from "@/components/ledger/when";
 import { LinkPending } from "@/components/ui/link-pending";
-import type { HomeData } from "@/lib/ledger/home";
+import { ON_WAY, type HomeData } from "@/lib/ledger/home";
 import { unitPhrase } from "@/lib/ledger/number-axis";
 import { coveredSentence, gotSentence } from "@/lib/ui/copy";
 import { hueFor } from "@/lib/ui/hue";
@@ -68,6 +68,23 @@ export function JustHappened({ rows, viewerId, clock }: { rows: HomeData["happen
                 ) : (
                   <span />
                 )}
+              </Link>
+            );
+          }
+          if (e.kind === "onway") {
+            // A tap still going through (5.2): the person it is with, what it was, and the on-its-way mark; it becomes the ordinary row once it lands.
+            return (
+              <Link prefetch={false} key={`onway-${e.href}-${e.at.getTime()}`} href={e.href} data-onway="" className={`relative grid grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-[14px] ${divider}`}>
+                <LinkPending />
+                <Avatar name={e.owner.displayName} hue={hueFor(e.owner.id)} size={40} />
+                <span className="flex min-w-0 flex-col gap-1">
+                  <span className="text-body-strong text-ink">{e.subject}</span>
+                  <span className="flex items-center gap-2 text-caption text-ink-3">
+                    <StateMark state="onway" />
+                    <span className="truncate">{ON_WAY}</span>
+                  </span>
+                </span>
+                <span />
               </Link>
             );
           }

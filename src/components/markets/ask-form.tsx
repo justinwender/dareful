@@ -54,6 +54,8 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
   const [step, setStep] = useState<"question" | "declined" | "criterion" | "subject" | "careful" | "who" | "terms">(template ? "who" : "question");
   /** A named subject the model could not place (a person, a pet, a thing): asked in one tap before the three questions. */
   const [subjectAsk, setSubjectAsk] = useState<string | null>(null);
+  /** What the name turned out to be (3.44), shown collapsed on the careful step with Change. */
+  const [subjectKind, setSubjectKind] = useState<"person" | "pet" | "thing" | null>(null);
   // Two paces, one object (PLANNING.md 8a): something that will happen, or a claim to settle now.
   const [pace, setPace] = useState<"dare" | "argument">(initialPace);
   // Yes or no, a number, or pick one (docs/design.md 3.26, 3.29). Chosen before the write-up, since the terms say how the answer is counted.
@@ -252,14 +254,14 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
             )}
             <span className="flex min-w-0 flex-col">
               <span className="text-body-strong text-ink">{mark ? "Mark" : "Add a mark"}</span>
-              <span className="text-caption text-ink-2">{mark ? `${markName} · tap to change` : "Optional. It picks this market’s colour."}</span>
+              <span className="text-caption text-ink-2">{mark ? `${markName} · tap to change` : "Optional"}</span>
             </span>
           </button>
           <div className="flex flex-col gap-2">
             <label htmlFor="ask-line" className="text-label text-ink-2">
               {pace === "argument" ? "What you disagree about" : "Your question"}
             </label>
-            <textarea id="ask-line" rows={3} value={line} onChange={(e) => setLine(e.target.value)} maxLength={280} placeholder={pace === "argument" ? "The Holland Tunnel is longer than the Lincoln" : numeric ? "How many shirts can Gabe wear at once" : "John falls asleep during the movie"} aria-invalid={fieldProblem ? true : undefined} aria-describedby={fieldProblem ? "ask-line-problem" : undefined} className={cn("field-sizing-content resize-none bg-transparent text-serif-l text-ink placeholder:text-ink-3 outline-none", fieldProblem && "rounded-button px-2 " + FIELD_PROBLEM_CLASS)} />
+            <textarea id="ask-line" rows={3} value={line} onChange={(e) => setLine(e.target.value)} maxLength={280} aria-invalid={fieldProblem ? true : undefined} aria-describedby={fieldProblem ? "ask-line-problem" : undefined} className={cn("field-sizing-content resize-none bg-transparent text-serif-l text-ink placeholder:text-ink-3 outline-none", fieldProblem && "rounded-button px-2 " + FIELD_PROBLEM_CLASS)} />
             <Problem id="ask-line-problem" message={fieldProblem} />
           </div>
         </section>
@@ -321,7 +323,6 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
                     autoFocus={i === choices.length - 1 && addedAt === choices.length}
                     readOnly={c.userId !== null}
                     maxLength={MAX_ANSWER_LENGTH}
-                    placeholder={i === 0 ? "John" : i === 1 ? "Nobody" : "Another answer"}
                     aria-label={`Answer ${i + 1}`}
                     onChange={(e) => setChoices((cs) => cs.map((x, k) => (k === i ? { text: e.target.value, userId: null } : x)))}
                     className="h-full min-w-0 flex-1 bg-transparent text-body-strong text-ink placeholder:text-ink-3 outline-none"
@@ -496,8 +497,10 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
           writeUp();
           return setStep("who");
         }
+        setSubjectKind(kind);
+        // Changing the answer rewrites the questions; answers to questions that survive the rewrite are kept (3.44).
+        setAnswers((prev) => Object.fromEntries(q.questions.flatMap((text, i) => ((was) => (was >= 0 && was in prev ? [[i, prev[was] as boolean]] : []))(questions.indexOf(text)))));
         setQuestions(q.questions);
-        setAnswers({});
         setStep("careful");
       });
     return wrap(
@@ -535,6 +538,17 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
           <h1 className="text-body-strong text-ink">Three quick ones</h1>
           <p className="text-body-sm text-ink-2">Only you see these. Everyone else just sees the terms they turn into.</p>
         </div>
+        {subjectAsk && subjectKind ? (
+          // The named subject, answered (3.44): one line with the answer after it, and Change to reopen the three rows.
+          <div className="flex items-center justify-between gap-3 rounded-card border border-line bg-surface px-4 py-2" data-subject-answered="">
+            <p className="text-body-sm text-ink">
+              {subjectAsk} is <span className="text-ink-2">{subjectKind === "person" ? "a person" : subjectKind === "pet" ? "a pet" : "something else"}</span>
+            </p>
+            <Button variant="tertiary" onClick={() => setStep("subject")}>
+              Change
+            </Button>
+          </div>
+        ) : null}
         <ol className="flex flex-col gap-4">
           {questions.map((q, i) => (
             <li key={i} className="flex flex-col gap-2 rounded-card border border-line bg-surface px-4 py-3">

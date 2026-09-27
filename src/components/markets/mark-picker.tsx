@@ -189,12 +189,11 @@ export function MarkPicker({ open, onClose, value, onPick, hue, preview = true, 
         type="search"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="Search: moon, beer, dog"
+        placeholder="Search"
         aria-label="Search marks"
         autoComplete="off"
         className="h-11 w-full rounded-button bg-field px-4 text-[15px] leading-[20px] text-ink placeholder:text-ink-3"
       />
-      {hueless ? <p className="text-caption text-ink-2">Faces, people and grey marks don’t set a colour, so this market gets one of its own.</p> : null}
       {!query.trim() && (canPaste || mine.length > 0) ? (
         // Reserved for stickers (3.29), now in use (3.28): the paste cell first, then this person's stickers, newest first.
         <div className="flex flex-col gap-2" data-stickers="">

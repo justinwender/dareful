@@ -32,7 +32,6 @@ export default async function WhatsOnPage() {
     <Screen>
       <h1 className="pt-5 text-label text-ink-3">What’s on</h1>
       <div className="flex flex-col gap-7 py-4">
-        <p className="text-body-sm text-ink-2">Things everyone’s watching, to argue about with your friends. Whatever you pick stays between you.</p>
         {on.feed.failing ? <FeedFailed lastOk={on.feed.lastOkAt ? clockOf(on.feed.lastOkAt, clock.zone) : null} nothingSaved={nothing} /> : null}
         {nothing && !on.feed.failing ? (
           <div className="rounded-card border border-line bg-surface px-4 py-3.5">

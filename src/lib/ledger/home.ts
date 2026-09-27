@@ -15,7 +15,7 @@ import { obligationsById, openTouching } from "./envio";
 import { membersOfGroups, peopleForUser, setLabel } from "./groups";
 import { marketCards, type MarketCardData } from "./market-view";
 import { pendingForDebtor, type ProposalRow } from "./proposals";
-import { againRowsFor } from "./again";
+import { againRowsFor, onWayFor } from "./again";
 import { gamesOfMarkets } from "@/lib/sports";
 import { scoreLine } from "@/lib/sports/results";
 import type { TeamFace } from "@/lib/ui/team";
@@ -29,16 +29,18 @@ type QuestionLook = { mark: MarkRef | null; ink: InkName; state: "open" | "locke
 export type GameLook = { away: TeamFace; home: TeamFace; /** How many questions the game runs with these people. */ questions: number; /** The pressing question's screen, which the verb opens; the row itself opens the game page. */ questionHref: string; state: QuestionLook["state"] };
 
 export type NeedRow =
-  | ({ kind: "vote" | "enter" | "lock"; key: string; href: string; verb: string; context: string; subject: string; question: true; deadline: Date | null; since: Date; groupId: string } & QuestionLook)
-  | ({ kind: "finish"; key: string; href: string; verb: string; context: string; subject: string; question: true; deadline: null; since: Date; groupId: string } & QuestionLook)
-  | { kind: "yep"; key: string; href: string; verb: string; context: string; subject: string; question: false; deadline: null; since: Date; groupId: string; proposal: ProposalRow; creditor: Person; denomination: DenominationRow }
-  | { kind: "game"; key: string; href: string; verb: string; context: string; subject: string; question: false; deadline: Date | null; since: Date; groupId: string; game: GameLook; /** The pressing question's kind, which decides where the row sorts. */ pressing: "vote" | "enter" | "lock" | "finish" }
+  | ({ kind: "vote" | "enter" | "lock"; key: string; href: string; verb: string; context: string; subject: string; question: true; deadline: Date | null; since: Date; groupId: string; failed?: true } & QuestionLook)
+  | ({ kind: "finish"; key: string; href: string; verb: string; context: string; subject: string; question: true; deadline: null; since: Date; groupId: string; failed?: true } & QuestionLook)
+  | { kind: "yep"; key: string; href: string; verb: string; context: string; subject: string; question: false; deadline: null; since: Date; groupId: string; proposal: ProposalRow; creditor: Person; denomination: DenominationRow; /** The last tap on it was told it was on its way and never landed (5.2): the didn't-go-through mark, and "Try again". */ failed?: true }
+  | { kind: "game"; key: string; href: string; verb: string; context: string; subject: string; question: false; deadline: Date | null; since: Date; groupId: string; game: GameLook; /** The pressing question's kind, which decides where the row sorts. */ pressing: "vote" | "enter" | "lock" | "finish"; failed?: true }
   /** A send this person was told was on its way and that never landed (src/lib/ledger/again.ts): still theirs to do. */
-  | ({ kind: "again"; key: string; href: string; verb: string; context: string; subject: string; question: true; deadline: null; since: Date; groupId: string } & QuestionLook)
-  | { kind: "again"; key: string; href: string; verb: string; context: string; subject: string; question: false; deadline: null; since: Date; groupId: string };
+  | ({ kind: "again"; key: string; href: string; verb: string; context: string; subject: string; question: true; deadline: null; since: Date; groupId: string; failed: true } & QuestionLook)
+  | { kind: "again"; key: string; href: string; verb: string; context: string; subject: string; question: false; deadline: null; since: Date; groupId: string; failed: true };
 
-/** The reason line on a row for a send that was told and never landed. */
-export const AGAIN_CONTEXT = "Didn’t go through last time";
+/** The words beside the didn't-go-through mark on a row for a send that was told and never landed (3.15, 3.23). */
+export const AGAIN_CONTEXT = "Didn’t go through";
+/** The words before the state's own on a row whose last tap is still going through (3.15). */
+export const ON_WAY = "On its way";
 
 const lookOf = (d: { id: string; ink?: string | null; markKind?: string | null; markValue?: string | null }, state: QuestionLook["state"]): QuestionLook => ({ mark: markRefOf(d), ink: inkOf({ id: d.id, ink: d.ink ?? null }), state });
 
@@ -96,12 +98,12 @@ export function needFromMarket(m: Pick<MarketCardData, "dare" | "state" | "peopl
 export type PersonRow = { user: Person; token: { ownerId: string; denomination: DenominationRow; quantity: bigint } | null };
 
 /** A question in flight this person has already acted on: where it stands, and no action (docs/design.md 4.7). A game with more than one is one row, its href the game page. */
-export type RunningRow = { id: string; title: string; mark: MarkRef | null; ink: InkName; state: "in" | "locked" | "voting"; caption: string; game?: { away: TeamFace; home: TeamFace; href: string } | null };
+export type RunningRow = { id: string; title: string; mark: MarkRef | null; ink: InkName; state: "in" | "locked" | "voting"; caption: string; game?: { away: TeamFace; home: TeamFace; href: string } | null; /** This person's last tap on it (the lock, the vote that decided it) is still going through (3.15, 5.2): the on-its-way mark stands in for the state mark. */ onWay?: true };
 
 export type HomeData = {
   needs: NeedRow[];
   running: RunningRow[];
-  happened: Array<{ kind: "market"; at: Date; market: MarketCardData } | { kind: "game"; at: Date; href: string; name: string; away: TeamFace; home: TeamFace; /** "Final: Bills 24, Chiefs 17", or how many questions when the score is not in. */ meta: string; state: "resolved" | "voided" | "expired" } | { kind: "cover"; at: Date; obligation: typeof schema.obligations.$inferSelect; denomination: DenominationRow; from: Person; to: Person; groupLabel: string | null } | { kind: "closed"; at: Date; obligation: typeof schema.obligations.$inferSelect; denomination: DenominationRow; from: Person; to: Person; groupLabel: string | null; state: "settled" | "forgiven" }>;
+  happened: Array<{ kind: "market"; at: Date; market: MarketCardData } | { kind: "onway"; at: Date; href: string; subject: string; owner: Person } | { kind: "game"; at: Date; href: string; name: string; away: TeamFace; home: TeamFace; /** "Final: Bills 24, Chiefs 17", or how many questions when the score is not in. */ meta: string; state: "resolved" | "voided" | "expired" } | { kind: "cover"; at: Date; obligation: typeof schema.obligations.$inferSelect; denomination: DenominationRow; from: Person; to: Person; groupLabel: string | null } | { kind: "closed"; at: Date; obligation: typeof schema.obligations.$inferSelect; denomination: DenominationRow; from: Person; to: Person; groupLabel: string | null; state: "settled" | "forgiven" }>;
   /** People with something open: a row each. */
   people: PersonRow[];
   /** Everyone who is square: one row, an avatar stack and a sentence, never a column of "nothing open". */
@@ -237,7 +239,7 @@ export async function liveFor(me: { id: string }, now: Date): Promise<boolean> {
 
 /** Now: what needs this person, what is running, and what just happened are all in the database; the one indexer read is for how the closed ones closed, and only when there are any. */
 export async function nowFor(me: { id: string; displayName: string }, opts: { now: Date; closes: (at: Date) => string }): Promise<NowData> {
-  const [{ needs, running, over, gamesOver }, pending, drafts, covers, closed, again] = await Promise.all([
+  const [{ needs: needsAll, running, over, gamesOver }, pendingAll, drafts, covers, closed, again, onWay] = await Promise.all([
     questionsFor(me, opts),
     pendingForDebtor(me.id),
     db.select().from(schema.dares).where(and(eq(schema.dares.creatorId, me.id), isNull(schema.dares.creatorSignature))).orderBy(desc(schema.dares.createdAt)).limit(6),
@@ -255,14 +257,25 @@ export async function nowFor(me: { id: string; displayName: string }, opts: { no
       .orderBy(desc(schema.obligations.closedAt))
       .limit(8),
     againRowsFor(me.id, opts.now),
+    onWayFor(me.id, opts.now),
   ]);
-  // A lock this person was told was on its way and that never landed: the lock row says so, or a row of its own does.
-  for (const n of needs) if (n.kind === "lock" && again.locks.has(n.key)) n.context = AGAIN_CONTEXT;
+  // A tap still going through (5.2) has left Needs you: the asker's lock runs with the mark, and a yep is in Just happened.
+  const needs = needsAll.filter((n) => !(n.kind === "lock" && onWay.locks.has(n.key)));
+  for (const n of needsAll) if (n.kind === "lock" && onWay.locks.has(n.key)) running.unshift({ id: n.key, title: n.subject, mark: n.mark, ink: n.ink, state: "in", caption: n.context, onWay: true });
+  for (const r of running) if (onWay.resolves.has(r.id) || onWay.locks.has(r.id)) r.onWay = true;
+  const pending = pendingAll.filter((p) => !onWay.confirms.has(p.id));
+  // A lock this person was told was on its way and that never landed (5.2): the row wears the mark and "Try again".
+  for (const n of needs) {
+    if (n.kind === "lock" && again.locks.has(n.key)) {
+      n.context = AGAIN_CONTEXT;
+      n.verb = "Try again";
+      n.failed = true;
+    }
+  }
   for (const a of again.rows) {
     if (a.kind === "create" && needs.some((n) => n.kind === "lock" && n.key === a.dare?.id)) continue;
-    const verb = a.kind === "create" ? "Lock" : a.kind === "arbitrate" ? "Ask again" : "Try again";
-    if (a.dare) needs.push({ kind: "again", key: a.hash, href: a.href, verb, context: AGAIN_CONTEXT, subject: a.subject, question: true, deadline: null, since: a.at, groupId: a.groupId, ...lookOf(a.dare, a.dare.locked ? "locked" : "open") });
-    else needs.push({ kind: "again", key: a.hash, href: a.href, verb, context: AGAIN_CONTEXT, subject: a.subject, question: false, deadline: null, since: a.at, groupId: a.groupId });
+    if (a.dare) needs.push({ kind: "again", key: a.hash, href: a.href, verb: "Try again", context: AGAIN_CONTEXT, subject: a.subject, question: true, deadline: null, since: a.at, groupId: a.groupId, failed: true, ...lookOf(a.dare, a.dare.locked ? "locked" : "open") });
+    else needs.push({ kind: "again", key: a.hash, href: a.href, verb: "Try again", context: AGAIN_CONTEXT, subject: a.subject, question: false, deadline: null, since: a.at, groupId: a.groupId, failed: true });
   }
   // The label on an event says which set of people it came out of. It is a label, never a way in.
   const groupIds = Array.from(new Set([...over.map((m) => m.dare.groupId), ...covers.map((o) => o.groupId), ...closed.map((o) => o.groupId)]));
@@ -280,11 +293,14 @@ export async function nowFor(me: { id: string; displayName: string }, opts: { no
     const creditor = p.toUser ? userById.get(p.toUser) : undefined;
     const denomination = denoms.get(p.denomId);
     if (!creditor || !denomination) continue;
-    needs.push({ kind: "yep", key: p.id, href: `/o/${p.id}`, verb: "Yep", context: again.confirms.has(p.id) ? AGAIN_CONTEXT : p.memo ? `${creditor.displayName} got ${p.memo}` : `${creditor.displayName} got this one`, subject: `${creditor.displayName}'s got you`, question: false, deadline: null, since: p.createdAt, groupId: p.groupId, proposal: p, creditor, denomination });
+    const failed = again.confirms.has(p.id);
+    needs.push({ kind: "yep", key: p.id, href: `/o/${p.id}`, verb: failed ? "Try again" : "Yep", context: failed ? AGAIN_CONTEXT : p.memo ? `${creditor.displayName} got ${p.memo}` : `${creditor.displayName} got this one`, subject: `${creditor.displayName}'s got you`, question: false, deadline: null, since: p.createdAt, groupId: p.groupId, proposal: p, creditor, denomination, ...(failed ? { failed: true as const } : {}) });
   }
   for (const d of drafts) needs.push({ kind: "finish", key: d.id, href: `/m/${d.id}`, verb: "Finish", context: "You never sent this one", subject: d.title, question: true, deadline: null, since: d.createdAt, groupId: d.groupId, ...lookOf(d, "draft") });
 
   const happened: HomeData["happened"] = [...gamesOver];
+  // What this person just did that is still going through (5.2): the yep, the settlement, the cancelling out, marked on its way.
+  for (const w of onWay.rows) happened.push({ kind: "onway", at: w.at, href: w.href, subject: w.subject, owner: w.owner });
   for (const m of over) happened.push({ kind: "market", at: m.at, market: { ...m, groupName: labelOf.get(m.dare.groupId) ?? m.groupName } });
   for (const o of covers) {
     const denomination = denoms.get(o.denomId);

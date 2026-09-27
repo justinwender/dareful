@@ -40,7 +40,7 @@ export async function closePayloadAction(obligationId: string): Promise<{ ok: tr
 }
 
 /** The creditor's one tap: settled or forgiven, everything still open, signed with their ledger wallet. */
-export async function closeObligationAction(obligationId: string, reason: ReasonWord, signature: string): Promise<{ ok: true; txHash: string } | { error: string }> {
+export async function closeObligationAction(obligationId: string, reason: ReasonWord, signature: string): Promise<{ ok: true; txHash: string; /** Sent and still going through (docs/design.md 5.2): the card shows it on its way. */ pending?: true } | { error: string }> {
   const user = await requireUser();
   const r = Reason.safeParse(reason);
   if (!Uuid.safeParse(obligationId).success || !r.success || !isHex(signature)) return { error: "That didn't come through. Try again." };
@@ -49,7 +49,7 @@ export async function closeObligationAction(obligationId: string, reason: Reason
     void notifyClosed(obligationId, r.data, user.id).catch(() => undefined);
     return { ok: true, txHash: result.txHash };
   } catch (err) {
-    if (err instanceof SendPending) return { error: pendingCopy(err) };
+    if (err instanceof SendPending) return err.kind === "register" ? { error: pendingCopy(err) } : { ok: true, txHash: err.hash, pending: true };
     return { error: err instanceof CloseError ? err.message : PLAIN };
   }
 }
@@ -74,7 +74,7 @@ export async function netPayloadAction(otherUserId: string, groupId: string, den
 }
 
 /** Either party's one tap: what goes both ways in this unit, in this set of people, cancels by the smaller side. */
-export async function netAction(otherUserId: string, groupId: string, denomId: string, signature: string): Promise<{ ok: true; txHash: string } | { error: string }> {
+export async function netAction(otherUserId: string, groupId: string, denomId: string, signature: string): Promise<{ ok: true; txHash: string; pending?: true } | { error: string }> {
   const user = await requireUser();
   if (![otherUserId, groupId, denomId].every((v) => Uuid.safeParse(v).success) || !isHex(signature)) return { error: "That didn't come through. Try again." };
   try {
@@ -82,7 +82,7 @@ export async function netAction(otherUserId: string, groupId: string, denomId: s
     void notifyNetted(otherUserId, user.id, denomId).catch(() => undefined);
     return { ok: true, txHash: result.txHash };
   } catch (err) {
-    if (err instanceof SendPending) return { error: pendingCopy(err) };
+    if (err instanceof SendPending) return err.kind === "register" ? { error: pendingCopy(err) } : { ok: true, txHash: err.hash, pending: true };
     return { error: err instanceof CloseError ? err.message : PLAIN };
   }
 }

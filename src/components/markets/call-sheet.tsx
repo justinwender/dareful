@@ -301,7 +301,7 @@ export function CallSheet(props: CallSheetProps) {
           <label htmlFor="what-happened-2" className="text-label text-ink-3">
             What happened?
           </label>
-          <input id="what-happened-2" value={line} onChange={(e) => setLine(e.target.value)} maxLength={280} placeholder="I counted 15 with the torn one" className="h-12 rounded-button border border-line bg-ground px-4 text-body text-ink placeholder:text-ink-3" />
+          <input id="what-happened-2" value={line} onChange={(e) => setLine(e.target.value)} maxLength={280} className="h-12 rounded-button border border-line bg-ground px-4 text-body text-ink placeholder:text-ink-3" />
         </div>
         <ProblemSummary messages={[choice === null ? problem : null]} />
         <Button variant="primary" onClick={say} loading={busy && choice === null} disabled={typed === null}>
@@ -472,7 +472,6 @@ export function CallSheet(props: CallSheetProps) {
                 value={line}
                 onChange={(e) => setLine(e.target.value)}
                 maxLength={280}
-                placeholder="Out cold by the second act"
                 className="h-12 rounded-button border border-line bg-ground px-4 text-body text-ink placeholder:text-ink-3"
               />
               <AttachRow shots={shots} disabled={busy} onChange={setShots} />

@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { LinkPending } from "./link-pending";
-import { StartButton } from "./start-sheet";
 import { ROOT_KEY, type RootPath } from "@/lib/ui/root";
 import { cn } from "@/lib/utils";
 
@@ -16,6 +15,10 @@ import { cn } from "@/lib/utils";
  * Its icon is a ticket stub at the same 1.8px stroke on the 24px grid; no badge, dot or count on it, ever.
  *
  * The citron dot on Now means one thing: something with a clock is waiting on this person. No number, ever.
+ *
+ * Start, the button (6.1): a 56px chalk circle 16px above the bar, on the four roots, hidden on an empty Now. It
+ * asks and does nothing else: a tap opens the question step, where an argument is a chip and "Got a code?" sits
+ * at the top right. The Start sheet is gone; a cover is logged from the person it is with (3.43).
  */
 export const TAB_BAR_HEIGHT = 64;
 const TABS: Array<{ href: RootPath; label: string }> = [
@@ -39,7 +42,8 @@ export function TabBar({ active, live, start }: { active: RootPath; live: boolea
       {/* Room under the content for the bar, and for the Start button floating 16px above it. */}
       <div aria-hidden="true" style={{ height: `calc(${TAB_BAR_HEIGHT + (start ? 88 : 16)}px + env(safe-area-inset-bottom))` }} />
       {start ? <StartButton /> : null}
-      <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)]">
+      {/* Pinned at the screen's real bottom edge: `--viewport-gap` is zero everywhere but the installed app on an iOS that lays the page out short (globals.css). */}
+      <nav aria-label="Main" className="fixed inset-x-0 bottom-[var(--viewport-gap)] z-30 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)]">
         <div className="mx-auto grid w-full max-w-[430px] grid-cols-4" style={{ height: TAB_BAR_HEIGHT }}>
           {TABS.map((t) => {
             const on = t.href === active;
@@ -59,6 +63,24 @@ export function TabBar({ active, live, start }: { active: RootPath; live: boolea
         </div>
       </nav>
     </>
+  );
+}
+
+export function StartButton() {
+  return (
+    <div className="pointer-events-none fixed inset-x-0 bottom-[var(--viewport-gap)] z-30 mx-auto w-full max-w-[430px]">
+      <Link
+        prefetch={false}
+        href="/m/new"
+        aria-label="Ask something"
+        className="pointer-events-auto absolute right-5 bottom-[calc(80px+env(safe-area-inset-bottom))] flex h-14 w-14 items-center justify-center overflow-hidden rounded-pill bg-primary text-primary-foreground transition-opacity duration-[120ms] ease-out active:opacity-[0.88] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink"
+      >
+        <LinkPending />
+        <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+      </Link>
+    </div>
   );
 }
 

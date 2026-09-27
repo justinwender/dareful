@@ -347,13 +347,17 @@ export async function nudgeAction(rawId: string): Promise<({ ok: true } & NudgeR
   }
 }
 
-export async function lockMarketAction(rawId: string): Promise<{ ok: true } | { error: string }> {
+export async function lockMarketAction(rawId: string): Promise<{ ok: true; /** Sent and still going through (docs/design.md 5.2): the band shows it on its way. */ pending?: true } | { error: string }> {
   const user = await requireUser();
   const id = uuid.safeParse(rawId);
   if (!id.success) return { error: "That one doesn't exist." };
   try {
     await lockMarket(id.data, user.id);
   } catch (err) {
+    if (err instanceof SendPending && err.kind !== "register") {
+      revalidatePath(`/m/${id.data}`);
+      return { ok: true, pending: true };
+    }
     return { error: say(err, "Locking it didn't go through. Nothing changed.") };
   }
   revalidatePath(`/m/${id.data}`);
@@ -435,6 +439,12 @@ export async function castVoteAction(rawId: string, rawOutcome: string, signatur
     after(() => notifyAfterVote(id.data, user.id));
     return { ok: true, resolved: r.resolved, counts: r.resolved ? null : await voteCounts(id.data) };
   } catch (err) {
+    // The vote is recorded; the resolution it decided is sent and still going through (5.2): the screen moves on.
+    if (err instanceof SendPending && err.kind !== "register") {
+      revalidatePath(`/m/${id.data}`);
+      after(() => notifyAfterVote(id.data, user.id));
+      return { ok: true, resolved: true, counts: null };
+    }
     return { error: say(err, "That didn't go through. Try again.") };
   }
 }
@@ -500,7 +510,7 @@ export async function stateCaseAction(rawId: string, rawText: string): Promise<{
 }
 
 /** "Let the app call it": someone who is in it asks for the arbitration everyone agreed to going in. */
-export async function arbitrateAction(rawId: string): Promise<{ ok: true; outcome: "yes" | "no" | "void" | "number" | "answer" } | { error: string }> {
+export async function arbitrateAction(rawId: string): Promise<{ ok: true; /** Null while the ruling is sent and still going through (5.2). */ outcome: "yes" | "no" | "void" | "number" | "answer" | null } | { error: string }> {
   const user = await requireUser();
   const id = uuid.safeParse(rawId);
   if (!id.success) return { error: "That one doesn't exist." };
@@ -511,6 +521,10 @@ export async function arbitrateAction(rawId: string): Promise<{ ok: true; outcom
     after(() => notifyRuling(id.data, user.id));
     return { ok: true, outcome: r.outcome };
   } catch (err) {
+    if (err instanceof SendPending && err.kind !== "register") {
+      revalidatePath(`/m/${id.data}`);
+      return { ok: true, outcome: null };
+    }
     return { error: say(err, "That didn't go through. Nothing changed.") };
   }
 }

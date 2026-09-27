@@ -23,7 +23,7 @@ export type Signing = {
 export type StakeUnit = { monetary: boolean; quantifiable: boolean; singular: string; plural: string };
 
 /** The creator's lock. After this nobody's number moves, and everyone can see everyone's. */
-export function LockButton({ dareId, count, primary = true }: { dareId: string; count: number; primary?: boolean }) {
+export function LockButton({ dareId, count, primary = true, variant }: { dareId: string; count: number; primary?: boolean; /** Under the who's-in row (3.42) it is a tertiary, never the primary while the close is still ahead. */ variant?: "primary" | "secondary" | "tertiary" }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [problem, setProblem] = useState<string | null>(null);
@@ -31,7 +31,8 @@ export function LockButton({ dareId, count, primary = true }: { dareId: string; 
     <div className="flex flex-col gap-3">
       <ProblemSummary messages={[problem]} />
       <Button
-        variant={primary ? "primary" : "secondary"}
+        variant={variant ?? (primary ? "primary" : "secondary")}
+        className={variant === "tertiary" ? "self-start" : undefined}
         loading={pending}
         disabled={count < 2}
         onClick={() =>

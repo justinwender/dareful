@@ -209,7 +209,6 @@ export function StartGame({ game, menu, sets, people, chrome, signing, mode, clo
           label="Next"
           low={
             <>
-              <p className="text-caption text-ink-2">Your friends see only the ones you pick.</p>
               <Button variant="primary" disabled={chosen.length === 0} onClick={() => (setProblem(null), setStep("who"))}>
                 Next: who’s in
               </Button>
@@ -240,7 +239,6 @@ export function StartGame({ game, menu, sets, people, chrome, signing, mode, clo
               >
                 Set the terms
               </Button>
-              <p className="text-caption text-ink-3">You can add anyone else right up until kickoff.</p>
             </>
           }
         />
@@ -293,7 +291,6 @@ export function StartGame({ game, menu, sets, people, chrome, signing, mode, clo
         low={
           <>
             <ProblemSummary messages={[problem]} />
-            <p className="text-caption text-ink-3">What’s on wrote the wording, so everyone reads the same terms.</p>
             {/* The consent every entry gives (3.35): one line in ink after the 16px ticket glyph, directly above the button, true for every question chosen (`consentFor`). */}
             <p className="flex items-center gap-2 text-body-sm text-ink" data-consent-line="">
               <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">

@@ -7,11 +7,14 @@ import { CoveredCard } from "@/components/ledger/covered-card";
 import { NetObligations, type NetLine } from "@/components/ledger/net-obligations";
 import { PersonHeader } from "@/components/ledger/person-header";
 import { RallyStrip } from "@/components/ledger/rally-strip";
-import { ActionArea, Screen, TopBar } from "@/components/ledger/screen";
-import { ButtonLink } from "@/components/ui/button";
+import { CoverSheet } from "@/components/ledger/cover-sheet";
+import { Screen, TopBar } from "@/components/ledger/screen";
 import { currentUser } from "@/lib/auth/session";
 import { chainId, ledgerAddress } from "@/lib/chain/contracts";
 import { ledgerDomain } from "@/lib/chain/typed-data";
+import { denominationsForGroup, recentDenominationsForUser } from "@/lib/ledger/denominations";
+import { groupsForUser } from "@/lib/ledger/groups";
+import { againRowsFor, onWayFor } from "@/lib/ledger/again";
 import { filterByContext, personView, rallyRows, userById, type NettableLine } from "@/lib/ledger/person";
 import { storageConfigured } from "@/lib/media/storage";
 import { SharedContextBand } from "@/components/ledger/shared-context-band";
@@ -58,6 +61,12 @@ export default async function PersonPage({ params, searchParams }: { params: Pro
   if (!them) notFound();
 
   const view = await personView(me, them);
+  // What this person's last taps here are doing (docs/design.md 5.2): still going through, or never landed.
+  const [onWay, again] = await Promise.all([onWayFor(me.id, new Date(clock.now)), againRowsFor(me.id, new Date(clock.now))]);
+  // The units between the two of you, for the cover sheet (3.43): the pair's, and units this person named elsewhere.
+  const dyad = (await groupsForUser(me.id)).find((g) => g.isDyad && g.members.some((m) => m.userId === them.id)) ?? null;
+  const [dyadUnits, recentUnits] = await Promise.all([dyad ? denominationsForGroup(dyad.id) : Promise.resolve([]), recentDenominationsForUser(me.id)]);
+  const asCoverUnit = (u: (typeof recentUnits)[number]) => ({ id: u.id, label: u.label, pluralLabel: u.pluralLabel, template: u.template, quantifiable: u.quantifiable, markKind: u.markKind, markValue: u.markValue });
   const domain = ledgerDomain(chainId(), ledgerAddress());
   const photosOn = storageConfigured();
   const rally = rallyRows(view.rally.pickups, me.id, them.id);
@@ -78,7 +87,7 @@ export default async function PersonPage({ params, searchParams }: { params: Pro
           <h1 className="text-body-strong text-ink">{them.displayName}</h1>
         </div>
         <PersonHeader me={me} them={them} theirs={view.header.theirs} yours={view.header.yours} />
-        {view.nettable.length > 0 ? <NetObligations otherId={them.id} lines={netLines(view, me.displayName, them.displayName)} domain={domain} /> : null}
+        {view.nettable.length > 0 ? <NetObligations otherId={them.id} lines={netLines(view, me.displayName, them.displayName)} domain={domain} onWay={view.nettable.filter((n) => onWay.nets.has(`${them.id}:${n.groupId}`)).map((n) => `${n.groupId}:${n.denomId}`)} /> : null}
         <SharedContextBand personId={them.id} contexts={view.contexts} selectedId={chosen?.groupId ?? null} />
         {timeline.length === 0 ? (
           <p className="text-body text-ink-2">Nothing between you two yet.</p>
@@ -105,7 +114,8 @@ export default async function PersonPage({ params, searchParams }: { params: Pro
                     at={e.at}
                     groupName={e.groupName}
                     state="pending"
-                    href={debtor.id === me.id ? `/o/${e.proposal.id}` : undefined}
+                    onWay={onWay.confirms.has(e.proposal.id)}
+                    href={debtor.id === me.id && !onWay.confirms.has(e.proposal.id) ? `/o/${e.proposal.id}` : undefined}
                   />
                 );
               }
@@ -128,9 +138,12 @@ export default async function PersonPage({ params, searchParams }: { params: Pro
                 state,
                 photo: e.obligation.mediaId ? { thumb: `/api/media/${e.obligation.mediaId}?size=thumb`, full: `/api/media/${e.obligation.mediaId}` } : undefined,
               } as const;
+              // A close sent and still going through (5.2): the card wears the mark, and is not the control until the tick has finished it.
+              const closing = onWay.closes.get(e.obligation.id);
+              if (closing) return <CoveredCard key={e.obligation.id} {...card} state={closing} onWay />;
               // The creditor closes what they are owed (Principle 2 in reverse: only the person owed can end it), from the row (6.3).
               if (e.open > 0n && creditor.id === me.id) {
-                return <CloseObligation key={e.obligation.id} obligationId={e.obligation.id} card={card} sentence={gotSentence(debtor, creditor, me.id)} what={e.obligation.memo ?? words(e.denomination, e.open)} domain={domain} photosOn={photosOn} />;
+                return <CloseObligation key={e.obligation.id} obligationId={e.obligation.id} card={card} sentence={gotSentence(debtor, creditor, me.id)} what={e.obligation.memo ?? words(e.denomination, e.open)} domain={domain} photosOn={photosOn} again={again.closes.get(e.obligation.id) ?? null} />;
               }
               return <CoveredCard key={e.obligation.id} {...card} />;
             })}
@@ -138,11 +151,7 @@ export default async function PersonPage({ params, searchParams }: { params: Pro
         )}
         {rally ? <RallyStrip rows={rally} people={new Map([[me.id, { name: me.displayName, hue: hueFor(me.id) }], [them.id, { name: them.displayName, hue: hueFor(them.id) }]])} sentence={view.rally.sentence} /> : null}
       </div>
-      <ActionArea>
-        <ButtonLink href={`/new?for=${them.id}`} variant="primary" className="w-full">
-          I got this one
-        </ButtonLink>
-      </ActionArea>
+      <CoverSheet person={{ id: them.id, displayName: them.displayName, kind: "user", hue: hueFor(them.id) }} units={dyadUnits.filter((u) => !u.monetary).map(asCoverUnit)} recent={recentUnits.filter((u) => !u.monetary).map(asCoverUnit)} viewer={{ id: me.id, displayName: me.displayName, hue: hueFor(me.id) }} />
     </Screen>
   );
 }

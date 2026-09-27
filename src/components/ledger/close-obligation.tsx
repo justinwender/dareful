@@ -25,7 +25,7 @@ type Reason = "settled" | "forgiven";
  * one button; the photo, when there is one, goes up after the chain has the close, and a photo that fails
  * never undoes a settlement.
  */
-export function CloseObligation({ obligationId, card, children, sentence, what, domain, photosOn }: { obligationId: string; card?: CoveredCardProps; children?: ReactNode; sentence: string; what: string; domain: TypedDataDomain; photosOn: boolean }) {
+export function CloseObligation({ obligationId, card, children, sentence, what, domain, photosOn, again = null }: { obligationId: string; card?: CoveredCardProps; children?: ReactNode; sentence: string; what: string; domain: TypedDataDomain; photosOn: boolean; /** The last close was told it was on its way and never landed (src/lib/ledger/again.ts): the didn't-go-through mark, what was tried, and "Try again" above the row (5.2). */ again?: "settled" | "forgiven" | null }) {
   const router = useRouter();
   const sign = useSigner();
   const titleId = useId();
@@ -34,7 +34,7 @@ export function CloseObligation({ obligationId, card, children, sentence, what, 
   const [error, setError] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
-  const [done, setDone] = useState<{ reason: Reason; mediaId: string | null } | null>(null);
+  const [done, setDone] = useState<{ reason: Reason; mediaId: string | null; /** Sent and still going through (5.2). */ onWay: boolean } | null>(null);
   const [photoFailed, setPhotoFailed] = useState(false);
 
   function pick(f: File | null) {
@@ -80,11 +80,11 @@ export function CloseObligation({ obligationId, card, children, sentence, what, 
         setPhase("idle");
         return;
       }
-      setDone({ reason, mediaId: null });
+      setDone({ reason, mediaId: null, onWay: result.pending === true });
       if (file) {
         setPhase("photo");
         const mediaId = await sendPhoto();
-        setDone({ reason, mediaId });
+        setDone({ reason, mediaId, onWay: result.pending === true });
         if (!mediaId) {
           setPhase("idle");
           return;
@@ -115,13 +115,24 @@ export function CloseObligation({ obligationId, card, children, sentence, what, 
 
   return (
     <>
+      {again && !done ? (
+        <div className="flex items-center justify-between gap-3 pb-2" data-close-again="">
+          <span className="flex items-center gap-2 text-caption text-ink-3">
+            <StateMark state="failed" />
+            <span>Didn’t go through · {again === "forgiven" ? "Call it even" : "Settled"}</span>
+          </span>
+          <Button variant="tertiary" onClick={() => setOpen(true)}>
+            Try again
+          </Button>
+        </div>
+      ) : null}
       {done ? (
         card ? (
-          <CoveredCard {...card} state={done.reason} photo={photo} />
+          <CoveredCard {...card} state={done.reason} photo={photo} onWay={done.onWay} />
         ) : (
           // A row (a market's consequence): the mark says how it closed; the story's own words stay as they were.
           <div className="flex items-center gap-2">
-            <StateMark state={done.reason} />
+            <StateMark state={done.onWay ? "onway" : done.reason} />
             <div className="min-w-0 flex-1">{children}</div>
             {photo ? (
               // eslint-disable-next-line @next/next/no-img-element

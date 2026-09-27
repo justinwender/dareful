@@ -6,6 +6,7 @@ import type { TypedDataDomain } from "viem";
 import { Button } from "@/components/ui/button";
 import { Sheet } from "@/components/ui/sheet";
 import { ProblemSummary } from "@/components/ledger/problem";
+import { StateMark } from "@/components/ledger/state-mark";
 import { signingProblem, useSigner } from "@/components/ledger/use-signer";
 import { ledgerTypes } from "@/lib/chain/typed-data";
 import { netAction, netPayloadAction } from "@/lib/actions/obligations";
@@ -27,7 +28,7 @@ export type NetLine = {
  * that makes the ledger match the header). One transaction per unit and set of people. Under the header on the
  * person view; a sheet asks once, because it is not undone.
  */
-export function NetObligations({ otherId, lines, domain }: { otherId: string; lines: NetLine[]; domain: TypedDataDomain }) {
+export function NetObligations({ otherId, lines, domain, onWay = [] }: { otherId: string; lines: NetLine[]; domain: TypedDataDomain; /** Pairs whose cancelling out is sent and still going through (5.2), as `groupId:denomId`: the mark in place of the row. */ onWay?: string[] }) {
   const router = useRouter();
   const sign = useSigner();
   const titleId = useId();
@@ -35,6 +36,7 @@ export function NetObligations({ otherId, lines, domain }: { otherId: string; li
   const [phase, setPhase] = useState<"idle" | "signing" | "sending">("idle");
   const [error, setError] = useState<string | null>(null);
   const [doneKeys, setDoneKeys] = useState<string[]>([]);
+  const [onWayKeys, setOnWayKeys] = useState<string[]>(onWay);
 
   async function run(line: NetLine) {
     setError(null);
@@ -55,7 +57,8 @@ export function NetObligations({ otherId, lines, domain }: { otherId: string; li
         setPhase("idle");
         return;
       }
-      setDoneKeys((k) => [...k, `${line.groupId}:${line.denomId}`]);
+      if (result.pending) setOnWayKeys((k) => [...k, `${line.groupId}:${line.denomId}`]);
+      else setDoneKeys((k) => [...k, `${line.groupId}:${line.denomId}`]);
       setPhase("idle");
       setOpenLine(null);
       router.refresh();
@@ -69,14 +72,22 @@ export function NetObligations({ otherId, lines, domain }: { otherId: string; li
   if (pending.length === 0) return null;
   return (
     <div className="flex flex-col gap-2">
-      {pending.map((line) => (
-        <div key={`${line.groupId}:${line.denomId}`} className="flex flex-col gap-1.5">
-          <Button variant="secondary" onClick={() => setOpenLine(line)} className="w-full">
-            Cancel out the {line.cancels} each way
-          </Button>
-          <p className="text-caption text-ink-3">{line.both}</p>
-        </div>
-      ))}
+      {pending.map((line) =>
+        onWayKeys.includes(`${line.groupId}:${line.denomId}`) ? (
+          // Sent and still going through (5.2): the mark where the row was, and nothing to tap.
+          <p key={`${line.groupId}:${line.denomId}`} className="flex items-center gap-2 text-body-sm text-ink-2" data-net-onway="">
+            <StateMark state="onway" />
+            <span>Cancelling out the {line.cancels} each way · on its way</span>
+          </p>
+        ) : (
+          <div key={`${line.groupId}:${line.denomId}`} className="flex flex-col gap-1.5">
+            <Button variant="secondary" onClick={() => setOpenLine(line)} className="w-full">
+              Cancel out the {line.cancels} each way
+            </Button>
+            <p className="text-caption text-ink-3">{line.both}</p>
+          </div>
+        ),
+      )}
       <Sheet open={openLine !== null} onClose={() => (phase === "idle" ? setOpenLine(null) : undefined)} labelledBy={titleId}>
         <div className="flex flex-col gap-1">
           <h2 id={titleId} className="text-body-strong text-ink">

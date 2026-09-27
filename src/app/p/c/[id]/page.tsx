@@ -4,12 +4,13 @@ import { db, schema } from "@/db";
 import { Avatar } from "@/components/ledger/avatar";
 import { CoveredCard } from "@/components/ledger/covered-card";
 import { GhostActions, type MergeOption } from "@/components/ledger/ghost-actions";
-import { ActionArea, Screen, TopBar } from "@/components/ledger/screen";
-import { ButtonLink } from "@/components/ui/button";
+import { CoverSheet } from "@/components/ledger/cover-sheet";
+import { Screen, TopBar } from "@/components/ledger/screen";
 import { currentUser } from "@/lib/auth/session";
 import { claimById, ghostsForCreator, proposalsWithClaim } from "@/lib/ledger/claims";
-import { denominationsByIds } from "@/lib/ledger/denominations";
-import { peopleForUser } from "@/lib/ledger/groups";
+import { denominationsByIds, denominationsForGroup, recentDenominationsForUser } from "@/lib/ledger/denominations";
+import { groupsForUser, peopleForUser } from "@/lib/ledger/groups";
+import { hueFor } from "@/lib/ui/hue";
 import { viewerClock } from "@/lib/ui/zone";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +32,11 @@ export default async function GhostPage({ params }: { params: Promise<{ id: stri
   if (ghost.claimedBy) redirect(`/p/${ghost.claimedBy}`);
   if (ghost.id !== id) redirect(`/p/c/${ghost.id}`); // followed a merge to the survivor
 
-  const [rows, people, ghosts] = await Promise.all([proposalsWithClaim(me.id, ghost.id), peopleForUser(me.id), ghostsForCreator(me.id)]);
+  const [rows, people, ghosts, groups, recentUnits] = await Promise.all([proposalsWithClaim(me.id, ghost.id), peopleForUser(me.id), ghostsForCreator(me.id), groupsForUser(me.id), recentDenominationsForUser(me.id)]);
+  // The units between you and this ghost, for the cover sheet (3.43): the pair's dyad's, when one exists.
+  const dyad = groups.find((g) => g.isDyad && g.members.some((m) => m.claimId === ghost.id)) ?? null;
+  const dyadUnits = dyad ? await denominationsForGroup(dyad.id) : [];
+  const asCoverUnit = (u: (typeof recentUnits)[number]) => ({ id: u.id, label: u.label, pluralLabel: u.pluralLabel, template: u.template, quantifiable: u.quantifiable, markKind: u.markKind, markValue: u.markValue });
   const denoms = await denominationsByIds(Array.from(new Set(rows.map((r) => r.denomId))));
   const groupIds = Array.from(new Set(rows.map((r) => r.groupId)));
   const groupNames = new Map<string, string | null>();
@@ -89,11 +94,7 @@ export default async function GhostPage({ params }: { params: Promise<{ id: stri
           </div>
         )}
       </div>
-      <ActionArea>
-        <ButtonLink href={`/new?for=${ghost.id}`} variant="primary" className="w-full">
-          I got this one
-        </ButtonLink>
-      </ActionArea>
+      <CoverSheet person={{ id: ghost.id, displayName: ghost.displayName, kind: "claim", hue: "stone", ghost: true }} units={dyadUnits.filter((u) => !u.monetary).map(asCoverUnit)} recent={recentUnits.filter((u) => !u.monetary).map(asCoverUnit)} viewer={{ id: me.id, displayName: me.displayName, hue: hueFor(me.id) }} />
     </Screen>
   );
 }

@@ -101,6 +101,21 @@
   --sidebar-ring: var(--ink);
 
   color-scheme: dark;
+
+  /*
+   * The installed app on iOS lays a page out short of the screen and paints from the top, so a box pinned at
+   * `bottom: 0` lands above the screen's bottom edge with a strip of ground under it (docs/decisions.md
+   * 2026-09-27, "the band"). The large viewport unit is the screen; the dynamic one is what the page was laid
+   * out in. Their difference, never positive, is how far every bottom-pinned box (the tab bar, the Start
+   * button, the pinned sheet, a modal sheet, the photo view) is pushed down to meet the real edge. Zero
+   * everywhere the two agree, which is every browser and every phone that lays the page out right.
+   */
+  --viewport-gap: 0px;
+}
+@media (display-mode: standalone) {
+  :root {
+    --viewport-gap: min(0px, calc(100dvh - 100lvh));
+  }
 }
 
 /* Light values (not shipped in v1; recorded so nothing has to be re-derived). */
@@ -286,6 +301,11 @@
 @keyframes button-runner {
   0% { left: -33%; }
   100% { left: 100%; }
+}
+
+/* The on-its-way mark (docs/design.md 3.23): a quarter of the ring turning once every 1.2s; reduced motion rests it. */
+@keyframes onway-turn {
+  to { transform: rotate(360deg); }
 }
 
 /* A tapped link pulses until its page arrives (src/components/ui/link-pending.tsx). */

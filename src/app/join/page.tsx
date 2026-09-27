@@ -5,7 +5,11 @@ import { currentUser } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
-/** docs/design.md, the "Joining with a code" board: the focused form, and the way in for someone holding a link. */
+/**
+ * "Got a code?" (docs/design.md 3.16, 3.38): reached from the question step's top right. The six boxes, one
+ * caption naming the letters no code uses, the link row, and Join in the sheet. Nothing here explains what a
+ * code is: the boxes are the shape of one (4.9).
+ */
 export default async function JoinPage({ searchParams }: { searchParams: Promise<{ code?: string }> }) {
   const me = await currentUser();
   if (!me) redirect("/");
@@ -14,18 +18,9 @@ export default async function JoinPage({ searchParams }: { searchParams: Promise
     <Screen>
       <TopBar back />
       <div className="flex flex-col gap-7 py-2">
-        <div className="flex flex-col gap-2">
-          <h1 className="text-serif-l text-ink">Join something</h1>
-          <p className="text-body-sm text-ink-2">Someone read you a code, or sent you a link.</p>
-        </div>
+        <h1 className="text-serif-l text-ink">Got a code?</h1>
         <CodeJoinFocused initial={sp.code ?? ""} />
-        <div className="flex items-center gap-3 text-caption text-ink-3">
-          <span className="h-px flex-1 bg-line" />
-          or
-          <span className="h-px flex-1 bg-line" />
-        </div>
         <LinkJoin />
-        <p className="text-caption text-ink-3">Nobody sees anything between you and anyone until you’re in.</p>
       </div>
     </Screen>
   );

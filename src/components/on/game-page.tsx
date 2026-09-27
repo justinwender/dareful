@@ -14,7 +14,7 @@ import { PhotoAdding } from "@/components/markets/photo-adding";
 import { SetupSheet } from "@/components/markets/setup-sheet";
 import { LinkPending } from "@/components/ui/link-pending";
 import { GameHeader, StartGame, type MenuItem } from "@/components/on/start-game";
-import { NightSheet } from "@/components/on/night-sheet";
+import { EmptySlot } from "@/components/markets/empty-slot";
 import { currentUser } from "@/lib/auth/session";
 import { contracts } from "@/lib/chain/contracts";
 import { daresDomain } from "@/lib/chain/typed-data";
@@ -303,7 +303,7 @@ export async function GamePage({ id, g, add, start }: { id: string; g: string | 
               <p className="text-caption text-ink-2">{askerLine}</p>
             </section>
             {chips}
-            {items.length > 0 ? <MediaFrame items={items} height={260} inset /> : null}
+            {items.length > 0 ? <MediaFrame items={items} height={260} inset add={inAny && storageConfigured() && first ? { night } : null} /> : inAny && storageConfigured() && first ? <EmptySlot /> : null}
             <section className="flex flex-col gap-[10px]">
               <SectionLabel>Questions</SectionLabel>
               {cardsList}
@@ -345,7 +345,6 @@ export async function GamePage({ id, g, add, start }: { id: string; g: string | 
                 </div>
               </section>
             ) : null}
-            <NightSheet hasPhotos={items.length > 0} />
           </div>
         </Screen>
       </PhotoAdding>

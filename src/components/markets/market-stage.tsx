@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/ledger/avatar";
 import { Chip } from "@/components/ledger/chip";
-import { InviteShare } from "@/components/ledger/invite-share";
 import { ProblemSummary } from "@/components/ledger/problem";
 import { signingProblem, useSigner } from "@/components/ledger/use-signer";
 import { Button } from "@/components/ui/button";
@@ -21,8 +20,7 @@ import { NumberLine } from "./number-line";
 import { PickOneBars, type PickOneAnswer, type PickOneBar } from "./pick-one-bars";
 import { PickOneEntry } from "./pick-one-entry";
 import { numberAxis, serialiseAxis, unitPhrase, withSeparators, type NumberLineAxis } from "@/lib/ledger/number-axis";
-import { LockButton, type Signing, type StakeUnit } from "./market-actions";
-import { CameraButton } from "./camera-button";
+import type { Signing, StakeUnit } from "./market-actions";
 
 export type StagePicture =
   | {
@@ -45,12 +43,16 @@ const ENTERING_MS = 1800;
 
 /**
  * The market screen's stage (docs/design.md 3.13, 3.22, 3.24): the odds line in the pinned sheet until you are
- * in, then the entry line and the weight line in the screen and "Send it to the chat" in the sheet. One object
- * in two states: the ten segments of the odds line are the ten buckets the weight line grows into.
+ * in, then the entry line and the weight line in the screen and no sheet at all, since once you're in nothing
+ * is your move (3.24): the icons end the who's-in row (3.42) and the photo slot sits last on the screen (3.39).
+ * One object in two states: the ten segments of the odds line are the ten buckets the weight line grows into.
  *
  * Entering is a moment, not a navigation. Confirming lowers the sheet, the columns grow from the segments, your
  * share fills in your hue, your avatar rises, the group's marker draws last, and about two seconds later the
- * sheet carries the next move. No toast. What confirms it is the entry line, which is still there next visit.
+ * sheet goes. No toast. What confirms it is the entry line, which is still there next visit.
+ *
+ * A pick-one market's sheet opens raised, since picking is the move, and lowers to one bar ("Pick one" and the
+ * count of answers, or your pick) so the terms behind six answers can be read (3.30). A touch on the bar raises it.
  */
 export type GhostEntry = {
   /** The group's ghosts, for "is one of these you?"; names only. */
@@ -86,14 +88,8 @@ export function MarketStage(props: {
     otherSays: { name: string; side: "yes" | "no" } | null;
   } | null;
   lockedLine: string | null;
-  /** "until 10:40pm": how long a number is this person's to change, and how long the link gets people in. */
+  /** "until 10:40pm": how long a number is this person's to change. */
   changeUntil: string;
-  /** While open: the link, the text that goes with it, and the sentence over the button. */
-  share: { url: string; text: string; joinLine: string } | null;
-  /** The asker's lock, while open: how many are in and whether that is everyone. */
-  lock: { count: number; everyoneIn: boolean } | null;
-  /** The camera beside "Send it to the chat" (3.39): for someone who is in, while it is open, and only where photos are on. */
-  camera?: boolean;
   /**
    * The far-off check on a number question (src/lib/ledger/scale.ts): a number at or past the threshold gets a
    * line the person can confirm past, never a block. `scale` is the asker's scale when they set one, which the
@@ -124,7 +120,8 @@ export function MarketStage(props: {
   const [number, setNumber] = useState<bigint | null>(
     mine?.number !== undefined ? BigInt(mine.number) : null,
   );
-  const [raised, setRaised] = useState(mine?.unsigned === true);
+  // A pick-one sheet opens raised (3.30); the others raise on the first touch (3.13).
+  const [raised, setRaised] = useState(mine?.unsigned === true || (pickOne !== null && mine === null));
   const [stake, setStake] = useState<string>(
     mine?.stake ?? (unit.quantifiable ? String(unit.monetary ? 1000 : 1) : "1"),
   );
@@ -420,26 +417,107 @@ export function MarketStage(props: {
   if (state === "locked") return stage;
 
   const entering = !reading || changing || phase === "entering";
+  /** The answer picked on a pick-one sheet, for the lowered bar (3.30). */
+  const pickedAnswer: PickOneAnswer | null = pickOne && pick !== null ? (pickOne.answers.find((a) => a.index === pick) ?? null) : null;
+  const foot = (
+        <>
+          <ProblemSummary messages={[problem]} />
+          {props.consent ? (
+            // The consent every entry gives (3.35, 4.9): one line in ink after the 16px ticket glyph, directly above the button that gives it.
+            <p className="flex items-center gap-2 text-body-sm text-ink" data-consent-line="">
+              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+                <path d="M4 9a2 2 0 0 0 2-2V6h12v1a2 2 0 0 0 2 2v6a2 2 0 0 0-2 2v1H6v-1a2 2 0 0 0-2-2z" />
+                <path d="M12 7v10" strokeDasharray="1.5 2.5" />
+              </svg>
+              <span>{props.consent}</span>
+            </p>
+          ) : null}
+          {problem && !problem.startsWith("Put") ? (
+            <Button
+              variant="tertiary"
+              onClick={submit}
+              loading={step !== "idle"}
+            >
+              Try again
+            </Button>
+          ) : changing && unsigned ? (
+            // A number that came in before this person signed in (PLANNING.md section 4): keeping it, or changing it, is the signature.
+            <Button variant="primary" onClick={submit} loading={step !== "idle"} disabled={!picked || blocked}>
+              {`Confirm${pickOne || teams ? ":" : " at"} ${pickWords(pick)}`}
+            </Button>
+          ) : changing ? (
+            <div className="grid grid-cols-[1fr_auto] gap-2">
+              <Button
+                variant="primary"
+                onClick={submit}
+                loading={step !== "idle"}
+                disabled={!picked || blocked}
+              >
+                Save: {pickWords(pick)}
+              </Button>
+              <Button
+                variant="secondary"
+                size="primary"
+                disabled={step !== "idle"}
+                onClick={() => {
+                  setChanging(false);
+                  setRaised(false);
+                  setValue(shown?.percent ?? null);
+                  setNumber(shown?.number !== undefined ? BigInt(shown.number) : null);
+                  setPick(shown?.pick ?? null);
+                }}
+              >
+                Never mind
+              </Button>
+            </div>
+          ) : (
+            <Button
+              variant="primary"
+              onClick={submit}
+              loading={step !== "idle"}
+              disabled={!picked || blocked || (phase === "entering" && reading)}
+            >
+              {!picked
+                ? pickOne
+                  ? "Pick an answer"
+                  : teams
+                    ? "Slide to pick a side"
+                    : numberUnit
+                      ? "Type your number"
+                      : "Slide to pick your odds"
+                : ghost && !ghost.known
+                  ? `Join${pickOne || teams ? ":" : " at"} ${pickWords(pick)}`
+                  : state === "draft"
+                    ? `Looks right. I’m in${pickOne || teams ? ":" : " at"} ${pickWords(pick)}`
+                    : `I’m in${pickOne || teams ? ":" : " at"} ${pickWords(pick)}`}
+            </Button>
+          )}
+        </>
+  );
   const sheet = entering ? (
     <PinnedSheet
       label="Your number"
       raised={raised}
       onRaise={setRaised}
-      header={pickOne ? <p className="text-body-strong text-ink">Pick one</p> : teams && numberUnit?.margin && shift !== null ? <TeamHeader mode="margin" value={number === null ? null : Number(number - shift)} away={teams.away} home={teams.home} /> : numberUnit ? <p className="text-body-strong text-ink">What’s your number?</p> : teams ? <TeamHeader mode="wins" value={value} away={teams.away} home={teams.home} /> : <OddsHeader value={value} />}
+      header={pickOne ? (
+        // The bar (3.30): "Pick one" on the left; on the right the count of answers, or, once picked, the pick's avatar, its name and a check.
+        <div className="flex h-7 items-center justify-between gap-3" data-pick-one-bar="">
+          <p className="text-body-strong text-ink">Pick one</p>
+          {pickedAnswer ? (
+            <span className="flex items-center gap-2 text-body-sm font-semibold text-ink">
+              {pickedAnswer.person ? <Avatar name={pickedAnswer.person.name} hue={pickedAnswer.person.hue} size={22} /> : null}
+              <span>{pickedAnswer.text}</span>
+              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 12l5 5 9-10" />
+              </svg>
+            </span>
+          ) : (
+            <span className="text-caption text-ink-2">{pickOne.answers.length} answers</span>
+          )}
+        </div>
+      ) : teams && numberUnit?.margin && shift !== null ? <TeamHeader mode="margin" value={number === null ? null : Number(number - shift)} away={teams.away} home={teams.home} /> : numberUnit ? <p className="text-body-strong text-ink">What’s your number?</p> : teams ? <TeamHeader mode="wins" value={value} away={teams.away} home={teams.home} /> : <OddsHeader value={value} />}
       low={
         <>
-          {pickOne ? (
-            <PickOneEntry
-              answers={pickOne.answers}
-              value={pick}
-              hue={me.hue}
-              disabled={phase === "entering" && !changing && reading}
-              onChange={(i) => {
-                setPick(i);
-                if (!raised) setRaised(true);
-              }}
-            />
-          ) : null}
           {numberUnit ? (
             <>
               {numberUnit.margin && shift !== null ? (
@@ -545,6 +623,18 @@ export function MarketStage(props: {
       }
       high={
         <div className="flex flex-col gap-3">
+          {pickOne ? (
+            <PickOneEntry
+              answers={pickOne.answers}
+              value={pick}
+              hue={me.hue}
+              disabled={phase === "entering" && !changing && reading}
+              onChange={(i) => {
+                setPick(i);
+                if (!raised) setRaised(true);
+              }}
+            />
+          ) : null}
           {ghost && !ghost.known ? (
             // Who this is, without an account (3.17): a name, and a number so the entry is theirs when they sign in with it. No code is sent.
             <div className="flex flex-col gap-3" data-ghost-fields="">
@@ -564,15 +654,15 @@ export function MarketStage(props: {
               ) : null}
               {ghostMember ? null : (
                 <label className="flex flex-col gap-1">
-                  <span className="text-label text-ink-3">What your friends call you</span>
-                  <input value={ghostName} onChange={(e) => setGhostName(e.target.value)} autoComplete="given-name" maxLength={40} placeholder="First name" aria-label="What your friends call you" className="h-11 w-full rounded-button border border-line bg-ground px-4 text-body text-ink placeholder:text-ink-3" />
+                  <span className="text-label text-ink-3">Your name</span>
+                  <input value={ghostName} onChange={(e) => setGhostName(e.target.value)} autoComplete="given-name" maxLength={40} aria-label="Your name" className="h-12 w-full rounded-button border border-line bg-ground px-4 text-body text-ink" />
                 </label>
               )}
               <label className="flex flex-col gap-1">
-                <span className="text-label text-ink-3">Your phone number, so this one is yours</span>
-                <input value={ghostPhone} onChange={(e) => setGhostPhone(e.target.value)} type="tel" inputMode="tel" autoComplete="tel" maxLength={40} placeholder="Optional" aria-label="Your phone number, so this one is yours" className="h-11 w-full rounded-button border border-line bg-ground px-4 text-body text-ink placeholder:text-ink-3" />
+                <span className="text-label text-ink-3">Your phone number</span>
+                <input value={ghostPhone} onChange={(e) => setGhostPhone(e.target.value)} type="tel" inputMode="tel" autoComplete="tel" maxLength={40} aria-label="Your phone number" className="h-12 w-full rounded-button border border-line bg-ground px-4 text-body text-ink" />
               </label>
-              <p className="text-caption text-ink-3">No code, no password, nothing to download. Sign in with this number later and it’s yours.</p>
+              <p className="text-caption text-ink-3">Nothing gets sent to it. Sign in with this number later and your entries are waiting.</p>
             </div>
           ) : null}
           {unsigned ? <p className="text-body-sm text-ink-2">This was you before you signed in. Keep it, or change it.</p> : null}
@@ -626,114 +716,10 @@ export function MarketStage(props: {
               One {unit.singular}, the same for everyone.
             </p>
           )}
+          {pickOne ? foot : null}
         </div>
       }
-      foot={
-        <>
-          <ProblemSummary messages={[problem]} />
-          {props.consent ? (
-            // The consent every entry gives (3.35, 4.9): one line in ink after the 16px ticket glyph, directly above the button that gives it.
-            <p className="flex items-center gap-2 text-body-sm text-ink" data-consent-line="">
-              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
-                <path d="M4 9a2 2 0 0 0 2-2V6h12v1a2 2 0 0 0 2 2v6a2 2 0 0 0-2 2v1H6v-1a2 2 0 0 0-2-2z" />
-                <path d="M12 7v10" strokeDasharray="1.5 2.5" />
-              </svg>
-              <span>{props.consent}</span>
-            </p>
-          ) : null}
-          {problem && !problem.startsWith("Put") ? (
-            <Button
-              variant="tertiary"
-              onClick={submit}
-              loading={step !== "idle"}
-            >
-              Try again
-            </Button>
-          ) : changing && unsigned ? (
-            // A number that came in before this person signed in (PLANNING.md section 4): keeping it, or changing it, is the signature.
-            <Button variant="primary" onClick={submit} loading={step !== "idle"} disabled={!picked || blocked}>
-              {`Confirm${pickOne || teams ? ":" : " at"} ${pickWords(pick)}`}
-            </Button>
-          ) : changing ? (
-            <div className="grid grid-cols-[1fr_auto] gap-2">
-              <Button
-                variant="primary"
-                onClick={submit}
-                loading={step !== "idle"}
-                disabled={!picked || blocked}
-              >
-                Save: {pickWords(pick)}
-              </Button>
-              <Button
-                variant="secondary"
-                size="primary"
-                disabled={step !== "idle"}
-                onClick={() => {
-                  setChanging(false);
-                  setRaised(false);
-                  setValue(shown?.percent ?? null);
-                  setNumber(shown?.number !== undefined ? BigInt(shown.number) : null);
-                  setPick(shown?.pick ?? null);
-                }}
-              >
-                Never mind
-              </Button>
-            </div>
-          ) : (
-            <Button
-              variant="primary"
-              onClick={submit}
-              loading={step !== "idle"}
-              disabled={!picked || blocked || (phase === "entering" && reading)}
-            >
-              {!picked
-                ? pickOne
-                  ? "Pick an answer"
-                  : teams
-                    ? "Slide to pick a side"
-                    : numberUnit
-                      ? "Type your number"
-                      : "Slide to pick your odds"
-                : ghost && !ghost.known
-                  ? `Join${pickOne || teams ? ":" : " at"} ${pickWords(pick)}`
-                  : state === "draft"
-                    ? `Looks right. I’m in${pickOne || teams ? ":" : " at"} ${pickWords(pick)}`
-                    : `I’m in${pickOne || teams ? ":" : " at"} ${pickWords(pick)}`}
-            </Button>
-          )}
-        </>
-      }
-    />
-  ) : props.share ? (
-    <PinnedSheet
-      label="Get people in"
-      low={
-        <>
-          <p className="text-caption text-ink-2">{props.share.joinLine}</p>
-          {props.lock && props.lock.everyoneIn ? (
-            <>
-              <LockButton dareId={dareId} count={props.lock.count} primary />
-              <InviteShare url={props.share.url} text={props.share.text} trailing={props.camera ? <CameraButton /> : undefined} />
-            </>
-          ) : (
-            <>
-              <InviteShare
-                url={props.share.url}
-                text={props.share.text}
-                primary
-                trailing={props.camera ? <CameraButton /> : undefined}
-              />
-              {props.lock && props.lock.count >= 2 ? (
-                <LockButton
-                  dareId={dareId}
-                  count={props.lock.count}
-                  primary={false}
-                />
-              ) : null}
-            </>
-          )}
-        </>
-      }
+      foot={pickOne ? undefined : foot}
     />
   ) : null;
 

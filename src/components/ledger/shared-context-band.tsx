@@ -6,8 +6,8 @@ import { cn } from "@/lib/utils";
 const SHOWN = 5;
 
 /**
- * docs/design.md 3.21: where these two turn up. A heading, context chips with counts of shared events, and one
- * line saying what tapping does; tapping filters the timeline below and opens nothing.
+ * docs/design.md 3.21: where these two turn up. A heading and context chips with counts of shared events; tapping
+ * filters the timeline below and opens nothing, and no line says so (4.9: chips behave as chips).
  *
  * Held to the specification's honesty test: no group header, no member list, no group avatar, no way in, and no
  * "see all". The overflow chip is a count, not a link. If this ever grows one of those it has become a group
@@ -48,7 +48,6 @@ export function SharedContextBand({ personId, contexts, selectedId }: { personId
           </Link>
         ) : null}
       </div>
-      <p className="text-caption text-ink-3">{selectedId ? "Showing only those. Clear to see everything between you." : "Tap one to see only those."}</p>
     </section>
   );
 }

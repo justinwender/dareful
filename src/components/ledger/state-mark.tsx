@@ -13,7 +13,14 @@ import { hueVar, type Hue } from "@/lib/ui/hue";
  */
 export type MarketMark = "open" | "in" | "locked" | "voting" | "deadlocked" | "resolved" | "voided" | "expired" | "draft";
 export type ObligationMark = "proposed" | "owed" | "settled" | "forgiven";
-export type MarkState = MarketMark | ObligationMark;
+/**
+ * Two marks that belong to a tap rather than to a thing (docs/design.md 3.23, 5.2): on its way (the ring at 0.32
+ * with a quarter drawn at full, turning once every 1.2s; at rest with reduced motion) and didn't go through (the
+ * ring with 5.1's alert inside). They stand where the tap's result shows, in place of the state mark, and leave
+ * when the tap has gone through.
+ */
+export type TapMark = "onway" | "failed";
+export type MarkState = MarketMark | ObligationMark | TapMark;
 
 const LABEL: Record<MarkState, string> = {
   open: "Open",
@@ -29,6 +36,8 @@ const LABEL: Record<MarkState, string> = {
   owed: "Open",
   settled: "Settled",
   forgiven: "Forgiven",
+  onway: "On its way",
+  failed: "Didn’t go through",
 };
 
 const QUIET: ReadonlySet<MarkState> = new Set<MarkState>(["open", "voided", "expired", "draft", "proposed", "settled"]);
@@ -39,8 +48,17 @@ const QUIET: ReadonlySet<MarkState> = new Set<MarkState>(["open", "voided", "exp
  */
 export function StateMark({ state, hue, ink, size = 16, className }: { state: MarkState; hue?: Hue; ink?: string; size?: number; className?: string }) {
   const color = state === "in" || state === "owed" ? (hue ? hueVar(hue) : "var(--ink)") : ink && (state === "open" || state === "resolved") ? ink : QUIET.has(state) ? "var(--ink-3)" : "var(--ink)";
+  if (state === "onway") {
+    // The ring at 0.32 opacity, with a quarter of it drawn at full turning once every 1.2s (the circumference is 40.2; a quarter is 10.05).
+    return (
+      <svg role="img" aria-label={LABEL[state]} data-mark="onway" width={size} height={size} viewBox="0 0 16 16" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" className={className} style={{ color, flexShrink: 0 }}>
+        <circle cx="8" cy="8" r="6.4" opacity={0.32} />
+        <circle cx="8" cy="8" r="6.4" strokeDasharray="10.05 30.15" transform="rotate(-90 8 8)" className="motion-safe:animate-[onway-turn_1.2s_linear_infinite] [transform-origin:center]" />
+      </svg>
+    );
+  }
   return (
-    <svg role="img" aria-label={LABEL[state]} width={size} height={size} viewBox="0 0 16 16" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" className={className} style={{ color, flexShrink: 0 }}>
+    <svg role="img" aria-label={LABEL[state]} data-mark={state === "failed" ? "failed" : undefined} width={size} height={size} viewBox="0 0 16 16" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" className={className} style={{ color, flexShrink: 0 }}>
       {state === "resolved" || state === "settled" ? (
         <circle cx="8" cy="8" r="6.4" fill={color} stroke="none" />
       ) : state === "voting" || state === "proposed" ? (
@@ -55,6 +73,7 @@ export function StateMark({ state, hue, ink, size = 16, className }: { state: Ma
       {state === "deadlocked" ? <path d="M6.3 5.2v5.6M9.7 5.2v5.6" /> : null}
       {state === "voided" ? <path d="M3.9 12.1 12.1 3.9" /> : null}
       {state === "forgiven" ? <circle cx="8" cy="8" r="0.8" fill={color} stroke="none" /> : null}
+      {state === "failed" ? <path d="M8 4.8v3.6M8 10.9v.4" /> : null}
     </svg>
   );
 }
