@@ -190,6 +190,13 @@
       "when": 1790518888488,
       "tag": "0026_delegation",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1790530609118,
+      "tag": "0027_chain_writes",
+      "breakpoints": true
     }
   ]
 }

@@ -194,13 +194,24 @@ const decryptEnvelopes: Decrypt = ({ privateKeyPem, encryptedDelegatedKeyShare, 
   return { decryptedDelegatedShare: parsed, decryptedWalletApiKey: apiKey };
 };
 
-/** The private half of the pair whose public half is registered in Dynamic's console: base64 of the PEM, or the PEM itself. */
+/**
+ * The private half of the pair whose public half is registered in Dynamic's console, from the environment in
+ * the forms a console field produces: the base64 of the PEM (whitespace allowed), or the PEM itself, with real
+ * newlines or the two characters backslash-n a single-line field turns them into, with or without surrounding
+ * quotes. Anything else is nothing, never a guess.
+ */
 export function delegationPrivateKeyPem(): string | null {
-  const raw = process.env.DYNAMIC_DELEGATION_PRIVATE_KEY?.trim();
+  let raw = process.env.DYNAMIC_DELEGATION_PRIVATE_KEY?.trim() ?? "";
+  if ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'"))) raw = raw.slice(1, -1).trim();
   if (!raw) return null;
-  if (raw.startsWith("-----BEGIN")) return raw;
-  const pem = Buffer.from(raw, "base64").toString("utf8").trim();
-  return pem.startsWith("-----BEGIN") ? pem : null;
+  const asPem = (text: string): string | null => {
+    const pem = text.replace(/\\n/g, "\n").trim();
+    return pem.startsWith("-----BEGIN") && pem.includes("-----END") ? pem : null;
+  };
+  if (raw.startsWith("-----BEGIN")) return asPem(raw);
+  const compact = raw.replace(/\s+/g, "");
+  if (!/^[A-Za-z0-9+/=_-]+$/.test(compact)) return null;
+  return asPem(Buffer.from(compact, "base64").toString("utf8"));
 }
 
 /**
@@ -208,7 +219,14 @@ export function delegationPrivateKeyPem(): string | null {
  * raw body so the signature is over the bytes received. `deps` lets the tests supply a decrypt of their own
  * and a clock; the route passes nothing.
  */
-export async function receiveDelegationEvent(rawBody: string, signature: string | null | undefined, deps: { decrypt?: Decrypt; now?: Date; secret?: string; privateKeyPem?: string | null } = {}): Promise<Received> {
+/** The owner hears of a governance wallet being delegated, once per event: it should be impossible, so it is worth a line even in the sandbox. */
+export type Alert = (subject: string, text: string) => Promise<unknown>;
+async function opsAlert(subject: string, text: string): Promise<unknown> {
+  const { sendOps } = await import("@/lib/notify/channels");
+  return sendOps(subject, text);
+}
+
+export async function receiveDelegationEvent(rawBody: string, signature: string | null | undefined, deps: { decrypt?: Decrypt; now?: Date; secret?: string; privateKeyPem?: string | null; alert?: Alert } = {}): Promise<Received> {
   let parsed: unknown;
   try {
     parsed = JSON.parse(rawBody);
@@ -248,7 +266,16 @@ export async function receiveDelegationEvent(rawBody: string, signature: string 
   // Created. The governance wallet, or a wallet that is neither of the person's two, is refused before anything is decrypted.
   const refusal = delegationRefusal({ address: e.data.publicKey, ledgerWallet: user.ledgerWallet, governanceWallet: user.governanceWallet });
   if (refusal) {
-    console.warn(`delegation refused: wallet ${e.data.walletId} is ${refusal === "governance" ? "the governance wallet" : "not one of the person's wallets"} (event ${e.eventId})`);
+    // Acknowledged (200, so Dynamic stops), discarded (nothing decrypted, nothing stored), and the owner told: a governance
+    // wallet reaching this door means something asked Dynamic for it, which nothing in the app does.
+    const what = refusal === "governance" ? "the governance wallet" : "not one of the person's wallets";
+    console.error(`delegation refused: wallet ${e.data.walletId} is ${what} (event ${e.eventId}, user ${user.id})`);
+    if (refusal === "governance") {
+      await (deps.alert ?? opsAlert)(
+        "Dareful: a governance wallet was delegated",
+        `Dynamic sent a delegation for a governance wallet, which nothing in the app asks for. It was refused at the door: nothing was decrypted or stored.\n\nuser ${user.id}\nwallet ${e.data.walletId}\nevent ${e.eventId} at ${e.timestamp}\n\nCheck the console's delegated-access settings ("Prompt users on sign in" must stay off) and the SDK's callers.`,
+      ).catch((err: unknown) => console.error("delegation: the alert could not be sent", err instanceof Error ? err.message : err));
+    }
     return { ok: true, kind: "refused", walletId: e.data.walletId };
   }
   const privateKeyPem = deps.privateKeyPem === undefined ? delegationPrivateKeyPem() : deps.privateKeyPem;

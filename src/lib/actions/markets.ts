@@ -1,5 +1,7 @@
 "use server";
 
+import { SEND_PENDING_COPY, SendPending } from "@/lib/chain/relayer";
+
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { notifyAfterVote, notifyJoined, notifyOpened, notifyRuling, sendNudge, voteCounts, type NudgeResult, type VoteCounts } from "@/lib/notify";
@@ -27,7 +29,7 @@ import { answersOf, callToOutcome, castVote, draftFromTemplate, draftMarket, ent
 import { MAX_ANSWER_LENGTH, MAX_ANSWERS, MIN_ANSWERS } from "@/lib/ledger/pick-one";
 
 const uuid = z.string().uuid();
-const say = (err: unknown, fallback: string) => (err instanceof MarketError ? err.message : fallback);
+const say = (err: unknown, fallback: string) => (err instanceof SendPending ? SEND_PENDING_COPY : err instanceof MarketError ? err.message : fallback);
 
 export type ScopeResult = { title: string; terms: string; ambiguous: boolean; criteria: string[]; resolvesInHours: number; plain: boolean; number: NumberScopeResult | null; /** The outcomes in the question's own words (3.25), when the write-up gave four usable phrasings. */ outcomes: [string, string, string, string] | null };
 /**

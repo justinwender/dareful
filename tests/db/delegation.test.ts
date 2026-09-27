@@ -95,16 +95,20 @@ test("the receiver: a ledger wallet's event is verified over its bytes, decrypte
   assert.deepEqual(await receiveDelegationEvent(older, signed(older), deps), { ok: true, kind: "stale", walletId: ledgerId });
   assert.equal((await db.select({ eventId: D.eventId }).from(D).where(and(eq(D.userId, me.user.id), eq(D.walletId, ledgerId))))[0]?.eventId, "evt-1");
 
-  // The governance wallet: refused before anything is decrypted (a decrypt that throws would otherwise answer 400).
+  // The governance wallet: acknowledged, refused before anything is decrypted (a decrypt that throws would otherwise answer 400), and the owner told.
   const gov = created(me, govId, me.user.governanceWallet, "evt-2", "2026-09-27T10:01:00.000Z");
-  const exploding = { ...deps, decrypt: () => { throw new Error("must not be reached"); } };
+  const alerts: string[] = [];
+  const exploding = { ...deps, decrypt: () => { throw new Error("must not be reached"); }, alert: async (subject: string, text: string) => void alerts.push(`${subject} | ${text}`) };
   assert.deepEqual(await receiveDelegationEvent(gov, signed(gov), exploding), { ok: true, kind: "refused", walletId: govId });
   assert.equal((await db.select().from(D).where(and(eq(D.userId, me.user.id), eq(D.walletId, govId)))).length, 0, "nothing stored for it");
+  assert.equal(alerts.length, 1, "the owner is told once");
+  assert.ok(alerts[0]!.includes("governance wallet") && alerts[0]!.includes(govId) && alerts[0]!.includes("evt-2") && !alerts[0]!.includes("share-for"), "who and which, never the material");
   // And the database refuses one that somehow arrives, belt and braces (migration 0001).
   await assert.rejects(db.insert(D).values({ userId: me.user.id, walletId: govId, walletAddress: me.user.governanceWallet, encryptedShare: Buffer.from("x"), encryptedApiKey: Buffer.from("y") }), (err: unknown) => /governance wallet/.test(String((err as { cause?: { message?: string } }).cause?.message ?? (err as Error).message)));
   // A third address is refused the same way; an event about nobody we know is 422, so Dynamic keeps it to replay.
   const third = created(me, "w-3", "0x0000000000000000000000000000000000000003", "evt-3", "2026-09-27T10:02:00.000Z");
   assert.deepEqual(await receiveDelegationEvent(third, signed(third), exploding), { ok: true, kind: "refused", walletId: "w-3" });
+  assert.equal(alerts.length, 1, "a stray third wallet is refused quietly; the alert is for the governance wallet");
   const nobody = JSON.parse(body) as { data: { userId?: string } };
   nobody.data.userId = "tmp-check:nobody";
   const nb = JSON.stringify(nobody);

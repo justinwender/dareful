@@ -795,6 +795,37 @@ export const delegations = pgTable(
 ).enableRLS();
 
 /**
+ * Every transaction the relayer signs, recorded before it is broadcast, with what completes it once the receipt
+ * is in (docs/decisions.md 2026-09-27, "a send is never lost"). The hash is known before the send because the
+ * relayer signs locally; a send the node never answered is pending here, the tick re-broadcasts the signed bytes
+ * and reads the receipt, and the kind's completion writes the mirror the action would have written. Nothing here
+ * is secret: a signed transaction is public the moment it is broadcast.
+ */
+export const chainWrites = pgTable(
+  "chain_writes",
+  {
+    hash: bytea("hash").primaryKey(),
+    label: text("label").notNull(),
+    /** What completes it: confirm, close, net, create, resolve, arbitrate, feed, expire, register, other. */
+    kind: text("kind").notNull(),
+    /** The ids the completion needs, as JSON. */
+    subject: text("subject").notNull(),
+    nonce: integer("nonce").notNull(),
+    /** The signed transaction, for re-broadcast. */
+    raw: bytea("raw").notNull(),
+    /** pending until a receipt is read; then mined or reverted; dropped when the network consumed the nonce with something else or the write aged out. */
+    status: text("status").notNull().default("pending"),
+    blockNumber: bigint("block_number", { mode: "bigint" }),
+    attempts: integer("attempts").notNull().default(1),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+    /** When the kind's completion finished; a mined write without one is retried by the tick. */
+    completedAt: ts("completed_at"),
+  },
+  (t) => [index("chain_writes_status_idx").on(t.status, t.createdAt), check("chain_writes_status_known", sql`${t.status} in ('pending', 'mined', 'reverted', 'dropped')`)],
+).enableRLS();
+
+/**
  * Every signature the server made with a delegated share, with the request that caused it (docs/decisions.md
  * 2026-09-27): delegation removes the prompt, never the person, so each one traces to an authenticated request
  * from that user for that action in that moment. Holds the digest signed and nothing secret.

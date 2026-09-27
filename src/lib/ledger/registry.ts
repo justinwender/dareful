@@ -39,6 +39,7 @@ export async function ensureGroupOnchain(groupId: string): Promise<Hex> {
       functionName: "createGroup",
       args: [onchainId, members.map((m) => ({ ledger: m.ledger as Address, governance: m.governance as Address }))],
       gas: gasFor.createGroup(members.length),
+      write: { kind: "register", subject: { groupId } },
     });
   } else {
     for (const m of members) {
@@ -51,6 +52,7 @@ export async function ensureGroupOnchain(groupId: string): Promise<Hex> {
           functionName: "addMember",
           args: [onchainId, { ledger: m.ledger as Address, governance: m.governance as Address }],
           gas: gasFor.addMember(),
+          write: { kind: "register", subject: { groupId } },
         });
       }
     }
@@ -84,6 +86,7 @@ export async function ensureDenomOnchain(denomId: string): Promise<Hex> {
       functionName: "createDenom",
       args: [groupId, onchainId, denom.quantifiable],
       gas: gasFor.createDenom(),
+      write: { kind: "register", subject: { denomId } },
     });
   }
   await db.update(schema.denominations).set({ onchainId: hexToBuffer(onchainId) }).where(eq(schema.denominations.id, denomId));

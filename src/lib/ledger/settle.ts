@@ -17,7 +17,7 @@ import { db, schema } from "@/db";
 import { arbitrate as askArbitrator, arbitrateAnswer, arbitrateNumber, ruleClaim } from "@/lib/ai/settler";
 import { contracts } from "@/lib/chain/contracts";
 import { gasFor } from "@/lib/chain/gas";
-import { submit } from "@/lib/chain/relayer";
+import { SendPending, submit } from "@/lib/chain/relayer";
 import { evidenceFor } from "@/lib/media/evidence";
 import { bufferToHex } from "./ids";
 import { isMember } from "./groups";
@@ -147,8 +147,10 @@ export async function arbitrateMarket(dareId: string, byUserId: string | null, n
       // The contract ignores `outcome` when voided; zero is sent so the call never carries the sentinel by accident.
       args: [bufferToHex(d.onchainId), voided ? 0n : toChainOutcome(outcome), voided, hash],
       gas: voided ? gasFor.arbitrateVoid() : gasFor.arbitrate(positions.length),
+      write: { kind: "arbitrate", subject: { dareId: d.id, rulingText: ruling.ruling, rulingHash: hash } },
     });
   } catch (err) {
+    if (err instanceof SendPending) throw err;
     if (await reconcileFromIndexer(d.id)) throw new MarketError("It was decided while you were asking.", "wrong_state");
     throw new MarketError(`The ruling is written, but recording it didn't go through. Nothing changed. (${err instanceof Error ? (err.message.split("\n")[0] ?? "") : "unknown"})`, "chain");
   }
@@ -166,8 +168,14 @@ export async function expireMarket(dareId: string, now: Date = new Date()): Prom
   const d = await marketById(dareId);
   if (!d || stateOf(d) !== "locked" || d.stalemate !== "void" || !d.onchainId || !d.resolvesBy || d.resolvesBy.getTime() >= now.getTime()) return false;
   const { dares } = contracts();
-  await submit({ label: `expire market ${d.id}`, address: dares.address, abi: dares.abi, functionName: "expire", args: [bufferToHex(d.onchainId)], gas: gasFor.expire() });
-  await db.update(schema.dares).set({ resolvedBy: "expired", resolvedAt: now, resolvedOutcome: null }).where(and(eq(schema.dares.id, d.id), isNull(schema.dares.resolvedAt)));
+  await submit({ label: `expire market ${d.id}`, address: dares.address, abi: dares.abi, functionName: "expire", args: [bufferToHex(d.onchainId)], gas: gasFor.expire(), write: { kind: "expire", subject: { dareId: d.id } } });
+  await completeExpire(d.id, now);
+  return true;
+}
+
+/** The mirror of an expiry once the chain has it, idempotent: no outcome, nothing minted, the question unsettled. */
+export async function completeExpire(dareId: string, now: Date = new Date()): Promise<boolean> {
+  await db.update(schema.dares).set({ resolvedBy: "expired", resolvedAt: now, resolvedOutcome: null }).where(and(eq(schema.dares.id, dareId), isNull(schema.dares.resolvedAt)));
   return true;
 }
 

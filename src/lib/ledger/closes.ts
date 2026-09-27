@@ -7,11 +7,11 @@
  * either party's over the pair's nonce, and the relayer only carries them.
  */
 import { verifyTypedData, type Address, type Hex } from "viem";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { contracts } from "@/lib/chain/contracts";
 import { gasFor } from "@/lib/chain/gas";
-import { relayer, submit } from "@/lib/chain/relayer";
+import { relayer, SendPending, submit } from "@/lib/chain/relayer";
 import { CloseReason, ledgerDomain, ledgerTypes } from "@/lib/chain/typed-data";
 import { obligationsById, type EnvioObligation } from "./envio";
 import { denomOnchainId, groupOnchainId, uuidToBytes16 } from "./ids";
@@ -90,15 +90,24 @@ export async function closeObligation(input: { obligationId: string; creditorUse
       functionName: "close",
       args: [typed.message.id, typed.message.qty, typed.message.reason, typed.message.obligationId, input.signature],
       gas: gasFor.close(),
+      write: { kind: "close", subject: { obligationId: o.id } },
     });
     txHash = result.hash;
   } catch (err) {
+    if (err instanceof SendPending) throw err;
     throw new CloseError(err instanceof Error ? err.message : "the chain write failed", "chain");
   }
-  // The offchain clock of the close (docs/decisions.md 2026-09-25): the moment "Just happened" orders by. Whether
-  // it was settled or forgiven, and what is still open, stay the chain's to say.
-  await db.update(schema.obligations).set({ closedAt: new Date() }).where(eq(schema.obligations.id, o.id));
+  await completeClose(o.id);
   return { txHash, qty: state.remaining };
+}
+
+/**
+ * The offchain clock of the close (docs/decisions.md 2026-09-25): the moment "Just happened" orders by, written
+ * once. Whether it was settled or forgiven, and what is still open, stay the chain's to say.
+ */
+export async function completeClose(obligationId: string): Promise<boolean> {
+  await db.update(schema.obligations).set({ closedAt: new Date() }).where(and(eq(schema.obligations.id, obligationId), isNull(schema.obligations.closedAt)));
+  return true;
 }
 
 // ------------------------------------------------------------------------------------------- netting
@@ -176,9 +185,11 @@ export async function netBetween(input: { signerUserId: string; otherUserId: str
       functionName: "net",
       args: [groupId, denomId, a, b, input.signature],
       gas: gasFor.net(),
+      write: { kind: "net", subject: { groupId: input.groupId, denomId: input.denomId, a: input.signerUserId, b: input.otherUserId } },
     });
     return { txHash: result.hash };
   } catch (err) {
+    if (err instanceof SendPending) throw err;
     throw new CloseError(err instanceof Error ? err.message : "the chain write failed", "chain");
   }
 }

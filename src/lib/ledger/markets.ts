@@ -24,7 +24,7 @@ import { decodeEventLog, keccak256, stringToHex, verifyTypedData, type Address, 
 import { db, schema } from "@/db";
 import { contracts } from "@/lib/chain/contracts";
 import { gasFor } from "@/lib/chain/gas";
-import { relayer, submit } from "@/lib/chain/relayer";
+import { relayer, SendPending, submit } from "@/lib/chain/relayer";
 import { daresDomain, daresTypes, Kind, Pace, Stalemate, VOID } from "@/lib/chain/typed-data";
 import { denominationById } from "./denominations";
 import { dareByOnchainId } from "./envio";
@@ -486,27 +486,37 @@ export async function lockMarket(dareId: string, byUserId: string | null): Promi
       functionName: "create",
       args: [dareStruct, ps, sigs, bufferToHex(d.creatorSignature)],
       gas: gasFor.create(ps.length, quorumNow.length),
+      write: { kind: "create", subject: { dareId: d.id } },
     });
     txHash = result.hash;
     minedIn = result.receipt.blockNumber;
   } catch (err) {
+    if (err instanceof SendPending) throw err;
     // A retry after a lock whose mirror never got written finds the market already there. That is a lock.
     const already = /DareExists/.test(err instanceof Error ? err.message : "");
     if (!already) throw new MarketError(`Locking it didn't go through. Nothing changed. (${err instanceof Error ? (err.message.split("\n")[0] ?? "") : "unknown"})`, "chain");
     txHash = "0x" as Hex;
   }
-
-  // It is locked the moment the transaction succeeds; record that first, so nothing after this line can leave a
-  // market locked onchain and open here.
-  await db.update(schema.dares).set({ onchainId: hexToBuffer(typed.message.dareId), lockedAt: new Date() }).where(and(eq(schema.dares.id, d.id), isNull(schema.dares.lockedAt)));
-  // The room closes with the numbers: a code read out after this buys nothing.
-  await db.update(schema.roomCodes).set({ closedAt: new Date() }).where(and(eq(schema.roomCodes.dareId, d.id), isNull(schema.roomCodes.closedAt)));
-
-  // Read what the contract decided, at the block it was mined in: a load-balanced RPC can otherwise answer from
-  // a node that has not seen that block yet and say the market does not exist.
-  const onchain = (await publicClient.readContract({ address: dares.address, abi: dares.abi, functionName: "dareOf", args: [typed.message.dareId], blockNumber: minedIn })) as { threshold: number; quorum: readonly Address[] };
-  await db.update(schema.dares).set({ threshold: onchain.threshold }).where(eq(schema.dares.id, d.id));
+  const onchain = await completeLock(d, minedIn);
   return { txHash, threshold: onchain.threshold, quorum: [...onchain.quorum] };
+}
+
+/**
+ * The offchain mirror of a lock once the chain has it, idempotent: the market is locked the moment the
+ * transaction succeeds, so that is recorded first and nothing after can leave a market locked onchain and open
+ * here; the room closes with the numbers; then what the contract decided is read at the block it was mined in
+ * (a load-balanced node can otherwise say the market does not exist). The tick calls this for a send whose
+ * receipt outlived the request (docs/decisions.md 2026-09-27).
+ */
+export async function completeLock(d: DareRow, minedIn?: bigint): Promise<{ threshold: number; quorum: readonly Address[] }> {
+  const { dares } = contracts();
+  const { publicClient } = relayer();
+  const dareId = createTypedData(d).message.dareId;
+  await db.update(schema.dares).set({ onchainId: hexToBuffer(dareId), lockedAt: new Date() }).where(and(eq(schema.dares.id, d.id), isNull(schema.dares.lockedAt)));
+  await db.update(schema.roomCodes).set({ closedAt: new Date() }).where(and(eq(schema.roomCodes.dareId, d.id), isNull(schema.roomCodes.closedAt)));
+  const onchain = (await publicClient.readContract({ address: dares.address, abi: dares.abi, functionName: "dareOf", args: [dareId], blockNumber: minedIn })) as { threshold: number; quorum: readonly Address[] };
+  await db.update(schema.dares).set({ threshold: onchain.threshold }).where(eq(schema.dares.id, d.id));
+  return onchain;
 }
 
 // -------------------------------------------------------------------------------------------------- voting
@@ -587,8 +597,10 @@ async function resolveMarket(d: DareRow, outcome: bigint, agreeing: VoteRow[]): 
       args: [bufferToHex(d.onchainId), toChainOutcome(outcome), agreeing.map((v) => bufferToHex(v.signature))],
       // A void mints nothing, and Monad charges what is declared: it never pays for edges it cannot mint.
       gas: outcome === VOID_OUTCOME ? gasFor.resolveVoid(agreeing.length) : gasFor.resolve(positions.length, agreeing.length),
+      write: { kind: "resolve", subject: { dareId: d.id } },
     });
   } catch (err) {
+    if (err instanceof SendPending) throw err;
     // Two last votes can arrive together; the second finds the market already resolved. That is not a failure.
     if (await reconcileFromIndexer(d.id)) return "0x" as Hex;
     throw new MarketError(`The votes are in, but recording it didn't go through. Tap again to retry. (${err instanceof Error ? (err.message.split("\n")[0] ?? "") : "unknown"})`, "chain");
@@ -686,7 +698,7 @@ export async function mirrorSettlement(d: DareRow, s: Settlement, how: { by: "qu
  * the only chain reader). Covers a mirror write that failed after the transaction succeeded, and two final votes
  * arriving at once. Returns whether the market is now recorded as decided.
  */
-export async function reconcileFromIndexer(dareId: string): Promise<boolean> {
+export async function reconcileFromIndexer(dareId: string, how?: { by: "quorum" | "arbitration" | "feed"; rulingText?: string; rulingHash?: Hex }): Promise<boolean> {
   const d = await marketById(dareId);
   if (!d || !d.onchainId) return false;
   if (d.resolvedAt) return true;
@@ -697,7 +709,7 @@ export async function reconcileFromIndexer(dareId: string): Promise<boolean> {
     txHash: indexed.resolveTx as Hex,
     scores: new Map(indexed.positions.filter((p) => p.score !== null).map((p) => [p.participant.toLowerCase(), p.score as number])),
     edges: indexed.edges.map((e) => ({ tokenId: BigInt(e.tokenId), debtor: e.debtor.toLowerCase(), creditor: e.creditor.toLowerCase(), qty: BigInt(e.qty), obligationId: e.id as Hex, unique: e.unique })),
-  }, { by: indexed.rulingHash ? "arbitration" : "quorum" });
+  }, how ?? { by: indexed.rulingHash ? "arbitration" : "quorum" });
   return true;
 }
 

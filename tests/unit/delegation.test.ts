@@ -91,6 +91,12 @@ test("the private key is read as the PEM or as its base64, and anything else is 
     assert.equal(delegationPrivateKeyPem(), pem.trim());
     process.env.DYNAMIC_DELEGATION_PRIVATE_KEY = Buffer.from(pem, "utf8").toString("base64");
     assert.equal(delegationPrivateKeyPem(), pem.trim());
+    process.env.DYNAMIC_DELEGATION_PRIVATE_KEY = `"${Buffer.from(pem, "utf8").toString("base64").replace(/(.{40})/g, "$1\n")}"`;
+    assert.equal(delegationPrivateKeyPem(), pem.trim(), "quoted and line-wrapped base64, as a console field leaves it");
+    process.env.DYNAMIC_DELEGATION_PRIVATE_KEY = pem.trim().replace(/\n/g, "\\n");
+    assert.equal(delegationPrivateKeyPem(), pem.trim(), "the PEM with backslash-n where a single-line field put it");
+    process.env.DYNAMIC_DELEGATION_PRIVATE_KEY = "-----BEGIN PRIVATE KEY-----\nMIIB";
+    assert.equal(delegationPrivateKeyPem(), null, "a PEM cut short is nothing");
     process.env.DYNAMIC_DELEGATION_PRIVATE_KEY = "not a key";
     assert.equal(delegationPrivateKeyPem(), null);
     delete process.env.DYNAMIC_DELEGATION_PRIVATE_KEY;

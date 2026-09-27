@@ -7,7 +7,7 @@ import { verifyTypedData, type Address, type Hex } from "viem";
 import { db, schema } from "@/db";
 import { contracts } from "@/lib/chain/contracts";
 import { gasFor } from "@/lib/chain/gas";
-import { submit } from "@/lib/chain/relayer";
+import { SendPending, submit } from "@/lib/chain/relayer";
 import { ledgerDomain, ledgerTypes } from "@/lib/chain/typed-data";
 import { cents, units, type Cents, type Units } from "@/lib/money";
 import { ensureDyadWithClaim, isClaimMember, type Person } from "./claims";
@@ -146,38 +146,63 @@ export async function confirmProposal(proposalId: string, debtorUserId: string, 
       functionName: "confirm",
       args: [m.groupId, m.denomId, m.creditor, m.qty, m.obligationId, m.unique, signature],
       gas: gasFor.confirm(),
+      write: { kind: "confirm", subject: { proposalIds: [proposal.id] } },
     });
     txHash = result.hash;
   } catch (err) {
+    if (err instanceof SendPending) throw err;
     throw new ConfirmError(err instanceof Error ? err.message : "the chain write failed", "chain");
   }
-
-  const debtorAddr = debtor.ledgerWallet as Address;
-  const tokenId = m.unique ? uniqueTokenId(m.groupId, m.denomId, debtorAddr, m.obligationId) : fungibleTokenId(m.groupId, m.denomId, debtorAddr);
-  await db.transaction(async (tx) => {
-    await tx.insert(schema.obligations).values({
-      id: proposal.id,
-      tokenId,
-      groupId: proposal.groupId,
-      fromUser: debtorUserId,
-      toUser: creditor.id,
-      denomId: proposal.denomId,
-      quantity: proposal.quantity,
-      uniqueObligation: proposal.uniqueObligation,
-      amountCents: proposal.amountCents,
-      origin: proposal.origin,
-      originId: proposal.originId,
-      settleExpected: proposal.settleExpected,
-      memo: proposal.memo,
-      confirmTx: hexToBuffer(txHash),
-      createdAt: proposal.createdAt,
-    });
-    await tx
-      .update(schema.obligationProposals)
-      .set({ status: "confirmed", resolvedAt: new Date() })
-      .where(eq(schema.obligationProposals.id, proposal.id));
-  });
+  await completeConfirm([proposal.id], txHash);
   return { obligationId: proposal.id, txHash };
+}
+
+/**
+ * The offchain mirror of a confirm once the chain has it: one shadow `obligations` row per proposal and the
+ * proposals marked confirmed, from the proposals alone, idempotent, so the tick can write it for a send whose
+ * receipt outlived the request (docs/decisions.md 2026-09-27, "a send is never lost"). The token ids are the
+ * same derivation the signature was made over.
+ */
+export async function completeConfirm(proposalIds: string[], txHash: Hex): Promise<boolean> {
+  const proposals = await db.select().from(schema.obligationProposals).where(inArray(schema.obligationProposals.id, proposalIds));
+  if (proposals.length !== proposalIds.length) return false;
+  const debtorIds = new Set(proposals.map((p) => p.fromUser));
+  const [debtorId] = [...debtorIds];
+  if (debtorIds.size !== 1 || !debtorId) return false;
+  const [debtor] = await db.select({ ledgerWallet: schema.users.ledgerWallet }).from(schema.users).where(eq(schema.users.id, debtorId)).limit(1);
+  if (!debtor || proposals.some((p) => !p.toUser)) return false;
+  const debtorAddr = debtor.ledgerWallet as Address;
+  const now = new Date();
+  await db.transaction(async (tx) => {
+    await tx
+      .insert(schema.obligations)
+      .values(
+        proposals.map((p) => {
+          const groupId = groupOnchainId(p.groupId);
+          const denomId = denomOnchainId(p.denomId);
+          return {
+            id: p.id,
+            tokenId: p.uniqueObligation ? uniqueTokenId(groupId, denomId, debtorAddr, uuidToBytes16(p.id)) : fungibleTokenId(groupId, denomId, debtorAddr),
+            groupId: p.groupId,
+            fromUser: debtorId,
+            toUser: p.toUser as string,
+            denomId: p.denomId,
+            quantity: p.quantity,
+            uniqueObligation: p.uniqueObligation,
+            amountCents: p.amountCents,
+            origin: p.origin,
+            originId: p.originId,
+            settleExpected: p.settleExpected,
+            memo: p.memo,
+            confirmTx: hexToBuffer(txHash),
+            createdAt: p.createdAt,
+          };
+        }),
+      )
+      .onConflictDoNothing();
+    await tx.update(schema.obligationProposals).set({ status: "confirmed", resolvedAt: now }).where(and(inArray(schema.obligationProposals.id, proposalIds), eq(schema.obligationProposals.status, "pending")));
+  });
+  return true;
 }
 
 /** At most this many in one batch: the declared gas grows per item, and Monad charges what is declared. */
@@ -258,41 +283,14 @@ export async function confirmManyProposals(proposalIds: string[], debtorUserId: 
       functionName: "confirmMany",
       args: [m.groupIds, m.denomIds, m.creditors, m.qtys, m.obligationIds, m.uniques, signature],
       gas: gasFor.confirmMany(proposals.length),
+      write: { kind: "confirm", subject: { proposalIds } },
     });
     txHash = result.hash;
   } catch (err) {
+    if (err instanceof SendPending) throw err;
     throw new ConfirmError(err instanceof Error ? err.message : "the chain write failed", "chain");
   }
-
-  const debtorAddr = debtor.ledgerWallet as Address;
-  const now = new Date();
-  await db.transaction(async (tx) => {
-    await tx.insert(schema.obligations).values(
-      proposals.map((p, i) => {
-        const groupId = m.groupIds[i] as Hex;
-        const denomId = m.denomIds[i] as Hex;
-        const obligationId = m.obligationIds[i] as Hex;
-        return {
-          id: p.id,
-          tokenId: p.uniqueObligation ? uniqueTokenId(groupId, denomId, debtorAddr, obligationId) : fungibleTokenId(groupId, denomId, debtorAddr),
-          groupId: p.groupId,
-          fromUser: debtorUserId,
-          toUser: p.toUser as string, // loadConfirmBatch refused any row without a creditor account
-          denomId: p.denomId,
-          quantity: p.quantity,
-          uniqueObligation: p.uniqueObligation,
-          amountCents: p.amountCents,
-          origin: p.origin,
-          originId: p.originId,
-          settleExpected: p.settleExpected,
-          memo: p.memo,
-          confirmTx: hexToBuffer(txHash),
-          createdAt: p.createdAt,
-        };
-      }),
-    );
-    await tx.update(schema.obligationProposals).set({ status: "confirmed", resolvedAt: now }).where(inArray(schema.obligationProposals.id, proposalIds));
-  });
+  await completeConfirm(proposalIds, txHash);
   return { obligationIds: proposals.map((p) => p.id), txHash };
 }
 

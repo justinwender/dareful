@@ -5,7 +5,7 @@
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isNonceProblem, SendTimedOut, sendWithNonceRetry, withTimeout } from "@/lib/chain/relayer";
+import { isAlreadyKnown, isNonceProblem, SendPending, SendTimedOut, sendWithNonceRetry, withTimeout } from "@/lib/chain/relayer";
 
 const failing = (message: string) => Object.assign(new Error(message), { name: "TransactionExecutionError" });
 
@@ -59,4 +59,15 @@ test("a send that hangs is given up after the timeout, so a stalled node never h
   assert.ok(Date.now() - t0 < 2_000, "given up at the timeout, not later");
   assert.equal(await withTimeout(Promise.resolve("0xhash"), 120), "0xhash");
   await assert.rejects(withTimeout(Promise.reject(new Error("execution reverted")), 120), /execution reverted/, "a real failure keeps its own words");
+});
+
+test("a node that already holds the transaction counts as a broadcast, and a pending send names its hash", () => {
+  assert.equal(isAlreadyKnown(failing("already known")), true);
+  assert.equal(isAlreadyKnown(Object.assign(new Error("Request failed"), { cause: { message: "AlreadyKnown" } })), true, "down the cause chain, whatever the case");
+  assert.equal(isAlreadyKnown(failing("known transaction: 0xabc")), true);
+  assert.equal(isAlreadyKnown(failing("nonce too low")), false, "a collision is not the same transaction");
+  assert.equal(isAlreadyKnown(failing("execution reverted")), false);
+  assert.equal(isAlreadyKnown(null), false);
+  const pending = new SendPending("0xabc", "confirm x");
+  assert.deepEqual([pending.name, pending.hash, pending.message.includes("0xabc") && pending.message.includes("confirm x")], ["SendPending", "0xabc", true]);
 });

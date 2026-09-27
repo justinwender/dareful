@@ -4,7 +4,9 @@ import { notifyBackstopResult, notifyBackstopWarning, notifyDeadline } from "@/l
 import { tick } from "@/lib/ledger/settle";
 import { sportsTick } from "@/lib/sports";
 import { balldontlie } from "@/lib/sports/balldontlie";
+import { reconcileChainWrites } from "@/lib/chain/reconcile";
 import { watchRelayer } from "@/lib/chain/watch";
+import { completions } from "@/lib/ledger/completions";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -34,10 +36,15 @@ export async function POST(req: Request): Promise<Response> {
   const sports = await sportsTick(now);
   await Promise.all([...sports.settled, ...sports.voided].map((id) => notifyBackstopResult(id)));
   if (sports.failed.length > 0) console.error("tick: some feed jobs failed", sports.failed);
+  // A send is never lost: writes whose receipt outlived their request are read, finished or dropped here.
+  const writes = await reconcileChainWrites(now, { complete: completions }).catch((err: unknown) => {
+    console.error("tick: chain writes could not be reconciled", err instanceof Error ? err.message : err);
+    return null;
+  });
   // The relayer's gas, read after the jobs so the read never delays a send; unread is reported, never thrown.
   const relayer = await watchRelayer(now).catch((err: unknown) => {
     console.error("tick: the relayer's balance could not be read", err instanceof Error ? err.message : err);
     return null;
   });
-  return NextResponse.json({ locked: report.locked.length, notified: report.notified.length, expired: report.expired.length, arbitrated: report.arbitrated.length, warned: report.warned.length, failed: report.failed.length, feed: { synced: sports.synced, polled: sports.polled.length, drives: sports.drives.length, proposed: sports.proposed.length, settled: sports.settled.length, voided: sports.voided.length, failed: sports.failed.length }, relayer });
+  return NextResponse.json({ locked: report.locked.length, notified: report.notified.length, expired: report.expired.length, arbitrated: report.arbitrated.length, warned: report.warned.length, failed: report.failed.length, feed: { synced: sports.synced, polled: sports.polled.length, drives: sports.drives.length, proposed: sports.proposed.length, settled: sports.settled.length, voided: sports.voided.length, failed: sports.failed.length }, writes: writes ? { mined: writes.mined.length, completed: writes.completed.length, reverted: writes.reverted.length, dropped: writes.dropped.length, rebroadcast: writes.rebroadcast.length } : null, relayer });
 }

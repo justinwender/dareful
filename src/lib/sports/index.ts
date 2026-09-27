@@ -12,7 +12,7 @@ import { keccak256, stringToHex, type Hex } from "viem";
 import { db, schema } from "@/db";
 import { contracts } from "@/lib/chain/contracts";
 import { gasFor } from "@/lib/chain/gas";
-import { submit } from "@/lib/chain/relayer";
+import { SendPending, submit } from "@/lib/chain/relayer";
 import { bufferToHex } from "@/lib/ledger/ids";
 import { draftFromTemplate, marketById, MarketError, mirrorSettlement, positionsOf, reconcileFromIndexer, settlementFromReceipt, stateOf, toChainOutcome, VOID_OUTCOME, type DareRow } from "@/lib/ledger/markets";
 import { membersOfGroups, setLabel } from "@/lib/ledger/groups";
@@ -326,8 +326,10 @@ export async function settleByFeed(d: DareRow, template: TemplateRow, game: Game
       functionName: "arbitrate",
       args: [bufferToHex(d.onchainId), voided ? 0n : toChainOutcome(outcome), voided, hash],
       gas: voided ? gasFor.arbitrateVoid() : gasFor.arbitrate(positions.length),
+      write: { kind: "feed", subject: { dareId: d.id, rulingText: text, rulingHash: hash, ending: decision.ending } },
     });
   } catch (err) {
+    if (err instanceof SendPending) throw err;
     if (await reconcileFromIndexer(d.id)) throw new MarketError("It was decided meanwhile.", "wrong_state");
     throw new MarketError(`The feed's answer is in, but recording it didn't go through. Nothing changed. (${err instanceof Error ? (err.message.split("\n")[0] ?? "") : "unknown"})`, "chain");
   }
