@@ -395,7 +395,7 @@ export async function GamePage({ id, g, add, start }: { id: string; g: string | 
         ) : null}
         {ahead ? (
           // The link sent to the chat is the game page's when more than one question runs (3.33); someone arriving from it lands here and enters each question from its card.
-          <InviteShare url={shareUrl} text={`${game.name}: put your numbers on it.`} label="Send it to the chat" />
+          <InviteShare url={shareUrl} text={game.name} label="Send it to the chat" />
         ) : null}
       </div>
     </Screen>

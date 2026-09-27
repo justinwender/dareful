@@ -45,7 +45,9 @@ async function remember(url) {
 async function openOn(url) {
   await remember(url).catch(() => undefined);
   const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-  const win = wins.find((w) => "focus" in w);
+  // This app's own window first (the installed one, or the tab on this origin), and among those the one already showing.
+  const own = wins.filter((w) => "focus" in w && typeof w.url === "string" && w.url.startsWith(self.location.origin));
+  const win = own.find((w) => w.visibilityState === "visible") || own[0] || wins.find((w) => "focus" in w);
   if (!win) return self.clients.openWindow(url);
   const focused = await win.focus().catch(() => win);
   const target = focused || win;
@@ -57,6 +59,7 @@ async function openOn(url) {
   } catch (_) {
     // Refused. The page is told instead, below.
   }
+  // Told, and left where the page looks when it comes to the front (a message can arrive before the page is listening).
   target.postMessage({ type: "dareful:open", url });
   return target;
 }

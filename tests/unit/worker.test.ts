@@ -72,3 +72,13 @@ test("a notification can only ever open this app", async () => {
   await w.tap("https://evil.example.com/steal");
   assert.deepEqual(w.calls, ["close", "open:https://dareful.app/"]);
 });
+
+test("among several windows the app's own showing one is taken, never a tab on another origin", async () => {
+  const calls: string[] = [];
+  const foreign = { ...win(calls), url: "https://evil.example.com/", focus: async () => (calls.push("focus:foreign"), foreign) } as Win;
+  const hidden = { ...win(calls), url: "https://dareful.app/people", focus: async () => (calls.push("focus:hidden"), hidden), visibilityState: "hidden" } as Win & { visibilityState: string };
+  const showing = { ...win(calls), url: "https://dareful.app/", focus: async () => (calls.push("focus:showing"), showing), visibilityState: "visible" } as Win & { visibilityState: string };
+  const w = worker([foreign, hidden, showing]);
+  await w.tap("https://dareful.app/m/new-one");
+  assert.ok(calls.includes("focus:showing") && !calls.includes("focus:foreign") && !calls.includes("focus:hidden"), calls.join(","));
+});

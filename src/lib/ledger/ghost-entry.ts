@@ -94,7 +94,8 @@ export async function enterAsGhost(input: { dareId: string; who: GhostWho; token
   const [position] = await db
     .insert(schema.darePositions)
     .values({ dareId: d.id, claimId, stake: input.stake, value: input.value, confidenceBps: d.kind === "categorical" ? confidenceFor(d) : null, enterSignature: null, enteredBy: d.creatorId, acknowledgedAt: now })
-    .onConflictDoUpdate({ target: [schema.darePositions.dareId, schema.darePositions.claimId], set: { stake: input.stake, value: input.value, confidenceBps: d.kind === "categorical" ? confidenceFor(d) : null } })
+    // A ghost the asker removed may enter again: the row comes back with the new number, and the asker may remove it again.
+    .onConflictDoUpdate({ target: [schema.darePositions.dareId, schema.darePositions.claimId], set: { stake: input.stake, value: input.value, confidenceBps: d.kind === "categorical" ? confidenceFor(d) : null, dismissedAt: null, acknowledgedAt: now } })
     .returning();
   if (!position) throw new MarketError("Couldn't save that.", "chain");
 
@@ -141,4 +142,22 @@ export async function ghostMembersOf(groupId: string): Promise<Array<{ claimId: 
       .innerJoin(schema.participantClaims, eq(schema.participantClaims.id, schema.groupMembers.claimId))
       .where(and(eq(schema.groupMembers.groupId, groupId), isNull(schema.groupMembers.leftAt), isNull(schema.participantClaims.claimedBy), isNull(schema.participantClaims.mergedInto)))
   ).map((r) => ({ claimId: r.claimId, displayName: r.displayName }));
+}
+
+/**
+ * The asker removes an entry from someone without an account, before the lock (docs/decisions.md 2026-09-27, the
+ * check-in's ruling): the position is dismissed and no longer counts; the ghost keeps its seat and its token, and
+ * may enter again. Only the asker, only a ghost's entry, only while the question is open.
+ */
+export async function removeGhostEntry(input: { dareId: string; claimId: string; byUserId: string }): Promise<void> {
+  const d = await marketById(input.dareId);
+  if (!d) throw new MarketError("That one doesn't exist.", "not_found");
+  if (d.creatorId !== input.byUserId) throw new MarketError("Only the person who asked it can remove someone.", "not_yours");
+  if (stateOf(d) !== "open") throw new MarketError("Numbers are locked.", "wrong_state");
+  const [row] = await db
+    .update(schema.darePositions)
+    .set({ dismissedAt: new Date() })
+    .where(and(eq(schema.darePositions.dareId, d.id), eq(schema.darePositions.claimId, input.claimId), isNull(schema.darePositions.dismissedAt)))
+    .returning({ claimId: schema.darePositions.claimId });
+  if (!row) throw new MarketError("They're not in it.", "not_found");
 }

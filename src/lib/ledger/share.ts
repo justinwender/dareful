@@ -385,5 +385,5 @@ export function shareTermsLine(input: {
     input.stalemate === "void"
       ? "If nobody can agree, it goes unsettled."
       : "If nobody can agree, the app hears both sides and calls it.";
-  return `${decided}${input.argument ? "Take the other side." : "Put your number on it."} ${tiebreak}`;
+  return `${decided}${input.argument ? "Take the other side. " : ""}${tiebreak}`;
 }

@@ -52,12 +52,19 @@ export function OpenFromNotification() {
     const onVisible = () => {
       if (document.visibilityState === "visible") void collect();
     };
+    // The installed app on iOS does not always fire visibilitychange when it comes to the front from a notification;
+    // focus and pageshow are looked at too. Collecting twice is harmless: the address is deleted on the first read.
+    const onFocus = () => void collect();
     void collect();
     navigator.serviceWorker?.addEventListener("message", onMessage);
     document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("pageshow", onFocus);
     return () => {
       navigator.serviceWorker?.removeEventListener("message", onMessage);
       document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("pageshow", onFocus);
     };
   }, [router]);
   return null;

@@ -139,13 +139,13 @@ export function StartGame({ game, menu, sets, people, chrome, signing, mode, clo
         setSigningStep(null);
         // The drafts are saved and listed on the page as the asker's to finish, so nothing typed is lost.
         setProblem(`${signingProblem(err)} The questions are saved as drafts; open the game to finish them.`);
-        router.push(`/on/${game.id}?g=${r.groupId}`);
+        router.replace(`/on/${game.id}?g=${r.groupId}`);
         return;
       }
       setSigningStep(null);
       const o = await openGameQuestionsAction(signed);
       if ("error" in o) return setProblem(o.error);
-      router.push(`/on/${game.id}?g=${r.groupId}`);
+      router.replace(`/on/${game.id}?g=${r.groupId}`);
     });
   }
 

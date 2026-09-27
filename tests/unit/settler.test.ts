@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { keccak256, stringToHex } from "viem";
 import { answerFrom } from "@/lib/ai/client";
-import { Arbitration, CarefulQuestions, declined, DECLINE_FALLBACK, plainDashes, Ruling, Triage } from "@/lib/ai/settler";
+import { Arbitration, CarefulAnswer, CarefulQuestions, declined, DECLINE_FALLBACK, plainDashes, Ruling, Triage } from "@/lib/ai/settler";
 import { shareTermsLine } from "@/lib/ledger/share";
 import { arbitrationOpen, rulingHash, SIDE_BPS } from "@/lib/ledger/settle";
 import { scoreBinary, pairwiseTransfer } from "@/lib/ledger/scoring";
@@ -69,6 +69,18 @@ test("careful mode is exactly three questions", () => {
   assert.throws(() => answerFrom(withInput(load("careful-questions"), { questions: ["Only one?"] }), "ask_three", CarefulQuestions, "t"));
 });
 
+test("a bare name the line does not place is asked about first, and the questions written once it is placed are about that kind", () => {
+  // Recorded: "does Nova refuse to come inside when it rains this week" (docs/decisions.md 2026-09-27).
+  const asked = answerFrom(load("careful-subject"), "ask_three", CarefulAnswer, "t");
+  assert.deepEqual(asked, { subject: "Nova" }, "the name alone, and no questions");
+  const told = answerFrom(load("careful-questions-pet"), "ask_three", CarefulAnswer, "t");
+  const questions = "questions" in told && Array.isArray(told.questions) ? told.questions : [];
+  assert.equal(questions.length, 3, "told she is a pet, three questions");
+  assert.ok(!questions.some((q) => /answer|refuse to say|tell you/i.test(q)), "none of them treats Nova as someone who could answer");
+  // An answer that records both, or neither, is refused: the two are the model's whole vocabulary here.
+  assert.throws(() => answerFrom(withInput(load("careful-subject"), { subject: "" }), "ask_three", CarefulAnswer, "t"));
+});
+
 test("a recorded arbitration is an outcome and a written ruling, and the hash is of exactly the words stored", () => {
   const a = answerFrom(load("arbitrate"), "arbitrate", Arbitration, "t");
   assert.equal(a.outcome, "yes");
@@ -102,7 +114,8 @@ test("an argument's default sides are all the way, so whoever is wrong is out th
 
 test("the criterion and the tiebreaker are on the card before anyone is in", () => {
   assert.equal(shareTermsLine({ criterion: "by elite success rate", stalemate: "arbitrate", argument: true }), "Decided by elite success rate. Take the other side. If nobody can agree, the app hears both sides and calls it.");
-  assert.equal(shareTermsLine({ criterion: null, stalemate: "void", argument: false }), "Put your number on it. If nobody can agree, it goes unsettled.");
+  // The question stands alone in a chat (docs/decisions.md 2026-09-27): the preview's line no longer says to put a number on it.
+  assert.equal(shareTermsLine({ criterion: null, stalemate: "void", argument: false }), "If nobody can agree, it goes unsettled.");
 });
 
 test("the deadline notice and the ruling notice say who acted and carry nothing it could cost", () => {

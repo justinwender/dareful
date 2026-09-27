@@ -139,7 +139,7 @@ export default async function PersonPage({ params, searchParams }: { params: Pro
         {rally ? <RallyStrip rows={rally} people={new Map([[me.id, { name: me.displayName, hue: hueFor(me.id) }], [them.id, { name: them.displayName, hue: hueFor(them.id) }]])} sentence={view.rally.sentence} /> : null}
       </div>
       <ActionArea>
-        <ButtonLink href={`/new?person=${them.id}`} variant="primary" className="w-full">
+        <ButtonLink href={`/new?for=${them.id}`} variant="primary" className="w-full">
           I got this one
         </ButtonLink>
       </ActionArea>

@@ -500,6 +500,17 @@ test("the people tab lists the ghost among people, and the cover form offers the
   assert.ok(form.text.includes("Gabe") && form.text.includes("+ someone new"));
 });
 
+test("a cover started from a person's page is for that person, with nothing to pick; a set nobody named is shown by its people; the share text is the question alone", async () => {
+  const r = await get(`/new?for=${B.id}`, cA);
+  assert.equal(r.status, 200);
+  assert.ok(r.html.includes('data-cover-for=""') && r.text.includes(B.displayName), "the person, chosen");
+  assert.ok(!r.text.includes("+ someone new") && !r.text.includes("Just us"), "nothing to pick");
+  assert.ok(!/>Group</.test((await get("/new", cA)).html), "no set is called Group");
+  const m = await get(`/m/${marketId}`, cAsker);
+  assert.ok(!m.html.includes("Put your number on it"), "the question stands alone in the chat");
+  assert.ok(!(await get("/", cAsker)).html.includes("I got this one"), "the cover left the Start sheet");
+});
+
 // ------------------------------------------------------------------------- the claimant's first screen
 
 test("the first screen groups what was waiting by who it is with, and offers one yes for all", async () => {

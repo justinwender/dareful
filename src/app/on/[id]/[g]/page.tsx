@@ -9,7 +9,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const { id } = await params;
   const found = /^[0-9a-f-]{36}$/i.test(id) ? await gameById(id).catch(() => null) : null;
   const title = found ? found.game.name : "Dareful";
-  return { title, description: "Put your numbers on it.", robots: { index: false, follow: false }, openGraph: { title, description: "Put your numbers on it." } };
+  return { title, description: "Everything closes at kickoff.", robots: { index: false, follow: false }, openGraph: { title, description: "Everything closes at kickoff." } };
 }
 
 export default async function Page({ params, searchParams }: { params: Promise<{ id: string; g: string }>; searchParams: Promise<{ add?: string }> }) {

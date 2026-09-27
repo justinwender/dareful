@@ -726,6 +726,30 @@ The creation-time mark on a fresh account (checklist 48), and a real dropped sen
 
 The owner's check as the brief states it: a market link opened on a real phone in a private tab, entered, counted on another account's phone, then signing in from that same tab and seeing the number become the account's (checklist 50 to 53). Phone-number binding in production (52) needs a number that later signs in with Dynamic, which nobody but the owner can do. The ghost "Gabe (ghost check)" and its settled question stay on the localhost account, as this session's evidence.
 
+## Session 20: the bugs that needed no design, in the real localhost session
+
+**When:** September 27, 2026, after the front-door check-in. **Who:** the localhost test account, and a session-less visitor at the loopback origin; nobody on a phone. **Checked first:** what each bug actually was, before touching it (docs/decisions.md 2026-09-27, "The bugs that needed no design").
+
+### Exercised
+
+- **Back from a new question**: the ask flow in careful mode from Start, "Looks right", the new question's screen, then the browser's own back: Now, not the flow.
+- **The identity question**: the line "Does Nova refuse to come inside when it rains this week" in careful mode brought "Who's Nova?" with three chips from a real model call; "A pet" brought three questions about a pet (a sitter's, the vet's, coming in on her own) and terms written the same way; the earlier question about John ("Does John fall asleep during the movie") never asks. The recorded calls are the fixtures.
+- **The album**: a settled question with two photos opened full screen at the first ("1 / 2"), the arrow key moved to the second ("2 / 2") with the controls following.
+- **"I got this one" off the Start sheet**: Start lists asking, arguing and joining; the move at the foot of a person's page opens the cover form with that person chosen and nothing to pick (the http suite reads the same).
+- **A set nobody named**: the cover form names it by its people; the http suite refuses the word Group on the form.
+- **The share text**: "Send it to the chat" composes the question and the link and nothing else (the html carries no "put your number on it"; the notice body and the preview line lost it too).
+- **The asker's Remove**: a ghost entered the new question from the loopback tab, the asker's screen listed them under "In without an account" with Remove, and removing took the number out of the count; the harness covers the rest (only the asker, never after lock, and the ghost entering again).
+- **The Fold**: Now, People and a settled question at 725 by 604 and 874 by 787 render as on a phone, centred; nothing failed here.
+
+### What broke
+
+- **The settle suite failed once at the file level** when eight database suites ran side by side (its message was lost to the filter that kept only the verdicts); alone, and again with the same eight together, it passed. Not reproduced, recorded as seen. Twelve suites earlier in the day did reproduce a real relayer gap (session 19), so a repeat of this one gets the full output kept.
+- The identity card's look is the existing question card and waits for the design session.
+
+### What needs a phone, or the owner
+
+The notification tap on iOS (55), the keyboard staying on a new answer (56), the band under the tab bar as an iOS 26.0 bug with 26.1 the fix (57), what fails on the unfolded Fold (58), lifting a subject in the installed app (59), and the judges' test account on the console (60).
+
 ## The final test: one checklist
 
 Everything from sessions 11 through 15 that needs a phone, a second person or a real game, in one place, grouped by what it needs, so the final pass on real phones is one document to walk through. Each item says exactly what to check; the session it came from has the detail. Tick them in order within a group; the two-phone items want both phones signed in to two accounts that share a set.
@@ -797,3 +821,9 @@ Everything from sessions 11 through 15 that needs a phone, a second person or a 
 52. **Phone-number claiming in production** (19): join with your real number in the private tab, then sign in with that number on another phone; expect the position on the account, unsigned, with "This was you before you signed in. Keep it, or change it." on the question, and "Confirm at 70%, $10" making it signed; expect a pending consequence from a settled provisional question to name the account.
 53. **Signing in from the tab that joined** (19): tap "Sign in" under the facts in the same private tab; expect the same bind by the browser's token, and the ghost gone from the set's members.
 54. **The tiebreaker on a provisional question** (19): a question with a ghost in it, locked, nobody agreeing, "Let the tiebreaker call it"; expect the ruling recorded and pending consequences, nothing on the chain.
+55. **A notification opening its target on iOS** (20): with the installed app in the background on another screen, tap a notification; expect the question it names, not the last screen; then with the app closed; then with it open on Now while the banner arrives.
+56. **The keyboard on a new answer** (20): on a pick-one question's answers, tap "Add an answer"; expect the keyboard to stay up with the new row focused.
+57. **The band under the tab bar** (20): read the phone's iOS version; on 26.0 or 26.0.1 the band is the known WebKit bug and nothing in the app; on 26.1 expect the bar at the very bottom with no band. Run "Measure the screen" on You and expect the window's height to equal the screen's.
+58. **The unfolded Fold** (20): open Now, a question and the ask flow on the inner screen; say which screen fails and what is on it (a screenshot), since two Fold-sized viewports here rendered as a phone does.
+59. **Lifting a subject in the installed app** (20): long-press a photo in a question's frame; expect either the iOS callout with "Copy Subject", or nothing, and say which. The sticker entry point waits for the answer.
+60. **A judge's account** (20): on the console's Test Accounts page, set the static code; sign in on a phone with an email of the form name+dynamic_test@yourdomain and that code; expect the name question and two wallets as any account gets, then the ordinary app.

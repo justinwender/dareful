@@ -77,7 +77,7 @@ export function OpenPhotos({ photos }: { photos: Array<{ id: string }> }) {
         ) : null}
       </ul>
       <p className="text-caption text-ink-3">Everyone sees these once it’s over.</p>
-      {viewing ? <PhotoView id={viewing} alt="Your photo from tonight" removable onClose={() => setViewing(null)} /> : null}
+      {viewing ? <PhotoView items={photos.map((p, i) => ({ id: p.id, alt: `Your photo ${i + 1} of ${photos.length} from tonight`, removable: true }))} index={Math.max(0, photos.findIndex((p) => p.id === viewing))} onClose={() => setViewing(null)} /> : null}
     </section>
   );
 }

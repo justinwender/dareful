@@ -59,7 +59,7 @@ export function recipientsAfterVote(input: { quorumUserIds: string[]; votedUserI
 
 /** "Priya asked something": to everyone in the group it was asked in, except Priya. The canonical send-worthy notice (Principle 1). */
 export function openedNotice(input: { askerName: string; title: string; marketId: string; appUrl: string }): Notice {
-  return { title: `${input.askerName} asked something`, body: `“${short(input.title)}?” Put your number on it.`, url: `${input.appUrl}/m/${input.marketId}` };
+  return { title: `${input.askerName} asked something`, body: `“${short(input.title)}?”`, url: `${input.appUrl}/m/${input.marketId}` };
 }
 
 /** To the person who asked, when someone gets in. Who, and how many are in now; never their number. */

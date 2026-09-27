@@ -1,0 +1,43 @@
+{
+  "model": "claude-sonnet-5",
+  "id": "msg_011CfUeWqSQEnGTUzboE6knP",
+  "type": "message",
+  "role": "assistant",
+  "content": [
+    {
+      "type": "tool_use",
+      "id": "toolu_01Fx787Ths8r8LQNpWkK2P6L",
+      "name": "ask_three",
+      "input": {
+        "questions": [
+          "Does light drizzle count as rain for this bet, not just heavy rain?",
+          "If Nova comes inside on its own after initially refusing, does that count as not refusing?",
+          "If it doesn't rain at all this week, is the bet considered void rather than a win?"
+        ]
+      },
+      "caller": {
+        "type": "direct"
+      }
+    }
+  ],
+  "container": null,
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "stop_details": null,
+  "usage": {
+    "input_tokens": 1055,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "cache_creation": {
+      "ephemeral_5m_input_tokens": 0,
+      "ephemeral_1h_input_tokens": 0
+    },
+    "output_tokens": 116,
+    "output_tokens_details": {
+      "thinking_tokens": 0
+    },
+    "service_tier": "standard",
+    "inference_geo": "global"
+  },
+  "diagnostics": null
+}

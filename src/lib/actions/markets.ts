@@ -5,7 +5,7 @@ import { pendingCopy, SendPending } from "@/lib/chain/relayer";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { notifyAfterVote, notifyJoined, notifyOpened, notifyRuling, sendNudge, voteCounts, type NudgeResult, type VoteCounts } from "@/lib/notify";
-import { carefulQuestions, declined, triage } from "@/lib/ai/settler";
+import { carefulQuestions, declined, SUBJECT_KINDS, triage } from "@/lib/ai/settler";
 import { afterEntry, arbitrateMarket, proposeForArgument, stateCase } from "@/lib/ledger/settle";
 import { isHex, type Hex } from "viem";
 import { z } from "zod";
@@ -24,7 +24,7 @@ import { currentUser, requireUser } from "@/lib/auth/session";
 import { headers } from "next/headers";
 import { regionFromHeaders, tryHashPhone } from "@/lib/auth/phone";
 import { addClaimToken, readClaimTokens } from "@/lib/auth/claim-cookie";
-import { enterAsGhost } from "@/lib/ledger/ghost-entry";
+import { enterAsGhost, removeGhostEntry } from "@/lib/ledger/ghost-entry";
 import { db, schema } from "@/db";
 import { and, asc, eq } from "drizzle-orm";
 import { denominationById, ensureUnitInGroup, ensureUsd } from "@/lib/ledger/denominations";
@@ -316,6 +316,21 @@ export async function enterAsGhostAction(rawId: string, rawPosition: z.infer<typ
   return { ok: true, name };
 }
 
+/** The asker removes an entry from someone without an account, while the question is open. */
+export async function removeGhostEntryAction(rawId: string, rawClaimId: string): Promise<{ ok: true } | { error: string }> {
+  const user = await requireUser();
+  const id = uuid.safeParse(rawId);
+  const claimId = uuid.safeParse(rawClaimId);
+  if (!id.success || !claimId.success) return { error: "That didn't come through. Try again." };
+  try {
+    await removeGhostEntry({ dareId: id.data, claimId: claimId.data, byUserId: user.id });
+  } catch (err) {
+    return { error: say(err, "That didn't go through. Try again.") };
+  }
+  revalidatePath(`/m/${id.data}`);
+  return { ok: true };
+}
+
 /**
  * "We're waiting on you", sent by a person, on demand. Says back how many it was for and how many a channel
  * actually reached, so the screen never claims a nudge landed when it only reached the in-app strip.
@@ -450,12 +465,20 @@ export async function triageAction(rawLine: string): Promise<TriageResult | { er
 }
 
 /** Careful mode: the three yes-or-no questions whose answers most change how it would be decided. */
-export async function carefulQuestionsAction(rawLine: string): Promise<{ questions: string[] } | { error: string }> {
+const SubjectAnswer = z.object({ name: z.string().trim().min(1).max(40), kind: z.enum(SUBJECT_KINDS) });
+
+/** Careful mode's three questions, or first the one tap-to-answer question about what a named subject is (docs/decisions.md 2026-09-27). */
+export async function carefulQuestionsAction(rawLine: string, rawSubject?: z.infer<typeof SubjectAnswer>): Promise<{ questions: string[] } | { ask: { subject: string } } | { error: string }> {
   await requireUser();
   const line = z.string().trim().min(3).max(280).safeParse(rawLine);
   if (!line.success) return { error: "Ask it in a line." };
+  const subject = rawSubject ? SubjectAnswer.safeParse(rawSubject) : null;
+  if (subject && !subject.success) return { error: "That didn't come through. Try again." };
   try {
-    return { questions: await carefulQuestions({ line: line.data }) };
+    const r = await carefulQuestions({ line: line.data, subject: subject?.data });
+    if ("ask" in r) return r;
+    if (r.questions.length !== 3) return { error: "The questions didn’t come through. You can write the terms yourself on the next screen." };
+    return { questions: r.questions };
   } catch (err) {
     console.error("careful questions failed", err);
     return { error: "The questions didn’t come through. You can write the terms yourself on the next screen." };

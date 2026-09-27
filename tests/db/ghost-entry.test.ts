@@ -13,7 +13,7 @@ import { db, schema } from "@/db";
 import { hashPhone } from "@/lib/auth/phone";
 import { bindClaimToUser } from "@/lib/ledger/claims";
 import { ensureUsd } from "@/lib/ledger/denominations";
-import { enterAsGhost, ghostPositionFor, MAX_GHOSTS_PER_MARKET } from "@/lib/ledger/ghost-entry";
+import { enterAsGhost, ghostPositionFor, MAX_GHOSTS_PER_MARKET, removeGhostEntry } from "@/lib/ledger/ghost-entry";
 import { createGroup, isMember } from "@/lib/ledger/groups";
 import * as markets from "@/lib/ledger/markets";
 import { isProvisional, thresholdFor } from "@/lib/ledger/provisional";
@@ -129,4 +129,20 @@ test("a ghost who signs in before lock owns the position unsigned, and keeping t
   await enter(dee, 9000n);
   const signed = await markets.positionsOf(d.id);
   assert.deepEqual([signed.length, signed.find((p) => p.userId === dee.user.id)?.enterSignature !== null], [2, true], "one position, now signed");
+});
+
+test("the asker removes an entry from someone without an account before the lock; nobody else can, not after the lock, and the ghost may enter again", async () => {
+  const { d, enter, ghost } = await question([ana, ben]);
+  await enter(ana, 7000n);
+  const gabe = await ghost({ name: "Gabe" }, [], 9000n);
+  assert.equal((await markets.positionsOf(d.id)).length, 2);
+  assert.equal(await codeOf(() => removeGhostEntry({ dareId: d.id, claimId: gabe.claimId, byUserId: ben.user.id })), "not_yours", "only the asker");
+  await removeGhostEntry({ dareId: d.id, claimId: gabe.claimId, byUserId: ana.user.id });
+  assert.equal((await markets.positionsOf(d.id)).length, 1, "removed: the number no longer counts");
+  assert.equal(await codeOf(() => removeGhostEntry({ dareId: d.id, claimId: gabe.claimId, byUserId: ana.user.id })), "not_found", "nothing left to remove");
+  const again = await ghost({ name: "Gabe" }, [gabe.browserToken as string], 4000n);
+  assert.deepEqual([again.claimId, again.position.value, again.position.dismissedAt, (await markets.positionsOf(d.id)).length], [gabe.claimId, 4000n, null, 2], "the same ghost enters again, counted again");
+  await enter(ben, 3000n);
+  await markets.lockMarket(d.id, ana.user.id);
+  assert.equal(await codeOf(() => removeGhostEntry({ dareId: d.id, claimId: gabe.claimId, byUserId: ana.user.id })), "wrong_state", "locked: nobody is removed");
 });

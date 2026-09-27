@@ -8,13 +8,13 @@ import { Sheet } from "./sheet";
 /**
  * Start (docs/design.md 6.1): a 56px chalk circle 16px above the bar, on the three roots only, opening the one
  * sheet that holds what a person can begin. Starting is not a place, so it is never a tab, and creating things
- * came off the root to live here. The specification lists five beginnings; splitting a receipt is not built, so it
+ * came off the root to live here. "I got this one" is not here: a cover is for a person, so it starts from that
+ * person's page (docs/decisions.md 2026-09-27), until the design session places it for good. The specification lists five beginnings; splitting a receipt is not built, so it
  * is not offered: a row that leads nowhere is a broken control, not a preview.
  */
 const ROWS = [
   { href: "/m/new", label: "Ask something", caption: "Something that’ll happen. Everyone puts a number on it." },
   { href: "/m/new?pace=argument", label: "Settle an argument", caption: "A claim about the world, called now." },
-  { href: "/new", label: "I got this one", caption: "You covered something." },
   { href: "/join", label: "Join with a code", caption: "Someone read you one, or sent a link." },
 ];
 

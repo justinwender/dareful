@@ -90,7 +90,7 @@ export default async function GhostPage({ params }: { params: Promise<{ id: stri
         )}
       </div>
       <ActionArea>
-        <ButtonLink href={`/new?ghost=${ghost.id}`} variant="primary" className="w-full">
+        <ButtonLink href={`/new?for=${ghost.id}`} variant="primary" className="w-full">
           I got this one
         </ButtonLink>
       </ActionArea>

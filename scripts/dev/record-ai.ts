@@ -5,10 +5,10 @@
  * The inputs are invented and say nothing about anybody.
  */
 import Anthropic from "@anthropic-ai/sdk";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { MODELS } from "@/lib/ai/client";
 import { proposeAnswer, proposeNumber, proposeOutcome, scopeMarket, scopeNumber, scopePickOne } from "@/lib/ai/markets";
-import { arbitrate, arbitrateAnswer, arbitrateNumber } from "@/lib/ai/settler";
+import { arbitrate, arbitrateAnswer, arbitrateNumber, carefulQuestions } from "@/lib/ai/settler";
 import sharp from "sharp";
 
 /** An invented scoreboard, drawn here: the evidence recordings need an image, and no real screenshot belongs in the repository. */
@@ -29,6 +29,16 @@ async function main(): Promise<void> {
     const terms = "Whoever is first to be asleep on the couch, eyes shut and not answering, once the movie starts on Friday. If everyone makes it to the credits, Nobody.";
     await proposeAnswer({ title: "Who falls asleep first?", terms, answers, statements: [{ name: "Sam", said: "John was out twenty minutes in, snoring" }], now });
     await arbitrateAnswer({ title: "Who falls asleep first?", terms, answers, positions: [{ name: "Sam", answer: "John" }, { name: "Theo", answer: "Gabe" }, { name: "Maya", answer: "Nobody" }], updates: [{ name: "Sam", said: "John was out twenty minutes in, snoring" }, { name: "Theo", said: "Gabe had his eyes shut before John did" }], statements: [{ name: "Theo", said: "Gabe was not answering when I asked him about the popcorn" }, { name: "Sam", said: "Gabe answered the popcorn question, he was resting his eyes" }] });
+    return;
+  }
+  // `careful` records careful mode's identity question (docs/decisions.md 2026-09-27): a line naming a bare "Nova", where the
+  // model asks what Nova is, then the three questions once told she is a pet. The earlier careful recording is kept as it was.
+  if (process.argv.includes("careful")) {
+    const kept = readFileSync(`${dir}/careful-questions.json`);
+    await carefulQuestions({ line: "does Nova refuse to come inside when it rains this week" });
+    renameSync(`${dir}/careful-questions.json`, `${dir}/careful-subject.json`);
+    writeFileSync(`${dir}/careful-questions.json`, kept);
+    await carefulQuestions({ line: "does Nova refuse to come inside when it rains this week", subject: { name: "Nova", kind: "pet" } });
     return;
   }
   // `outcomes` records the write-up alone, now that it returns the outcomes in the question's own words (3.25).

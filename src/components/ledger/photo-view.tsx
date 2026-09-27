@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ProblemSummary } from "@/components/ledger/problem";
 import { Button } from "@/components/ui/button";
@@ -14,19 +14,47 @@ import { removeMarketPhotoAction } from "@/lib/actions/media";
  * the phone's own photos; where there is no share sheet the browser saves the file. Removing is destructive
  * (3.12), so it asks once in a sheet. The bytes come through the app's own door, which checks who is asking.
  */
-export function PhotoView({ id, alt, removable, onClose }: { id: string; alt: string; removable: boolean; onClose: () => void }) {
+export type AlbumItem = { id: string; alt: string; removable: boolean };
+
+/**
+ * The album (docs/decisions.md 2026-09-27): every photo on the market, swipeable, opened at the one that was
+ * tapped. Native scroll snapping does the swiping, so a flick, a drag and the arrow keys all work, and the counter
+ * and the controls follow whichever photo is in view.
+ */
+export function PhotoView({ items, index = 0, onClose }: { items: AlbumItem[]; index?: number; onClose: () => void }) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [asking, setAsking] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const [current, setCurrent] = useState(Math.min(Math.max(index, 0), Math.max(items.length - 1, 0)));
+  const rowRef = useRef<HTMLDivElement>(null);
+  const shown = items[current] ?? items[0];
+  const id = shown?.id ?? "";
+  const alt = shown?.alt ?? "";
+  const removable = shown?.removable === true;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && !asking) onClose();
+      if (e.key === "ArrowRight") rowRef.current?.scrollBy({ left: rowRef.current.clientWidth, behavior: "smooth" });
+      if (e.key === "ArrowLeft") rowRef.current?.scrollBy({ left: -rowRef.current.clientWidth, behavior: "smooth" });
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose, asking]);
+  // Open at the photo that was tapped: scrolled there before the first paint, so nothing slides.
+  useLayoutEffect(() => {
+    const row = rowRef.current;
+    if (row) row.scrollLeft = row.clientWidth * current;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, at open
+  }, []);
+  const onScroll = () => {
+    const row = rowRef.current;
+    if (!row || row.clientWidth === 0) return;
+    const i = Math.round(row.scrollLeft / row.clientWidth);
+    if (i !== current && i >= 0 && i < items.length) setCurrent(i);
+  };
+  if (!shown) return null;
 
   async function save() {
     setProblem(null);
@@ -76,11 +104,20 @@ export function PhotoView({ id, alt, removable, onClose }: { id: string; alt: st
           </svg>
         </button>
       </div>
-      <div className="flex min-h-0 flex-1 items-center justify-center px-2">
-        {/* A signed URL that expires; next/image would need a loader for one. */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={`/api/media/${id}`} alt={alt} className="max-h-full max-w-full object-contain" />
+      <div ref={rowRef} onScroll={onScroll} className="flex min-h-0 flex-1 snap-x snap-mandatory overflow-x-auto overflow-y-hidden [scrollbar-width:none]" data-album="" aria-roledescription="album">
+        {items.map((item, i) => (
+          <div key={item.id} className="flex h-full w-full shrink-0 snap-center items-center justify-center px-2" aria-hidden={i !== current}>
+            {/* A signed URL that expires; next/image would need a loader for one. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={`/api/media/${item.id}`} alt={item.alt} loading={Math.abs(i - current) <= 1 ? "eager" : "lazy"} className="max-h-full max-w-full object-contain" />
+          </div>
+        ))}
       </div>
+      {items.length > 1 ? (
+        <p className="pointer-events-none mx-auto -mt-9 flex h-7 items-center rounded-pill bg-scrim px-3 text-caption tabular-nums text-ink" data-album-counter="">
+          {current + 1} / {items.length}
+        </p>
+      ) : null}
       <div className="mx-auto flex w-full max-w-[430px] shrink-0 flex-col gap-2 px-5 pt-4 pb-[calc(16px+env(safe-area-inset-bottom))]">
         <ProblemSummary messages={[problem]} />
         <div className={removable ? "grid grid-cols-2 gap-2" : "flex flex-col"}>

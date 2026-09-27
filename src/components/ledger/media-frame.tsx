@@ -86,7 +86,7 @@ export function MediaFrame({ items, height, interactive = true, inset = false, c
           </span>
         </figcaption>
       </div>
-      {viewing ? <PhotoView id={shown.id} alt={`Photo ${current + 1} of ${items.length}, added by ${firstName(shown.author.name)}`} removable={shown.removable === true} onClose={() => setViewing(false)} /> : null}
+      {viewing ? <PhotoView items={items.map((item, i) => ({ id: item.id, alt: `Photo ${i + 1} of ${items.length}, added by ${firstName(item.author.name)}`, removable: item.removable === true }))} index={Math.min(current, items.length - 1)} onClose={() => setViewing(false)} /> : null}
       {rest.length > 0 ? (
         <div className={cn("flex gap-[6px] overflow-x-auto [scrollbar-width:none]", inset && "px-0")} role={interactive ? "group" : undefined} aria-label={interactive ? "The rest of the photos" : undefined}>
           {squares.map((item) => {

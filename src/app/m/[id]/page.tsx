@@ -6,6 +6,7 @@ import { after } from "next/server";
 import { asc, and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { GhostMarketPage } from "./ghost";
+import { RemoveGhostEntries } from "@/components/markets/remove-ghost-entry";
 import { participantsOf, pidOf } from "@/lib/ledger/participants";
 import { Avatar } from "@/components/ledger/avatar";
 import { Chip } from "@/components/ledger/chip";
@@ -528,7 +529,8 @@ export default async function MarketPage({
         state === "open"
           ? {
               url: `${appUrl}/m/${d.id}`,
-              text: `${d.title} Put your number on it:`,
+              // The question stands alone in the chat (docs/decisions.md 2026-09-27); the link follows it.
+              text: d.title,
               joinLine: `Anyone with the link can get in ${until}.`,
             }
           : null
@@ -1184,6 +1186,8 @@ export default async function MarketPage({
                   {Math.max(seats.length, positions.length)} in
                 </p>
               </section>
+              {/* The asker's say over who is in without an account, while it is open (docs/decisions.md 2026-09-27). */}
+              {d.creatorId === me.id ? <RemoveGhostEntries dareId={d.id} ghosts={positions.filter((p) => p.claimId !== null).map((p) => ({ claimId: p.claimId as string, name: person.get(pidOf(p))?.displayName ?? "Someone", hue: hueFor(pidOf(p)) }))} /> : null}
               {/* Yours from tonight (3.39): this person's own photos, and nobody else's, until it ends. */}
               {mine ? <OpenPhotos photos={media.yours.map((m) => ({ id: m.id }))} /> : null}
               {mine ? (

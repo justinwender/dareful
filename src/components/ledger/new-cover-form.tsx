@@ -14,7 +14,7 @@ import { cents as asCents } from "@/lib/money";
 
 /** An account-holder, or a ghost the viewer added earlier: previously picked people are offered first. */
 export type PersonOption = { id: string; displayName: string; kind: "user" | "claim" };
-export type GroupOption = { id: string; name: string | null; isDyad: boolean; memberIds: string[]; ghostIds: string[]; units: UnitSummary[] };
+export type GroupOption = { id: string; name: string | null; /** The set as it is named everywhere (`setLabel`): its name, or its people. Never the word Group. */ label: string; isDyad: boolean; memberIds: string[]; ghostIds: string[]; units: UnitSummary[] };
 
 /** The Contact Picker API, where the browser has one (Android Chrome). Everywhere else a name is typed. */
 type PickedContact = { name?: string[]; tel?: string[] };
@@ -51,10 +51,10 @@ type Field = "who" | "unit" | "amount" | "split";
  * brought into view. The first real session read an error at the bottom of the form, phrased as a question, as
  * a second prompt, and read the form as having done nothing (docs/testing.md, session 2).
  */
-export function NewCoverForm({ people, groups, recent, initialPerson, initialGroup }: { people: PersonOption[]; groups: GroupOption[]; recent: UnitSummary[]; initialPerson?: string; initialGroup?: string }) {
-  const named = useMemo(() => groups.filter((g) => !g.isDyad), [groups]);
-  const [groupId, setGroupId] = useState<string | null>(initialGroup && named.some((g) => g.id === initialGroup) ? initialGroup : null);
-  const [selected, setSelected] = useState<string[]>(initialPerson ? [initialPerson] : !initialGroup && people[0] ? [people[0].id] : []);
+export function NewCoverForm({ people, groups, recent, initialPerson, initialGroup, forPerson }: { people: PersonOption[]; groups: GroupOption[]; recent: UnitSummary[]; initialPerson?: string; initialGroup?: string; /** From a person's page (docs/decisions.md 2026-09-27): that person, chosen, and no picking of people or sets. */ forPerson?: PersonOption }) {
+  const named = useMemo(() => (forPerson ? [] : groups.filter((g) => !g.isDyad)), [groups, forPerson]);
+  const [groupId, setGroupId] = useState<string | null>(!forPerson && initialGroup && named.some((g) => g.id === initialGroup) ? initialGroup : null);
+  const [selected, setSelected] = useState<string[]>(forPerson ? [forPerson.id] : initialPerson ? [initialPerson] : !initialGroup && people[0] ? [people[0].id] : []);
   // Someone new: a name, and the number from the contact card when they were picked. The number is sent once
   // with the form, hashed on the server, and kept nowhere, including here after the submit.
   const [someoneNew, setSomeoneNew] = useState<{ name: string; phone?: string } | null>(people.length === 0 ? { name: "" } : null);
@@ -223,7 +223,12 @@ export function NewCoverForm({ people, groups, recent, initialPerson, initialGro
     <div className="flex flex-col gap-7">
       <section ref={whoRef} className="flex flex-col gap-3">
         <h2 className="text-label text-ink-3">{group ? "Who was there" : "Who"}</h2>
-        {named.length > 0 ? (
+        {forPerson ? (
+          <p className="text-body-strong text-ink" data-cover-for="">
+            {forPerson.displayName}
+          </p>
+        ) : null}
+        {!forPerson && named.length > 0 ? (
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={() => pickGroup(null)} className="rounded-pill">
               <Chip size={28} selected={groupId === null}>
@@ -233,12 +238,13 @@ export function NewCoverForm({ people, groups, recent, initialPerson, initialGro
             {named.map((g) => (
               <button key={g.id} type="button" onClick={() => pickGroup(g.id)} className="rounded-pill">
                 <Chip size={28} selected={g.id === groupId}>
-                  {g.name ?? "Group"}
+                  {g.label}
                 </Chip>
               </button>
             ))}
           </div>
         ) : null}
+        {forPerson ? null : (
         <div className="flex flex-wrap gap-2">
           {visiblePeople.map((p) => (
             <button key={p.id} type="button" aria-pressed={!someoneNew && chosen.includes(p.id)} onClick={() => tapPerson(p.id)} className="rounded-pill">
@@ -255,6 +261,7 @@ export function NewCoverForm({ people, groups, recent, initialPerson, initialGro
             </button>
           ) : null}
         </div>
+        )}
         {group && visiblePeople.length > 1 ? <p className="text-caption text-ink-3">Tap everyone who was in on it. One total, split between you.</p> : null}
         {someoneNew ? (
           <div className="flex flex-col gap-2 rounded-card border border-line bg-surface p-4">

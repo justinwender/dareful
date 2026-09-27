@@ -51,7 +51,9 @@ export type TemplateForAsking = { id: string; title: string; terms: string; kind
 
 export function AskForm({ sets, people, initialLine = "", initialPace = "dare", me, chrome, stickers = [], canPaste = false, template = null }: { sets: SetOption[]; people: Person[]; initialLine?: string; initialPace?: "dare" | "argument"; me: { id: string; name: string; hue: Hue }; /** The screen's top bar, rendered by the page; the form owns the screen so a picked mark can retint all of it (3.29). */ chrome: ReactNode; /** This person's stickers for the picker (3.28), and whether a cutout can be pasted at all. */ stickers?: Sticker[]; canPaste?: boolean; /** A public question (3.33): the flow starts at who's in, with the wording locked. */ template?: TemplateForAsking | null }) {
   const router = useRouter();
-  const [step, setStep] = useState<"question" | "declined" | "criterion" | "careful" | "who" | "terms">(template ? "who" : "question");
+  const [step, setStep] = useState<"question" | "declined" | "criterion" | "subject" | "careful" | "who" | "terms">(template ? "who" : "question");
+  /** A named subject the model could not place (a person, a pet, a thing): asked in one tap before the three questions. */
+  const [subjectAsk, setSubjectAsk] = useState<string | null>(null);
   // Two paces, one object (PLANNING.md 8a): something that will happen, or a claim to settle now.
   const [pace, setPace] = useState<"dare" | "argument">(initialPace);
   // Yes or no, a number, or pick one (docs/design.md 3.26, 3.29). Chosen before the write-up, since the terms say how the answer is counted.
@@ -71,6 +73,8 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
   const [side, setSide] = useState<"yes" | "no">("yes");
   const [questions, setQuestions] = useState<string[]>([]);
   const [answers, setAnswers] = useState<Record<number, boolean>>({});
+  /** How many answers there were the moment one was added, so the new row alone takes focus. */
+  const [addedAt, setAddedAt] = useState(0);
   const [stalemate, setStalemate] = useState<"arbitrate" | "void">("arbitrate");
   const [thinking, startThinking] = useTransition();
   const [line, setLine] = useState(initialLine.slice(0, 280));
@@ -143,6 +147,11 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
           writeUp();
           return setStep("who");
         }
+        if ("ask" in q) {
+          // What the name is comes first, in one tap; the questions are written with the answer (docs/decisions.md 2026-09-27).
+          setSubjectAsk(q.ask.subject);
+          return setStep("subject");
+        }
         setQuestions(q.questions);
         setAnswers({});
         setStep("careful");
@@ -170,7 +179,8 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
     startSave(async () => {
       const r = await draftFromTemplateAction({ templateId: template.id, who, unit, blind, id: draftId ?? undefined });
       if ("error" in r) return setProblem(r.error);
-      router.push(`/m/${r.id}`);
+      // The new question replaces the ask flow in history: back from it never returns to the flow (docs/decisions.md 2026-09-27).
+      router.replace(`/m/${r.id}`);
     });
   }
 
@@ -204,7 +214,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
         argument: arguing && verdict?.kind === "ok" ? { tier: verdict.tier, criterion } : undefined,
       });
       if ("error" in r) return setProblem(r.error);
-      router.push(arguing ? `/m/${r.id}?side=${side}` : `/m/${r.id}`);
+      router.replace(arguing ? `/m/${r.id}?side=${side}` : `/m/${r.id}`);
     });
   }
 
@@ -307,6 +317,8 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
                   <span className="flex h-7 w-7 shrink-0 items-center justify-center">{c.userId ? <Avatar name={c.userId === me.id ? me.name : c.text} hue={c.userId === me.id ? me.hue : (people.find((p) => p.id === c.userId)?.hue ?? "stone")} size={28} /> : null}</span>
                   <input
                     value={c.text}
+                    // A row added by the dashed button takes focus as it appears, inside the same tap, so the keyboard stays up.
+                    autoFocus={i === choices.length - 1 && addedAt === choices.length}
                     readOnly={c.userId !== null}
                     maxLength={MAX_ANSWER_LENGTH}
                     placeholder={i === 0 ? "John" : i === 1 ? "Nobody" : "Another answer"}
@@ -323,7 +335,14 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
               ))}
               {choices.length < MAX_ANSWERS ? (
                 <li>
-                  <button type="button" onClick={() => setChoices((cs) => [...cs, { text: "", userId: null }])} className="flex h-11 w-full items-center gap-3 rounded-button border border-dashed border-line-strong px-3 text-body-sm font-semibold text-ink-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAddedAt(choices.length + 1);
+                      setChoices((cs) => [...cs, { text: "", userId: null }]);
+                    }}
+                    className="flex h-11 w-full items-center gap-3 rounded-button border border-dashed border-line-strong px-3 text-body-sm font-semibold text-ink-2"
+                  >
                     <span aria-hidden="true" className="flex h-7 w-7 items-center justify-center">+</span>
                     Add an answer
                   </button>
@@ -463,6 +482,47 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
         <Button variant="tertiary" onClick={() => setStep("question")}>
           Say it another way
         </Button>
+      </div>,
+    );
+  }
+
+  if (step === "subject" && subjectAsk) {
+    const name = subjectAsk;
+    const answer = (kind: "person" | "pet" | "thing") =>
+      startThinking(async () => {
+        const q = await carefulQuestionsAction(line, { name, kind });
+        if ("error" in q || "ask" in q) {
+          setProblem("error" in q ? q.error : "The questions didn’t come through. You can write the terms yourself on the next screen.");
+          writeUp();
+          return setStep("who");
+        }
+        setQuestions(q.questions);
+        setAnswers({});
+        setStep("careful");
+      });
+    return wrap(
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-2">
+          <h1 className="text-body-strong text-ink">One quick one first</h1>
+          <p className="text-body-sm text-ink-2">Only you see this. The three questions depend on it.</p>
+        </div>
+        <div className="flex flex-col gap-2 rounded-card border border-line bg-surface px-4 py-3" data-subject-ask="">
+          <p id="subject-ask" className="text-body-sm text-ink">
+            Who’s {name}?
+          </p>
+          <div role="group" aria-labelledby="subject-ask" className="flex flex-wrap gap-2">
+            {([
+              ["person", "A person"],
+              ["pet", "A pet"],
+              ["thing", "Something else"],
+            ] as const).map(([kind, label]) => (
+              <button key={kind} type="button" disabled={thinking} onClick={() => answer(kind)} className="rounded-pill">
+                <Chip size={36}>{label}</Chip>
+              </button>
+            ))}
+          </div>
+        </div>
+        <ProblemSummary messages={[problem]} />
       </div>,
     );
   }
