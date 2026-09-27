@@ -780,12 +780,45 @@ export const delegations = pgTable(
     /** Dynamic wallet id, ledger wallet only. A before-insert trigger rejects the governance wallet. */
     walletId: text("wallet_id").notNull(),
     walletAddress: text("wallet_address").notNull(),
+    /** The share and the per-wallet key, sealed under the app's own key (`DELEGATION_STORE_KEY`), bound to this row; empty once revoked. */
     encryptedShare: bytea("encrypted_share").notNull(),
     encryptedApiKey: bytea("encrypted_api_key").notNull(),
+    /** Dynamic's id for the delegated share set, when the event carries one; the signer passes it back. */
+    shareSetId: text("share_set_id"),
+    /** The last event applied to this row and when Dynamic says it happened, so a replay or an older event changes nothing. */
+    eventId: text("event_id"),
+    eventAt: ts("event_at"),
     grantedAt: ts("granted_at").notNull().defaultNow(),
     revokedAt: ts("revoked_at"),
   },
   (t) => [primaryKey({ columns: [t.userId, t.walletId] })],
+).enableRLS();
+
+/**
+ * Every signature the server made with a delegated share, with the request that caused it (docs/decisions.md
+ * 2026-09-27): delegation removes the prompt, never the person, so each one traces to an authenticated request
+ * from that user for that action in that moment. Holds the digest signed and nothing secret.
+ */
+export const delegatedSignatures = pgTable(
+  "delegated_signatures",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    walletId: text("wallet_id").notNull(),
+    /** The ledger action: confirm, confirm_many, close, net, create, enter; or check, the gate's own signature. */
+    action: text("action").notNull(),
+    /** What it was about: the obligation, proposal or market the request named. */
+    subject: text("subject").notNull(),
+    /** The EIP-712 digest that was signed. */
+    digest: bytea("digest").notNull(),
+    /** The request that caused it: the server action or route, and the platform's request id when it stamped one. */
+    request: text("request").notNull(),
+    requestId: text("request_id"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("delegated_signatures_user_idx").on(t.userId, t.createdAt), check("delegated_signatures_action_known", sql`${t.action} in ('confirm', 'confirm_many', 'close', 'net', 'create', 'enter', 'check')`)],
 ).enableRLS();
 
 // ------------------------------------------------------------------------------------------------------

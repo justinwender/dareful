@@ -27,6 +27,8 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",
     "@base-ui/react": "^1.8.0",
+    "@dynamic-labs-wallet/node": "^1.1.21",
+    "@dynamic-labs-wallet/node-evm": "^1.1.21",
     "@dynamic-labs/ethereum": "^5.9.0",
     "@dynamic-labs/sdk-react-core": "^5.9.0",
     "class-variance-authority": "^0.7.1",

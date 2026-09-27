@@ -1816,7 +1816,11 @@ sheet: one caption, "Your friends see only the ones you pick.", and the chalk "N
 disabled with nothing checked. Then who's in (3.20), with the band showing the game, and the
 terms step: each chosen question's written terms in `--ink-2`, locked as What's on terms are
 (they are written to resolve cleanly against a public result), one Stakes row that applies to
-every question started together, and the consent line (3.35). "Send it" creates one ordinary
+every question started together, and the consent line (3.35). (Amended 2026-09-27: with the
+first drive among the questions chosen, the one line says both settlers, "If nobody votes, the
+final score settles the others and the play-by-play settles the first drive."; the first drive
+alone says the play-by-play's line. The line has to be true for every question it stands above.)
+"Send it" creates one ordinary
 market per checked question, all with the same people, all closing at kickoff. With more than
 one, the link sent to the chat is the game page's (3.27); someone arriving from it lands on the
 page and enters each question from its card, with the usual arriving-from-a-link sheet (3.17) on

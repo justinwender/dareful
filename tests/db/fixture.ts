@@ -18,11 +18,34 @@ export type User = typeof schema.users.$inferSelect;
 const groupIds = new Set<string>();
 const claimIds = new Set<string>();
 const userIds = new Set<string>();
+const gamePrefixes = new Set<string>();
 
 export const track = {
   group: (id: string) => (groupIds.add(id), id),
   claim: (id: string) => (claimIds.add(id), id),
+  /** The games this run writes carry source ids under this prefix (`test:<run>:`); cleanup removes those and no other run's. */
+  gamePrefix: (prefix: string) => (gamePrefixes.add(prefix), prefix),
 };
+
+type Db = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Games and public questions a run made, by its own prefix, once nothing rides on them. Never another run's:
+ * the suites share one database and `node --test` runs files side by side, and a cleanup that took every
+ * `test:` game once deleted the sports suite's game between its two inserts (docs/decisions.md 2026-09-27).
+ * Leftovers from an interrupted run are the sweep's job (`npm run test:sweep`), which runs alone.
+ */
+export async function removeTestGames(tx: Db, prefixes: readonly string[]): Promise<number> {
+  if (prefixes.length === 0) return 0;
+  const D = schema.dares;
+  const testGames = (await tx.select({ id: schema.sportsGames.id }).from(schema.sportsGames).where(or(...prefixes.map((p) => like(schema.sportsGames.sourceId, `${p}%`))))).map((g) => g.id);
+  if (testGames.length === 0) return 0;
+  const templates = (await tx.select({ id: schema.publicQuestions.id }).from(schema.publicQuestions).where(inArray(schema.publicQuestions.gameId, testGames))).map((t) => t.id);
+  if (templates.length) await tx.update(D).set({ templateId: null }).where(inArray(D.templateId, templates));
+  await tx.delete(schema.publicQuestions).where(inArray(schema.publicQuestions.gameId, testGames));
+  await tx.delete(schema.sportsGames).where(inArray(schema.sportsGames.id, testGames));
+  return testGames.length;
+}
 
 export async function seedUsers(n: number): Promise<User[]> {
   const rows = await db.select().from(schema.users).where(like(schema.users.dynamicUserId, "seed:%")).orderBy(schema.users.createdAt).limit(n);
@@ -144,14 +167,8 @@ async function removeEverything(): Promise<void> {
       await tx.delete(schema.obligations).where(inArray(schema.obligations.originId, ids));
       await tx.delete(D).where(inArray(D.id, ids));
     }
-    // Games and public questions a test made (their source ids start with "test:"), once nothing rides on them.
-    const testGames = (await tx.select({ id: schema.sportsGames.id }).from(schema.sportsGames).where(like(schema.sportsGames.sourceId, "test:%"))).map((g) => g.id);
-    if (testGames.length) {
-      const templates = (await tx.select({ id: schema.publicQuestions.id }).from(schema.publicQuestions).where(inArray(schema.publicQuestions.gameId, testGames))).map((t) => t.id);
-      if (templates.length) await tx.update(D).set({ templateId: null }).where(inArray(D.templateId, templates));
-      await tx.delete(schema.publicQuestions).where(inArray(schema.publicQuestions.gameId, testGames));
-      await tx.delete(schema.sportsGames).where(inArray(schema.sportsGames.id, testGames));
-    }
+    // Games and public questions this run made, by its own prefix, once nothing rides on them; never another run's.
+    await removeTestGames(tx, [...gamePrefixes]);
     if (u.length) {
       await tx.delete(schema.codeAttempts).where(inArray(schema.codeAttempts.userId, u));
       await tx.delete(schema.deviceStates).where(inArray(schema.deviceStates.userId, u));

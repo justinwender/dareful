@@ -21,7 +21,7 @@ import { BDL_PATHS, finalFrom, gamesUrl, parseGames, sameTeam } from "@/lib/spor
 import { cardMeta, lineT, yourEntry } from "@/lib/sports/cards";
 import { driveAnswer, gameOf, parseScoreboard, parseSummary, resultOf, scoreboardUrl, statusOf, summaryUrl } from "@/lib/sports/espn";
 import { AGREE_AFTER_MS, ALONE_AFTER_MS, backstopDecision, driveBackstopDecision, driveOutcome, fromStored, marginWords, outcomeFor, scoreLine, toStored, warnAt, WARN_BEFORE_MS } from "@/lib/sports/results";
-import { CONSENT, expectedEnd, marginShift, offersFirstDrive, SCALES, SLIDER_REACH, templatesFor, TIE_VOID, UNCLEAR_BY_SCORE, UNIT } from "@/lib/sports/templates";
+import { BOTH_CONSENT, CONSENT, consentFor, DRIVE_CONSENT, expectedEnd, marginShift, offersFirstDrive, SCALES, SLIDER_REACH, templatesFor, TIE_VOID, UNCLEAR_BY_SCORE, UNIT } from "@/lib/sports/templates";
 import { dayOf, DRIVE_ANSWERS, FeedError, parseColor, parseScore } from "@/lib/sports/types";
 import { leanBand, leanPill, saidLean, sliderStamps, stampGlyph, stampInk } from "@/lib/ui/team";
 
@@ -371,4 +371,13 @@ test("a game with more than one question in the same set of people is one row on
   // Over: one row in Just happened with the final score.
   const over = collapseGames({ needs: [], running: [], over: [{ dare: { id: "c", groupId: "s1" }, at: t, state: "resolved" }, { dare: { id: "a", groupId: "s1" }, at: t, state: "resolved" }] }, games);
   assert.deepEqual([over.over.length, over.happened.length, over.happened[0]?.meta], [0, 1, "Final: Bills 24, Chiefs 17"]);
+});
+
+test("the consent line on a game's terms step is true for every question chosen: the score's alone, the play-by-play's alone, and both in one line with the first drive among them", () => {
+  assert.equal(consentFor(["home_wins", "margin", "total"]), CONSENT, "questions the score settles: the score's line");
+  assert.equal(consentFor(["first_drive"]), DRIVE_CONSENT, "the first drive alone: the play-by-play's line");
+  assert.equal(consentFor(["home_wins", "first_drive"]), BOTH_CONSENT, "both kinds: one line that says both");
+  assert.equal(consentFor([]), CONSENT, "nothing chosen reads as the common case");
+  assert.ok(BOTH_CONSENT.startsWith("If nobody votes, ") && BOTH_CONSENT.includes("the final score settles") && BOTH_CONSENT.includes("the play-by-play settles the first drive"), "the line names both settlers and what each settles");
+  for (const banned of ["spread", "moneyline", "wallet", "signature", "official"]) assert.ok(!BOTH_CONSENT.toLowerCase().includes(banned), `never "${banned}"`);
 });

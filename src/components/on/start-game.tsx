@@ -14,6 +14,7 @@ import { PinnedSheet } from "@/components/ui/pinned-sheet";
 import { WhoStep, type Person, type SetOption, type Who } from "@/components/markets/who-step";
 import { openGameQuestionsAction, startGameAction } from "@/lib/actions/games";
 import { daresTypes } from "@/lib/chain/typed-data";
+import { consentFor } from "@/lib/sports/templates";
 import type { TeamFace } from "@/lib/ui/team";
 import { cn } from "@/lib/utils";
 
@@ -24,7 +25,7 @@ const PRESETS = [
   { template: "next_time", label: "a next time" },
 ] as const;
 
-export type MenuItem = { key: "home_wins" | "margin" | "total" | "first_drive"; name: string; kindLabel: string; title: string; rows: { countsIf: string; tie: string | null; unclear: string }; consent: string };
+export type MenuItem = { key: "home_wins" | "margin" | "total" | "first_drive"; name: string; kindLabel: string; title: string; rows: { countsIf: string; tie: string | null; unclear: string } };
 export type GameHeaderData = { id: string; name: string; away: TeamFace; home: TeamFace; /** "Sun 1:00pm" */ start: string };
 
 /** The menu row's 28px glyph (3.33): a small structural icon per kind, on `--surface-2`. */
@@ -293,13 +294,13 @@ export function StartGame({ game, menu, sets, people, chrome, signing, mode, clo
           <>
             <ProblemSummary messages={[problem]} />
             <p className="text-caption text-ink-3">What’s on wrote the wording, so everyone reads the same terms.</p>
-            {/* The consent every entry gives (3.35): one line in ink after the 16px ticket glyph, directly above the button. */}
+            {/* The consent every entry gives (3.35): one line in ink after the 16px ticket glyph, directly above the button, true for every question chosen (`consentFor`). */}
             <p className="flex items-center gap-2 text-body-sm text-ink" data-consent-line="">
               <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
                 <path d="M4 9a2 2 0 0 0 2-2V6h12v1a2 2 0 0 0 2 2v6a2 2 0 0 0-2 2v1H6v-1a2 2 0 0 0-2-2z" />
                 <path d="M12 7v10" strokeDasharray="1.5 2.5" />
               </svg>
-              <span>{chosen.every((m) => m.consent === chosen[0]?.consent) ? (chosen[0]?.consent ?? "") : "If nobody votes, the final score settles it, and the play-by-play the first drive."}</span>
+              <span>{consentFor(chosen.map((m) => m.key))}</span>
             </p>
             <Button variant="primary" onClick={send} loading={saving}>
               Send it

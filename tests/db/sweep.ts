@@ -37,7 +37,8 @@ async function main(): Promise<void> {
       await tx.delete(schema.obligations).where(inArray(schema.obligations.originId, ids));
       await tx.delete(D).where(inArray(D.id, ids));
     }
-    // Games and public questions a test made (their source ids start with "test:"), once nothing rides on them.
+    // Games and public questions any test made (their source ids start with "test:"), once nothing rides on them. The
+    // sweep runs alone and by hand, so every run's are its to take; a suite's own cleanup takes only its own.
     const testGames = (await tx.select({ id: schema.sportsGames.id }).from(schema.sportsGames).where(like(schema.sportsGames.sourceId, "test:%"))).map((g) => g.id);
     if (testGames.length) {
       const templates = (await tx.select({ id: schema.publicQuestions.id }).from(schema.publicQuestions).where(inArray(schema.publicQuestions.gameId, testGames))).map((t) => t.id);

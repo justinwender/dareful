@@ -183,6 +183,13 @@
       "when": 1790460769714,
       "tag": "0025_game_page",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1790518888488,
+      "tag": "0026_delegation",
+      "breakpoints": true
     }
   ]
 }

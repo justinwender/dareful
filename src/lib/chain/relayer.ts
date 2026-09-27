@@ -20,6 +20,8 @@ import {
   type WalletClient,
 } from "viem";
 import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
+import { sql } from "drizzle-orm";
+import { db } from "@/db";
 import { timed } from "@/lib/timing";
 import { monadChain, rpcUrl } from "./contracts";
 
@@ -67,6 +69,45 @@ export class RelayerTransactionFailed extends Error {
 export type SubmitResult = { hash: Hex; receipt: TransactionReceipt };
 
 /**
+ * The failures the network answers when two senders raced for one nonce, or a lagging node has not yet seen
+ * the last send: the only ones a resend with the next nonce can fix. Anything else is a real failure.
+ */
+export function isNonceProblem(err: unknown): boolean {
+  for (let e: unknown = err, depth = 0; e && typeof e === "object" && depth < 8; e = (e as { cause?: unknown }).cause, depth += 1) {
+    const name = typeof (e as { name?: unknown }).name === "string" ? (e as { name: string }).name : "";
+    const message = typeof (e as { message?: unknown }).message === "string" ? (e as { message: string }).message : "";
+    if (name === "NonceTooLowError") return true;
+    if (/nonce too low|nonce is too low|already known|replacement transaction underpriced|invalid nonce/i.test(message)) return true;
+  }
+  return false;
+}
+
+/** Sends with the nonce the network reports; on a nonce collision sends again with the next one, a few times; any other failure is thrown at once. */
+export async function sendWithNonceRetry<T>(send: (nonce: number) => Promise<T>, base: number, attempts = 3): Promise<T> {
+  for (let k = 0; ; k += 1) {
+    try {
+      return await send(base + k);
+    } catch (err) {
+      if (k + 1 >= attempts || !isNonceProblem(err)) throw err;
+    }
+  }
+}
+
+/**
+ * One relayer key, many senders: every serverless instance, the tick, the development machine and its tests.
+ * Two of them reading the pending nonce in the same second would send with the same one, and the second would
+ * fail loudly for a person (docs/decisions.md 2026-09-27). So the nonce is read and the transaction sent under
+ * one transaction-scoped lock in the shared database, the only thing every sender shares; the receipt is
+ * waited for outside it, and a process that dies holding it releases it with its transaction.
+ */
+export async function withSendLock<T>(fn: () => Promise<T>): Promise<T> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended('relayer-send', 0))`);
+    return fn();
+  });
+}
+
+/**
  * Simulate, submit with explicit gas, wait, and verify. `gas` is required by type; there is no default.
  */
 /** When this process last saw one of its own transactions mined; see the simulate retry below. */
@@ -111,15 +152,24 @@ export async function submit<
   });
 
   const hash = await timed(`relayer ${req.label}: send`, () =>
-    walletClient.writeContract({
-      account,
-      chain,
-      address: req.address,
-      abi: req.abi,
-      functionName: req.functionName,
-      args: req.args,
-      gas: req.gas,
-    } as Parameters<WalletClient["writeContract"]>[0]),
+    withSendLock(async () => {
+      // Read under the lock, so it counts the previous sender's transaction; a lagging node is covered by the retry.
+      const base = await publicClient.getTransactionCount({ address: account.address, blockTag: "pending" });
+      return sendWithNonceRetry(
+        (nonce) =>
+          walletClient.writeContract({
+            account,
+            chain,
+            address: req.address,
+            abi: req.abi,
+            functionName: req.functionName,
+            args: req.args,
+            gas: req.gas,
+            nonce,
+          } as Parameters<WalletClient["writeContract"]>[0]),
+        base,
+      );
+    }),
   );
 
   const receipt = await timed(`relayer ${req.label}: wait for receipt`, () => publicClient.waitForTransactionReceipt({ hash }));

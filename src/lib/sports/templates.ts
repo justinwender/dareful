@@ -78,6 +78,19 @@ const BY_SCORE = `${CONSENT} If the two results we check disagree, it's void: no
 export const UNCLEAR_BY_SCORE = "The final score. If the two results we check disagree, it's void.";
 /** The first drive's consent: the play-by-play settles it, on one source, three days on (docs/decisions.md, the game page). */
 export const DRIVE_CONSENT = "If nobody votes, the play-by-play settles it.";
+/** The one line on a game's terms step when the first drive is among the questions (3.33, 3.35): true for every question on the page. */
+export const BOTH_CONSENT = "If nobody votes, the final score settles the others and the play-by-play settles the first drive.";
+/**
+ * The consent line for a set of questions started together (docs/decisions.md 2026-09-27): the score's for
+ * questions the score settles, the play-by-play's for the first drive alone, and one sentence saying both when
+ * the first drive is among them, since the line the backstop rests on has to be true for every question it
+ * stands above. Nothing chosen reads as the score's, the common case, with the button disabled anyway.
+ */
+export function consentFor(keys: readonly TemplateKey[]): string {
+  const drive = keys.includes("first_drive");
+  const score = keys.some((k) => k !== "first_drive");
+  return drive && score ? BOTH_CONSENT : drive ? DRIVE_CONSENT : CONSENT;
+}
 export const UNCLEAR_BY_PLAYS = "The play-by-play. If it can't say how the first drive ended, it's void.";
 /** A tie on a question the contract cannot score at the middle (3.40, frame 5): void, and against nobody. */
 export const TIE_VOID = "It's void.";

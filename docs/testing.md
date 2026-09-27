@@ -645,6 +645,37 @@ The items are in the single checklist below (22 through 29): the warning and the
 
 The items are in the single checklist below (30 through 40).
 
+## Session 17: the delegation gate's first check, the chain suite's failure, and the consent line
+
+**When:** September 27, 2026, the start of the delegation phase. **Who:** nobody in a real session yet: the browser's two sessions did not survive the previous session's end, and the gate's last three checks need the owner's console first. **Checked first:** what the chain suite actually hit last session, from the feed table and the Postgres log (docs/decisions.md 2026-09-27), before anything about the relayer was touched.
+
+### Exercised
+
+- **The chain suite's failure, run down to its cause:** the sports suite's game row was deleted by the settle suite's cleanup from a sibling process between two inserts (the foreign-key violation in the Postgres log at 23:22:19 UTC on September 26). Not the relayer. The fixture now removes only its own run's games; a test plants another run's game beside its own and expects it untouched. The settle and sports suites are run together again below.
+- **The relayer's lock:** two senders against the real database, the second starting only after the first finished; the nonce retry on a fake sender.
+- **The consent line on a game:** the three cases by rule; the mixed line is reachable only client-side on the terms step with two kinds chosen, so it is on the phone list below.
+- **The gate's first check, from Dynamic's read-only API** (the users endpoint, wallet properties only, never a share). The baseline for check 3, to compare after the ledger wallet is delegated: the governance wallet's values must be exactly these.
+
+  | Account | Wallet | Credential | Share set | Key share | Keygen |
+  | --- | --- | --- | --- | --- | --- |
+  | Claude Code (dareful.app) | ledger 0xf067…4504 | 6dabcc6f-0abd-4b75-8835-f98871769a1f | a6f74204-5e40-4496-9eaf-c665548bdc39 | 32fdcaca-f887-4314-8973-cff9e6d3c2a8 | Ft6th71NPnqisResiuvNPacXuBTy4DfP5TTkzoLRxQkZ |
+  | Claude Code (dareful.app) | governance 0x274d…44b1 | f28f7804-8432-4afa-beb8-cd89b9d3a2a8 | e9882bad-2a48-460f-ac6d-0f0a6eff77f2 | 89b1816c-e285-4ed9-b6a5-d517d4c4e27e | Baec4dHQZkjaxkZUpqkcegtt4EU6RaX6vARnPfsTsRWP |
+  | Claude Code (localhost) | ledger 0x716a…de15 | 7db99238-b772-43f3-b293-b2ca08b4724a | 7dbbd874-a518-4af9-b900-dc431a157727 | 94676d76-1a7e-4e42-b3b4-22a1bec7dc68 | 6abKXQtBDmtYvNn92eiwGQjv8rkSjqVKoZ4gtqZ2w1oF |
+  | Claude Code (localhost) | governance 0x9c9a…dc7d | c4360b7c-139b-4530-9003-d4c1e0e99d8c | 962198bc-bf1b-46e8-bec7-39d61784bfb5 | 314140da-0613-4064-8539-1918dcdb4f6f | FBFJFrnkHXTq2EgAxxaJ6rj4N9qPjtEwLikj4WbD2D8K |
+
+  Every wallet: `TWO_OF_TWO`, share set type `rootUser`, derivation path `m/44'/60'/0'/0/0`, no other share sets. Four wallets, four keygen ids.
+- **The instrument, by the harness:** the webhook's signature over its bytes, the envelope Dynamic's own decrypt opens, the store sealed and bound to its row, the governance wallet refused before decrypting and by the database, replays and stale events, revocation wiping the material, the signer refusing the governance address before any lookup and degrading to a prompt (tests/unit/delegation.test.ts, tests/db/delegation.test.ts).
+
+### What broke
+
+- **The fixture's cleanup took every run's games**, not its own (above).
+- **The relayer had nothing keeping two senders apart** on the nonce; found by inspection, not by the failure, and fixed with a lock and a retry.
+- **The game's terms step read badly with two kinds chosen** ("and the play-by-play the first drive"); one rule now writes the line.
+
+### What needs the owner, a phone or a second person
+
+The gate's checks 2 to 4 need delegated access enabled in Dynamic's console (the exact steps are in the phase's report), the deploy of the webhook door, and a real session on localhost to trigger delegation from `/dev/delegation`; then `scripts/dev/delegation-gate.ts` prints the three results. The rest of the phase is not built until they pass. The phone checks are in the single checklist (41 to 46).
+
 ## The final test: one checklist
 
 Everything from sessions 11 through 15 that needs a phone, a second person or a real game, in one place, grouped by what it needs, so the final pass on real phones is one document to walk through. Each item says exactly what to check; the session it came from has the detail. Tick them in order within a group; the two-phone items want both phones signed in to two accounts that share a set.
@@ -699,3 +730,12 @@ Everything from sessions 11 through 15 that needs a phone, a second person or a 
 38. **The margin typed past the reach, from a phone** (16): tap the pill, expect the numeric field with the keypad and the two-team choice under it, type 40, "Use it", and the pill "Giants by 40"; the line's thumb on its end.
 39. **The stamps on a phone** (16): the two stamps on the tab's rows, the header, the line's ends growing and shrinking under a thumb, the story's kicker and the tiles, with each team's colour in its stamp and nowhere else, and no logo anywhere.
 40. **The tiles in a chat** (16): the game page's link sent from "Send it to the chat" previewing "Priya asks" with the two stamps either side of "Titans at Giants", the chosen questions as rows and the close time; a who-wins question's asking tile with the two 88px stamps at the ends of the empty line and "Who wins?"; its result tile with the winner over the washed half.
+
+### Delegation (after the gate passes and the rest is built)
+
+41. **Approving delegation once, then routine actions with no prompt** (17): on a phone, approve at the moment the design rules, then confirm an obligation, enter a question, close one you are owed and cancel out a pair; expect no signing sheet on any of them and the app's own button to be the whole act; then `delegated_signatures` holds one row per act naming the action, the subject and the request.
+42. **A vote still prompting, every time** (17): with delegation on, vote on a question; expect the app's own short sheet and a signature from the governance wallet; the row in `delegated_signatures` never appears for a vote, and the Dynamic record of the governance wallet shows no delegated share set.
+43. **Revoking turns prompts back on** (17): turn it off where the design puts it; expect the next confirm to prompt, the row's material wiped and `revoked_at` set, and nothing signed silently after.
+44. **Declining** (17): a second account that never approves uses the app as before, every act prompting; nothing is stored for it.
+45. **The mixed consent line on a phone** (17): start a game with Who wins and The first drive both ticked; on the terms step expect "If nobody votes, the final score settles the others and the play-by-play settles the first drive." above Send it, and the play-by-play's line alone when only the first drive is ticked.
+46. **Dynamic's own sheet, if the reshare shows one** (17): note every word on it; the app's framing has to carry the explanation if those words cannot be changed.

@@ -30,7 +30,7 @@ import { storageConfigured } from "@/lib/media/storage";
 import { cardMeta, lineT, type CardInput } from "@/lib/sports/cards";
 import { gameById, gameGroupsFor, gameMarkets } from "@/lib/sports";
 import { scoreLine } from "@/lib/sports/results";
-import { CONSENT, DRIVE_CONSENT, SLIDER_REACH, templatesFor, type TemplateKey } from "@/lib/sports/templates";
+import { SLIDER_REACH, templatesFor, type TemplateKey } from "@/lib/sports/templates";
 import type { Sport } from "@/lib/sports/types";
 import { clockWithDay } from "@/lib/notify/messages";
 import { startLabel } from "@/components/on/game-row";
@@ -76,7 +76,7 @@ export async function GamePage({ id, g, add, start }: { id: string; g: string | 
   const chosen = (g && groups.find((x) => x.groupId === g)) || groups[0] || null;
   const ahead = game.startsAt.getTime() > now.getTime() && game.status !== "postponed" && game.status !== "canceled";
   const menu = templatesFor({ sport: game.sport as Sport, home: { short: game.homeShort }, away: { short: game.awayShort }, seasonType: game.seasonType });
-  const menuItems: MenuItem[] = menu.map((m) => ({ key: m.key, name: m.name, kindLabel: m.kindLabel, title: m.title, rows: m.rows, consent: m.key === "first_drive" ? DRIVE_CONSENT : CONSENT }));
+  const menuItems: MenuItem[] = menu.map((m) => ({ key: m.key, name: m.name, kindLabel: m.kindLabel, title: m.title, rows: m.rows }));
   const closes = `${game.startsAt.toLocaleDateString("en-US", { timeZone: clock.zone, weekday: "short" })} ${clockOf(game.startsAt, clock.zone)}`;
   const { chainId, dares } = contracts();
   const signing = { domain: daresDomain(chainId, dares.address), ledgerWallet: me.ledgerWallet };

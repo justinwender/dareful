@@ -41,6 +41,7 @@ const said = async (fn: () => Promise<unknown>) => fn().then(() => null, (e: unk
 
 let asker: Signer, friend: Signer, groupId: string, denomId: string;
 before(async () => {
+  track.gamePrefix(`test:${RUN}:`);
   [asker, friend] = await Promise.all([tempSigner("Priya Raman"), tempSigner("Dev")]);
   const g = await createGroup({ name: "what's on check (temporary)", createdBy: asker.user.id });
   track.group(g.id);

@@ -285,7 +285,9 @@ before(async () => {
   // What's on (docs/design.md 3.33, 3.35): a game from the recorded scoreboard, its ids this test's own, and four questions from it:
   // who wins with the asker in, the margin with the asker in, who wins locked with the final score proposing, and one the final score settled.
   const scoreboard = JSON.parse(readFileSync(new URL("../fixtures/sports/espn-nfl-scheduled.json", import.meta.url), "utf8")) as unknown;
-  const feedGame = parseScoreboard("nfl", scoreboard).slice(0, 1).map((g) => ({ ...g, sourceId: `test:pages:${randomUUID().slice(0, 8)}:${g.sourceId}`, startsAt: new Date(Date.now() + 5 * 86_400_000) }));
+  // This run's games carry one prefix, registered so cleanup takes them and no other run's (tests/db/fixture.ts).
+  const gamePrefix = track.gamePrefix(`test:pages:${randomUUID().slice(0, 8)}:`);
+  const feedGame = parseScoreboard("nfl", scoreboard).slice(0, 1).map((g) => ({ ...g, sourceId: `${gamePrefix}${g.sourceId}`, startsAt: new Date(Date.now() + 5 * 86_400_000) }));
   await syncSchedule("nfl", new Date(), { name: "espn", listGames: async () => feedGame });
   const [gameRow] = await db.select().from(schema.sportsGames).where(eq(schema.sportsGames.sourceId, feedGame[0]!.sourceId));
   feedGameId = (gameRow as { id: string }).id;
@@ -326,7 +328,7 @@ before(async () => {
   feedSettledId = fs.id;
   // A game that is over (3.37, the night): a second recorded game, started thirty hours ago and complete, with two questions the final score settled in nia and rae's set.
   // Drafted while the game was ahead (a template refuses a kickoff that has passed), then the game and its questions moved back in time.
-  const nightGame = parseScoreboard("nfl", scoreboard).slice(1, 2).map((g) => ({ ...g, sourceId: `test:pages:${randomUUID().slice(0, 8)}:${g.sourceId}`, startsAt: new Date(Date.now() + 2 * 3_600_000) }));
+  const nightGame = parseScoreboard("nfl", scoreboard).slice(1, 2).map((g) => ({ ...g, sourceId: `${gamePrefix}${g.sourceId}`, startsAt: new Date(Date.now() + 2 * 3_600_000) }));
   await syncSchedule("nfl", new Date(), { name: "espn", listGames: async () => nightGame });
   const [nightRow] = await db.select().from(schema.sportsGames).where(eq(schema.sportsGames.sourceId, nightGame[0]!.sourceId));
   nightGameId = (nightRow as { id: string }).id;
