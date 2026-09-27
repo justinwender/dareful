@@ -10,6 +10,7 @@ import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { frameOnMarkets } from "@/lib/media";
 import { denominationsByIds, type DenominationRow } from "./denominations";
+import { participantsOf, pidOf } from "./participants";
 import { inkOf, type InkName } from "@/lib/ui/ink";
 import { answersOf, stateOf, unitOf, VOID_OUTCOME, type DareRow, type MarketState, type PositionRow, type Unit } from "./markets";
 import { answerShares, type Answer } from "./pick-one";
@@ -27,7 +28,7 @@ export type MarketCardData = {
   groupSize: number;
   denomination: DenominationRow;
   /** Percents on a yes-or-no question; on a number question `percent` is null and `number` carries the entry, as text; on a pick-one question `pick` is the answer's index. All null when numbers may not be shown. */
-  people: Array<{ id: string; name: string; percent: number | null; number: string | null; pick: number | null }>;
+  people: Array<{ id: string; name: string; /** A ghost: someone in it without an account (PLANNING.md section 4). */ ghost: boolean; percent: number | null; number: string | null; pick: number | null }>;
   outcome: 0 | 1 | null;
   /** A number question: its unit, and the answer once it has one. */
   unit: Unit | null;
@@ -77,9 +78,10 @@ export async function marketCards(input: { viewerId: string; groupId?: string; w
     db.select({ groupId: schema.groupMembers.groupId, userId: schema.groupMembers.userId }).from(schema.groupMembers).where(and(inArray(schema.groupMembers.groupId, groupIds), isNotNull(schema.groupMembers.userId), isNull(schema.groupMembers.leftAt))),
     db.select({ dareId: schema.dareStatements.dareId, userId: schema.dareStatements.userId }).from(schema.dareStatements).where(and(inArray(schema.dareStatements.dareId, ids), eq(schema.dareStatements.kind, "update"))).orderBy(schema.dareStatements.statedAt),
   ]);
-  const userIds = Array.from(new Set([...positions.map((p) => p.userId), ...said.map((x) => x.userId), ...edges.flatMap((e) => [e.fromUser, e.toUser]), ...votes.map((v) => v.userId)].filter((x): x is string => Boolean(x))));
-  const users = userIds.length ? await db.select({ id: schema.users.id, displayName: schema.users.displayName }).from(schema.users).where(inArray(schema.users.id, userIds)) : [];
-  const nameOf = new Map(users.map((u) => [u.id, u.displayName]));
+  // Every participant, account-holder or ghost: a ghost's number counts and draws like anyone's.
+  const people = await participantsOf([...positions.map((p) => pidOf(p)), ...said.map((x) => x.userId), ...edges.flatMap((e) => [e.fromUser, e.toUser]), ...votes.map((v) => v.userId)]);
+  const nameOf = new Map(Array.from(people.values(), (u) => [u.id, u.displayName] as const));
+  const ghost = (id: string) => people.get(id)?.ghost === true;
   const denoms = await denominationsByIds(Array.from(new Set(dares.map((d) => d.denomId))));
   const memories = await frameOnMarkets(dares.filter((d) => ["resolved", "voided", "expired"].includes(stateOf(d))).map((d) => d.id));
   const firstVotes = await db.select({ dareId: schema.dareVotes.dareId, userId: schema.dareVotes.userId, signedAt: schema.dareVotes.signedAt }).from(schema.dareVotes).where(inArray(schema.dareVotes.dareId, ids));
@@ -110,9 +112,9 @@ export async function marketCards(input: { viewerId: string; groupId?: string; w
       groupName: groups.find((g) => g.id === d.groupId)?.name ?? null,
       groupSize: seats.filter((s) => s.groupId === d.groupId).length,
       denomination,
-      people: ps.map((p) => ({ id: p.userId as string, name: nameOf.get(p.userId as string) ?? "Someone", percent: show && !unit && !answers ? percentOf(p) : null, number: show && unit ? p.value.toString() : null, pick: show && answers ? Number(p.value) : null })),
+      people: ps.map((p) => ({ id: pidOf(p), name: nameOf.get(pidOf(p)) ?? "Someone", ghost: ghost(pidOf(p)), percent: show && !unit && !answers ? percentOf(p) : null, number: show && unit ? p.value.toString() : null, pick: show && answers ? Number(p.value) : null })),
       outcome: state === "resolved" && !unit && !answers && d.resolvedOutcome !== null && d.resolvedOutcome !== VOID_OUTCOME ? (Number(d.resolvedOutcome) as 0 | 1) : null,
-      pickOne: answers ? { answers, outcome: pickedIndex, shares: answerShares(answers.map((a) => ps.filter((p) => Number(p.value) === a.index).reduce((sum, p) => sum + p.stake, 0n))), callers: pickedIndex === null ? [] : ps.filter((p) => Number(p.value) === pickedIndex).map((p) => firstOf(p.userId as string)) } : null,
+      pickOne: answers ? { answers, outcome: pickedIndex, shares: answerShares(answers.map((a) => ps.filter((p) => Number(p.value) === a.index).reduce((sum, p) => sum + p.stake, 0n))), callers: pickedIndex === null ? [] : ps.filter((p) => Number(p.value) === pickedIndex).map((p) => firstOf(pidOf(p))) } : null,
       unit,
       answer: state === "resolved" && unit && d.resolvedOutcome !== null && d.resolvedOutcome !== VOID_OUTCOME ? d.resolvedOutcome.toString() : null,
       consequences: edges

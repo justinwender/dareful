@@ -9,7 +9,7 @@ import { ProblemSummary } from "@/components/ledger/problem";
 import { signingProblem, useSigner } from "@/components/ledger/use-signer";
 import { Button } from "@/components/ui/button";
 import { PinnedSheet } from "@/components/ui/pinned-sheet";
-import { enterMarketAction, openMarketAction } from "@/lib/actions/markets";
+import { enterAsGhostAction, enterMarketAction, openMarketAction } from "@/lib/actions/markets";
 import { daresTypes } from "@/lib/chain/typed-data";
 import type { Hue } from "@/lib/ui/hue";
 import { OddsHeader, OddsLine } from "./odds-line";
@@ -52,14 +52,24 @@ const ENTERING_MS = 1800;
  * share fills in your hue, your avatar rises, the group's marker draws last, and about two seconds later the
  * sheet carries the next move. No toast. What confirms it is the entry line, which is still there next visit.
  */
+export type GhostEntry = {
+  /** The group's ghosts, for "is one of these you?"; names only. */
+  members: Array<{ claimId: string; name: string }>;
+  /** This browser's ghost on this market, once in. */
+  known: { name: string } | null;
+};
+
 export function MarketStage(props: {
   dareId: string;
-  signing: Signing;
+  /** Null for a ghost (docs/design.md 3.17): nothing is signed, and the entry goes in without an account. */
+  signing: Signing | null;
+  /** Entering without an account: who they say they are goes in with the number, and the browser keeps a token for it. */
+  ghost?: GhostEntry | null;
   unit: StakeUnit;
   state: "draft" | "open" | "locked";
   me: { name: string; hue: Hue };
   /** This person's position: a percent on a yes-or-no question, the whole number (as text) on a number question, the answer's index on a pick-one question. */
-  mine: { percent: number; number?: string; pick?: number; stake: string; stakeWords: string } | null;
+  mine: { percent: number; number?: string; pick?: number; stake: string; stakeWords: string; /** A position bound to this account from a ghost's entry and never signed (PLANNING.md section 4, "One phone"): confirming it is entering. */ unsigned?: boolean } | null;
   picture: StagePicture | null;
   mark: string | null;
   /** A number question: what the number counts, and on a signed margin its shift and the two sides. Absent on a yes-or-no question. */
@@ -92,7 +102,12 @@ export function MarketStage(props: {
   farOff?: { threshold: string; scale: string | null } | null;
 }) {
   const { dareId, signing, unit, state, me, mine, picture, mark } = props;
+  const ghost = props.ghost ?? null;
   const numberUnit = props.numberUnit ?? null;
+  // A ghost's name and number, typed on the way in (3.17); the number is hashed at the door and never kept.
+  const [ghostName, setGhostName] = useState("");
+  const [ghostPhone, setGhostPhone] = useState("");
+  const [ghostMember, setGhostMember] = useState<string | null>(null);
   const pickOne = props.pickOne ?? null;
   const teams = props.teams ?? null;
   const shift = numberUnit?.margin ? BigInt(numberUnit.margin.shift) : null;
@@ -100,7 +115,8 @@ export function MarketStage(props: {
   const [pick, setPick] = useState<number | null>(mine?.pick ?? null);
   const router = useRouter();
   const sign = useSigner();
-  const [changing, setChanging] = useState(false);
+  // A bound, unsigned position starts in the changing state: the numbers are there, and the tap that keeps them is the signature.
+  const [changing, setChanging] = useState(mine?.unsigned === true);
   const [value, setValue] = useState<number | null>(
     numberUnit ? null : (mine?.percent ?? props.argument?.defaultPercent ?? null),
   );
@@ -108,7 +124,7 @@ export function MarketStage(props: {
   const [number, setNumber] = useState<bigint | null>(
     mine?.number !== undefined ? BigInt(mine.number) : null,
   );
-  const [raised, setRaised] = useState(false);
+  const [raised, setRaised] = useState(mine?.unsigned === true);
   const [stake, setStake] = useState<string>(
     mine?.stake ?? (unit.quantifiable ? String(unit.monetary ? 1000 : 1) : "1"),
   );
@@ -139,6 +155,7 @@ export function MarketStage(props: {
 
   const shown = mine ?? justIn;
   const reading = shown !== null && state !== "draft";
+  const unsigned = mine?.unsigned === true && justIn === null;
   const stakeUnits =
     other && custom.trim() ? customStake(custom, unit.monetary) : stake;
   const stakeWords = (units: string | null) =>
@@ -183,6 +200,26 @@ export function MarketStage(props: {
       );
     const valueBps = (value ?? 0) * 100;
     const signedValue = pickOne ? BigInt(pick ?? 0) : numberUnit ? (number ?? 0n) : BigInt(valueBps);
+    const position = pickOne ? { stake: stakeUnits, answer: Number(signedValue) } : numberUnit ? { stake: stakeUnits, number: signedValue.toString() } : { stake: stakeUnits, valueBps };
+    if (ghost) {
+      // No signature: who they are goes in with the number, and the browser keeps a token for the ghost (3.17).
+      if (!ghost.known && !ghostMember && !ghostName.trim()) return setProblem("Say what your friends call you.");
+      setStep("sending");
+      const r = await enterAsGhostAction(dareId, position, { name: ghost.known ? "" : ghostName.trim(), ...(!ghost.known && ghostPhone.trim() ? { phone: ghostPhone.trim() } : {}), ...(!ghost.known && ghostMember ? { memberClaimId: ghostMember } : {}) });
+      if ("error" in r) {
+        setProblem(`Your number didn’t send. ${r.error}`);
+        setStep("idle");
+        return;
+      }
+      setJustIn({ percent: value ?? 0, ...(numberUnit ? { number: signedValue.toString() } : {}), ...(pickOne ? { pick: Number(signedValue) } : {}), stake: stakeUnits, stakeWords: stakeWords(stakeUnits) });
+      setChanging(false);
+      setRaised(false);
+      setStep("idle");
+      setPhase("entering");
+      router.refresh();
+      return;
+    }
+    if (!signing) return setProblem("That didn’t go through. Try again.");
     try {
       setStep("approving");
       let createSignature: `0x${string}` | null = null;
@@ -229,7 +266,6 @@ export function MarketStage(props: {
         "approve number",
       );
       setStep("sending");
-      const position = pickOne ? { stake: stakeUnits, answer: Number(signedValue) } : numberUnit ? { stake: stakeUnits, number: signedValue.toString() } : { stake: stakeUnits, valueBps };
       const r = createSignature
         ? await openMarketAction(
             dareId,
@@ -509,6 +545,37 @@ export function MarketStage(props: {
       }
       high={
         <div className="flex flex-col gap-3">
+          {ghost && !ghost.known ? (
+            // Who this is, without an account (3.17): a name, and a number so the entry is theirs when they sign in with it. No code is sent.
+            <div className="flex flex-col gap-3" data-ghost-fields="">
+              {ghost.members.length > 0 ? (
+                <div className="flex flex-col gap-2">
+                  <p className="text-label text-ink-3">Is one of these you?</p>
+                  <div className="flex flex-wrap gap-2">
+                    {ghost.members.map((m) => (
+                      <button key={m.claimId} type="button" onClick={() => (setGhostMember(ghostMember === m.claimId ? null : m.claimId), setGhostName(""))} className="rounded-pill">
+                        <Chip size={36} selected={ghostMember === m.claimId}>
+                          {m.name}
+                        </Chip>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {ghostMember ? null : (
+                <label className="flex flex-col gap-1">
+                  <span className="text-label text-ink-3">What your friends call you</span>
+                  <input value={ghostName} onChange={(e) => setGhostName(e.target.value)} autoComplete="given-name" maxLength={40} placeholder="First name" aria-label="What your friends call you" className="h-11 w-full rounded-button border border-line bg-ground px-4 text-body text-ink placeholder:text-ink-3" />
+                </label>
+              )}
+              <label className="flex flex-col gap-1">
+                <span className="text-label text-ink-3">Your phone number, so this one is yours</span>
+                <input value={ghostPhone} onChange={(e) => setGhostPhone(e.target.value)} type="tel" inputMode="tel" autoComplete="tel" maxLength={40} placeholder="Optional" aria-label="Your phone number, so this one is yours" className="h-11 w-full rounded-button border border-line bg-ground px-4 text-body text-ink placeholder:text-ink-3" />
+              </label>
+              <p className="text-caption text-ink-3">No code, no password, nothing to download. Sign in with this number later and it’s yours.</p>
+            </div>
+          ) : null}
+          {unsigned ? <p className="text-body-sm text-ink-2">This was you before you signed in. Keep it, or change it.</p> : null}
           <h2 className="text-label text-ink-3">What’s riding on it</h2>
           {unit.quantifiable ? (
             <>
@@ -582,6 +649,11 @@ export function MarketStage(props: {
             >
               Try again
             </Button>
+          ) : changing && unsigned ? (
+            // A number that came in before this person signed in (PLANNING.md section 4): keeping it, or changing it, is the signature.
+            <Button variant="primary" onClick={submit} loading={step !== "idle"} disabled={!picked || blocked}>
+              {`Confirm${pickOne || teams ? ":" : " at"} ${pickWords(pick)}`}
+            </Button>
           ) : changing ? (
             <div className="grid grid-cols-[1fr_auto] gap-2">
               <Button
@@ -622,9 +694,11 @@ export function MarketStage(props: {
                     : numberUnit
                       ? "Type your number"
                       : "Slide to pick your odds"
-                : state === "draft"
-                  ? `Looks right. I’m in${pickOne || teams ? ":" : " at"} ${pickWords(pick)}`
-                  : `I’m in${pickOne || teams ? ":" : " at"} ${pickWords(pick)}`}
+                : ghost && !ghost.known
+                  ? `Join${pickOne || teams ? ":" : " at"} ${pickWords(pick)}`
+                  : state === "draft"
+                    ? `Looks right. I’m in${pickOne || teams ? ":" : " at"} ${pickWords(pick)}`
+                    : `I’m in${pickOne || teams ? ":" : " at"} ${pickWords(pick)}`}
             </Button>
           )}
         </>

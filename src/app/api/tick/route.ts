@@ -1,6 +1,8 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
-import { notifyBackstopResult, notifyBackstopWarning, notifyDeadline } from "@/lib/notify";
+import { notifyAfterVote, notifyBackstopResult, notifyBackstopWarning, notifyDeadline } from "@/lib/notify";
+import { desc, eq } from "drizzle-orm";
+import { db, schema } from "@/db";
 import { tick } from "@/lib/ledger/settle";
 import { sportsTick } from "@/lib/sports";
 import { balldontlie } from "@/lib/sports/balldontlie";
@@ -31,6 +33,13 @@ export async function POST(req: Request): Promise<Response> {
   const report = await tick(now, notifyDeadline, { notifyWarning: (id, flavour, actsAt) => notifyBackstopWarning(id, flavour, actsAt, now), check: balldontlie });
   // The tiebreaker's backstop and the void rule's end are backstops acting: the one notice after, in place of the result notice.
   await Promise.all([...report.arbitrated, ...report.expired].map((id) => notifyBackstopResult(id)));
+  // A resolution the tick landed from votes already signed: the result notice goes out as the last vote's, since that vote is what decided it.
+  await Promise.all(
+    report.resolved.map(async (id) => {
+      const [last] = await db.select({ userId: schema.dareVotes.userId }).from(schema.dareVotes).where(eq(schema.dareVotes.dareId, id)).orderBy(desc(schema.dareVotes.signedAt)).limit(1);
+      if (last) await notifyAfterVote(id, last.userId);
+    }),
+  );
   if (report.failed.length > 0) console.error("tick: some jobs failed", report.failed);
   // What's on (src/lib/sports): the schedule, the finals, the first drives, the feed's proposals, and the backstop's endings.
   const sports = await sportsTick(now);
@@ -46,5 +55,5 @@ export async function POST(req: Request): Promise<Response> {
     console.error("tick: the relayer's balance could not be read", err instanceof Error ? err.message : err);
     return null;
   });
-  return NextResponse.json({ locked: report.locked.length, notified: report.notified.length, expired: report.expired.length, arbitrated: report.arbitrated.length, warned: report.warned.length, failed: report.failed.length, feed: { synced: sports.synced, polled: sports.polled.length, drives: sports.drives.length, proposed: sports.proposed.length, settled: sports.settled.length, voided: sports.voided.length, failed: sports.failed.length }, writes: writes ? { mined: writes.mined.length, completed: writes.completed.length, reverted: writes.reverted.length, dropped: writes.dropped.length, rebroadcast: writes.rebroadcast.length } : null, relayer });
+  return NextResponse.json({ locked: report.locked.length, resolved: report.resolved.length, notified: report.notified.length, expired: report.expired.length, arbitrated: report.arbitrated.length, warned: report.warned.length, failed: report.failed.length, feed: { synced: sports.synced, polled: sports.polled.length, drives: sports.drives.length, proposed: sports.proposed.length, settled: sports.settled.length, voided: sports.voided.length, failed: sports.failed.length }, writes: writes ? { mined: writes.mined.length, completed: writes.completed.length, reverted: writes.reverted.length, dropped: writes.dropped.length, rebroadcast: writes.rebroadcast.length } : null, relayer });
 }

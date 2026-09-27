@@ -1,6 +1,6 @@
 "use server";
 
-import { SEND_PENDING_COPY, SendPending } from "@/lib/chain/relayer";
+import { pendingCopy, SendPending } from "@/lib/chain/relayer";
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -112,7 +112,7 @@ export async function confirmProposalAction(proposalId: string, signature: strin
     const result = await confirmProposal(proposalId, user.id, signature);
     return { ok: true, txHash: result.txHash };
   } catch (err) {
-    if (err instanceof SendPending) return { error: SEND_PENDING_COPY };
+    if (err instanceof SendPending) return { error: pendingCopy(err) };
     if (err instanceof ConfirmError) return { error: err.message };
     return { error: "That didn't go through. Try again." };
   }
@@ -129,7 +129,7 @@ export async function confirmManyAction(proposalIds: string[], signature: string
     const result = await confirmManyProposals(ids.data, user.id, signature);
     return { ok: true, txHash: result.txHash, count: result.obligationIds.length };
   } catch (err) {
-    if (err instanceof SendPending) return { error: SEND_PENDING_COPY };
+    if (err instanceof SendPending) return { error: pendingCopy(err) };
     if (err instanceof ConfirmError) return { error: err.message };
     return { error: "That didn't go through. Try again." };
   }

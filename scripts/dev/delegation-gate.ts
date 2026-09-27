@@ -27,7 +27,7 @@ const CHECK = {
   message: { at: BigInt(Date.now()) },
 } as const;
 
-type Wallet = { credId: string; walletId: string; address: string; shareSetId: string | null; keygenIds: string[]; otherShareSets: unknown[] };
+type Wallet = { credId: string; walletId: string; address: string; shareSetId: string | null; keygenIds: string[]; otherShareSets: unknown[]; /** Dynamic's per-wallet delegation preference, `hasDeniedDelegatedAccess` among them. */ settings: unknown };
 
 async function dynamicWallets(dynamicUserId: string): Promise<Wallet[]> {
   const env = process.env.NEXT_PUBLIC_DYNAMIC_ENVIRONMENT_ID ?? "";
@@ -51,6 +51,7 @@ async function dynamicWallets(dynamicUserId: string): Promise<Wallet[]> {
         shareSetId: typeof wp.shareSetId === "string" ? wp.shareSetId : null,
         keygenIds: shares.map((s) => String(s.keygenId ?? "")),
         otherShareSets: Array.isArray(wp.otherShareSets) ? wp.otherShareSets : [],
+        settings: wp.settings ?? null,
       };
     });
 }
@@ -70,7 +71,7 @@ async function main(): Promise<void> {
   const wallets = await dynamicWallets(user.dynamicUserId);
   for (const w of wallets) {
     const role = w.address.toLowerCase() === ledger ? "ledger" : w.address.toLowerCase() === governance ? "governance" : "other";
-    console.log(`   ${role}: wallet ${w.walletId || "?"} cred ${w.credId} shareSet ${w.shareSetId} keygen ${w.keygenIds.join(",")} otherShareSets ${JSON.stringify(w.otherShareSets)}`);
+    console.log(`   ${role}: wallet ${w.walletId || "?"} cred ${w.credId} shareSet ${w.shareSetId} keygen ${w.keygenIds.join(",")} otherShareSets ${JSON.stringify(w.otherShareSets)} settings ${JSON.stringify(w.settings)}`);
   }
   const gov = wallets.find((w) => w.address.toLowerCase() === governance);
 

@@ -23,7 +23,7 @@ import {
   type WalletClient,
 } from "viem";
 import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { timed } from "@/lib/timing";
 import { monadChain, rpcUrl } from "./contracts";
@@ -73,7 +73,15 @@ export type SubmitResult = { hash: Hex; receipt: TransactionReceipt };
 
 /** What a write is for, so the tick can finish what the action would have once the receipt is in (`src/lib/ledger/completions.ts`). */
 export type WriteKind = "confirm" | "close" | "net" | "create" | "resolve" | "arbitrate" | "feed" | "expire" | "register" | "other";
-export type WriteRecord = { kind: WriteKind; subject: Record<string, unknown> };
+export type WriteRecord = {
+  kind: WriteKind;
+  subject: Record<string, unknown>;
+  /** The person whose tap this is, so a drop after they were told it was on its way reaches their screen; null or absent for the scheduler. */
+  actor?: string | null;
+};
+
+/** The subject as it is stored, so a later write for the same thing can be found by equality. */
+export const subjectKey = (subject: Record<string, unknown>): string => JSON.stringify(subject, (_, v: unknown) => (typeof v === "bigint" ? v.toString() : v));
 
 /** How long a receipt is waited for in the person's own request before the write is left to the tick. Monad mines in under a second; this is the node being slow to answer, not the chain. */
 export const RECEIPT_TIMEOUT_MS = 20_000;
@@ -87,6 +95,7 @@ export class SendPending extends Error {
   constructor(
     public readonly hash: Hex,
     public readonly label: string,
+    public readonly kind: WriteKind = "other",
   ) {
     super(`${label}: sent as ${hash}, and the receipt has not come yet; the tick will finish it`);
     this.name = "SendPending";
@@ -95,6 +104,12 @@ export class SendPending extends Error {
 
 /** What the person is told when their send is pending (docs/decisions.md 2026-09-27): a state, not a refusal, and the design has not drawn it yet. */
 export const SEND_PENDING_COPY = "Sent, and still going through. Nothing more to do here; it will show in a minute.";
+/**
+ * A pending registration (a group or a unit reaching the ledger for the first time) is setup, not the person's own
+ * action: that was never sent, so they are not told it will show. The tick lands the registration and they go again.
+ */
+export const SETUP_PENDING_COPY = "Still setting things up. Nothing was recorded; try again in a minute.";
+export const pendingCopy = (err: SendPending): string => (err.kind === "register" ? SETUP_PENDING_COPY : SEND_PENDING_COPY);
 
 /** What the node says when it already holds the transaction: the broadcast counted, whatever the answer looked like. */
 export function isAlreadyKnown(err: unknown): boolean {
@@ -114,7 +129,7 @@ export function isNonceProblem(err: unknown): boolean {
     const name = typeof (e as { name?: unknown }).name === "string" ? (e as { name: string }).name : "";
     const message = typeof (e as { message?: unknown }).message === "string" ? (e as { message: string }).message : "";
     if (name === "NonceTooLowError") return true;
-    if (/nonce too low|nonce is too low|already known|replacement transaction underpriced|invalid nonce/i.test(message)) return true;
+    if (/nonce too low|nonce is too low|already known|replacement transaction underpriced|invalid nonce|existing transaction had higher priority/i.test(message)) return true;
   }
   return false;
 }
@@ -231,7 +246,7 @@ export async function submit<
         const base = await publicClient.getTransactionCount({ address: account.address, blockTag: "pending" });
         return sendWithNonceRetry(async (nonce) => {
           const signed = await sign(nonce);
-          await recordWrite({ ...signed, label: req.label, nonce, ...write });
+          await recordWrite({ ...signed, label: req.label, nonce, kind: write.kind, subject: write.subject, actor: write.actor ?? null });
           last = signed;
           try {
             await publicClient.sendRawTransaction({ serializedTransaction: signed.raw });
@@ -261,7 +276,11 @@ export async function submit<
   try {
     receipt = await timed(`relayer ${req.label}: wait for receipt`, () => publicClient.waitForTransactionReceipt({ hash, timeout: RECEIPT_TIMEOUT_MS }));
   } catch (err) {
-    if (err instanceof WaitForTransactionReceiptTimeoutError) throw new SendPending(hash, req.label);
+    if (err instanceof WaitForTransactionReceiptTimeoutError) {
+      // The person is about to be told it is on its way: a drop or a revert from here on has to reach their screen.
+      if (write.kind !== "register") await markTold(hash);
+      throw new SendPending(hash, req.label, write.kind);
+    }
     throw err;
   }
   await markWrite(hash, receipt.status === "success" ? "mined" : "reverted", receipt.blockNumber);
@@ -278,11 +297,27 @@ export async function submit<
 }
 
 /** The record of a signed transaction, written before it is broadcast. */
-async function recordWrite(w: { hash: Hex; raw: Hex; label: string; nonce: number; kind: WriteKind; subject: Record<string, unknown> }): Promise<void> {
+async function recordWrite(w: { hash: Hex; raw: Hex; label: string; nonce: number; kind: WriteKind; subject: Record<string, unknown>; actor: string | null }): Promise<void> {
   await db
     .insert(schema.chainWrites)
-    .values({ hash: Buffer.from(w.hash.slice(2), "hex"), raw: Buffer.from(w.raw.slice(2), "hex"), label: w.label.slice(0, 200), nonce: w.nonce, kind: w.kind, subject: JSON.stringify(w.subject, (_, v: unknown) => (typeof v === "bigint" ? v.toString() : v)) })
+    .values({ hash: Buffer.from(w.hash.slice(2), "hex"), raw: Buffer.from(w.raw.slice(2), "hex"), label: w.label.slice(0, 200), nonce: w.nonce, kind: w.kind, subject: subjectKey(w.subject), actorId: w.actor })
     .onConflictDoNothing();
+}
+
+/** The person was told the send is on its way (docs/decisions.md 2026-09-27): what becomes of it is theirs to hear (src/lib/ledger/again.ts). */
+async function markTold(hash: Hex): Promise<void> {
+  await db.update(schema.chainWrites).set({ toldAt: new Date(), updatedAt: new Date() }).where(eq(schema.chainWrites.hash, Buffer.from(hash.slice(2), "hex")));
+}
+
+/** Whether a send for this thing is still in flight, or mined and waiting on its mirror: a retry now would double it. */
+export async function writeInFlight(kind: WriteKind, subject: Record<string, unknown>): Promise<boolean> {
+  const W = schema.chainWrites;
+  const rows = await db
+    .select({ status: W.status, completedAt: W.completedAt })
+    .from(W)
+    .where(and(eq(W.kind, kind), eq(W.subject, subjectKey(subject)), or(eq(W.status, "pending"), and(eq(W.status, "mined"), isNull(W.completedAt)))))
+    .limit(1);
+  return rows.length > 0;
 }
 
 export async function markWrite(hash: Hex, status: "mined" | "reverted" | "dropped", blockNumber?: bigint): Promise<void> {

@@ -3,10 +3,10 @@
 import { useDynamicContext } from "@dynamic-labs/sdk-react-core";
 import { Button } from "@/components/ui/button";
 
-export function SignInButton({ label = "Get started" }: { label?: string }) {
+export function SignInButton({ label = "Get started", variant = "primary" }: { label?: string; variant?: "primary" | "secondary" | "tertiary" }) {
   const { setShowAuthFlow, sdkHasLoaded } = useDynamicContext();
   return (
-    <Button size="primary" disabled={!sdkHasLoaded} onClick={() => setShowAuthFlow(true)}>
+    <Button variant={variant} size={variant === "tertiary" ? undefined : "primary"} disabled={!sdkHasLoaded} onClick={() => setShowAuthFlow(true)}>
       {label}
     </Button>
   );

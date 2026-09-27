@@ -5,7 +5,8 @@ import { LinkPending } from "@/components/ui/link-pending";
 import { after } from "next/server";
 import { asc, and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { SignInButton } from "@/components/auth/sign-in-button";
+import { GhostMarketPage } from "./ghost";
+import { participantsOf, pidOf } from "@/lib/ledger/participants";
 import { Avatar } from "@/components/ledger/avatar";
 import { Chip } from "@/components/ledger/chip";
 import { MarkRefStamp } from "@/components/ledger/mark-stamp";
@@ -143,26 +144,8 @@ export default async function MarketPage({
   const clock = await viewerClock();
   const { id } = await params;
   const me = await currentUser();
-  if (!me) {
-    // A pasted link gets its card from this page, so it answers instead of redirecting, and says only the question.
-    const share = await marketShare(id);
-    return (
-      <Screen>
-        <TopBar title="dareful" />
-        <div className="flex flex-col gap-6 py-10">
-          <h1 className="text-serif-l text-ink">
-            {share.question ?? "Nothing to see here yet."}
-          </h1>
-          <p className="text-body text-ink-2">
-            {share.question
-              ? "Sign in to put your number on it."
-              : "If a friend sent you this, sign in and it will be there."}
-          </p>
-          <SignInButton label="Sign in" />
-        </div>
-      </Screen>
-    );
-  }
+  // Arriving from a link with no account (docs/design.md 3.17; PLANNING.md section 4): the market's own screen, and a way in without one.
+  if (!me) return <GhostMarketPage id={id} clock={clock} />;
 
   let d = await marketById(id);
   if (!d) notFound();
@@ -326,17 +309,14 @@ export default async function MarketPage({
   const ids = Array.from(
     new Set([
       d.creatorId,
-      ...positions.map((p) => p.userId as string),
+      ...positions.map((p) => pidOf(p)),
       ...votes.map((v) => v.userId),
       ...statements.map((s) => s.userId),
       ...(answers?.flatMap((a) => (a.userId ? [a.userId] : [])) ?? []),
     ]),
   );
-  const users = await db
-    .select({ id: schema.users.id, displayName: schema.users.displayName })
-    .from(schema.users)
-    .where(inArray(schema.users.id, ids));
-  const person = new Map(users.map((u) => [u.id, u]));
+  // Everyone on the screen, account-holder or ghost: a ghost's number draws like anyone's (PLANNING.md section 4).
+  const person = await participantsOf(ids);
   const nameOf = (uid: string) =>
     uid === me.id ? "You" : (person.get(uid)?.displayName ?? "Someone");
   const first = (uid: string) =>
@@ -351,17 +331,17 @@ export default async function MarketPage({
   const show = numbersVisible(d, mine !== null);
   const others = positions.filter((p) => p.userId !== me.id);
   const pins = positions.map((p) => ({
-    id: p.userId as string,
-    name: person.get(p.userId as string)?.displayName ?? "Someone",
+    id: pidOf(p),
+    name: person.get(pidOf(p))?.displayName ?? "Someone",
     percent: Number(p.value) / 100,
   }));
   // A number question's ruler (3.5): everyone's number and, once there is one, the answer.
   const answerNumber = numberUnit && d.resolvedOutcome !== null && d.resolvedOutcome !== VOID_OUTCOME && state === "resolved" ? d.resolvedOutcome : null;
-  const rulerData = numberUnit && show ? rulerFor({ unit: numberUnit, answer: answerNumber === null ? null : answerNumber.toString(), people: positions.map((p) => ({ id: p.userId as string, name: person.get(p.userId as string)?.displayName ?? "Someone", percent: null, number: p.value.toString(), pick: null })) }) : null;
+  const rulerData = numberUnit && show ? rulerFor({ unit: numberUnit, answer: answerNumber === null ? null : answerNumber.toString(), people: positions.map((p) => ({ id: pidOf(p), name: person.get(pidOf(p))?.displayName ?? "Someone", ghost: person.get(pidOf(p))?.ghost === true, percent: null, number: p.value.toString(), pick: null })) }) : null;
   /** "14 shirts · $5", "70% · $5", "John · $5": a person's number, or their pick, and what they put on it. */
   const numberWords = (v: bigint) => (pickAnswers ? (pickAnswers.find((a) => a.index === Number(v))?.text ?? "?") : numberUnit ? unitPhrase(v, numberUnit) : whoWins && teams ? leanPill(Number(v) / 100, teams.away.name, teams.home.name) : `${Number(v) / 100}%`);
   // The pick-one picture (3.25, 3.31): who picked each answer, and each answer's share of everything riding.
-  const pickers = pickAnswers ? pickAnswers.map((a) => positions.filter((p) => Number(p.value) === a.index).map((p) => ({ name: person.get(p.userId as string)?.displayName ?? "Someone", hue: hueFor(p.userId as string) }))) : [];
+  const pickers = pickAnswers ? pickAnswers.map((a) => positions.filter((p) => Number(p.value) === a.index).map((p) => ({ name: person.get(pidOf(p))?.displayName ?? "Someone", hue: hueFor(pidOf(p)) }))) : [];
   const pickShares = pickAnswers ? answerShares(pickAnswers.map((a) => positions.filter((p) => Number(p.value) === a.index).reduce((sum, p) => sum + p.stake, 0n))) : [];
 
   const { chainId, dares } = contracts();
@@ -407,17 +387,17 @@ export default async function MarketPage({
   // The picture of where everyone landed, for someone who is in. Weights when numbers may be seen (an open
   // question once you have picked, or any question once locked); otherwise who is in and nothing about where.
   const entries = positions.map((p) => ({
-    id: p.userId as string,
+    id: pidOf(p),
     stake: p.stake,
     valueBps: p.value,
   }));
   const number = groupsNumberBps(entries);
-  const axis = numberUnit && show && mine ? numberAxis(positions.map((p) => ({ id: p.userId as string, stake: p.stake, value: p.value })), numberUnit) : null;
+  const axis = numberUnit && show && mine ? numberAxis(positions.map((p) => ({ id: pidOf(p), stake: p.stake, value: p.value })), numberUnit) : null;
   const pickBars: PickOneBar[] = pickAnswers ? pickAnswers.map((a) => ({ stake: positions.filter((p) => Number(p.value) === a.index).reduce((sum, p) => sum + (p.stake > 0n ? p.stake : 0n), 0n).toString(), noStake: positions.filter((p) => Number(p.value) === a.index && p.stake <= 0n).length })) : [];
   const picture: StagePicture | null = !mine
     ? null
     : show && pickAnswers
-      ? { kind: "picks", bars: pickBars, entries: positions.length, caption: pickOneCaption({ entries: positions.map((p) => ({ id: p.userId as string, stake: p.stake, pick: Number(p.value) })), answers: pickAnswers.map((a) => a.text), viewerId: me.id, nameOf: (id) => firstName(person.get(id)?.displayName ?? "Someone"), stakeWords }) }
+      ? { kind: "picks", bars: pickBars, entries: positions.length, caption: pickOneCaption({ entries: positions.map((p) => ({ id: pidOf(p), stake: p.stake, pick: Number(p.value) })), answers: pickAnswers.map((a) => a.text), viewerId: me.id, nameOf: (id) => firstName(person.get(id)?.displayName ?? "Someone"), stakeWords }) }
     : show && numberUnit
       ? axis
         ? { kind: "numbers", axis: serialiseAxis(axis), caption: positions.length <= 1 ? "You’re first in. Height is how much is riding on each number, not how many people picked it." : axis.offHigh || axis.offLow ? "Height is how much is riding on each number, not how many people picked it. One number sits past the end so the rest can be read." : "Height is how much is riding on each number, not how many people picked it." }
@@ -503,7 +483,7 @@ export default async function MarketPage({
           otherSays: firstIn
             ? {
                 name: firstName(
-                  person.get(firstIn.userId as string)?.displayName ?? "They",
+                  person.get(pidOf(firstIn))?.displayName ?? "They",
                 ),
                 side:
                   firstIn.value >= 5000n ? ("yes" as const) : ("no" as const),
@@ -530,6 +510,8 @@ export default async function MarketPage({
               ...(pickAnswers ? { pick: Number(mine.value) } : {}),
               stake: mine.stake.toString(),
               stakeWords: stakeWords(mine.stake),
+              // Bound from a ghost's entry and never signed: keeping it is the signature (PLANNING.md section 4, "One phone").
+              unsigned: state === "open" && mine.enterSignature === null,
             }
           : null
       }
@@ -688,7 +670,7 @@ export default async function MarketPage({
   const doneIds = new Set(
     state === "locked"
       ? votes.map((v) => v.userId)
-      : positions.map((p) => p.userId as string),
+      : positions.map((p) => p.userId).filter((x): x is string => x !== null),
   );
   const waitingIds = seats
     .map((x) => x.userId)
@@ -960,11 +942,11 @@ export default async function MarketPage({
   const claimantSaid = state === "resolved" ? (statements.find((s) => s.userId === orderedVotes[0]?.userId)?.statement ?? null) : null;
   // The answer that happened on a pick-one question, as an index, and who called it: everyone who picked it (3.25), never a ranking among them.
   const pickedIndex = pickAnswers && state === "resolved" && d.resolvedOutcome !== null && d.resolvedOutcome !== VOID_OUTCOME ? Number(d.resolvedOutcome) : null;
-  const pickCallers = pickedIndex === null ? [] : positions.filter((p) => Number(p.value) === pickedIndex).map((p) => first(p.userId as string));
+  const pickCallers = pickedIndex === null ? [] : positions.filter((p) => Number(p.value) === pickedIndex).map((p) => first(pidOf(p)));
   const calledLine = pickAnswers ? calledItLine(pickCallers, pickCallers.includes("You")) : "";
   const answerLine = pickAnswers && pickedIndex !== null ? pickAnswerLine(pickAnswers.find((a) => a.index === pickedIndex)?.text ?? "Decided", claimantSaid) : answerNumber !== null && numberUnit ? `${unitPhrase(answerNumber, numberUnit)}${claimantSaid && claimantSaid.length <= 60 ? `, ${claimantSaid.charAt(0).toLowerCase()}${claimantSaid.slice(1).replace(/[.!]+$/, "")}.` : "."}` : outcomeLine(d, outcome === "yes");
   const offBy = (p: (typeof positions)[number]) => (answerNumber === null ? 0n : p.value > answerNumber ? p.value - answerNumber : answerNumber - p.value);
-  const closestLine = pickAnswers ? calledLine : closest ? (numberUnit ? `${first(closest.userId as string)} ${closest.userId === me.id ? "were" : "was"} closest, ${offBy(closest) === 0n ? "dead on" : `off by ${withSeparators(offBy(closest))}`}.` : `${first(closest.userId as string)} ${closest.userId === me.id ? "were" : "was"} closest, at ${whoWins && teams ? leanPill(Number(closest.value) / 100, teams.away.name, teams.home.name) : `${Number(closest.value) / 100}%`}.`) : "";
+  const closestLine = pickAnswers ? calledLine : closest ? (numberUnit ? `${first(pidOf(closest))} ${closest.userId === me.id ? "were" : "was"} closest, ${offBy(closest) === 0n ? "dead on" : `off by ${withSeparators(offBy(closest))}`}.` : `${first(pidOf(closest))} ${closest.userId === me.id ? "were" : "was"} closest, at ${whoWins && teams ? leanPill(Number(closest.value) / 100, teams.away.name, teams.home.name) : `${Number(closest.value) / 100}%`}.`) : "";
   // The final score as the settled line's caption on a question the score answered (3.40): "Giants 24, Titans 17."
   const scoreCaption = game && feedFinal && (decidedByScore || twoTeams) && ended ? `${scoreLine(feedFinal, game.homeShort, game.awayShort)}.` : null;
   // The feed's ending, in one line after the ticket glyph (3.35, Endings): which of its three ways it took, or the play-by-play's.
@@ -1014,11 +996,19 @@ export default async function MarketPage({
       <CallLine pins={pins} state={resolved ? "resolved" : "in"} outcome={resolved && outcome ? (outcome === "yes" ? 1 : 0) : undefined} size="screen" surface="var(--ground)" ends={teams} />
     );
   const settledOutcome = state === "resolved" && outcome !== null && outcome !== "void";
-  const participants = positions.map((p) => p.userId as string);
-  const people = new Map(users.map((u) => [u.id, u]));
-  const transfers = edges.map((e) => ({ fromId: e.fromUser, toId: e.toUser, quantity: e.quantity ?? 1n, closed: e.closedAt !== null }));
+  const participants = positions.map((p) => pidOf(p));
+  const people = new Map(Array.from(person.values(), (u) => [u.id, { id: u.id, displayName: u.displayName }] as const));
+  // A provisional market leaves proposals where an onchain one leaves edges (PLANNING.md section 4): the pending ones are shown beside the confirmed.
+  const proposed =
+    state === "resolved" && d.onchainId === null
+      ? await db.select().from(schema.obligationProposals).where(and(eq(schema.obligationProposals.origin, "dare"), eq(schema.obligationProposals.originId, d.id), eq(schema.obligationProposals.status, "pending")))
+      : [];
+  const transfers = [
+    ...edges.map((e) => ({ fromId: e.fromUser, toId: e.toUser, quantity: e.quantity ?? 1n, closed: e.closedAt !== null })),
+    ...proposed.map((p) => ({ fromId: (p.fromUser ?? p.fromClaim) as string, toId: (p.toUser ?? p.toClaim) as string, quantity: p.quantity ?? 1n, closed: false })),
+  ];
   // "The rest of that night" (3.37), on the memory view only: other events that shared this night with the viewer.
-  const restOfNight = memoryView && d.lockedAt && d.resolvedAt ? await restOfThatNight({ dareId: d.id, groupIds: [d.groupId], people: participants, viewerId: me.id, closedAt: d.lockedAt, endedAt: d.resolvedAt }).catch(() => []) : [];
+  const restOfNight = memoryView && d.lockedAt && d.resolvedAt ? await restOfThatNight({ dareId: d.id, groupIds: [d.groupId], people: positions.map((p) => p.userId).filter((x): x is string => x !== null), viewerId: me.id, closedAt: d.lockedAt, endedAt: d.resolvedAt }).catch(() => []) : [];
   const endedBody = !ended ? null : memoryView ? (
     // The memory it leaves: the photos first, the outcome and one line, the line or ruler, what it left, the rest of that night. No ranking.
     <>
@@ -1098,8 +1088,8 @@ export default async function MarketPage({
                 said={numberUnit.margin ? (v) => unitPhrase(BigInt(v), numberUnit) : undefined}
                 answer={rulerData.answer}
                 standings={positions.map((p) => ({
-                  userId: p.userId as string,
-                  name: person.get(p.userId as string)?.displayName ?? "Someone",
+                  userId: pidOf(p),
+                  name: person.get(pidOf(p))?.displayName ?? "Someone",
                   value: p.value.toString(),
                   xPermille: rulerData.pins.find((x) => x.id === p.userId)?.xPermille ?? 0,
                   score: p.score ?? 0,
@@ -1111,8 +1101,8 @@ export default async function MarketPage({
                 ends={teams ? { away: teams.away.name, home: teams.home.name } : null}
                 outcome={outcome === "yes" ? 1 : 0}
                 standings={positions.map((p) => ({
-                  userId: p.userId as string,
-                  name: person.get(p.userId as string)?.displayName ?? "Someone",
+                  userId: pidOf(p),
+                  name: person.get(pidOf(p))?.displayName ?? "Someone",
                   percent: Number(p.value) / 100,
                   score: p.score ?? 0,
                 }))}
@@ -1181,9 +1171,9 @@ export default async function MarketPage({
                     <li key={p.userId}>
                       <Avatar
                         name={
-                          person.get(p.userId as string)?.displayName ?? "?"
+                          person.get(pidOf(p))?.displayName ?? "?"
                         }
-                        hue={hueFor(p.userId as string)}
+                        hue={hueFor(pidOf(p))}
                         size={28}
                       />
                     </li>
@@ -1244,12 +1234,12 @@ export default async function MarketPage({
                       <span className="flex items-center gap-2 text-body-sm text-ink">
                         <Avatar
                           name={
-                            person.get(p.userId as string)?.displayName ?? "?"
+                            person.get(pidOf(p))?.displayName ?? "?"
                           }
-                          hue={hueFor(p.userId as string)}
+                          hue={hueFor(pidOf(p))}
                           size={24}
                         />
-                        {nameOf(p.userId as string)}
+                        {nameOf(pidOf(p))}
                       </span>
                       <span className="text-body-sm text-ink-2">
                         {numberWords(p.value)} · {stakeWords(p.stake)}

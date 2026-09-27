@@ -6,8 +6,9 @@ import { ChainEnum, getAuthToken, useDynamicContext, useDynamicWaas, useIsLogged
 import { Button } from "@/components/ui/button";
 import { mark } from "@/lib/ui/timing";
 import { ProblemSummary } from "@/components/ledger/problem";
+import { useDenyGovernanceDelegation } from "@/components/auth/governance-denied";
 
-type Answer = { user: { id: string }; bound: number } | { need: "wallets"; have: number } | { need: "name"; suggested: string } | { error: string };
+type Answer = { user: { id: string; governanceWallet: string }; bound: number; created?: boolean } | { need: "wallets"; have: number } | { need: "name"; suggested: string } | { error: string };
 type Phase = { at: "idle" } | { at: "working"; line: string } | { at: "name"; suggested: string; ready: boolean } | { at: "done" } | { at: "error"; message: string };
 
 /**
@@ -33,6 +34,7 @@ export function WalletBootstrap({ settled, sessionDynamicUserId }: { settled: bo
   const skip = settled && (sdkUserId === null || sdkUserId === sessionDynamicUserId);
   const { createWalletAccount, dynamicWaasIsEnabled } = useDynamicWaas();
   const refreshUser = useRefreshUser();
+  const denyGovernance = useDenyGovernanceDelegation();
   const [phase, setPhase] = useState<Phase>({ at: "idle" });
   const [name, setName] = useState("");
   const started = useRef(false);
@@ -49,14 +51,21 @@ export function WalletBootstrap({ settled, sessionDynamicUserId }: { settled: bo
   }, []);
 
   const finish = useCallback(
-    (a: Extract<Answer, { user: unknown }>) => {
+    async (a: Extract<Answer, { user: unknown }>) => {
+      // A new account's governance wallet is marked denied for delegation at Dynamic's end, here and once
+      // (docs/decisions.md 2026-09-27): the second belt behind the console's sign-in prompt staying off. It can
+      // fail without costing the person their account; the refusals in the door and the signer do not rest on it.
+      if (a.created) {
+        const r = await denyGovernance(a.user.governanceWallet).catch((err: unknown) => (console.warn("the governance wallet could not be marked denied", err instanceof Error ? err.message : err), "failed" as const));
+        if (r !== "denied") console.warn("the governance wallet was not marked denied", r);
+      }
       setPhase({ at: "done" });
       // Things a friend logged before this person had an account became theirs at this login. That screen
       // comes before anything else, once; after that it is a strip on the home screen.
       if (a.bound > 0) router.push("/welcome");
       router.refresh();
     },
-    [router],
+    [router, denyGovernance],
   );
 
   /** Makes however many wallets the server said were missing, one at a time, then refreshes the token. */
@@ -97,7 +106,7 @@ export function WalletBootstrap({ settled, sessionDynamicUserId }: { settled: bo
       }
       if ("need" in a) throw new Error("Setting up your account didn't finish. Try signing in again.");
       if ("error" in a) throw new Error(a.error);
-      finish(a);
+      await finish(a);
     };
     run().catch((err: unknown) => setPhase({ at: "error", message: err instanceof Error ? err.message : "Could not finish setting up your account." }));
   }, [skip, sdkHasLoaded, isLoggedIn, ask, makeWallets, finish]);

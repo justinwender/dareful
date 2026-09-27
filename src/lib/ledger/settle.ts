@@ -8,7 +8,7 @@
  * `Enter`), which the contract checked at lock. This module never arbitrates a market whose rule is `void`, and
  * the contract would refuse it if it tried.
  */
-import { and, asc, eq, gt, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { warningSendTime, type WarningFlavour } from "@/lib/notify/messages";
 import { agree, AGREE_AFTER_MS, ALONE_AFTER_MS } from "@/lib/sports/results";
 import type { CheckSource, FinalScore, Sport } from "@/lib/sports/types";
@@ -17,11 +17,13 @@ import { db, schema } from "@/db";
 import { arbitrate as askArbitrator, arbitrateAnswer, arbitrateNumber, ruleClaim } from "@/lib/ai/settler";
 import { contracts } from "@/lib/chain/contracts";
 import { gasFor } from "@/lib/chain/gas";
-import { SendPending, submit } from "@/lib/chain/relayer";
+import { SendPending, submit, writeInFlight } from "@/lib/chain/relayer";
 import { evidenceFor } from "@/lib/media/evidence";
 import { bufferToHex } from "./ids";
+import { pidOf, participantsOf } from "./participants";
+import { isProvisional, settleProvisional } from "./provisional";
 import { isMember } from "./groups";
-import { answersOf, lockMarket, marketById, MarketError, mirrorSettlement, positionsOf, reconcileFromIndexer, settlementFromReceipt, stateOf, toChainOutcome, unitOf, VOID_OUTCOME, votesOf, type DareRow } from "./markets";
+import { answersOf, lockMarket, marketById, MarketError, mirrorSettlement, positionsOf, reconcileFromIndexer, resolveFromVotes, settlementFromReceipt, stateOf, tally, toChainOutcome, unitOf, VOID_OUTCOME, votesOf, type DareRow } from "./markets";
 
 /** If nobody presses, the scheduler hears a deadlock this long after the question was due (or locked, if later). */
 export const ARBITRATION_BACKSTOP_MS = 24 * 3_600_000;
@@ -86,7 +88,7 @@ export async function stateCase(dareId: string, userId: string, text: string): P
 
 /** When the arbitrator may be asked: locked, under the arbitrate rule, and due. The contract checks the same three. */
 export function arbitrationOpen(d: DareRow, now: Date): boolean {
-  if (stateOf(d) !== "locked" || d.stalemate !== "arbitrate" || !d.onchainId) return false;
+  if (stateOf(d) !== "locked" || d.stalemate !== "arbitrate") return false;
   if (d.pace === "argument") return true;
   return d.resolvesBy !== null && d.resolvesBy.getTime() < now.getTime();
 }
@@ -105,17 +107,17 @@ export async function arbitrateMarket(dareId: string, byUserId: string | null, n
   const d = await marketById(dareId);
   if (!d) throw new MarketError("That one doesn't exist.", "not_found");
   if (d.resolvedAt) throw new MarketError("It's already decided.", "wrong_state");
-  if (!arbitrationOpen(d, now) || !d.onchainId) throw new MarketError(d.stalemate !== "arbitrate" ? "This one was set to go unsettled if nobody agrees." : "It isn't time for that yet. The group gets to call it first.", "wrong_state");
+  if (!arbitrationOpen(d, now)) throw new MarketError(d.stalemate !== "arbitrate" ? "This one was set to go unsettled if nobody agrees." : "It isn't time for that yet. The group gets to call it first.", "wrong_state");
   // A What's on question the score answers has the final score as its tiebreaker, never the model (3.35).
   if (await decidedByScore(d)) throw new MarketError("The final score settles this one, the way everyone agreed at entry.", "wrong_state");
   const positions = await positionsOf(d.id);
   if (byUserId !== null && !positions.some((p) => p.userId === byUserId)) throw new MarketError("Only someone who's in it can ask.", "not_member");
 
-  const [said, users] = await Promise.all([
+  const [said, people] = await Promise.all([
     db.select().from(schema.dareStatements).where(eq(schema.dareStatements.dareId, d.id)).orderBy(asc(schema.dareStatements.statedAt)),
-    db.select({ id: schema.users.id, displayName: schema.users.displayName }).from(schema.users).where(inArray(schema.users.id, positions.map((p) => p.userId as string))),
+    participantsOf([...positions.map((p) => pidOf(p)), ...(await db.select({ userId: schema.dareStatements.userId }).from(schema.dareStatements).where(eq(schema.dareStatements.dareId, d.id))).map((s) => s.userId)]),
   ]);
-  const nameOf = (id: string) => users.find((u) => u.id === id)?.displayName.split(/\s+/)[0] ?? "Someone";
+  const nameOf = (id: string) => people.get(id)?.displayName.split(/\s+/)[0] ?? "Someone";
   const updates = said.filter((s) => s.kind === "update").map((s) => ({ name: nameOf(s.userId), said: s.statement }));
   const statements = said.filter((s) => s.kind === "statement").map((s) => ({ name: nameOf(s.userId), said: s.statement }));
   const unit = unitOf(d);
@@ -124,10 +126,10 @@ export async function arbitrateMarket(dareId: string, byUserId: string | null, n
   const evidence = await evidenceFor(d.id).catch(() => []);
   const heard = await (answers
     ? // A pick-one question (3.30): the answer that happened, from the list the asker wrote, or that the terms do not decide it.
-      arbitrateAnswer({ title: d.title, terms: d.termsText, answers: answers.map((a) => a.text), positions: positions.map((p) => ({ name: nameOf(p.userId as string), answer: answers[Number(p.value)]?.text ?? "?" })), updates, statements, evidence }).then((r) => ({ voided: r.outcome === "cannot_decide" || r.answer === null || r.answer >= answers.length, outcome: r.outcome === "answer" && r.answer !== null && r.answer < answers.length ? BigInt(r.answer) : VOID_OUTCOME, ruling: r.ruling, word: "answer" as const }))
+      arbitrateAnswer({ title: d.title, terms: d.termsText, answers: answers.map((a) => a.text), positions: positions.map((p) => ({ name: nameOf(pidOf(p)), answer: answers[Number(p.value)]?.text ?? "?" })), updates, statements, evidence }).then((r) => ({ voided: r.outcome === "cannot_decide" || r.answer === null || r.answer >= answers.length, outcome: r.outcome === "answer" && r.answer !== null && r.answer < answers.length ? BigInt(r.answer) : VOID_OUTCOME, ruling: r.ruling, word: "answer" as const }))
     : unit
-    ? arbitrateNumber({ title: d.title, terms: d.termsText, unit, positions: positions.map((p) => ({ name: nameOf(p.userId as string), number: p.value.toString() })), updates, statements, evidence }).then((r) => ({ voided: r.outcome === "cannot_decide" || r.number === null, outcome: r.outcome === "number" && r.number !== null ? BigInt(r.number) : VOID_OUTCOME, ruling: r.ruling, word: "number" as const }))
-    : askArbitrator({ title: d.title, terms: d.termsText, positions: positions.map((p) => ({ name: nameOf(p.userId as string), percent: Math.round(Number(p.value) / 100) })), updates, statements, evidence }).then((r) => ({ voided: r.outcome === "cannot_decide", outcome: r.outcome === "cannot_decide" ? VOID_OUTCOME : r.outcome === "yes" ? 1n : 0n, ruling: r.ruling, word: r.outcome === "yes" ? ("yes" as const) : ("no" as const) }))
+    ? arbitrateNumber({ title: d.title, terms: d.termsText, unit, positions: positions.map((p) => ({ name: nameOf(pidOf(p)), number: p.value.toString() })), updates, statements, evidence }).then((r) => ({ voided: r.outcome === "cannot_decide" || r.number === null, outcome: r.outcome === "number" && r.number !== null ? BigInt(r.number) : VOID_OUTCOME, ruling: r.ruling, word: "number" as const }))
+    : askArbitrator({ title: d.title, terms: d.termsText, positions: positions.map((p) => ({ name: nameOf(pidOf(p)), percent: Math.round(Number(p.value) / 100) })), updates, statements, evidence }).then((r) => ({ voided: r.outcome === "cannot_decide", outcome: r.outcome === "cannot_decide" ? VOID_OUTCOME : r.outcome === "yes" ? 1n : 0n, ruling: r.ruling, word: r.outcome === "yes" ? ("yes" as const) : ("no" as const) }))
   ).catch((err: unknown) => {
     console.error("the arbitrator did not answer", { dareId, err });
     throw new MarketError("The app couldn't hear it just now. Nothing changed. Try again in a minute.", "chain");
@@ -136,6 +138,12 @@ export async function arbitrateMarket(dareId: string, byUserId: string | null, n
   const voided = heard.voided;
   const outcome = heard.outcome;
   const hash = rulingHash(ruling.ruling);
+  if (isProvisional(d)) {
+    // A provisional market: the ruling is recorded here and the transfers become proposals (PLANNING.md section 4).
+    await settleProvisional(d, positions, voided ? VOID_OUTCOME : outcome, { by: "arbitration", rulingText: ruling.ruling, rulingHash: hash });
+    return { outcome: voided ? "void" : heard.word, number: voided || (heard.word !== "number" && heard.word !== "answer") ? undefined : outcome, txHash: "0x" as Hex };
+  }
+  if (!d.onchainId) throw new MarketError("It isn't locked yet.", "wrong_state");
   const { dares } = contracts();
   let result;
   try {
@@ -147,7 +155,7 @@ export async function arbitrateMarket(dareId: string, byUserId: string | null, n
       // The contract ignores `outcome` when voided; zero is sent so the call never carries the sentinel by accident.
       args: [bufferToHex(d.onchainId), voided ? 0n : toChainOutcome(outcome), voided, hash],
       gas: voided ? gasFor.arbitrateVoid() : gasFor.arbitrate(positions.length),
-      write: { kind: "arbitrate", subject: { dareId: d.id, rulingText: ruling.ruling, rulingHash: hash } },
+      write: { kind: "arbitrate", subject: { dareId: d.id, rulingText: ruling.ruling, rulingHash: hash }, actor: byUserId },
     });
   } catch (err) {
     if (err instanceof SendPending) throw err;
@@ -166,7 +174,10 @@ export async function arbitrateMarket(dareId: string, byUserId: string | null, n
  */
 export async function expireMarket(dareId: string, now: Date = new Date()): Promise<boolean> {
   const d = await marketById(dareId);
-  if (!d || stateOf(d) !== "locked" || d.stalemate !== "void" || !d.onchainId || !d.resolvesBy || d.resolvesBy.getTime() >= now.getTime()) return false;
+  if (!d || stateOf(d) !== "locked" || d.stalemate !== "void" || !d.resolvesBy || d.resolvesBy.getTime() >= now.getTime()) return false;
+  // A provisional market expires here alone: nothing of it is on the chain.
+  if (isProvisional(d)) return completeExpire(d.id, now);
+  if (!d.onchainId) return false;
   const { dares } = contracts();
   await submit({ label: `expire market ${d.id}`, address: dares.address, abi: dares.abi, functionName: "expire", args: [bufferToHex(d.onchainId)], gas: gasFor.expire(), write: { kind: "expire", subject: { dareId: d.id } } });
   await completeExpire(d.id, now);
@@ -208,7 +219,7 @@ export function cleanResolutionOf(rows: ReadonlyArray<{ outcome: bigint | null; 
 
 // -------------------------------------------------------------------------------------------------- the tick
 
-export type TickReport = { locked: string[]; notified: string[]; expired: string[]; arbitrated: string[]; warned: Array<{ id: string; flavour: WarningFlavour }>; failed: Array<{ id: string; what: string; why: string }> };
+export type TickReport = { locked: string[]; /** Questions whose votes had already decided them and whose resolution the tick landed. */ resolved: string[]; notified: string[]; expired: string[]; arbitrated: string[]; warned: Array<{ id: string; flavour: WarningFlavour }>; failed: Array<{ id: string; what: string; why: string }> };
 /** Which backstop a warning is about (docs/design.md 4.10): the final score, the two results disagreeing, the play-by-play, the tiebreaker everyone agreed to, or closing for good. */
 export type BackstopFlavour = WarningFlavour;
 
@@ -249,11 +260,13 @@ export async function tick(now: Date, notifyDeadline: (dareId: string, creatorId
   const limit = opts.limit ?? 10;
   // Tests run against the real database, so a test names the questions it made and the tick touches nothing else.
   const mine = opts.onlyIds ? inArray(schema.dares.id, opts.onlyIds.length ? opts.onlyIds : ["00000000-0000-4000-8000-000000000000"]) : undefined;
-  const report: TickReport = { locked: [], notified: [], expired: [], arbitrated: [], warned: [], failed: [] };
+  const report: TickReport = { locked: [], resolved: [], notified: [], expired: [], arbitrated: [], warned: [], failed: [] };
   const attempt = async (id: string, what: string, fn: () => Promise<void>) => {
     try {
       await fn();
     } catch (err) {
+      // A send whose receipt outlives this tick is the reconciler's to finish (docs/decisions.md 2026-09-27), not a failed job.
+      if (err instanceof SendPending) return;
       report.failed.push({ id, what, why: err instanceof Error ? (err.message.split("\n")[0] ?? "") : "unknown" });
     }
   };
@@ -266,6 +279,29 @@ export async function tick(now: Date, notifyDeadline: (dareId: string, creatorId
       if ((await positionsOf(id)).length < 2) return;
       await lockMarket(id, null);
       report.locked.push(id);
+    });
+  }
+
+  // 1b. A question whose votes already reached the threshold and whose resolution never landed (the send was dropped
+  // after the last voter was told it was on its way, or their request failed past the vote): resolved again from the
+  // signatures already there. Never while a send for it is in flight or mined and waiting on its mirror.
+  const voted = await db
+    .select({ id: schema.dares.id })
+    .from(schema.dares)
+    .innerJoin(schema.dareVotes, eq(schema.dareVotes.dareId, schema.dares.id))
+    .where(and(mine, isNotNull(schema.dares.lockedAt), isNull(schema.dares.resolvedAt), isNotNull(schema.dares.onchainId)))
+    .groupBy(schema.dares.id, schema.dares.threshold)
+    .having(sql`count(*) >= ${schema.dares.threshold}`)
+    .limit(limit);
+  for (const { id } of voted) {
+    await attempt(id, "finish resolution", async () => {
+      const d = await marketById(id);
+      if (!d || d.resolvedAt) return;
+      const leading = tally(await votesOf(id))[0];
+      if (!leading || leading.votes < d.threshold) return;
+      if (await writeInFlight("resolve", { dareId: id })) return;
+      if (await reconcileFromIndexer(id)) return;
+      if ((await resolveFromVotes(d, null)).resolved) report.resolved.push(id);
     });
   }
 

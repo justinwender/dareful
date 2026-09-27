@@ -95,6 +95,8 @@ export async function POST(req: Request): Promise<Response> {
   return NextResponse.json({
     user: { id: user.id, displayName: user.displayName, ledgerWallet: user.ledgerWallet, governanceWallet: user.governanceWallet },
     bound,
+    // A new account: the client marks its governance wallet denied for delegation at Dynamic's end, once, now.
+    created: decision.kind === "create",
   });
 }
 

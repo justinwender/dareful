@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ChainEnum, useWalletDelegation } from "@dynamic-labs/sdk-react-core";
 import { useDevice } from "@/components/auth/device";
+import { useDenyGovernanceDelegation } from "@/components/auth/governance-denied";
 import { ProblemSummary } from "@/components/ledger/problem";
 import { Button } from "@/components/ui/button";
 
@@ -16,11 +17,13 @@ import { Button } from "@/components/ui/button";
 export function DelegationControl({ stored }: { stored: boolean }) {
   const { state, me } = useDevice();
   const { delegateKeyShares, revokeDelegation, getWalletsDelegatedStatus, delegatedAccessEnabled, requiresDelegation } = useWalletDelegation();
-  const [busy, setBusy] = useState<"on" | "off" | null>(null);
+  const denyGovernance = useDenyGovernanceDelegation();
+  const [busy, setBusy] = useState<"on" | "off" | "deny" | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
 
   if (!me) return null;
+  const governanceWallet = me.governanceWallet;
   const statuses = getWalletsDelegatedStatus();
   const label = (address: string) => (address.toLowerCase() === me.ledgerWallet.toLowerCase() ? "ledger" : address.toLowerCase() === me.governanceWallet.toLowerCase() ? "governance" : "other");
   // The SDK matches a wallet by its own address and chain, exactly as it holds them (checksummed, `ChainEnum.Evm`); the
@@ -28,12 +31,13 @@ export function DelegationControl({ stored }: { stored: boolean }) {
   const ledgerEntry = statuses.find((w) => label(w.address) === "ledger");
   const ledger = ledgerEntry ? { chainName: ledgerEntry.chain as ChainEnum, accountAddress: ledgerEntry.address } : { chainName: ChainEnum.Evm, accountAddress: me.ledgerWallet };
 
-  async function run(which: "on" | "off") {
+  async function run(which: "on" | "off" | "deny") {
     setBusy(which);
     setProblem(null);
     try {
       if (which === "on") await delegateKeyShares([ledger]);
-      else await revokeDelegation([ledger]);
+      else if (which === "off") await revokeDelegation([ledger]);
+      else if ((await denyGovernance(governanceWallet)) !== "denied") throw new Error("The login token names no credential for the governance wallet.");
       setTick((t) => t + 1);
     } catch (err) {
       setProblem(err instanceof Error ? err.message : "That didn't go through.");
@@ -44,7 +48,8 @@ export function DelegationControl({ stored }: { stored: boolean }) {
 
   return (
     <div className="flex flex-col gap-4" data-delegation-control="" data-tick={tick}>
-      <p className="text-caption text-ink-3">
+      {/* The SDK answers these on the client only; the server's render says unknown, and this page is development's. */}
+      <p className="text-caption text-ink-3" suppressHydrationWarning>
         Delegated access in this environment: {delegatedAccessEnabled === undefined ? "unknown" : delegatedAccessEnabled ? "on" : "off"}
         {requiresDelegation ? " (required)" : ""}. Stored on the server for this account: {stored ? "yes" : "no"}.
       </p>
@@ -63,6 +68,11 @@ export function DelegationControl({ stored }: { stored: boolean }) {
         </Button>
         <Button variant="secondary" onClick={() => void run("off")} loading={busy === "off"} disabled={state !== "ready" || busy !== null}>
           Turn it off
+        </Button>
+      </div>
+      <div className="flex gap-3">
+        <Button variant="secondary" onClick={() => void run("deny")} loading={busy === "deny"} disabled={state !== "ready" || busy !== null}>
+          Mark the governance wallet denied
         </Button>
       </div>
       {state !== "ready" ? <p className="text-caption text-ink-3">This device has not checked it is you; the code step at the top of the screen comes first.</p> : null}

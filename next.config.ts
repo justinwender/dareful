@@ -14,6 +14,10 @@ const nextConfig: NextConfig = {
   // cannot place; they are server-only and are loaded from node_modules at runtime instead (docs/decisions.md
   // 2026-09-27). Only the signer (`src/lib/chain/delegated-signer.ts`) imports them.
   serverExternalPackages: ["@dynamic-labs-wallet/node", "@dynamic-labs-wallet/node-evm", "@dynamic-labs-wallet/forward-mpc-client", "@evervault/wasm-attestation-bindings"],
+  // Development only: the loopback address is the one origin whose cookie jar is separate from localhost's, which
+  // is how a session-less visitor (someone arriving from a link with no account, docs/design.md 3.17) is exercised
+  // in the same browser that holds the signed-in session. Without it the page renders and never hydrates there.
+  allowedDevOrigins: ["127.0.0.1"],
 };
 
 export default nextConfig;

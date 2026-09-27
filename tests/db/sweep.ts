@@ -47,6 +47,8 @@ async function main(): Promise<void> {
       await tx.delete(schema.sportsGames).where(inArray(schema.sportsGames.id, testGames));
     }
     if (u.length) {
+      // The relayer's record of a transaction stays; only its pointer at a temporary person goes.
+      await tx.update(schema.chainWrites).set({ actorId: null }).where(inArray(schema.chainWrites.actorId, u));
       // A settlement photo hangs off an obligation and the obligation points back at it: unhook, then remove both.
       await tx.update(schema.obligations).set({ mediaId: null }).where(or(inArray(schema.obligations.fromUser, u), inArray(schema.obligations.toUser, u)));
       await tx.delete(schema.media).where(inArray(schema.media.authorId, u));

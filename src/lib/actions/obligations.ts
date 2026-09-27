@@ -1,6 +1,6 @@
 "use server";
 
-import { SEND_PENDING_COPY, SendPending } from "@/lib/chain/relayer";
+import { pendingCopy, SendPending } from "@/lib/chain/relayer";
 
 import { isHex, type Hex } from "viem";
 import { z } from "zod";
@@ -34,7 +34,7 @@ export async function closePayloadAction(obligationId: string): Promise<{ ok: tr
     const typed = closeTypedData({ obligationId, tokenId: state.tokenId, qty: state.remaining, reason: "settled", nonce: state.nonce });
     return { ok: true, ledgerWallet: user.ledgerWallet, message: { id: typed.message.id.toString(), qty: typed.message.qty.toString(), obligationId: typed.message.obligationId, nonce: typed.message.nonce.toString() } };
   } catch (err) {
-    if (err instanceof SendPending) return { error: SEND_PENDING_COPY };
+    if (err instanceof SendPending) return { error: pendingCopy(err) };
     return { error: err instanceof CloseError ? err.message : PLAIN };
   }
 }
@@ -49,7 +49,7 @@ export async function closeObligationAction(obligationId: string, reason: Reason
     void notifyClosed(obligationId, r.data, user.id).catch(() => undefined);
     return { ok: true, txHash: result.txHash };
   } catch (err) {
-    if (err instanceof SendPending) return { error: SEND_PENDING_COPY };
+    if (err instanceof SendPending) return { error: pendingCopy(err) };
     return { error: err instanceof CloseError ? err.message : PLAIN };
   }
 }
@@ -82,7 +82,7 @@ export async function netAction(otherUserId: string, groupId: string, denomId: s
     void notifyNetted(otherUserId, user.id, denomId).catch(() => undefined);
     return { ok: true, txHash: result.txHash };
   } catch (err) {
-    if (err instanceof SendPending) return { error: SEND_PENDING_COPY };
+    if (err instanceof SendPending) return { error: pendingCopy(err) };
     return { error: err instanceof CloseError ? err.message : PLAIN };
   }
 }

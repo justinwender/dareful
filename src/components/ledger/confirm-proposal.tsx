@@ -22,7 +22,7 @@ export type ConfirmPayload = {
  * arrives in Phase 3), hands the signature to the server, and the relayer does the rest. A failure keeps
  * the screen and says so; the tap is never silently dropped.
  */
-export function ConfirmProposal({ payload }: { payload: ConfirmPayload }) {
+export function ConfirmProposal({ payload, again }: { payload: ConfirmPayload; /** The last try was told it was on its way and never landed (src/lib/ledger/again.ts): said here, beside the button. */ again?: string | null }) {
   const router = useRouter();
   const sign = useSigner();
   const [state, setState] = useState<"idle" | "signing" | "sending" | "done">("idle");
@@ -62,6 +62,7 @@ export function ConfirmProposal({ payload }: { payload: ConfirmPayload }) {
 
   return (
     <div className="flex flex-col gap-3">
+      {again ? <p className="text-body-sm text-ink-2">{again}</p> : null}
       {error ? (
         <ProblemSummary messages={[error]} />
       ) : null}

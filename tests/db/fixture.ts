@@ -170,6 +170,8 @@ async function removeEverything(): Promise<void> {
     // Games and public questions this run made, by its own prefix, once nothing rides on them; never another run's.
     await removeTestGames(tx, [...gamePrefixes]);
     if (u.length) {
+      // The relayer's record of a transaction stays (docs/decisions.md 2026-09-27); only its pointer at a temporary person goes.
+      await tx.update(schema.chainWrites).set({ actorId: null }).where(inArray(schema.chainWrites.actorId, u));
       await tx.delete(schema.codeAttempts).where(inArray(schema.codeAttempts.userId, u));
       await tx.delete(schema.deviceStates).where(inArray(schema.deviceStates.userId, u));
       await tx.delete(schema.pushSubscriptions).where(inArray(schema.pushSubscriptions.userId, u));

@@ -146,7 +146,7 @@ export async function confirmProposal(proposalId: string, debtorUserId: string, 
       functionName: "confirm",
       args: [m.groupId, m.denomId, m.creditor, m.qty, m.obligationId, m.unique, signature],
       gas: gasFor.confirm(),
-      write: { kind: "confirm", subject: { proposalIds: [proposal.id] } },
+      write: { kind: "confirm", subject: { proposalIds: [proposal.id] }, actor: debtorUserId },
     });
     txHash = result.hash;
   } catch (err) {
@@ -283,7 +283,7 @@ export async function confirmManyProposals(proposalIds: string[], debtorUserId: 
       functionName: "confirmMany",
       args: [m.groupIds, m.denomIds, m.creditors, m.qtys, m.obligationIds, m.uniques, signature],
       gas: gasFor.confirmMany(proposals.length),
-      write: { kind: "confirm", subject: { proposalIds } },
+      write: { kind: "confirm", subject: { proposalIds }, actor: debtorUserId },
     });
     txHash = result.hash;
   } catch (err) {

@@ -1,6 +1,6 @@
 "use server";
 
-import { SEND_PENDING_COPY, SendPending } from "@/lib/chain/relayer";
+import { pendingCopy, SendPending } from "@/lib/chain/relayer";
 
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
@@ -20,7 +20,11 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { checkScale, parseAskerScale } from "@/lib/ledger/scale";
 import { MAX_NUMBER } from "@/lib/ledger/scoring";
 import { viewerZone } from "@/lib/ui/zone";
-import { requireUser } from "@/lib/auth/session";
+import { currentUser, requireUser } from "@/lib/auth/session";
+import { headers } from "next/headers";
+import { regionFromHeaders, tryHashPhone } from "@/lib/auth/phone";
+import { addClaimToken, readClaimTokens } from "@/lib/auth/claim-cookie";
+import { enterAsGhost } from "@/lib/ledger/ghost-entry";
 import { db, schema } from "@/db";
 import { and, asc, eq } from "drizzle-orm";
 import { denominationById, ensureUnitInGroup, ensureUsd } from "@/lib/ledger/denominations";
@@ -29,7 +33,7 @@ import { answersOf, callToOutcome, castVote, draftFromTemplate, draftMarket, ent
 import { MAX_ANSWER_LENGTH, MAX_ANSWERS, MIN_ANSWERS } from "@/lib/ledger/pick-one";
 
 const uuid = z.string().uuid();
-const say = (err: unknown, fallback: string) => (err instanceof SendPending ? SEND_PENDING_COPY : err instanceof MarketError ? err.message : fallback);
+const say = (err: unknown, fallback: string) => (err instanceof SendPending ? pendingCopy(err) : err instanceof MarketError ? err.message : fallback);
 
 export type ScopeResult = { title: string; terms: string; ambiguous: boolean; criteria: string[]; resolvesInHours: number; plain: boolean; number: NumberScopeResult | null; /** The outcomes in the question's own words (3.25), when the write-up gave four usable phrasings. */ outcomes: [string, string, string, string] | null };
 /**
@@ -274,6 +278,42 @@ export async function enterMarketAction(rawId: string, rawPosition: z.infer<type
   // A model is never on the critical path: the ballot is open already, and the proposal arrives when it arrives.
   if (lockedNow) after(() => proposeForArgument(id.data).catch((err: unknown) => console.error("the ruling on an argument did not come through", err)));
   return { ok: true };
+}
+
+/** Who a ghost says they are: a name, their own number (hashed here and never kept), or one of the group's ghosts. */
+const GhostWho = z.object({ name: z.string().trim().max(40).default(""), phone: z.string().trim().max(40).optional(), memberClaimId: z.string().uuid().optional() });
+
+/**
+ * Entering without an account (PLANNING.md section 4; docs/design.md 3.17): no session, no signature. The
+ * position is a ghost's, the browser keeps a token for it, and the ghost binds at a login here or with that
+ * number. Someone who is signed in enters as themselves; this door is shut to them.
+ */
+export async function enterAsGhostAction(rawId: string, rawPosition: z.infer<typeof Position>, rawWho: z.infer<typeof GhostWho>): Promise<{ ok: true; name: string } | { error: string }> {
+  if (await currentUser()) return { error: "You’re signed in, so put your number on it as yourself." };
+  const id = uuid.safeParse(rawId);
+  const position = Position.safeParse(rawPosition);
+  const who = GhostWho.safeParse(rawWho);
+  if (!id.success || !position.success || !who.success) return { error: "That didn't come through. Try again." };
+  const phoneHash = who.data.phone ? tryHashPhone(who.data.phone, regionFromHeaders(await headers())) : null;
+  if (who.data.phone && !phoneHash) return { error: "That didn’t read as a phone number. Check it, or leave it out." };
+  let name = who.data.name;
+  try {
+    const r = await enterAsGhost({ dareId: id.data, who: { name: who.data.name, phoneHash, memberClaimId: who.data.memberClaimId ?? null }, tokens: await readClaimTokens(), stake: BigInt(position.data.stake), value: valueOf(position.data) });
+    if (r.browserToken) await addClaimToken(r.browserToken);
+    const [claim] = await db.select({ displayName: schema.participantClaims.displayName }).from(schema.participantClaims).where(eq(schema.participantClaims.id, r.claimId)).limit(1);
+    name = claim?.displayName ?? name;
+  } catch (err) {
+    return { error: say(err, "That didn't go through. Try again.") };
+  }
+  let lockedNow = false;
+  try {
+    lockedNow = (await afterEntry(id.data)).locked;
+  } catch (err) {
+    console.error("an argument did not lock when its second person got in", { dareId: id.data, err });
+  }
+  revalidatePath(`/m/${id.data}`);
+  if (lockedNow) after(() => proposeForArgument(id.data).catch((err: unknown) => console.error("the ruling on an argument did not come through", err)));
+  return { ok: true, name };
 }
 
 /**

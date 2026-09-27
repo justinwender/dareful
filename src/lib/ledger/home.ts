@@ -15,6 +15,7 @@ import { obligationsById, openTouching } from "./envio";
 import { membersOfGroups, peopleForUser, setLabel } from "./groups";
 import { marketCards, type MarketCardData } from "./market-view";
 import { pendingForDebtor, type ProposalRow } from "./proposals";
+import { againRowsFor } from "./again";
 import { gamesOfMarkets } from "@/lib/sports";
 import { scoreLine } from "@/lib/sports/results";
 import type { TeamFace } from "@/lib/ui/team";
@@ -31,12 +32,18 @@ export type NeedRow =
   | ({ kind: "vote" | "enter" | "lock"; key: string; href: string; verb: string; context: string; subject: string; question: true; deadline: Date | null; since: Date; groupId: string } & QuestionLook)
   | ({ kind: "finish"; key: string; href: string; verb: string; context: string; subject: string; question: true; deadline: null; since: Date; groupId: string } & QuestionLook)
   | { kind: "yep"; key: string; href: string; verb: string; context: string; subject: string; question: false; deadline: null; since: Date; groupId: string; proposal: ProposalRow; creditor: Person; denomination: DenominationRow }
-  | { kind: "game"; key: string; href: string; verb: string; context: string; subject: string; question: false; deadline: Date | null; since: Date; groupId: string; game: GameLook; /** The pressing question's kind, which decides where the row sorts. */ pressing: "vote" | "enter" | "lock" | "finish" };
+  | { kind: "game"; key: string; href: string; verb: string; context: string; subject: string; question: false; deadline: Date | null; since: Date; groupId: string; game: GameLook; /** The pressing question's kind, which decides where the row sorts. */ pressing: "vote" | "enter" | "lock" | "finish" }
+  /** A send this person was told was on its way and that never landed (src/lib/ledger/again.ts): still theirs to do. */
+  | ({ kind: "again"; key: string; href: string; verb: string; context: string; subject: string; question: true; deadline: null; since: Date; groupId: string } & QuestionLook)
+  | { kind: "again"; key: string; href: string; verb: string; context: string; subject: string; question: false; deadline: null; since: Date; groupId: string };
+
+/** The reason line on a row for a send that was told and never landed. */
+export const AGAIN_CONTEXT = "Didn’t go through last time";
 
 const lookOf = (d: { id: string; ink?: string | null; markKind?: string | null; markValue?: string | null }, state: QuestionLook["state"]): QuestionLook => ({ mark: markRefOf(d), ink: inkOf({ id: d.id, ink: d.ink ?? null }), state });
 
 /** Fastest to finish first, when nothing else separates two rows: a yep is one tap, a draft is a screen. */
-const EFFORT: Record<NeedRow["kind"], number> = { yep: 0, vote: 1, enter: 2, lock: 3, finish: 4, game: 2 };
+const EFFORT: Record<NeedRow["kind"], number> = { yep: 0, vote: 1, enter: 2, lock: 3, finish: 4, game: 2, again: 1 };
 
 /**
  * Time-bound before open-ended, as priority and never as pressure. A question in voting has a quorum waiting on
@@ -45,7 +52,7 @@ const EFFORT: Record<NeedRow["kind"], number> = { yep: 0, vote: 1, enter: 2, loc
  * then fastest to finish. The order is the whole signal: no countdown, no day count, no ageing, and a deadline
  * that has passed still only sorts (docs/design.md 3.15; docs/decisions.md 2026-09-21).
  */
-const TIER: Record<NeedRow["kind"], number> = { vote: 0, lock: 1, enter: 1, yep: 2, finish: 2, game: 1 };
+const TIER: Record<NeedRow["kind"], number> = { vote: 0, lock: 1, enter: 1, yep: 2, finish: 2, game: 1, again: 2 };
 /** A game row sorts as its most pressing question would (4.7). */
 const tierOf = (r: { kind: NeedRow["kind"]; pressing?: "vote" | "enter" | "lock" | "finish" }): number => (r.kind === "game" && r.pressing ? TIER[r.pressing] : TIER[r.kind]);
 export function orderNeeds<T extends Pick<NeedRow, "deadline" | "since" | "kind"> & { pressing?: "vote" | "enter" | "lock" | "finish" }>(rows: T[]): T[] {
@@ -230,7 +237,7 @@ export async function liveFor(me: { id: string }, now: Date): Promise<boolean> {
 
 /** Now: what needs this person, what is running, and what just happened are all in the database; the one indexer read is for how the closed ones closed, and only when there are any. */
 export async function nowFor(me: { id: string; displayName: string }, opts: { now: Date; closes: (at: Date) => string }): Promise<NowData> {
-  const [{ needs, running, over, gamesOver }, pending, drafts, covers, closed] = await Promise.all([
+  const [{ needs, running, over, gamesOver }, pending, drafts, covers, closed, again] = await Promise.all([
     questionsFor(me, opts),
     pendingForDebtor(me.id),
     db.select().from(schema.dares).where(and(eq(schema.dares.creatorId, me.id), isNull(schema.dares.creatorSignature))).orderBy(desc(schema.dares.createdAt)).limit(6),
@@ -247,7 +254,16 @@ export async function nowFor(me: { id: string; displayName: string }, opts: { no
       .where(and(or(eq(schema.obligations.fromUser, me.id), eq(schema.obligations.toUser, me.id)), isNotNull(schema.obligations.closedAt)))
       .orderBy(desc(schema.obligations.closedAt))
       .limit(8),
+    againRowsFor(me.id, opts.now),
   ]);
+  // A lock this person was told was on its way and that never landed: the lock row says so, or a row of its own does.
+  for (const n of needs) if (n.kind === "lock" && again.locks.has(n.key)) n.context = AGAIN_CONTEXT;
+  for (const a of again.rows) {
+    if (a.kind === "create" && needs.some((n) => n.kind === "lock" && n.key === a.dare?.id)) continue;
+    const verb = a.kind === "create" ? "Lock" : a.kind === "arbitrate" ? "Ask again" : "Try again";
+    if (a.dare) needs.push({ kind: "again", key: a.hash, href: a.href, verb, context: AGAIN_CONTEXT, subject: a.subject, question: true, deadline: null, since: a.at, groupId: a.groupId, ...lookOf(a.dare, a.dare.locked ? "locked" : "open") });
+    else needs.push({ kind: "again", key: a.hash, href: a.href, verb, context: AGAIN_CONTEXT, subject: a.subject, question: false, deadline: null, since: a.at, groupId: a.groupId });
+  }
   // The label on an event says which set of people it came out of. It is a label, never a way in.
   const groupIds = Array.from(new Set([...over.map((m) => m.dare.groupId), ...covers.map((o) => o.groupId), ...closed.map((o) => o.groupId)]));
   const [groupRows, groupMembers] = await Promise.all([groupIds.length ? db.select().from(schema.groups).where(inArray(schema.groups.id, groupIds)) : Promise.resolve([]), membersOfGroups(groupIds)]);
@@ -264,7 +280,7 @@ export async function nowFor(me: { id: string; displayName: string }, opts: { no
     const creditor = p.toUser ? userById.get(p.toUser) : undefined;
     const denomination = denoms.get(p.denomId);
     if (!creditor || !denomination) continue;
-    needs.push({ kind: "yep", key: p.id, href: `/o/${p.id}`, verb: "Yep", context: p.memo ? `${creditor.displayName} got ${p.memo}` : `${creditor.displayName} got this one`, subject: `${creditor.displayName}'s got you`, question: false, deadline: null, since: p.createdAt, groupId: p.groupId, proposal: p, creditor, denomination });
+    needs.push({ kind: "yep", key: p.id, href: `/o/${p.id}`, verb: "Yep", context: again.confirms.has(p.id) ? AGAIN_CONTEXT : p.memo ? `${creditor.displayName} got ${p.memo}` : `${creditor.displayName} got this one`, subject: `${creditor.displayName}'s got you`, question: false, deadline: null, since: p.createdAt, groupId: p.groupId, proposal: p, creditor, denomination });
   }
   for (const d of drafts) needs.push({ kind: "finish", key: d.id, href: `/m/${d.id}`, verb: "Finish", context: "You never sent this one", subject: d.title, question: true, deadline: null, since: d.createdAt, groupId: d.groupId, ...lookOf(d, "draft") });
 

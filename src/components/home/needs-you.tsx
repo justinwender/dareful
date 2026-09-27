@@ -49,6 +49,8 @@ export function NeedsYou({ rows, viewer, showAll, allHref }: { rows: NeedRow[]; 
             );
           }
           const stamp = r.question && r.mark ? <MarkRefStamp mark={r.mark} size={40} ink={r.ink} /> : null;
+          // The mark belongs to the thing (3.23): a question's state, a cover's proposed ring, an open obligation's ring.
+          const mark = r.question ? r.state : r.kind === "again" ? "owed" : "proposed";
           return (
             <Link prefetch={false} key={`${r.kind}-${r.key}`} href={r.href} className={`relative grid items-center gap-3 py-[14px] pr-[14px] pl-4 ${stamp ? "grid-cols-[40px_minmax(0,1fr)_auto]" : "grid-cols-[minmax(0,1fr)_auto]"} ${i > 0 ? "border-t border-line" : ""}`}>
               <LinkPending />
@@ -58,12 +60,14 @@ export function NeedsYou({ rows, viewer, showAll, allHref }: { rows: NeedRow[]; 
                   <span className="flex items-center gap-2">
                     <ObligationToken owner={{ id: viewer.id, displayName: viewer.displayName, hue: hueFor(viewer.id) }} other={r.creditor} viewerId={viewer.id} denomination={r.denomination} quantity={r.proposal.quantity ?? 1n} pending />
                   </span>
+                ) : r.kind === "again" && !r.question ? (
+                  <span className="text-body-strong text-ink">{r.subject}</span>
                 ) : (
                   <span className="text-serif-m text-ink">{r.subject}</span>
                 )}
                 <span className="flex items-center gap-2 text-caption text-ink-3">
                   {r.deadline ? <LiveDot /> : null}
-                  <StateMark state={r.question ? r.state : "proposed"} />
+                  <StateMark state={mark} hue={r.kind === "again" && !r.question ? hueFor(viewer.id) : undefined} />
                   <span className="truncate">{r.context}</span>
                 </span>
               </span>

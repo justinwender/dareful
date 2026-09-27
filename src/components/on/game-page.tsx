@@ -60,14 +60,28 @@ export async function GamePage({ id, g, add, start }: { id: string; g: string | 
   const home: TeamFace = { abbr: game.homeAbbr, name: game.homeShort, color: game.homeColor };
   const header = { id: game.id, name: game.name, away, home, start: startLabel(game.startsAt, clock.zone) };
   if (!me) {
-    // A pasted link: the game and nothing about who is on it (3.32: nothing about any group the person is not in).
+    // A pasted link: the game, and the questions the link's own set asked on it, each opening its market screen, where
+    // someone without an account can put a number on it (docs/design.md 3.17). Nothing about any other group (3.32).
+    const asked = g && /^[0-9a-f-]{36}$/i.test(g) ? (await gameMarkets(game.id, g)).filter((r) => r.dare.creatorSignature) : [];
     return (
       <Screen>
         <TopBar title="dareful" />
         <div className="flex flex-col gap-6 py-6">
           <GameHeader game={header} caption="Everything closes at kickoff." />
-          <p className="text-body text-ink-2">Sign in to get in on it.</p>
-          <SignInButton label="Sign in" />
+          {asked.length > 0 ? (
+            <div className="overflow-hidden rounded-card border border-line bg-surface" data-game-questions="">
+              {asked.map((r, i) => (
+                <Link prefetch={false} key={r.dare.id} href={`/m/${r.dare.id}`} className={`relative flex items-center justify-between gap-3 px-4 py-[14px] ${i > 0 ? "border-t border-line" : ""}`}>
+                  <LinkPending />
+                  <span className="text-body-strong text-ink">{r.dare.title}</span>
+                  <span className="link-row">Open</span>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <p className="text-body text-ink-2">Sign in to get in on it.</p>
+          )}
+          <SignInButton label="Sign in" variant={asked.length > 0 ? "tertiary" : "primary"} />
         </div>
       </Screen>
     );

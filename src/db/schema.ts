@@ -821,8 +821,12 @@ export const chainWrites = pgTable(
     updatedAt: ts("updated_at").notNull().defaultNow(),
     /** When the kind's completion finished; a mined write without one is retried by the tick. */
     completedAt: ts("completed_at"),
+    /** Whose tap this was: the person acting in the request that signed it, or null for the scheduler. */
+    actorId: uuid("actor_id").references(() => users.id),
+    /** When the person was told the send was on its way (their request ended pending). A drop or a revert after this reaches their screen (src/lib/ledger/again.ts). */
+    toldAt: ts("told_at"),
   },
-  (t) => [index("chain_writes_status_idx").on(t.status, t.createdAt), check("chain_writes_status_known", sql`${t.status} in ('pending', 'mined', 'reverted', 'dropped')`)],
+  (t) => [index("chain_writes_status_idx").on(t.status, t.createdAt), index("chain_writes_actor_idx").on(t.actorId, t.createdAt), check("chain_writes_status_known", sql`${t.status} in ('pending', 'mined', 'reverted', 'dropped')`)],
 ).enableRLS();
 
 /**

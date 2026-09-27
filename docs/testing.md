@@ -681,6 +681,51 @@ The items are in the single checklist below (30 through 40).
 
 The gate's check 2 needs `DYNAMIC_DELEGATION_PRIVATE_KEY` readable in Vercel's production environment (the value that works here: the PEM, or its base64 on one line) and a redeploy, then one more off and on from `/dev/delegation` in the localhost session; checks 3 and 4 follow from `scripts/dev/delegation-gate.ts` once the row is stored. The rest of the phase is not built until they pass. The phone checks are in the single checklist (41 to 47).
 
+## Session 18: the gate's third run, the failed-send row, and the governance wallet marked denied
+
+**When:** September 27, 2026, later still. **Who:** the localhost test account in the real localhost session; nobody on a phone. **Checked first:** the gate, before anything was built.
+
+### Exercised
+
+- **The gate, checks 2 to 4, in the real localhost session:** delegation turned off and on again from `/dev/delegation` (no Dynamic sheet either time); Dynamic delivered the revocation (200, ignored) and the fresh created event (200 on the first delivery), and the row for the ledger wallet was stored with Dynamic's delegated share set id. `scripts/dev/delegation-gate.ts` then: the governance address refused here before any lookup; the ledger wallet's delegation signing a check message that recovers to the ledger wallet (recorded in `delegated_signatures`); Dynamic refusing the governance wallet's id with the ledger wallet's materials; export refused at authentication (401) through the only path the SDK has; Dynamic's record with the ledger wallet delegated and the governance wallet at its session 17 baseline. Passed; the limit is in docs/decisions.md.
+- **The governance wallet marked denied**, from the development page in the real session: the SDK's status went to denied, and Dynamic's record shows `hasDeniedDelegatedAccess: true` on the governance wallet and `false` on the ledger wallet, whose delegation stayed as it was.
+- **The failed-send row on Now**, in the real session, with one dropped and told cancelling-out send planted for the account and removed after: "Cancelling out with Claude Code", the open ring in the viewer's hue, "Didn't go through last time", "Try again", in the needs-you list under the locks and drafts. The rest of the rule (a dropped confirm on the yep row and the yep screen, a dropped lock, a superseded, untold, setup, week-old or since-closed send left out) ran against the real table in tests/db/again.test.ts.
+- **The tick finishing a resolution**, on the real chain (tests/db/finish.test.ts): a question locked on Monad, both votes stored without the last request resolving it, the tick leaving it alone while a planted send for it was pending, and resolving it from the signatures once that send was dropped.
+
+### What broke
+
+- **The database fixture could not remove a temporary person once a write named them** (the new foreign key): the fixture and the sweep now unhook the relayer's record from the person first, and the record stays.
+- **The window mutant survived once**: the test had aged its old write by the constant it was testing. It ages it by a literal week and a day now.
+- **The development page's hydration note** (the SDK's answers exist only on the client): suppressed on that line; the page is development's.
+
+### What needs the owner, a phone or a second person
+
+The creation-time mark on a fresh account (checklist 48), and a real dropped send, which cannot be caused on demand (49). The rest of the phase is not built; the table of what delegation would remove is in docs/decisions.md for the owner's decision.
+
+## Session 19: the front door, in the real localhost session and at the loopback origin
+
+**When:** September 27, 2026, after the gate. **Who:** the localhost test account signed in at `localhost:3000`, and a visitor with no session at `127.0.0.1:3000` in the same browser (the loopback origin keeps its own cookie jar; the dev server now allows it in development). Nobody on a phone. **Checked first:** whether entering without an account had ever been wired (it had not; docs/decisions.md 2026-09-27).
+
+### Exercised
+
+- **Arriving with no account** (docs/design.md 3.17), on the account's own open yes-or-no question: the wordmark, the band with the clock, "Claude asked", "One friend is in" over the stack, Decided, How it works, If it's unclear, "I have an account", and the sheet at rest with the line untouched and "Slide to pick your odds"; nothing about stakes, amounts, the terms, or anyone's name beyond the asker's.
+- **Entering**: the line to 70% raised the sheet ("Probably", the name and number fields, the true caption, the stake chips), "Join at 70%, $10" with a name and a fictional 555 number put the entry in with no code and no sheet of anyone's: "One friend is in, and you", "You're in at 70%", "$10 · yours to change until 6:45pm", the weight line, and the line about signing in. The rows: one position on a ghost carrying the hash, acknowledged, entered by the asker; the ghost the asker's, with one token and a seat in the set.
+- **Counted by someone else**: the asker's own screen at once showed the stack with the ghost, "2 of 2 in", "Lock it in with 2", and both at 70% on the weight line.
+- **Changing it**: Change, the line to 20%, "Save: 20%, $10": "You're in at 20%", one position still, its value 2000.
+- **A provisional lock, vote and settlement**: "Lock it in with 2" locked it with nothing sent to the chain (`onchain_id` null, threshold 1); "Where everyone landed" showed You 70% and Gabe (ghost check) 20%; Yes, "Say it: yes", the app's own sheet ("It's decided once 1 of you say the same thing"), "Call it yes"; the settled screen: "Yes.", closest first (off by 30, off by 80), and "Who's got who" with the ghost's $5.50 as a pending consequence. The rows: `resolved_by = 'provisional'`, one pending proposal from the ghost to the asker for 550 cents with `origin = 'dare'`, no obligation minted, scores 9100 and 3600, nets +550 and -550.
+- **By the harness** (tests/db/ghost-entry.test.ts): the token and the phone number keeping one ghost across changes and browsers, the cap of ten, a locked question refusing, the provisional quorum and threshold over three account-holders, the six transfers of a four-person settlement with the ghost on its side and the nets summing to zero, the bind naming the account on the proposals and the position, a number question checking a ghost's number, an expiry with nothing on the chain, and a bound ghost's unsigned position signed by keeping it. The http suite's signed-out check was brought to the design (the asker's first name and the set's name, and no other name). The pages suite: 87 for 87 with 1 skipped after the first-name fix.
+
+### What broke
+
+- **The page rendered and never hydrated at the loopback origin**: Next.js 16 blocks dev resources from an origin other than localhost; `allowedDevOrigins` now names it (development only), and the dev server was restarted.
+- **The avatars' accessible names carried full names** on the signed-out screen (the http suite caught "Raman"); first names now, as the only name on that screen is the asker's.
+- **Three mutants were written with raw newlines** inside their strings and broke the audit file until rewritten.
+- **Twelve database suites sending side by side failed three chain tests** with Monad's own words for a nonce collision ("An existing transaction had higher priority"), which the relayer's retry did not recognise (docs/decisions.md 2026-09-27). Recognised; the three suites pass together after it, and nothing was lost on the chain (a refused broadcast is dropped before anyone is told).
+
+### What needs a phone or a second person
+
+The owner's check as the brief states it: a market link opened on a real phone in a private tab, entered, counted on another account's phone, then signing in from that same tab and seeing the number become the account's (checklist 50 to 53). Phone-number binding in production (52) needs a number that later signs in with Dynamic, which nobody but the owner can do. The ghost "Gabe (ghost check)" and its settled question stay on the localhost account, as this session's evidence.
+
 ## The final test: one checklist
 
 Everything from sessions 11 through 15 that needs a phone, a second person or a real game, in one place, grouped by what it needs, so the final pass on real phones is one document to walk through. Each item says exactly what to check; the session it came from has the detail. Tick them in order within a group; the two-phone items want both phones signed in to two accounts that share a set.
@@ -745,3 +790,10 @@ Everything from sessions 11 through 15 that needs a phone, a second person or a 
 45. **The mixed consent line on a phone** (17): start a game with Who wins and The first drive both ticked; on the terms step expect "If nobody votes, the final score settles the others and the play-by-play settles the first drive." above Send it, and the play-by-play's line alone when only the first drive is ticked.
 46. **Dynamic's own sheet, if the reshare shows one** (17): note every word on it; the app's framing has to carry the explanation if those words cannot be changed.
 47. **A send that outlives its request** (17): with the network slow, confirm an obligation; expect the button to keep working past a few seconds ("Still going."), then either the confirm shown as usual or the one line "Sent, and still going through. Nothing more to do here; it will show in a minute.", never "That didn't go through" for something that went through; a minute later the obligation on the screen, written by the tick.
+48. **A fresh account's governance wallet marked denied** (18): sign up on a phone with a number or an email that has no account; expect nothing on screen about it, then `npx tsx --env-file=.env.local scripts/dev/delegation-gate.ts "<the name typed>"` printing `hasDeniedDelegatedAccess: true` in the governance wallet's settings and `false` in the ledger wallet's.
+49. **A send that was dropped after "Sent, and still going through"** (18), when it happens: within the hour, Now carries the thing again with "Didn't go through last time" as its reason line ("Try again" for a settlement, a forgiveness or a cancelling out; the yep row and the yep screen's line for a cover; the asker's lock row for a lock), the owner has one email, and doing it again goes through; a question whose votes already decided it is decided by the tick within a minute with no row for anyone.
+50. **A market link with no account, on a phone, in a private tab** (19): open a yes-or-no question's link, slide, see the sheet ask for a name and a number, join; expect "You're in at 70%" and "One friend is in, and you", no sign-in, no code, and the other account's phone showing the entry in the stack and on the weight line within a refresh.
+51. **The same for a pick-one question and a What's on question** (19): "Join: Priya, $10" on a pick; the two teams on a who-wins question from the game page's rows, which a signed-out visitor sees listed under the game.
+52. **Phone-number claiming in production** (19): join with your real number in the private tab, then sign in with that number on another phone; expect the position on the account, unsigned, with "This was you before you signed in. Keep it, or change it." on the question, and "Confirm at 70%, $10" making it signed; expect a pending consequence from a settled provisional question to name the account.
+53. **Signing in from the tab that joined** (19): tap "Sign in" under the facts in the same private tab; expect the same bind by the browser's token, and the ghost gone from the set's members.
+54. **The tiebreaker on a provisional question** (19): a question with a ghost in it, locked, nobody agreeing, "Let the tiebreaker call it"; expect the ruling recorded and pending consequences, nothing on the chain.

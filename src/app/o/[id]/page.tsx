@@ -9,6 +9,7 @@ import { SignInButton } from "@/components/auth/sign-in-button";
 import { currentUser } from "@/lib/auth/session";
 import { proposalShareCard } from "@/lib/ledger/share";
 import { claimById } from "@/lib/ledger/claims";
+import { AGAIN_LINE, againRowsFor } from "@/lib/ledger/again";
 import { denominationById } from "@/lib/ledger/denominations";
 import { confirmTypedData, proposalById } from "@/lib/ledger/proposals";
 import type { Address } from "viem";
@@ -97,6 +98,7 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
 
   const iAmDebtor = proposal.fromUser === me.id;
   const other = iAmDebtor ? creditor : debtor;
+  const again = iAmDebtor && proposal.status === "pending" ? (await againRowsFor(me.id, new Date(clock.now))).confirms.has(proposal.id) : false;
   const typed = confirmTypedData(proposal, creditor.ledgerWallet as Address);
   const payload: ConfirmPayload = {
     proposalId: proposal.id,
@@ -136,7 +138,7 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
               </p>
             ) : null}
             <p className="text-body text-ink-2">Sound right? One tap and it’s on the record between you two.</p>
-            <ConfirmProposal payload={payload} />
+            <ConfirmProposal payload={payload} again={again ? AGAIN_LINE : null} />
           </>
         ) : (
           <p className="text-body text-ink-2">Waiting for {debtor.displayName}.</p>

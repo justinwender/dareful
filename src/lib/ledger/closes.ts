@@ -90,7 +90,7 @@ export async function closeObligation(input: { obligationId: string; creditorUse
       functionName: "close",
       args: [typed.message.id, typed.message.qty, typed.message.reason, typed.message.obligationId, input.signature],
       gas: gasFor.close(),
-      write: { kind: "close", subject: { obligationId: o.id } },
+      write: { kind: "close", subject: { obligationId: o.id, reason: input.reason }, actor: input.creditorUserId },
     });
     txHash = result.hash;
   } catch (err) {
@@ -185,7 +185,7 @@ export async function netBetween(input: { signerUserId: string; otherUserId: str
       functionName: "net",
       args: [groupId, denomId, a, b, input.signature],
       gas: gasFor.net(),
-      write: { kind: "net", subject: { groupId: input.groupId, denomId: input.denomId, a: input.signerUserId, b: input.otherUserId } },
+      write: { kind: "net", subject: { groupId: input.groupId, denomId: input.denomId, a: input.signerUserId, b: input.otherUserId }, actor: input.signerUserId },
     });
     return { txHash: result.hash };
   } catch (err) {

@@ -528,8 +528,13 @@ test("a shared question answers a preview bot with the question, and nothing abo
   assert.equal(r.status, 200);
   assert.equal(meta(r.html, "og:title"), "Does the kettle get descaled by Friday?");
   assert.ok(r.text.includes("Does the kettle get descaled by Friday?"));
+  // Arriving from a link with no account (docs/design.md 3.17): who asked, by first name, the set's name, a count in words, and the
+  // line untouched; never the asker's full name, anyone else's, a number, what is riding, or the terms.
+  assert.ok(r.text.includes("Priya asked Question check"), "who asked, by first name, and which set");
+  assert.ok(r.text.includes("One friend is in"), "the count in words");
+  assert.ok(r.text.includes("Slide to pick your odds"), "the way in, without an account");
   // Distinctive spellings: a bare "83" turns up in script file names, and "$17" is how the page's own serialization writes a reference.
-  for (const s of ["Priya", "Raman", "83%", "8300", "17.00", "Question check", "Kettles rarely"]) assert.ok(!r.html.includes(s), `the signed-out page leaks "${s}"`);
+  for (const s of ["Raman", "83%", "8300", "17.00", "Kettles rarely", "kettle is descaled", "Dev"]) assert.ok(!r.html.includes(s), `the signed-out page leaks "${s}"`);
   const card = await get(`/m/${marketId}/opengraph-image`);
   const plain = await get(`/m/00000000-0000-4000-8000-000000000000/opengraph-image`);
   assert.equal(card.type, "image/png");

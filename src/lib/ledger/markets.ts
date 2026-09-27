@@ -36,6 +36,8 @@ import { SPORT_MARK } from "@/lib/sports/templates";
 import { scaleAfterward } from "./scale";
 import { bufferToHex, bytes16ToUuid, dareOnchainId, denomOnchainId, groupOnchainId, hexToBuffer } from "./ids";
 import { ensureDenomOnchain, ensureGroupOnchain } from "./registry";
+import { pidOf } from "./participants";
+import { isProvisional, lockProvisional, provisionalVoters, settleProvisional } from "./provisional";
 
 export type DareRow = typeof schema.dares.$inferSelect;
 export type PositionRow = typeof schema.darePositions.$inferSelect;
@@ -412,7 +414,7 @@ export async function enterMarket(input: { dareId: string; userId: string; stake
   if (d.kind !== "binary") return row;
   try {
     const all = await positionsOf(d.id);
-    const number = groupsNumberBps(all.map((p) => ({ id: p.userId ?? "", stake: p.stake, valueBps: p.value })));
+    const number = groupsNumberBps(all.map((p) => ({ id: pidOf(p), stake: p.stake, valueBps: p.value })));
     if (number !== null) await db.insert(schema.dareNumberSeries).values({ dareId: d.id, valueBps: Number(number), entries: all.length });
   } catch (err) {
     console.error("recording the group's number failed", { dareId: d.id, err });
@@ -435,7 +437,12 @@ export async function lockMarket(dareId: string, byUserId: string | null): Promi
   if (stateOf(d) !== "open" || !d.creatorSignature) throw new MarketError("It can't be locked right now.", "wrong_state");
   const positions = await positionsOf(d.id);
   if (positions.length < 2) throw new MarketError("It takes two to lock it in.", "wrong_state");
-  if (positions.some((p) => !p.userId || !p.enterSignature)) throw new MarketError("Someone in it hasn't signed their number.", "wrong_state");
+  // Nothing goes onchain for a position nobody signed (PLANNING.md section 4): a ghost's number, or one bound to
+  // an account but never signed, makes the market provisional. It locks here, and its transfers become proposals.
+  if (positions.some((p) => !p.userId || !p.enterSignature)) {
+    const r = await lockProvisional(d, positions);
+    return { txHash: "0x" as Hex, threshold: r.threshold, quorum: [] };
+  }
 
   const users = await db.select().from(schema.users).where(inArray(schema.users.id, positions.map((p) => p.userId as string)));
   const ledgerOf = new Map(users.map((u) => [u.id, u.ledgerWallet as Address]));
@@ -486,7 +493,7 @@ export async function lockMarket(dareId: string, byUserId: string | null): Promi
       functionName: "create",
       args: [dareStruct, ps, sigs, bufferToHex(d.creatorSignature)],
       gas: gasFor.create(ps.length, quorumNow.length),
-      write: { kind: "create", subject: { dareId: d.id } },
+      write: { kind: "create", subject: { dareId: d.id }, actor: byUserId },
     });
     txHash = result.hash;
     minedIn = result.receipt.blockNumber;
@@ -523,6 +530,12 @@ export async function completeLock(d: DareRow, minedIn?: bigint): Promise<{ thre
 
 /** The quorum as the chain snapshotted it at lock: governance wallets. The ballot is only ever offered to these. */
 export async function quorumOf(d: DareRow): Promise<Address[]> {
+  if (isProvisional(d)) {
+    // A provisional market's quorum is its account-holders and its asker (PLANNING.md section 4, step 6), by their governance wallets, as the chain would hold them.
+    const voters = provisionalVoters(d, await positionsOf(d.id));
+    const users = voters.length ? await db.select({ governanceWallet: schema.users.governanceWallet }).from(schema.users).where(inArray(schema.users.id, voters)) : [];
+    return users.map((u) => u.governanceWallet.toLowerCase() as Address);
+  }
   if (!d.onchainId) return [];
   const { dares } = contracts();
   const onchain = (await relayer().publicClient.readContract({ address: dares.address, abi: dares.abi, functionName: "dareOf", args: [bufferToHex(d.onchainId)] })) as { quorum: readonly Address[] };
@@ -573,17 +586,31 @@ export async function castVote(input: { dareId: string; userId: string; outcome:
     .values({ dareId: d.id, userId: input.userId, outcome: input.outcome, signature: hexToBuffer(input.signature) })
     .onConflictDoUpdate({ target: [schema.dareVotes.dareId, schema.dareVotes.userId], set: { outcome: input.outcome, signature: hexToBuffer(input.signature), signedAt: new Date() } });
 
+  return resolveFromVotes(d, input.userId);
+}
+
+/**
+ * The votes already signed decide it, or nothing does yet: the leading outcome at or past the threshold is
+ * submitted with exactly the signatures that agree. The last voter's tap calls this; so does the tick, for a
+ * question whose votes reached the threshold and whose resolution never landed (docs/decisions.md 2026-09-27).
+ */
+export async function resolveFromVotes(d: DareRow, byUserId: string | null): Promise<{ resolved: boolean; txHash?: Hex }> {
   const votes = await votesOf(d.id);
   const leading = tally(votes)[0];
   if (!leading || leading.votes < d.threshold) return { resolved: false };
-  const txHash = await resolveMarket(d, leading.outcome, votes.filter((v) => v.outcome === leading.outcome));
+  const txHash = await resolveMarket(d, leading.outcome, votes.filter((v) => v.outcome === leading.outcome), byUserId);
   return { resolved: true, txHash };
 }
 
 export type Settlement = { outcome: bigint; txHash: Hex; scores: Map<string, number>; edges: Array<{ tokenId: bigint; debtor: string; creditor: string; qty: bigint; obligationId: Hex; unique: boolean }> };
 
 /** One resolution, one transaction. Then the chain's answer is mirrored: scores, nets, and one shadow row per edge. */
-async function resolveMarket(d: DareRow, outcome: bigint, agreeing: VoteRow[]): Promise<Hex> {
+async function resolveMarket(d: DareRow, outcome: bigint, agreeing: VoteRow[], byUserId: string | null): Promise<Hex> {
+  if (isProvisional(d)) {
+    // Decided by the same signatures the chain would take, settled here: one proposal per transfer, nothing minted.
+    await settleProvisional(d, await positionsOf(d.id), outcome, { by: "quorum" });
+    return "0x" as Hex;
+  }
   if (!d.onchainId) throw new MarketError("It isn't locked yet.", "wrong_state");
   const positions = await positionsOf(d.id);
   const { dares, ledger } = contracts();
@@ -597,7 +624,7 @@ async function resolveMarket(d: DareRow, outcome: bigint, agreeing: VoteRow[]): 
       args: [bufferToHex(d.onchainId), toChainOutcome(outcome), agreeing.map((v) => bufferToHex(v.signature))],
       // A void mints nothing, and Monad charges what is declared: it never pays for edges it cannot mint.
       gas: outcome === VOID_OUTCOME ? gasFor.resolveVoid(agreeing.length) : gasFor.resolve(positions.length, agreeing.length),
-      write: { kind: "resolve", subject: { dareId: d.id } },
+      write: { kind: "resolve", subject: { dareId: d.id }, actor: byUserId },
     });
   } catch (err) {
     if (err instanceof SendPending) throw err;

@@ -976,6 +976,20 @@ looking at the same empty line the asking tile showed them in the chat, now unde
   ("Your phone number, so this one is yours"), with a chalk "Join at 70%" and one caption: "We
   text a code. No password, nothing to download." After the code, the stake chips appear and the
   entry completes as usual.
+
+  *Developer amendment, 2026-09-27 (for the next design session).* Built as the accountless entry
+  the architecture specifies (PLANNING.md section 4; docs/decisions.md 2026-09-27): the entry goes
+  in with no account, no code and no signature, as a ghost's, and binds to whoever signs in from
+  that browser or with that number. So nothing is texted, and the caption says what is true:
+  "No code, no password, nothing to download. Sign in with this number later and it's yours."
+  The number is optional. Two things the board does not draw were needed and are placed plainly
+  for the session to adjust: a name field ("What your friends call you", or a chip for one of the
+  set's ghosts, "Is one of these you?"), since everyone else's screen needs a name for the
+  position; and the stake chips at entry, since a position needs its stake. The chalk reads
+  "Join at 70%, $10". Once in, the sheet reads as a member's ("You're in at 70%", the picture,
+  Change), with one line under the facts ("Sign in any time, with the number you gave or from
+  this phone, and this stays yours") and a tertiary "Sign in". The header carries the wordmark
+  alone, as drawn.
 - **Signed in**: the raised sheet holds the stake chips and "I'm in at 70%, 2 beers", with
   "Joining as Sam · Not you?" under it.
 
@@ -2823,7 +2837,9 @@ Keep, at the point of consequence:
 - "Nobody needs an account to look." On the who's-in step.
 - "If nobody votes, the final score settles it." In a What's on market's entry sheet, above the
   primary, because the backstop rests on that consent (3.35).
-- "We text a code. No password, nothing to download." When joining from a link.
+- "We text a code. No password, nothing to download." When joining from a link. *Amended
+  2026-09-27:* "No code, no password, nothing to download. Sign in with this number later and
+  it's yours." (3.17; nothing is texted at entry).
 - The weight-line caption, but only when one stake is more than half the total.
 
 Cut:

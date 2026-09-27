@@ -5,7 +5,7 @@
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isAlreadyKnown, isNonceProblem, SendPending, SendTimedOut, sendWithNonceRetry, withTimeout } from "@/lib/chain/relayer";
+import { isAlreadyKnown, isNonceProblem, pendingCopy, SEND_PENDING_COPY, SendPending, SendTimedOut, sendWithNonceRetry, SETUP_PENDING_COPY, subjectKey, withTimeout } from "@/lib/chain/relayer";
 
 const failing = (message: string) => Object.assign(new Error(message), { name: "TransactionExecutionError" });
 
@@ -15,6 +15,8 @@ test("a nonce collision is retried with the next nonce, a few times, and any oth
   assert.equal(isNonceProblem(Object.assign(new Error("Request failed"), { cause: { cause: { message: "replacement transaction underpriced" } } })), true);
   assert.equal(isNonceProblem(failing("nonce too low: next nonce 42, tx nonce 41")), true);
   assert.equal(isNonceProblem(failing("already known")), true);
+  // Monad's own words for a colliding nonce, seen when twelve suites sent side by side (docs/testing.md session 19).
+  assert.equal(isNonceProblem(failing("Missing or invalid parameters.\n\nDetails: An existing transaction had higher priority")), true);
   assert.equal(isNonceProblem(failing("execution reverted: unknown group")), false, "a revert is not a collision");
   assert.equal(isNonceProblem("nonce too low"), false, "a bare string is not an error");
   assert.equal(isNonceProblem(null), false);
@@ -70,4 +72,14 @@ test("a node that already holds the transaction counts as a broadcast, and a pen
   assert.equal(isAlreadyKnown(null), false);
   const pending = new SendPending("0xabc", "confirm x");
   assert.deepEqual([pending.name, pending.hash, pending.message.includes("0xabc") && pending.message.includes("confirm x")], ["SendPending", "0xabc", true]);
+});
+
+test("a pending send is said to be on its way, except a pending registration, which is setup: nothing of the person's was sent, and they try again", () => {
+  assert.equal(pendingCopy(new SendPending("0xabc", "confirm x", "confirm")), SEND_PENDING_COPY);
+  assert.equal(pendingCopy(new SendPending("0xabc", "confirm x")), SEND_PENDING_COPY, "a write of no named kind is the person's");
+  assert.equal(pendingCopy(new SendPending("0xdef", "createGroup g", "register")), SETUP_PENDING_COPY);
+  assert.notEqual(SETUP_PENDING_COPY, SEND_PENDING_COPY);
+  assert.ok(!/will show/.test(SETUP_PENDING_COPY) && /again/.test(SETUP_PENDING_COPY), "the setup line never promises the person's own action will show");
+  // The subject is stored the one way, so a later send for the same thing is found by equality.
+  assert.equal(subjectKey({ dareId: "d", n: 5n }), JSON.stringify({ dareId: "d", n: "5" }));
 });

@@ -13,6 +13,7 @@ import { db, schema } from "@/db";
 import { contracts } from "@/lib/chain/contracts";
 import { gasFor } from "@/lib/chain/gas";
 import { SendPending, submit } from "@/lib/chain/relayer";
+import { isProvisional, settleProvisional } from "@/lib/ledger/provisional";
 import { bufferToHex } from "@/lib/ledger/ids";
 import { draftFromTemplate, marketById, MarketError, mirrorSettlement, positionsOf, reconcileFromIndexer, settlementFromReceipt, stateOf, toChainOutcome, VOID_OUTCOME, type DareRow } from "@/lib/ledger/markets";
 import { membersOfGroups, setLabel } from "@/lib/ledger/groups";
@@ -307,7 +308,7 @@ export function feedRulingText(final: FinalScore | null, home: string, away: str
  * play-by-play could not say voids the same way, with the ruling saying which, and the ending kept on the row.
  */
 export async function settleByFeed(d: DareRow, template: TemplateRow, game: GameRow, decision: { outcome: bigint | null; ending: FeedEnding }, now: Date): Promise<{ txHash: Hex; voided: boolean }> {
-  if (stateOf(d) !== "locked" || !d.onchainId) throw new MarketError("It isn't waiting on the feed.", "wrong_state");
+  if (stateOf(d) !== "locked") throw new MarketError("It isn't waiting on the feed.", "wrong_state");
   if (d.stalemate !== "arbitrate") throw new MarketError("The feed can only settle a question whose tiebreaker it is.", "wrong_state");
   const final = finalOfRow(game);
   const voided = decision.outcome === null || decision.outcome === VOID_OUTCOME;
@@ -316,6 +317,13 @@ export async function settleByFeed(d: DareRow, template: TemplateRow, game: Game
   const text = feedRulingText(final, game.homeShort, game.awayShort, decision.ending, drive);
   const hash = keccak256(stringToHex(text));
   const positions = await positionsOf(d.id);
+  if (isProvisional(d)) {
+    // A provisional game question (a ghost in it): the feed's ruling is recorded here and the transfers become proposals.
+    await settleProvisional(d, positions, outcome, { by: "feed", rulingText: text, rulingHash: hash });
+    await db.update(schema.dares).set({ feedEnding: decision.ending }).where(eq(schema.dares.id, d.id));
+    return { txHash: "0x" as Hex, voided };
+  }
+  if (!d.onchainId) throw new MarketError("It isn't waiting on the feed.", "wrong_state");
   const { dares } = contracts();
   let result;
   try {

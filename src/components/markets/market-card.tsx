@@ -35,7 +35,7 @@ export type MarketCardProps = {
   clock: { zone: string; now: number };
   viewerId: string;
   /** Everyone in it. Percents are only present when numbers may be shown. */
-  people: Array<{ id: string; name: string; percent: number | null }>;
+  people: Array<{ id: string; name: string; percent: number | null; /** A ghost: in it without an account (PLANNING.md section 4). */ ghost?: boolean }>;
   groupSize: number;
   outcome: 0 | 1 | null;
   /** The outcome in the market's words ("He did."), or "Yes." and "No." (3.25). */
@@ -90,7 +90,7 @@ export function MarketCard(p: MarketCardProps) {
 
         {p.state === "open" ? (
           <div className="flex items-center gap-3">
-            <AvatarStack people={p.people.map((x) => ({ name: x.name, hue: hueFor(x.id) }))} size={26} ring="var(--surface)" />
+            <AvatarStack people={p.people.map((x) => ({ name: x.name, hue: hueFor(x.id), ghost: x.ghost }))} size={26} ring="var(--surface)" />
             <span className="text-body-sm text-ink-2">
               {p.people.length} of {p.groupSize} in
             </span>
