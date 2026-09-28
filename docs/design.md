@@ -1179,6 +1179,14 @@ the sheet reading "This one's finished" and nothing to join); **closed but unres
 one closed at 11pm, so you can watch but not enter." in the sheet); **revoked or malformed
 link** (the code screen with a form-level message).
 
+(Amended 2026-09-28, built to the frames with Round B part 3: "Who's joining?" is its own step, raised by the
+primary ("I'm in at 70%, 2 beers") with the entry's summary on its right, holding the two fields, the caption,
+the chalk ("Join as Alex", waiting for the name alone and for the number too only when a name was picked) and
+the 44px tertiary "Have an account? Sign in"; the name chips are 40px; the facts are two, Decided and How it
+works; signed in, "Joining as Sam · Not you?" sits under the primary, and "Not you?" asks once before signing
+this phone out; a revoked or malformed link is the code screen with the form-level line "That link doesn't
+open anything. Ask for it again, or type the code they read you.", signed in or not.)
+
 (Amended 2026-09-27, the owner's two additions. "That isn't the number Dani joined with"
 confirms or denies a number, so wrong tries on a picked name are counted and refused past a few
 an hour, whatever number is offered then. People can join without a number: the chalk waits for
@@ -3089,6 +3097,17 @@ name and a number on the link page, a pick and a PIN here.
 
 The entry goes through Maya's own One tap, which is why One tap is a condition; the PIN is what
 says it's her on a phone that isn't hers. Nothing of hers is stored on Sam's phone.
+
+(Amended 2026-09-28, built, Round B part 3. The six steps above are built as drawn, with these readings: the
+fourth icon opens the friend's screen in place of the host's in history, so back never returns to the entry;
+the friend's screen is the host's session with nothing of anyone's answer on it, the host's included, blind or
+open; "Who's joining?" lists the people the market was sent to who aren't in, the ready ones first; the PIN is
+checked before anything is signed, three wrong tries end the handoff on the phone and count toward the PIN's
+own lock; the friend's entry is signed by the friend's own delegated share over an entry the server built,
+recorded against the request with the host on the position; the notice goes by push else email, once; the
+entry line on her own phone reads "1 beer · from Sam's phone · yours to change until 10:40pm", and on a blind
+market "· final" with "Withdraw it". The wording "It's final. You can withdraw it from your own phone until
+10:40pm." stands in for "Change it on your own phone" on a blind market's handback.)
 
 (Amended 2026-09-28, the owner's ruling and the build. One tap is not a separate switch: "Pass the phone"
 on You (3.34) is the one row, and turning it on delegates the ledger wallet and sets the PIN in one flow,

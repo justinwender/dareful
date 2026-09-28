@@ -48,6 +48,7 @@ import { farOffThreshold } from "@/lib/ledger/scale";
 import { InvitePreview } from "@/components/markets/invite-preview";
 import { WhosInRow } from "@/components/markets/whos-in-row";
 import { Nudge } from "@/components/notify/nudge";
+import { DeadLink } from "@/components/markets/dead-link";
 import { HeadsUp } from "@/components/notify/heads-up";
 import { onWayFor } from "@/lib/ledger/again";
 import {
@@ -147,8 +148,9 @@ export default async function MarketPage({
   // Arriving from a link with no account (docs/design.md 3.17; PLANNING.md section 4): the market's own screen, and a way in without one.
   if (!me) return <GhostMarketPage id={id} clock={clock} />;
 
-  let d = await marketById(id);
-  if (!d) notFound();
+  let d = /^[0-9a-f-]{36}$/i.test(id) ? await marketById(id) : null;
+  // A revoked or malformed link (3.17): the code screen with a form-level message, signed in or not.
+  if (!d) return <DeadLink signedIn />;
   const member = await isMember(d.groupId, me.id);
   // A locked market the chain has already decided, whose result never got written here: take the chain's word.
   if (
@@ -328,6 +330,8 @@ export default async function MarketPage({
   // The words say "You"; the avatar keeps the person's own initial (found in the real session: a "Y" avatar).
   pickAnswers = answers ? answers.map((a) => ({ index: a.index, text: a.userId ? first(a.userId) : a.text, person: a.userId ? { name: person.get(a.userId)?.displayName ?? a.text, hue: hueFor(a.userId) } : null })) : null;
   const mine = positions.find((p) => p.userId === me.id) ?? null;
+  // An entry made on a friend's phone (3.45) names the host in its caption.
+  const hostName = mine?.enteredBy && mine.enteredBy !== me.id ? firstName((await db.select({ displayName: schema.users.displayName }).from(schema.users).where(eq(schema.users.id, mine.enteredBy)))[0]?.displayName ?? "a friend") : null;
   const show = numbersVisible(d, mine !== null);
   const others = positions.filter((p) => p.userId !== me.id);
   const pins = positions.map((p) => ({
@@ -509,9 +513,12 @@ export default async function MarketPage({
               unsigned: state === "open" && mine.enterSignature === null,
               // On a blind market an entry is final once made (3.22, 3.31), which the server enforces; a bound ghost's unsigned numbers may still be kept.
               final: d.revealMode === "blind" && mine.enterSignature !== null,
+              // Made on a friend's phone (3.45): whose, and, on a blind market while open, withdrawable from here and never enterable again.
+              ...(hostName ? { from: hostName, withdrawable: d.revealMode === "blind" && state === "open" } : {}),
             }
           : null
       }
+      signedInAs={mine ? null : firstName(me.displayName)}
       blind={d.revealMode === "blind"}
       picture={picture}
       numberUnit={numberUnit}
@@ -1018,7 +1025,7 @@ export default async function MarketPage({
   const stillOut = state === "open" || state === "locked" ? waitingUsers.map((u) => ({ id: u.id, name: u.displayName, hue: hueFor(u.id) })) : [];
   const relayWords = state === "locked" ? `We’re waiting on your call: ${d.title}` : `We’re waiting on you: ${d.title}`;
   const whosIn = (
-    <WhosInRow people={whosInPeople} holdouts={holdouts} count={whosInCount} share={{ url: `${appUrl}/m/${d.id}`, title: d.title }} code={state === "open" ? { dareId: d.id, question: d.title, mark: markRefOf(d) } : null} chalk={state === "open" && alone} list={{ dareId: d.id, canRemove: state === "open" && d.creatorId === me.id, out: stillOut, stage: state === "locked" ? "vote" : "enter", canNudge: mine !== null, relay: { url: `${appUrl}/m/${d.id}`, text: relayWords } }} />
+    <WhosInRow people={whosInPeople} holdouts={holdouts} count={whosInCount} share={{ url: `${appUrl}/m/${d.id}`, title: d.title }} code={state === "open" ? { dareId: d.id, question: d.title, mark: markRefOf(d) } : null} chalk={state === "open" && alone} list={{ dareId: d.id, canRemove: state === "open" && d.creatorId === me.id, out: stillOut, stage: state === "locked" ? "vote" : "enter", canNudge: mine !== null, relay: { url: `${appUrl}/m/${d.id}`, text: relayWords } }} pass={state === "open" && mine ? { dareId: d.id, explained: me.handOverExplainedAt !== null } : null} />
   );
   // The photos while it is open and through the vote (3.37 and 3.39, amended 2026-09-27: the album is open the whole time): the same slot and frame as after it ends, last on the screen under the details, for everyone the door admits, someone in and the group it was asked in (a signed-in viewer past this point is one or the other: a non-member got the invitation above). The add tile and the empty slot are for someone who can add, which before the end means someone who is in while it is open; someone who only opened the link sees nothing here.
   const albumItems = media.memories.map((m) => ({ id: m.id, author: { name: m.author.displayName, hue: hueFor(m.author.id) }, removable: m.author.id === me.id }));

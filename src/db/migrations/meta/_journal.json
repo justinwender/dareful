@@ -232,6 +232,13 @@
       "when": 1790596986809,
       "tag": "0032_pin_locked_notice",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1790635149435,
+      "tag": "0033_hand_over_explained",
+      "breakpoints": true
     }
   ]
 }

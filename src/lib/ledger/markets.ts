@@ -378,7 +378,17 @@ export async function openMarket(dareId: string, creatorId: string, signature: H
  * can be changed until lock, and each change is a fresh signature over the new numbers, because the signature is
  * what goes onchain.
  */
-export async function enterMarket(input: { dareId: string; userId: string; stake: bigint; value: bigint; signature: Hex }): Promise<PositionRow> {
+/** Whether this person withdrew an entry made on a friend's phone from this blind market (3.45): a dismissed position of theirs that a host entered. */
+export async function withdrewHostedEntry(dareId: string, userId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: schema.darePositions.dareId })
+    .from(schema.darePositions)
+    .where(and(eq(schema.darePositions.dareId, dareId), eq(schema.darePositions.userId, userId), sql`${schema.darePositions.dismissedAt} is not null`, sql`${schema.darePositions.enteredBy} is distinct from ${schema.darePositions.userId}`))
+    .limit(1);
+  return Boolean(row);
+}
+
+export async function enterMarket(input: { dareId: string; userId: string; stake: bigint; value: bigint; signature: Hex; /** The host, when the entry was made on a friend's phone (3.45); the person themselves otherwise. */ enteredBy?: string }): Promise<PositionRow> {
   const d = await marketById(input.dareId);
   if (!d) throw new MarketError("That one doesn't exist.", "not_found");
   if (stateOf(d) !== "open") throw new MarketError(stateOf(d) === "draft" ? "It isn't open yet." : "Numbers are locked.", "wrong_state");
@@ -399,6 +409,8 @@ export async function enterMarket(input: { dareId: string; userId: string; stake
   // On a blind market an entry is final once made (3.22, 3.31): you see everyone's once you're in, so nobody may change theirs after seeing the others. Keeping a bound ghost's unsigned numbers as they are is the signature, not a change.
   const held = existing.find((p) => p.userId === input.userId);
   if (held && d.revealMode === "blind" && (held.stake !== input.stake || held.value !== input.value)) throw new MarketError("Yours is final on this one.", "wrong_state");
+  // A blind entry made on a friend's phone and withdrawn from the person's own (3.45): withdrawn, not changed, so nothing comes in again. Otherwise the remedy for a watched PIN would be a way around blind.
+  if (!held && d.revealMode === "blind" && (await withdrewHostedEntry(d.id, input.userId))) throw new MarketError("You withdrew this one, so it's closed to you.", "wrong_state");
   // An argument is between two people. A third number would make it a different kind of question.
   if (d.pace === "argument" && existing.length >= 2 && !existing.some((p) => p.userId === input.userId)) throw new MarketError("This one's between the two of them. You can watch how it comes out.", "wrong_state");
   if (!existing.some((p) => p.userId === input.userId) && existing.length >= MAX_POSITIONS) throw new MarketError(`This one is full at ${MAX_POSITIONS}.`, "wrong_state");
@@ -406,8 +418,8 @@ export async function enterMarket(input: { dareId: string; userId: string; stake
   const now = new Date();
   const [row] = await db
     .insert(schema.darePositions)
-    .values({ dareId: d.id, userId: input.userId, stake: input.stake, value: input.value, confidenceBps: d.kind === "categorical" ? confidenceFor(d) : null, enterSignature: hexToBuffer(input.signature), enteredBy: input.userId, acknowledgedAt: now })
-    .onConflictDoUpdate({ target: [schema.darePositions.dareId, schema.darePositions.userId], set: { stake: input.stake, value: input.value, confidenceBps: d.kind === "categorical" ? confidenceFor(d) : null, enterSignature: hexToBuffer(input.signature) } })
+    .values({ dareId: d.id, userId: input.userId, stake: input.stake, value: input.value, confidenceBps: d.kind === "categorical" ? confidenceFor(d) : null, enterSignature: hexToBuffer(input.signature), enteredBy: input.enteredBy ?? input.userId, acknowledgedAt: now, dismissedAt: null })
+    .onConflictDoUpdate({ target: [schema.darePositions.dareId, schema.darePositions.userId], set: { stake: input.stake, value: input.value, confidenceBps: d.kind === "categorical" ? confidenceFor(d) : null, enterSignature: hexToBuffer(input.signature), enteredBy: input.enteredBy ?? input.userId, dismissedAt: null } })
     .returning();
   if (!row) throw new MarketError("Couldn't save that.", "chain");
   // The group's number at this moment, for the line a slow question gets. The aggregate and a headcount only:

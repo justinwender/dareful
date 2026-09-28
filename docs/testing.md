@@ -840,6 +840,27 @@ The red square (81), a game swiping as one row (82), the count while alone (83),
 
 Pass the phone on and off (87), a second device signing from the server (88), wrong PINs locking with the owner told (89).
 
+## Session 25: Round B, part 3, in the real localhost session
+
+**When:** September 28, 2026, after part 2 was committed. **Who:** the localhost test account as the host, with the other test account ("Claude Code") asked and not in and without pass the phone; nobody on a phone; the pane hidden, so taps were dispatched from the page's own script onto the real controls. **Checked first:** 3.45's six steps and 3.17's shared steps, with migration 0033 applied before anything was built on it.
+
+### Exercised
+
+- **The fourth icon:** on the account's own open question, the who's-in row ends with four icons, "Share", "Copy the link", "Show a code to scan", "Pass the phone"; the first tap opened the explainer ("Pass the phone", "A friend who set this up on their own phone gets in here with their PIN. Nothing of theirs stays on yours.", "Hand it over", "Not now").
+- **The friend's screen:** "Hand it over" replaced the screen with the hand-over page ("On Claude's phone" with the close, the band with the open mark and the question, the two facts, the entry sheet "Your number"); nothing of the host's own number anywhere on the page (the host's "14 shirts" absent, no weight line, no who's-in row).
+- **The steps:** a number typed and "I'm in at 15 shirts, $10" raised "Who's joining?" with the summary on the right, "Pick yourself", and the other account at 0.45 and not tappable with "Not set up for this yet" (it has no pass the phone); "No account? Scan the code with your own phone" opened the code sheet.
+- **The PIN, the entry and the handback** could not be exercised here: no second account in this browser has pass the phone on, and setting one's PIN needs its own phone. The database suite holds the order (the PIN first, then the friend's share signing the server-built entry, the host recorded, the notice once) and the refusals; the render test holds the PIN step's shape; items 90 to 92 are the phones'.
+- **The link page's steps and the dead link:** held by the http suite ("Joining as … · Not you?" for a member not in, two facts, the code screen with its line signed in and out); item 93 is the phone's.
+
+### What broke
+
+- A render prop crossed the server-client boundary on the hand-over page (a function cannot); the entry stage's props travel as data now.
+- The two steps lived beside an import of the SDK, which the render test could not load under Node; they have their own file.
+
+### What needs a phone
+
+Handing over on two phones (90), the friend's own phone (91), wrong PINs (92), the link page's steps (93).
+
 ## The final test: one checklist
 
 Everything from sessions 11 through 15 that needs a phone, a second person or a real game, in one place, grouped by what it needs, so the final pass on real phones is one document to walk through. Each item says exactly what to check; the session it came from has the detail. Tick them in order within a group; the two-phone items want both phones signed in to two accounts that share a set.
@@ -946,3 +967,7 @@ Everything from sessions 11 through 15 that needs a phone, a second person or a 
 87. **Pass the phone, on and off** (24): on your own phone, on You, tap the switch; expect the sheet with "It allows" and "It never allows", the PIN twice, "Turn it on" delegating without any screen of Dynamic's and the switch reading on within a few seconds; on a second phone signed in to the same account without the code step, expect the switch on and the caption saying to turn it on from the phone you signed in on; tap it off on your own phone and expect the switch off at once, `delegations` wiped with `revoked_at` set, and `pass_the_phone` empty.
 88. **A second device signing from the server** (24): with pass the phone on, on a phone that holds the Dareful session but not the Dynamic login (the installed app after the browser's storage was cleared, or a second phone that never typed a code), get into a question; expect no code step, the entry landing, and one row in `delegated_signatures` naming the action and `signFromThisDeviceAction`; then vote and expect the code step or the vote's own sheet, never a server signature.
 89. **Wrong PINs locking** (24): on a friend's phone (part 3), type a wrong PIN five times; expect the third to end the handoff, the fifth to lock the PIN for an hour, and the owner's phone to get "Your PIN is locked for an hour" naming the friend's phone.
+90. **Handing the phone over, on two phones** (25): with a friend's pass the phone on, on a question you are both sent to and only you are in, expect the fourth icon at the end of the who's-in row; the first tap the explainer ("A friend who set this up on their own phone gets in here with their PIN. Nothing of theirs stays on yours.", "Hand it over", "Not now"), never again after; then "On Sam's phone" with a close, the band, the two facts and the entry sheet, and nothing of your own number on the screen (blind or open); slide, "I'm in at 60%, $10", then "Who's joining?" with the friend ready and anyone not set up at 0.45 with "Not set up for this yet", and "No account? Scan the code with your own phone" opening the code; pick the friend, expect their avatar, "Your PIN", the dots and the keypad; the fourth digit sends; expect "You're in, Maya.", "Change it on your own phone until 10:40pm." and "Hand it back to Sam"; after the handback expect your own screen with the friend in, and back never returning to their entry.
+91. **On the friend's phone** (25): expect the notice with the question as its title and "You entered this from Sam's phone." (push, or email with push off); the entry line "$10 · from Sam's phone · yours to change until 10:40pm"; change it and expect the change; on a blind question expect "· final" with "Withdraw it", the ask, the entry gone, and no way back in from either phone.
+92. **Wrong PINs on the friend's phone** (25): type a wrong PIN; expect the dots to clear and "That's not it."; three wrong and expect the host's own screen back with nothing said; five wrong in an hour across handoffs and expect the owner's "Your PIN is locked for an hour".
+93. **The link page's steps on a phone** (25): open a question's link with no session; slide, "I'm in at 70%, $10" raises "Who's joining?" with the summary on the right, the two fields, "Join" disabled until a name is typed, and "Have an account? Sign in" under it; two facts only; signed in on the same link expect "Joining as Sam · Not you?" under the primary and "Not you?" asking before it signs out; open a dead link and expect the code boxes with "That link doesn't open anything. Ask for it again, or type the code they read you."

@@ -1428,6 +1428,59 @@ test("holdouts: with others in and some still out the count says both numbers an
   assert.ok(justYou.text.includes("Just you so far") && !justYou.html.includes("data-holdouts=") && /data-share=""[^>]*bg-chalk/.test(justYou.html) && !justYou.html.includes('data-nudge=""'), "nobody named: just you so far, share the chalk, and nobody to nudge");
 });
 
+test("handing the phone over: the fourth icon for someone in while open, the friend's screen with nothing of anyone's number on the host's session, no way in for anyone else, and the friend's entry line naming whose phone; a blind one withdrawable", async () => {
+  // The fourth icon: the asker is in the kettle question while it is open; the friend is not in; a locked one has none.
+  const asker = await get(`/m/${marketId}`, cAsker);
+  assert.ok(asker.html.includes('data-pass-phone=""') && asker.html.includes('aria-label="Pass the phone"'), "the fourth icon, once in and while open (3.42, 3.45)");
+  const notIn = await get(`/m/${marketId}`, cFriend);
+  assert.ok(!notIn.html.includes('data-pass-phone=""') && notIn.html.includes('data-joining-as=""') && /Joining as \w+/.test(notIn.text) && notIn.text.includes("Not you?"), "not in: no icon, and 'Joining as Sam · Not you?' under the primary (3.17, frame 7)");
+  assert.ok(!asker.html.includes('data-joining-as=""'), "once in, nothing about joining");
+  const locked = await get(`/m/${feedVotingId}`, cNia);
+  assert.ok(!locked.html.includes('data-pass-phone=""'), "closed: nothing to hand over");
+  // The friend's screen, on the host's session: the band, two facts and the entry sheet, and nothing of the host's number.
+  const pass = await get(`/m/${marketId}/pass`, cAsker);
+  assert.equal(pass.status, 200);
+  assert.ok(pass.html.includes('data-pass-screen=""') && pass.html.includes('data-on-phone=""') && /On \w+’s phone/.test(pass.text) && pass.html.includes('data-pass-band=""'), "the friend's screen, named for whose phone it is");
+  assert.ok(pass.text.includes("Slide to pick your odds") && pass.text.includes("How it works") && !pass.text.includes("If it’s unclear"), "the entry sheet and the two facts");
+  for (const leak of ["83%", "8300", "You’re in at", "Where the stake sits", 'data-whos-in=""', "buckets", "Just you so far", "1 of 2 in"]) assert.ok(!pass.html.includes(leak), `nothing of anyone's answer on the friend's screen: "${leak}"`);
+  const friendPass = await get(`/m/${marketId}/pass`, cFriend);
+  assert.ok((friendPass.status === 307 || friendPass.status === 302) && friendPass.loc === `/m/${marketId}`, "someone not in cannot hand the phone over");
+  const strangerPass = await get(`/m/${marketId}/pass`, cStranger);
+  assert.ok(strangerPass.status === 307 || strangerPass.status === 302, "nor a stranger");
+  // An entry made on a friend's phone (3.45, frame 7): the caption names whose, and on a blind market it is final and withdrawable.
+  const groupId = (await db.select({ groupId: schema.dares.groupId }).from(schema.dares).where(eq(schema.dares.id, windowId)))[0]?.groupId as string;
+  const denomId = (await db.select({ denomId: schema.dares.denomId }).from(schema.dares).where(eq(schema.dares.id, windowId)))[0]?.denomId as string;
+  const mk = async (revealMode: "open" | "blind") => {
+    const d0 = await markets.draftMarket({ creatorId: nia.user.id, groupId, denomId, title: `Does the handed entry say whose phone? (${revealMode})`, termsText: "Yes if it says.", resolvesBy: new Date(Date.now() + 86_400_000), revealMode });
+    const d = await markets.openMarket(d0.id, nia.user.id, await nia.ledger.signTypedData(markets.createTypedData(d0)));
+    await markets.enterMarket({ dareId: d.id, userId: nia.user.id, stake: 500n, value: 7000n, signature: await nia.ledger.signTypedData(markets.enterTypedData(d, 500n, 7000n)) });
+    await markets.enterMarket({ dareId: d.id, userId: friend.user.id, stake: 500n, value: 4000n, signature: await friend.ledger.signTypedData(markets.enterTypedData(d, 500n, 4000n)), enteredBy: nia.user.id });
+    return d;
+  };
+  const open = await mk("open");
+  const mine = await get(`/m/${open.id}`, cFriend);
+  assert.ok(mine.text.includes(`from ${nia.user.displayName.split(" ")[0]}’s phone`) && mine.text.includes("yours to change until") && !mine.html.includes('data-withdraw-entry=""'), "whose phone, and hers to change");
+  const blind = await mk("blind");
+  const final = await get(`/m/${blind.id}`, cFriend);
+  assert.ok(final.text.includes("· final") && final.html.includes('data-withdraw-entry=""') && final.text.includes("Withdraw it"), "blind: final, and withdrawable from her own phone");
+  const hostView = await get(`/m/${blind.id}`, cNia);
+  assert.ok(!hostView.html.includes('data-withdraw-entry=""'), "the host's own entry is not withdrawable");
+});
+
+test("a revoked or malformed link is the code screen with a form-level line, signed in or not, and the link page carries two facts", async () => {
+  const dead = "00000000-0000-4000-8000-000000000000";
+  for (const cookie of [cAsker, undefined]) {
+    const r = await get(`/m/${dead}`, cookie);
+    assert.equal(r.status, 200);
+    assert.ok(r.html.includes('data-dead-link=""') && r.html.includes('data-code-join="focused"') && r.text.includes("That link doesn’t open anything. Ask for it again, or type the code they read you.") && !r.text.includes("Nothing to see here"), `the code screen with the line, ${cookie ? "signed in" : "signed out"}`);
+  }
+  const bad = await get("/m/not-a-link", cAsker);
+  assert.ok(bad.status === 200 && bad.html.includes('data-dead-link=""'), "malformed reads the same");
+  const link = await get(`/m/${marketId}`);
+  assert.ok(link.text.includes("Decided") && link.text.includes("How it works") && !link.text.includes("If it’s unclear"), "two facts on the link page (3.17)");
+  assert.ok(!link.text.includes("I have an account"), "sign-in lives in the sheet's who's-joining step now");
+});
+
 test("the nudge and the relay are back for entering and for voting, and who's in carries the people still out with a nudge beside each; nobody outside nudges", async () => {
   // Nia's window question, open: rae asked and not in. Anyone in may nudge; the stack's sheet lists rae as still out.
   const open = await get(`/m/${windowId}`, cNia);

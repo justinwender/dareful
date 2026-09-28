@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "hand_over_explained_at" timestamp with time zone;

@@ -115,11 +115,11 @@ export function CodeJoinCompact({ label = "Someone read you a code?" }: { label?
  * The focused form, on the joining screen ("Got a code?", 3.16, 3.38): six boxes at 60px, the active one carrying
  * the focus outline, one caption naming the letters no code uses, and Join in the sheet, disabled until six are in.
  */
-export function CodeJoinFocused({ initial = "" }: { initial?: string }) {
+export function CodeJoinFocused({ initial = "", initialProblem = null }: { initial?: string; /** A form-level line the screen opens with: a dead or malformed link (3.17). */ initialProblem?: string | null }) {
   const id = useId();
   const [value, setValue] = useState(tidyCode(initial).slice(0, CODE_LENGTH));
   const [field, setField] = useState<string | null>(null);
-  const [form, setForm] = useState<string | null>(null);
+  const [form, setForm] = useState<string | null>(initialProblem);
   const [pending, start] = useTransition();
   const input = useRef<HTMLInputElement>(null);
   const full = value.length === CODE_LENGTH;

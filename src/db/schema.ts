@@ -54,6 +54,8 @@ export const users = pgTable("users", {
   avatarUrl: text("avatar_url"),
   /** When the one ask for the phone's permission was answered, whichever way (docs/design.md 4.10): asked once, on the account, never again. */
   headsUpAnsweredAt: ts("heads_up_answered_at"),
+  /** When the one explainer for passing the phone was seen, whichever way it went (docs/design.md 3.42, 3.45): asked once, on the account. */
+  handOverExplainedAt: ts("hand_over_explained_at"),
   createdAt: ts("created_at").notNull().defaultNow(),
 }).enableRLS();
 

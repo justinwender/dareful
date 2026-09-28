@@ -9,6 +9,7 @@ import { MarkRefStamp } from "@/components/ledger/mark-stamp";
 import { ProblemSummary } from "@/components/ledger/problem";
 import { Sheet } from "@/components/ui/sheet";
 import { roomCodeAction } from "@/lib/actions/join";
+import { handOverExplainedAction } from "@/lib/actions/hand-over";
 import { nudgeAction, removeGhostEntryAction } from "@/lib/actions/markets";
 import type { Hue } from "@/lib/ui/hue";
 import type { MarkRef } from "@/lib/ui/mark";
@@ -40,15 +41,20 @@ export function HoldoutAvatar({ name, size = 28 }: { name: string; size?: 28 | 3
  * characters as read-only boxes for reading aloud across a table). The last button hangs 11px into the gutter.
  * It replaces "They're right here: show a code", "Send the link", "Copy" and "Send how it ended", which were four
  * sentences and buttons in three places for one act. While you're the only one in, share is the screen's chalk.
- * Pass the phone is the fourth icon and ships with 3.45; until then the row has three.
+ * Pass the phone (3.45) is the fourth icon on the phone owner's screen, once they're in and while the market is
+ * open: the first tap explains it once, remembered on the account, and after that it goes straight to the
+ * friend's entry.
  */
-export function WhosInRow({ people, holdouts = [], count, share, code, chalk = false, list = null, className }: { people: WhosInPerson[]; /** The people asked who are not in yet (3.42): dashed avatars after the stack, at most two drawn, then a dashed "+N". */ holdouts?: Holdout[]; count: string; /** The link and the question as its title; null where there is nothing to send (a void, an expiry). */ share: { url: string; title: string } | null; /** The code to scan: only while the market is open, and only for someone the code can be made for. */ code: { dareId: string; question: string; mark: MarkRef | null } | null; /** Share as the screen's chalk: a 44px chalk circle, while you're the only one in. */ chalk?: boolean; /** The who's-in sheet behind the stack (3.42): who is in, with the asker's Remove on a ghost's row before the lock. Null where the stack is not a button (the link page). */ list?: WhosInList | null; className?: string }) {
+export function WhosInRow({ people, holdouts = [], count, share, code, chalk = false, list = null, pass = null, className }: { people: WhosInPerson[]; /** The people asked who are not in yet (3.42): dashed avatars after the stack, at most two drawn, then a dashed "+N". */ holdouts?: Holdout[]; count: string; /** The link and the question as its title; null where there is nothing to send (a void, an expiry). */ share: { url: string; title: string } | null; /** The code to scan: only while the market is open, and only for someone the code can be made for. */ code: { dareId: string; question: string; mark: MarkRef | null } | null; /** Share as the screen's chalk: a 44px chalk circle, while you're the only one in. */ chalk?: boolean; /** The who's-in sheet behind the stack (3.42): who is in, with the asker's Remove on a ghost's row before the lock. Null where the stack is not a button (the link page). */ list?: WhosInList | null; /** Pass the phone (3.45): the fourth icon, on the phone owner's screen once they're in and while the market is open; `explained` says whether the one-time explainer has been seen. */ pass?: { dareId: string; explained: boolean } | null; className?: string }) {
   const [copied, setCopied] = useState(false);
   const [listOpen, setListOpen] = useState(false);
   const [saidCopied, setSaidCopied] = useState(false);
   /** The clipboard refused (a browser that needs the page focused, or asks and is told no): the link itself, to copy by hand. A tap is never silently dropped (5.2). */
   const [byHand, setByHand] = useState(false);
   const [codeOpen, setCodeOpen] = useState(false);
+  const [passOpen, setPassOpen] = useState(false);
+  const router = useRouter();
+  const passId = useId();
   useEffect(() => {
     if (!copied) return;
     const t = setTimeout(() => setCopied(false), 1500);
@@ -146,10 +152,54 @@ export function WhosInRow({ people, holdouts = [], count, share, code, chalk = f
               </svg>
             </button>
           ) : null}
+          {pass ? (
+            // Pass the phone (3.45): the fourth icon, a phone with an arrow each way; the first tap explains it once, then it goes straight to the friend's entry.
+            <button type="button" aria-label="Pass the phone" aria-haspopup={pass.explained ? undefined : "dialog"} data-pass-phone="" onClick={() => (pass.explained ? router.replace(`/m/${pass.dareId}/pass`) : setPassOpen(true))} className="flex h-11 w-11 items-center justify-center rounded-pill text-ink transition-opacity duration-[120ms] active:opacity-[0.88]">
+              <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="7" y="2.5" width="10" height="19" rx="2" />
+                <path d="M11 18h2" />
+                <path d="M1.5 9.5h4M4 7.5l1.5 2-1.5 2" />
+                <path d="M22.5 14.5h-4M20 12.5l-1.5 2 1.5 2" />
+              </svg>
+            </button>
+          ) : null}
           <span role="status" aria-live="polite" className="sr-only">
             {saidCopied && copied ? "Link copied" : ""}
           </span>
         </div>
+      ) : null}
+      {pass ? (
+        <Sheet open={passOpen} onClose={() => setPassOpen(false)} labelledBy={passId}>
+          <div className="flex items-center gap-3">
+            <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-ink">
+              <rect x="7" y="2.5" width="10" height="19" rx="2" />
+              <path d="M11 18h2" />
+              <path d="M1.5 9.5h4M4 7.5l1.5 2-1.5 2" />
+              <path d="M22.5 14.5h-4M20 12.5l-1.5 2 1.5 2" />
+            </svg>
+            <h2 id={passId} className="text-body-strong text-ink">
+              Pass the phone
+            </h2>
+          </div>
+          <p className="text-body-sm text-ink-2" data-pass-explainer="">
+            A friend who set this up on their own phone gets in here with their PIN. Nothing of theirs stays on yours.
+          </p>
+          <div className="flex flex-col gap-1">
+            <Button
+              variant="primary"
+              data-autofocus
+              onClick={() => {
+                void handOverExplainedAction();
+                router.replace(`/m/${pass.dareId}/pass`);
+              }}
+            >
+              Hand it over
+            </Button>
+            <Button variant="secondary" onClick={() => setPassOpen(false)}>
+              Not now
+            </Button>
+          </div>
+        </Sheet>
       ) : null}
       {code && share ? <CodeSheet open={codeOpen} onClose={() => setCodeOpen(false)} dareId={code.dareId} url={share.url} question={code.question} mark={code.mark} /> : null}
       {list ? <WhosInSheet open={listOpen} onClose={() => setListOpen(false)} people={people} list={list} /> : null}
@@ -166,7 +216,7 @@ export function WhosInRow({ people, holdouts = [], count, share, code, chalk = f
  * correction high enough to carry it), and under it the market's six characters as read-only boxes (3.16's, at
  * 48px). No instructions: a phone camera knows what to do with it. Scanning opens the link page (3.17).
  */
-function CodeSheet({ open, onClose, dareId, url, question, mark }: { open: boolean; onClose: () => void; dareId: string; url: string; question: string; mark: MarkRef | null }) {
+export function CodeSheet({ open, onClose, dareId, url, question, mark }: { open: boolean; onClose: () => void; dareId: string; url: string; question: string; mark: MarkRef | null }) {
   const titleId = useId();
   const [qr, setQr] = useState<string | null>(null);
   const [code, setCode] = useState<string | null>(null);

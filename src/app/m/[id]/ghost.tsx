@@ -7,6 +7,7 @@ import { LiveDot, StateMark, type MarketMark } from "@/components/ledger/state-m
 import { When } from "@/components/ledger/when";
 import { MarketStage, type StagePicture } from "@/components/markets/market-stage";
 import { WhosInRow } from "@/components/markets/whos-in-row";
+import { DeadLink } from "@/components/markets/dead-link";
 import type { StakeUnit } from "@/components/markets/market-actions";
 import type { PickOneAnswer, PickOneBar } from "@/components/markets/pick-one-bars";
 import { PinnedSheet } from "@/components/ui/pinned-sheet";
@@ -48,19 +49,8 @@ const friendsIn = (n: number) => (n === 0 ? "Nobody’s in yet" : (COUNT[n] ?? "
  */
 export async function GhostMarketPage({ id, clock }: { id: string; clock: Awaited<ReturnType<typeof viewerClock>> }) {
   const d = /^[0-9a-f-]{36}$/i.test(id) ? await marketById(id) : null;
-  if (!d || stateOf(d) === "draft") {
-    // A revoked or malformed link (3.17): the plain screen, with a form-level line, and nothing about any market.
-    return (
-      <Screen>
-        <TopBar title="dareful" />
-        <div className="flex flex-col gap-6 py-10">
-          <h1 className="text-serif-l text-ink">Nothing to see here yet.</h1>
-          <p className="text-body text-ink-2">If a friend sent you this, ask them to send it again.</p>
-          <SignInButton label="Sign in" />
-        </div>
-      </Screen>
-    );
-  }
+  // A revoked or malformed link (3.17): the code screen with a form-level message, and nothing about any market.
+  if (!d || stateOf(d) === "draft") return <DeadLink signedIn={false} />;
   const state = stateOf(d);
   const now = new Date(clock.now);
   const ink = inkOf(d);
@@ -105,7 +95,6 @@ export async function GhostMarketPage({ id, clock }: { id: string; clock: Awaite
   const bandState: MarketMark = state === "open" ? (mine ? "in" : "open") : state === "locked" ? "locked" : state;
   const bandClock = state === "open" && d.resolvesBy ? `Closes ${closesLabel(d.resolvesBy, now, clock.zone)}` : null;
   const howItWorks = d.pace === "argument" ? "Two sides. Whoever’s right has got the other." : pickAnswers ? "Everyone picks one. The right pick does best." : numberUnit ? "Everyone puts in a number. Closest does best." : "Everyone puts in their odds. Closest does best.";
-  const unclear = decidedByFeed ? (firstDrive ? "The play-by-play settles it." : "The final score settles it.") : d.stalemate === "void" ? "It’s called off and nothing changes hands." : "Everyone says their piece and the tiebreaker everyone agreed to calls it.";
   const until = d.resolvesBy ? untilLabel(d.resolvesBy, now, clock.zone) : "until it closes";
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://dareful.app";
   const stack = positions.map((p) => ({ name: firstName(person.get(pidOf(p))?.displayName ?? "?"), hue: hueFor(pidOf(p)), ghost: person.get(pidOf(p))?.ghost === true }));
@@ -186,12 +175,12 @@ export async function GhostMarketPage({ id, clock }: { id: string; clock: Awaite
             </dd>
             <dt className="text-label text-ink-3">How it works</dt>
             <dd className="text-body text-ink">{howItWorks}</dd>
-            <dt className="text-label text-ink-3">If it’s unclear</dt>
-            <dd className="text-body text-ink">{unclear}</dd>
           </dl>
-          <div className="flex flex-col items-start gap-2">
-            <SignInButton variant="tertiary" label={mine ? "Sign in" : "I have an account"} />
-          </div>
+          {mine ? (
+            <div className="flex flex-col items-start gap-2">
+              <SignInButton variant="tertiary" label="Sign in" />
+            </div>
+          ) : null}
         </div>
         {stage}
       </Screen>

@@ -1,12 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
+import { useDynamicContext } from "@dynamic-labs/sdk-react-core";
 import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/ledger/avatar";
 import { Chip } from "@/components/ledger/chip";
 import { FIELD_PROBLEM_CLASS, Problem, ProblemSummary } from "@/components/ledger/problem";
 import { signingProblem, useSigner } from "@/components/ledger/use-signer";
 import { Button } from "@/components/ui/button";
+import { Sheet } from "@/components/ui/sheet";
+import { SignInButton } from "@/components/auth/sign-in-button";
+import { withdrawHostedEntryAction } from "@/lib/actions/hand-over";
 import { PinnedSheet } from "@/components/ui/pinned-sheet";
 import { enterAsGhostAction, enterMarketAction, openMarketAction, suggestGhostNamesAction } from "@/lib/actions/markets";
 import { daresTypes } from "@/lib/chain/typed-data";
@@ -57,6 +61,8 @@ export type GhostEntry = {
   known: { name: string } | null;
 };
 
+export type MarketStageProps = Parameters<typeof MarketStage>[0];
+
 export function MarketStage(props: {
   dareId: string;
   /** Null for a ghost (docs/design.md 3.17): nothing is signed, and the entry goes in without an account. */
@@ -67,7 +73,11 @@ export function MarketStage(props: {
   state: "draft" | "open" | "locked";
   me: { name: string; hue: Hue; /** Entering without an account: the stone avatar with its dashed ring (3.1). */ ghost?: boolean };
   /** This person's position: a percent on a yes-or-no question, the whole number (as text) on a number question, the answer's index on a pick-one question. */
-  mine: { percent: number; number?: string; pick?: number; stake: string; stakeWords: string; /** A position bound to this account from a ghost's entry and never signed (PLANNING.md section 4, "One phone"): confirming it is entering. */ unsigned?: boolean; /** On a blind market an entry is final once made (3.22, 3.31): no Change, and the caption says so. */ final?: boolean } | null;
+  mine: { percent: number; number?: string; pick?: number; stake: string; stakeWords: string; /** A position bound to this account from a ghost's entry and never signed (PLANNING.md section 4, "One phone"): confirming it is entering. */ unsigned?: boolean; /** On a blind market an entry is final once made (3.22, 3.31): no Change, and the caption says so. */ final?: boolean; /** Made on a friend's phone (3.45): the host's first name, for "from Sam's phone" in the caption. */ from?: string; /** A blind entry made on a friend's phone, while open (3.45): withdrawable from this person's own phone, and never enterable again. */ withdrawable?: boolean } | null;
+  /** Handing the phone over (3.45): the friend's entry is picked here as on the link page and handed to the parent, which asks who's joining and for the PIN; nothing is sent from this stage. */
+  host?: { onPicked: (position: { stake: string; value: string }, words: string) => void } | null;
+  /** Signed in, on a link (3.17, frame 7): "Joining as Sam · Not you?" under the primary while entering. */
+  signedInAs?: string | null;
   /** A blind market (3.31): one line above the primary says what is about to happen before anyone commits. */
   blind?: boolean;
   picture: StagePicture | null;
@@ -97,6 +107,15 @@ export function MarketStage(props: {
 }) {
   const { dareId, signing, unit, state, me, mine, picture, mark } = props;
   const ghost = props.ghost ?? null;
+  const host = props.host ?? null;
+  /** "Who's joining?" (3.17, frame 3): the step after the number, where a ghost says who they are; the primary raises it instead of sending. */
+  const [whoStep, setWhoStep] = useState(false);
+  /** "Not you?" (3.17, frame 7): signing out of this phone so someone else can join from the link. */
+  const [notYou, setNotYou] = useState(false);
+  const [withdrawing, setWithdrawing] = useState<"asking" | "sending" | null>(null);
+  const [withdrawProblem, setWithdrawProblem] = useState<string | null>(null);
+  const stageId = useId();
+  const { handleLogOut } = useDynamicContext();
   const numberUnit = props.numberUnit ?? null;
   // A ghost's name and number, typed on the way in (3.17); the number is hashed at the door and never kept.
   const [ghostName, setGhostName] = useState("");
@@ -215,6 +234,17 @@ export function MarketStage(props: {
     const valueBps = (value ?? 0) * 100;
     const signedValue = pickOne ? BigInt(pick ?? 0) : numberUnit ? (number ?? 0n) : BigInt(valueBps);
     const position = pickOne ? { stake: stakeUnits, answer: Number(signedValue) } : numberUnit ? { stake: stakeUnits, number: signedValue.toString() } : { stake: stakeUnits, valueBps };
+    if (host) {
+      // Handing the phone over (3.45): the number and the stake go to the parent, which asks who's joining and for the PIN. Nothing is sent from here.
+      host.onPicked({ stake: stakeUnits, value: signedValue.toString() }, pickWords(pick));
+      return;
+    }
+    if (ghost && !ghost.known && !whoStep) {
+      // The link page's next step (3.17, frame 3): who's joining, before anything is sent.
+      setWhoStep(true);
+      setRaised(true);
+      return;
+    }
     if (ghost) {
       // No signature: who they are goes in, with a number if they give one, and the browser keeps a token for the ghost (3.17). A picked name needs the number it joined with.
       setPhoneProblem(null);
@@ -347,6 +377,8 @@ export function MarketStage(props: {
             <p className="text-caption text-ink-3">
               {[
                 shown.stakeWords,
+                // Made on a friend's phone (3.45, frame 7): where it came from, then whose it is to change.
+                mine?.from ? `from ${mine.from}’s phone` : null,
                 state === "locked"
                   ? props.lockedLine
                   : mine?.final
@@ -357,6 +389,12 @@ export function MarketStage(props: {
                 .join(" · ")}
             </p>
           </div>
+          {state !== "locked" && !changing && mine?.final && mine.withdrawable ? (
+            // A blind entry made on a friend's phone (3.45): withdrawable from this person's own phone, and never enterable again, so a watched PIN stays fixable without a way around blind.
+            <Button variant="tertiary" onClick={() => setWithdrawing("asking")} data-withdraw-entry="">
+              Withdraw it
+            </Button>
+          ) : null}
           {state !== "locked" && !changing && !mine?.final ? (
             <Button
               variant="tertiary"
@@ -492,7 +530,9 @@ export function MarketStage(props: {
               variant="primary"
               onClick={submit}
               loading={step !== "idle"}
-              disabled={!picked || blocked || (phase === "entering" && reading)}
+              // On the who's-joining step the chalk waits for the name alone, and for the number too only when a name was picked (3.17, amended).
+              disabled={!picked || blocked || (phase === "entering" && reading) || (whoStep && (!ghostName.trim() || (ghostMember !== null && !ghostPhone.trim())))}
+              data-join-primary={whoStep ? "who" : undefined}
             >
               {!picked
                 ? pickOne
@@ -503,14 +543,31 @@ export function MarketStage(props: {
                       ? "Type your number"
                       : "Slide to pick your odds"
                 : ghost && !ghost.known
-                  ? ghostName.trim()
-                    ? `Join as ${ghostName.trim().split(/\s+/)[0]}`
-                    : `Join${pickOne || teams ? ":" : " at"} ${pickWords(pick)}`
+                  ? whoStep
+                    ? ghostName.trim()
+                      ? `Join as ${ghostName.trim().split(/\s+/)[0]}`
+                      : "Join"
+                    : `I’m in${pickOne || teams ? ":" : " at"} ${pickWords(pick)}`
                   : state === "draft"
                     ? `Looks right. I’m in${pickOne || teams ? ":" : " at"} ${pickWords(pick)}`
                     : `I’m in${pickOne || teams ? ":" : " at"} ${pickWords(pick)}`}
             </Button>
           )}
+          {whoStep && ghost && !ghost.known ? (
+            <div className="flex justify-start" data-have-account="">
+              <SignInButton variant="tertiary" label="Have an account? Sign in" />
+            </div>
+          ) : null}
+          {props.signedInAs && !reading && !changing && state === "open" ? (
+            // Signed in, on a link (3.17, frame 7): who this phone will join as, and the way to join as somebody else.
+            <p className="flex items-center gap-1 text-caption text-ink-3" data-joining-as="">
+              <span>Joining as {props.signedInAs}</span>
+              <span aria-hidden="true">·</span>
+              <button type="button" onClick={() => setNotYou(true)} className="link-tertiary">
+                Not you?
+              </button>
+            </p>
+          ) : null}
         </>
   );
   const sheet = entering ? (
@@ -654,9 +711,13 @@ export function MarketStage(props: {
               }}
             />
           ) : null}
-          {ghost && !ghost.known ? (
-            // Who this is, without an account (3.17): a name, and a number if they give one, so the entry is theirs when they sign in with it. A picked name joins only with its number.
+          {ghost && !ghost.known && whoStep ? (
+            // Who's joining? (3.17, frame 3): its own step after the number, the entry's summary on the right; a name, and a number if they give one, so the entry is theirs when they sign in with it. A picked name joins only with its number.
             <div className="flex flex-col gap-3" data-ghost-fields="">
+              <div className="flex items-baseline justify-between gap-3">
+                <h2 className="text-body-strong text-ink">Who’s joining?</h2>
+                <span className="text-caption text-ink-2">{pickWords(pick)}</span>
+              </div>
               <label className="flex flex-col gap-1">
                 <span className="text-label text-ink-3">Your name</span>
                 <span className="relative">
@@ -686,7 +747,7 @@ export function MarketStage(props: {
                   <div className="flex flex-wrap gap-2">
                     {shownSuggestions.map((m) => (
                       <button key={m.claimId} type="button" onClick={() => (setGhostMember(m.claimId), setGhostName(m.name), setSuggestions([]))} className="rounded-pill">
-                        <Chip size={36} selected={false}>
+                        <Chip size={40} selected={false}>
                           <Avatar name={m.name} hue="stone" size={24} ghost />
                           {m.name}
                         </Chip>
@@ -704,8 +765,8 @@ export function MarketStage(props: {
             </div>
           ) : null}
           {unsigned ? <p className="text-body-sm text-ink-2">This was you before you signed in. Keep it, or change it.</p> : null}
-          <h2 className="text-label text-ink-3">What’s riding on it</h2>
-          {unit.quantifiable ? (
+          {whoStep ? null : <h2 className="text-label text-ink-3">What’s riding on it</h2>}
+          {whoStep ? null : unit.quantifiable ? (
             <>
               <div
                 role="group"
@@ -765,6 +826,61 @@ export function MarketStage(props: {
     <>
       {stage}
       {sheet}
+      {/* "Not you?" (3.17, frame 7): a modal over the raised sheet, since signing this phone out is a moment worth a pause. */}
+      <Sheet open={notYou} onClose={() => setNotYou(false)} labelledBy={`${stageId}-not-you`}>
+        <h2 id={`${stageId}-not-you`} className="text-body-strong text-ink">
+          Not {props.signedInAs}?
+        </h2>
+        <p className="text-body-sm text-ink-2">Sign out of this phone, and join as yourself from the link.</p>
+        <div className="flex flex-col gap-1">
+          <Button
+            variant="primary"
+            data-autofocus
+            onClick={async () => {
+              await fetch("/api/session", { method: "DELETE" });
+              await handleLogOut().catch(() => undefined);
+              window.location.reload();
+            }}
+          >
+            Sign out
+          </Button>
+          <Button variant="tertiary" onClick={() => setNotYou(false)}>
+            Never mind
+          </Button>
+        </div>
+      </Sheet>
+      {/* Withdrawing a blind entry made on a friend's phone (3.45): asked once, since nothing of theirs comes into this one again. */}
+      <Sheet open={withdrawing !== null} onClose={() => (withdrawing === "sending" ? undefined : setWithdrawing(null))} labelledBy={`${stageId}-withdraw`}>
+        <h2 id={`${stageId}-withdraw`} className="text-body-strong text-ink">
+          Withdraw your entry?
+        </h2>
+        <p className="text-body-sm text-ink-2">It comes out for good, and you can’t get into this one again.</p>
+        <ProblemSummary messages={[withdrawProblem]} />
+        <div className="flex flex-col gap-1">
+          <Button
+            variant="primary"
+            data-autofocus
+            loading={withdrawing === "sending"}
+            onClick={async () => {
+              setWithdrawProblem(null);
+              setWithdrawing("sending");
+              const r = await withdrawHostedEntryAction(dareId);
+              if ("error" in r) {
+                setWithdrawProblem(r.error);
+                setWithdrawing("asking");
+                return;
+              }
+              setWithdrawing(null);
+              router.refresh();
+            }}
+          >
+            Withdraw it
+          </Button>
+          <Button variant="tertiary" disabled={withdrawing === "sending"} onClick={() => setWithdrawing(null)}>
+            Keep it
+          </Button>
+        </div>
+      </Sheet>
     </>
   );
 }
