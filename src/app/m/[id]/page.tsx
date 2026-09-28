@@ -6,7 +6,6 @@ import { after } from "next/server";
 import { asc, and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { GhostMarketPage } from "./ghost";
-import { RemoveGhostEntries } from "@/components/markets/remove-ghost-entry";
 import { participantsOf, pidOf } from "@/lib/ledger/participants";
 import { Avatar, AvatarStack } from "@/components/ledger/avatar";
 import { Chip } from "@/components/ledger/chip";
@@ -55,7 +54,6 @@ import {
   expireMarket,
   proposeForArgument,
 } from "@/lib/ledger/settle";
-import { Nudge } from "@/components/notify/nudge";
 import {
   LockButton,
   type Signing,
@@ -303,8 +301,8 @@ export default async function MarketPage({
         ),
       ),
     // Photos on the market (docs/marks-and-memories.md): memories for the frame, screenshots for the claim, told apart by
-    // their role; and this viewer's own photos taken while it was open, which nobody else sees until it ends (3.39).
-    mediaOnMarket(d.id, me.id),
+    // their role. The album is open the whole time (3.39, amended 2026-09-27): a memory is everyone's the moment it lands.
+    mediaOnMarket(d.id),
   ]);
   const ids = Array.from(
     new Set([
@@ -334,6 +332,7 @@ export default async function MarketPage({
     id: pidOf(p),
     name: person.get(pidOf(p))?.displayName ?? "Someone",
     percent: Number(p.value) / 100,
+    ghost: person.get(pidOf(p))?.ghost === true,
   }));
   // A number question's ruler (3.5): everyone's number and, once there is one, the answer.
   const answerNumber = numberUnit && d.resolvedOutcome !== null && d.resolvedOutcome !== VOID_OUTCOME && state === "resolved" ? d.resolvedOutcome : null;
@@ -341,7 +340,7 @@ export default async function MarketPage({
   /** "14 shirts · $5", "70% · $5", "John · $5": a person's number, or their pick, and what they put on it. */
   const numberWords = (v: bigint) => (pickAnswers ? (pickAnswers.find((a) => a.index === Number(v))?.text ?? "?") : numberUnit ? unitPhrase(v, numberUnit) : whoWins && teams ? leanPill(Number(v) / 100, teams.away.name, teams.home.name) : `${Number(v) / 100}%`);
   // The pick-one picture (3.25, 3.31): who picked each answer, and each answer's share of everything riding.
-  const pickers = pickAnswers ? pickAnswers.map((a) => positions.filter((p) => Number(p.value) === a.index).map((p) => ({ name: person.get(pidOf(p))?.displayName ?? "Someone", hue: hueFor(pidOf(p)) }))) : [];
+  const pickers = pickAnswers ? pickAnswers.map((a) => positions.filter((p) => Number(p.value) === a.index).map((p) => ({ name: person.get(pidOf(p))?.displayName ?? "Someone", hue: hueFor(pidOf(p)), ghost: person.get(pidOf(p))?.ghost === true }))) : [];
   const pickShares = pickAnswers ? answerShares(pickAnswers.map((a) => positions.filter((p) => Number(p.value) === a.index).reduce((sum, p) => sum + p.stake, 0n))) : [];
 
   const { chainId, dares } = contracts();
@@ -421,11 +420,7 @@ export default async function MarketPage({
             stakeWords,
           }),
         }
-      : {
-          kind: "blind",
-          inCount: positions.length,
-          ofCount: Math.max(seats.length, positions.length),
-        };
+      : null;
   const series =
     state === "open" || state === "locked"
       ? await db
@@ -510,9 +505,12 @@ export default async function MarketPage({
               stakeWords: stakeWords(mine.stake),
               // Bound from a ghost's entry and never signed: keeping it is the signature (PLANNING.md section 4, "One phone").
               unsigned: state === "open" && mine.enterSignature === null,
+              // On a blind market an entry is final once made (3.22, 3.31), which the server enforces; a bound ghost's unsigned numbers may still be kept.
+              final: d.revealMode === "blind" && mine.enterSignature !== null,
             }
           : null
       }
+      blind={d.revealMode === "blind"}
       picture={picture}
       numberUnit={numberUnit}
       teams={teams}
@@ -533,7 +531,7 @@ export default async function MarketPage({
     <SetupSheet>
       <p className="text-body-sm text-ink-2">
         {d.revealMode === "blind"
-          ? "Nobody sees where anyone landed until it’s locked."
+          ? "Once you’re in you see everyone’s so far, and yours is final."
           : "Once you’ve picked, you can see where the stake sits."}{" "}
         What’s riding on it is in{" "}
         {denomination.monetary ? "dollars" : unit.plural}, the same for
@@ -664,7 +662,6 @@ export default async function MarketPage({
         .from(schema.users)
         .where(inArray(schema.users.id, waitingIds))
     : [];
-  const waitingNames = waitingUsers.map((u) => firstName(u.displayName));
   const edges =
     state === "resolved"
       ? await db
@@ -728,7 +725,9 @@ export default async function MarketPage({
         ? `Resolving ${closesLabel(d.resolvesBy, now, clock.zone)}`
         : state === "locked" && d.resolvesBy
           ? `Voting ends ${closesLabel(d.resolvesBy, now, clock.zone)}`
-          : null;
+          : state === "voided" && d.resolvedBy === "removed" && d.resolvedAt
+            ? `Called off ${closesLabel(d.resolvedAt, now, clock.zone)}`
+            : null;
   const bandLive =
     d.resolvesBy !== null &&
     ((state === "open" && !mine) || (state === "locked" && myVote === null));
@@ -966,7 +965,9 @@ export default async function MarketPage({
   const frameOrSlot = (height: 200 | 260) => (frameItems.length > 0 ? <MediaFrame items={frameItems} height={height} inset add={canAdd ? { night } : null} /> : canAdd ? <EmptySlot /> : null);
   const endedCaption =
     state === "voided"
-      ? d.resolvedBy === "arbitration"
+      ? d.resolvedBy === "removed"
+        ? "Nobody else got in."
+        : d.resolvedBy === "arbitration"
         ? "The terms didn’t decide it. Nothing changes hands."
         : d.resolvedBy === "feed"
           ? feedEnding === "tie"
@@ -978,7 +979,7 @@ export default async function MarketPage({
       : state === "expired"
         ? "Nobody said what happened before it closed for good."
         : [scoreCaption, numberUnit || pickAnswers || whoWins ? closestLine : (claimantSaid ?? "")].filter(Boolean).join(" ");
-  const endedOutcome = state === "voided" ? (d.resolvedBy === "feed" && feedEnding === "tie" ? "A tie." : d.resolvedBy === "feed" && feedEnding === "drive_unknown" ? "No first drive to go by." : d.resolvedBy === "feed" ? "No final score to go by." : "Nobody could tell.") : state === "expired" ? "Never settled." : answerLine;
+  const endedOutcome = state === "voided" ? (d.resolvedBy === "removed" ? "Called off." : d.resolvedBy === "feed" && feedEnding === "tie" ? "A tie." : d.resolvedBy === "feed" && feedEnding === "drive_unknown" ? "No first drive to go by." : d.resolvedBy === "feed" ? "No final score to go by." : "Nobody could tell.") : state === "expired" ? "Never settled." : answerLine;
   const lineOrRuler = (resolved: boolean) =>
     pickAnswers ? (
       // The pick-one rows (3.25) where the call line would be: washed on the answer that happened, and on a void nothing washed.
@@ -1003,18 +1004,21 @@ export default async function MarketPage({
   // "The rest of that night" (3.37), on the memory view only: other events that shared this night with the viewer.
   const restOfNight = memoryView && d.lockedAt && d.resolvedAt ? await restOfThatNight({ dareId: d.id, groupIds: [d.groupId], people: positions.map((p) => p.userId).filter((x): x is string => x !== null), viewerId: me.id, closedAt: d.lockedAt, endedAt: d.resolvedAt }).catch(() => []) : [];
   // The who's-in row (3.42): who is in, and the one place the market is shared from, for anyone who is in and, once settled, anyone who can see it.
-  const whosInPeople = positions.map((p) => ({ name: person.get(pidOf(p))?.displayName ?? "Someone", hue: hueFor(pidOf(p)), ghost: person.get(pidOf(p))?.ghost === true }));
+  const whosInPeople = positions.map((p) => ({ name: person.get(pidOf(p))?.displayName ?? "Someone", hue: hueFor(pidOf(p)), ghost: person.get(pidOf(p))?.ghost === true, asked: pidOf(p) === d.creatorId, ...(p.claimId ? { claimId: p.claimId } : {}) }));
   const alone = positions.length === 1 && mine !== null && d.creatorId === me.id;
+  // Holdouts (3.42): the people the market was sent to who are not in yet follow the stack as dashed avatars while it is open, and the count names both numbers.
+  const holdouts = state === "open" ? waitingUsers.map((u) => ({ name: u.displayName, hue: hueFor(u.id) })) : [];
   const whosIn = (
-    <WhosInRow people={whosInPeople} count={alone ? "Just you so far" : `${positions.length} of you in`} share={{ url: `${appUrl}/m/${d.id}`, title: d.title }} code={state === "open" ? { dareId: d.id, question: d.title, mark: markRefOf(d) } : null} chalk={state === "open" && alone} />
+    <WhosInRow people={whosInPeople} holdouts={holdouts} count={alone ? "Just you so far" : holdouts.length > 0 ? `${positions.length} of ${positions.length + holdouts.length} in` : `${positions.length} of you in`} share={{ url: `${appUrl}/m/${d.id}`, title: d.title }} code={state === "open" ? { dareId: d.id, question: d.title, mark: markRefOf(d) } : null} chalk={state === "open" && alone} list={{ dareId: d.id, canRemove: state === "open" && d.creatorId === me.id }} />
   );
-  // Your photos while it is open (3.39): the same slot and frame as after it ends, last on the screen, for someone who is in; nobody else sees them until it ends.
-  const yourItems = media.yours.map((m) => ({ id: m.id, author: { name: me.displayName, hue: hueFor(me.id) }, removable: true }));
-  const yourPhotos =
-    state === "open" && canAdd ? (
-      <section className="flex flex-col gap-2" data-your-photos="">
-        {yourItems.length > 0 ? <MediaFrame items={yourItems} height={200} inset add={{ night }} caption="Everyone sees these once it’s over." /> : <EmptySlot />}
-        {yourItems.length === 0 ? <p className="text-caption text-ink-3">Everyone sees these once it’s over.</p> : null}
+  // The photos while it is open and through the vote (3.37 and 3.39, amended 2026-09-27: the album is open the whole time): the same slot and frame as after it ends, last on the screen under the details, for everyone the door admits, someone in and the group it was asked in (a signed-in viewer past this point is one or the other: a non-member got the invitation above). The add tile and the empty slot are for someone who can add, which before the end means someone who is in while it is open; someone who only opened the link sees nothing here.
+  const albumItems = media.memories.map((m) => ({ id: m.id, author: { name: m.author.displayName, hue: hueFor(m.author.id) }, removable: m.author.id === me.id }));
+  // The memories alone: while it is being called, the claim's clip is on the claim card, never in a frame.
+  const openFrame = albumItems.length > 0 ? <MediaFrame items={albumItems} height={200} inset add={canAdd ? { night } : null} /> : canAdd ? <EmptySlot /> : null;
+  const openPhotos =
+    (state === "open" || state === "locked") && openFrame ? (
+      <section className="flex flex-col gap-2" data-open-photos="">
+        {openFrame}
       </section>
     ) : null;
   // The one ask for the phone's permission (4.10): once, after first getting in, kept on the account.
@@ -1106,6 +1110,7 @@ export default async function MarketPage({
                   value: p.value.toString(),
                   xPermille: rulerData.pins.find((x) => x.id === p.userId)?.xPermille ?? 0,
                   score: p.score ?? 0,
+                  ghost: person.get(pidOf(p))?.ghost === true,
                 }))}
               />
             ) : (
@@ -1118,6 +1123,7 @@ export default async function MarketPage({
                   name: person.get(pidOf(p))?.displayName ?? "Someone",
                   percent: Number(p.value) / 100,
                   score: p.score ?? 0,
+                  ghost: person.get(pidOf(p))?.ghost === true,
                 }))}
               />
             )}
@@ -1181,11 +1187,8 @@ export default async function MarketPage({
                   </svg>
                 </section>
               )}
-              {/* The asker's close, under the row and never the primary while the close is still ahead (3.42). */}
-              {mine && d.creatorId === me.id && positions.length >= 2 ? <LockButton dareId={d.id} count={positions.length} variant="tertiary" /> : null}
-              {/* The asker's say over who is in without an account, while it is open (docs/decisions.md 2026-09-27). */}
-              {mine && d.creatorId === me.id ? <RemoveGhostEntries dareId={d.id} ghosts={positions.filter((p) => p.claimId !== null).map((p) => ({ claimId: p.claimId as string, name: person.get(pidOf(p))?.displayName ?? "Someone", hue: hueFor(pidOf(p)) }))} /> : null}
-              {mine ? <Nudge dareId={d.id} names={waitingNames} url={`${appUrl}/m/${d.id}`} relay={`We’re waiting on you: ${d.title}`} /> : null}
+              {/* The asker's close, under the row and never the primary while the close is still ahead (3.42): it asks once, naming who it leaves out. Who is in without an account is the asker's to remove from who's in, behind the stack. */}
+              {mine && d.creatorId === me.id && positions.length >= 2 ? <LockButton dareId={d.id} count={positions.length} leftOut={holdouts} variant="tertiary" /> : null}
             </>
           ) : null}
 
@@ -1243,7 +1246,7 @@ export default async function MarketPage({
 
           {state !== "draft" ? details : null}
           {mine || state !== "open" ? more : null}
-          {yourPhotos}
+          {openPhotos}
 
           {d.rulingText && (state === "resolved" || state === "voided") ? (
             <section className="flex flex-col gap-2 rounded-card border border-line bg-surface px-4 py-[14px]" data-ruling={d.resolvedBy ?? ""}>
@@ -1257,14 +1260,6 @@ export default async function MarketPage({
             </section>
           ) : null}
 
-          {state === "locked" && mine ? (
-            <Nudge
-              dareId={d.id}
-              names={waitingNames}
-              url={`${appUrl}/m/${d.id}`}
-              relay={`We’re waiting on your call: ${d.title}`}
-            />
-          ) : null}
 
           {state === "draft" ? stage : null}
           {callSheet}

@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useId, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { TypedDataDomain } from "viem";
 import { Button } from "@/components/ui/button";
 import { ProblemSummary } from "@/components/ledger/problem";
+import { Sheet } from "@/components/ui/sheet";
+import { HoldoutAvatar } from "./whos-in-row";
 import { lockMarketAction } from "@/lib/actions/markets";
 
 /** Everything a browser needs to build the typed data a person signs. Bigints travel as strings. */
@@ -22,31 +24,58 @@ export type Signing = {
 
 export type StakeUnit = { monetary: boolean; quantifiable: boolean; singular: string; plural: string };
 
-/** The creator's lock. After this nobody's number moves, and everyone can see everyone's. */
-export function LockButton({ dareId, count, primary = true, variant }: { dareId: string; count: number; primary?: boolean; /** Under the who's-in row (3.42) it is a tertiary, never the primary while the close is still ahead. */ variant?: "primary" | "secondary" | "tertiary" }) {
+/**
+ * The asker's close (3.42, holdouts): "Close it with 4", a tertiary under the who's-in row and never the primary
+ * while the close is still ahead, because the close is coming anyway and closing early binds everyone else. It
+ * asks once, in a modal sheet, with the dashed avatars of who it leaves out and one line naming them, the chalk
+ * "Close it now" and "Keep it open". Closing early locks the market as its close would. Where nobody is left out
+ * (everyone asked is in) it closes without asking, since it leaves nobody out.
+ */
+export function LockButton({ dareId, count, leftOut = [], primary = true, variant }: { dareId: string; count: number; /** The people asked who are not in yet, named in the ask. */ leftOut?: Array<{ name: string }>; primary?: boolean; /** Under the who's-in row (3.42) it is a tertiary, never the primary while the close is still ahead. */ variant?: "primary" | "secondary" | "tertiary" }) {
   const router = useRouter();
+  const titleId = useId();
   const [pending, start] = useTransition();
   const [problem, setProblem] = useState<string | null>(null);
+  const [asking, setAsking] = useState(false);
+  const names = leftOut.map((p) => p.name.trim().split(/\s+/)[0] ?? p.name);
+  const line = names.length === 0 ? "" : names.length === 1 ? `${names[0]} can’t get in after this.` : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]} can’t get in after this.`;
+  const close = () =>
+    start(async () => {
+      setProblem(null);
+      const r = await lockMarketAction(dareId);
+      if ("error" in r) setProblem(r.error);
+      else {
+        setAsking(false);
+        router.refresh();
+      }
+    });
   return (
     <div className="flex flex-col gap-3">
-      <ProblemSummary messages={[problem]} />
-      <Button
-        variant={variant ?? (primary ? "primary" : "secondary")}
-        className={variant === "tertiary" ? "self-start" : undefined}
-        loading={pending}
-        disabled={count < 2}
-        onClick={() =>
-          start(async () => {
-            setProblem(null);
-            const r = await lockMarketAction(dareId);
-            if ("error" in r) setProblem(r.error);
-            else router.refresh();
-          })
-        }
-      >
-        {count < 2 ? "It takes two to lock it in" : `Lock it in with ${count}`}
+      <ProblemSummary messages={[asking ? null : problem]} />
+      <Button variant={variant ?? (primary ? "primary" : "secondary")} className={variant === "tertiary" ? "self-start" : undefined} loading={pending && !asking} disabled={count < 2} onClick={() => (leftOut.length > 0 ? setAsking(true) : close())} data-close-early="">
+        {count < 2 ? "It takes two to close it" : `Close it with ${count}`}
       </Button>
-      {pending ? <p className="text-caption text-ink-3">Locking everyone’s numbers. A few seconds.</p> : null}
+      {pending && !asking ? <p className="text-caption text-ink-3">Closing it. A few seconds.</p> : null}
+      <Sheet open={asking} onClose={() => setAsking(false)} labelledBy={titleId}>
+        <h2 id={titleId} className="text-body-strong text-ink">
+          Close it with {count}?
+        </h2>
+        <div className="flex flex-col gap-4" data-close-early-ask="">
+          <div className="flex items-center gap-2">
+            {leftOut.slice(0, 6).map((p, i) => (
+              <HoldoutAvatar key={i} name={p.name} size={36} />
+            ))}
+          </div>
+          <p className="text-body-sm text-ink-2">{line}</p>
+          <ProblemSummary messages={[problem]} />
+          <Button variant="primary" loading={pending} onClick={close}>
+            Close it now
+          </Button>
+          <Button variant="secondary" disabled={pending} onClick={() => setAsking(false)}>
+            Keep it open
+          </Button>
+        </div>
+      </Sheet>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ButtonLink } from "@/components/ui/button";
 import { LinkPending } from "@/components/ui/link-pending";
 import { Screen, SectionLabel } from "@/components/ledger/screen";
 import { FirstRun } from "@/components/home/first-run";
@@ -34,12 +35,20 @@ export default async function Now({ searchParams }: { searchParams: Promise<{ al
 
   const [home, waiting, suggested] = await Promise.all([nowFor(user, { now, closes: (at) => closesLabel(at, now, clock.zone) }), boundPendingForDebtor(user.id), suggestedGhostsFor(user.id, user.displayName)]);
   const empty = !home.hasAnything && suggested.length === 0 && waiting.length === 0;
-  const today = <h2 className="pt-5 text-label text-ink-3">{todayLabel(now, clock.zone)}</h2>;
+  // "Got a code?" at the top right, placed as the question step places it (docs/design.md 6.1, amended 2026-09-27): joining by code is one tap from home.
+  const today = (
+    <div className="flex items-center justify-between pt-5">
+      <h2 className="text-label text-ink-3">{todayLabel(now, clock.zone)}</h2>
+      <ButtonLink href="/join" variant="tertiary" className="-my-3" data-got-a-code="">
+        Got a code?
+      </ButtonLink>
+    </div>
+  );
 
   if (empty) return <FirstRun today={todayLabel(now, clock.zone)} games={(await starterGames(now)).map((g) => rowData(g, clock.zone, null, null))} viewerHue={hueFor(user.id)} />;
 
   return (
-    <Screen>
+    <Screen root>
       {today}
       <div className="flex flex-col gap-7 py-4">
         {waiting.length > 0 ? (

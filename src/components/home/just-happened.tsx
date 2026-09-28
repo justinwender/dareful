@@ -5,6 +5,7 @@ import { StateMark } from "@/components/ledger/state-mark";
 import { TeamPair } from "@/components/ledger/team-stamp";
 import { When } from "@/components/ledger/when";
 import { LinkPending } from "@/components/ui/link-pending";
+import { CallOff } from "./call-off";
 import { ON_WAY, type HomeData } from "@/lib/ledger/home";
 import { unitPhrase } from "@/lib/ledger/number-axis";
 import { coveredSentence, gotSentence } from "@/lib/ui/copy";
@@ -51,8 +52,10 @@ export function JustHappened({ rows, viewerId, clock }: { rows: HomeData["happen
             const called = m.pickOne ? (m.pickOne.callers.length > 0 ? calledItLine(m.pickOne.callers, m.pickOne.callers.includes("You")).replace(" Nobody else did.", "").replace(/\.$/, "") : null) : m.calledBy ? `${m.calledBy} called it` : null;
             const meta = [outcome?.replace(/\.$/, ""), called].filter(Boolean).join(" · ");
             const thumb = m.media[0];
+            // A finished market answers a left swipe with Archive (3.15): it leaves this person's Now and nothing else changes.
             return (
-              <Link prefetch={false} key={d.id} href={`/m/${d.id}`} className={`relative grid items-center gap-3 px-4 py-[14px] ${mark ? "grid-cols-[40px_minmax(0,1fr)_auto]" : "grid-cols-[minmax(0,1fr)_auto]"} ${divider}`}>
+              <CallOff key={d.id} kind="archive" dareId={d.id}>
+              <Link prefetch={false} href={`/m/${d.id}`} className={`relative grid items-center gap-3 px-4 py-[14px] ${mark ? "grid-cols-[40px_minmax(0,1fr)_auto]" : "grid-cols-[minmax(0,1fr)_auto]"} ${divider}`}>
                 <LinkPending />
                 {mark ? <MarkRefStamp mark={mark} size={40} ink={m.ink} /> : null}
                 <span className="flex min-w-0 flex-col gap-1">
@@ -69,6 +72,7 @@ export function JustHappened({ rows, viewerId, clock }: { rows: HomeData["happen
                   <span />
                 )}
               </Link>
+              </CallOff>
             );
           }
           if (e.kind === "onway") {

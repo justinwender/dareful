@@ -5,7 +5,7 @@ import { gotSentence, possessive } from "@/lib/ui/copy";
 import { hueBar, hueFor, hueRing, hueVar } from "@/lib/ui/hue";
 import { saidLean } from "@/lib/ui/team";
 
-export type Standing = { userId: string; name: string; percent: number; score: number };
+export type Standing = { userId: string; name: string; percent: number; score: number; /** In it without an account (3.1): the stone avatar with its dashed ring. */ ghost?: boolean };
 export type Transfer = { fromId: string; toId: string; quantity: bigint };
 
 /**
@@ -14,7 +14,7 @@ export type Transfer = { fromId: string; toId: string; quantity: bigint };
  * Ranking is by score, which for a yes-or-no question is the same as ranking by distance; people the same
  * distance off share a rank, marked "=", in alphabetical order.
  */
-export type NumberStanding = { userId: string; name: string; value: string; xPermille: number; score: number };
+export type NumberStanding = { userId: string; name: string; value: string; xPermille: number; score: number; ghost?: boolean };
 
 /**
  * A number market's rows (3.7): "said 17" under the name and "off by 3" on the right; the gap bar runs on the
@@ -42,7 +42,7 @@ export function NumberLeaderboard({ standings, answer, viewerId, said }: { stand
               {rank}
             </span>
             <div className="flex items-center gap-3">
-              <Avatar name={s.name} hue={hue} size={36} />
+              <Avatar name={s.name} hue={hue} size={36} ghost={s.ghost} />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-body-strong text-ink">{you ? "You" : s.name}</p>
                 <p className="text-caption text-ink-3">said {said ? said(s.value) : s.value}</p>
@@ -83,7 +83,7 @@ export function Leaderboard({ standings, outcome, viewerId, ends }: { standings:
               {rank}
             </span>
             <div className="flex items-center gap-3">
-              <Avatar name={s.name} hue={hue} size={36} />
+              <Avatar name={s.name} hue={hue} size={36} ghost={s.ghost} />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-body-strong text-ink">{you ? "You" : s.name}</p>
                 <p className="text-caption text-ink-3">{ends ? saidLean(s.percent, ends.away, ends.home) : `said ${s.percent}%`}</p>

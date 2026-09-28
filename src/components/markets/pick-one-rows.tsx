@@ -3,7 +3,7 @@ import type { Hue } from "@/lib/ui/hue";
 import { cn } from "@/lib/utils";
 import type { PickOneAnswer } from "./pick-one-bars";
 
-export type Picker = { name: string; hue: Hue };
+export type Picker = { name: string; hue: Hue; /** In it without an account (3.1): stone, with the dashed ring. */ ghost?: boolean };
 
 /**
  * "Everyone's pick" (docs/design.md 3.25): one 48px row per answer in the asker's order, with its avatar slot, the
@@ -28,7 +28,7 @@ export function PickOneRows({ answers, pickers, shares, outcome, showShares = tr
               <span className="flex shrink-0 items-center" aria-label={`${who.map((p) => p.name).join(", ")} picked ${a.text}`}>
                 {who.slice(0, 6).map((p, i) => (
                   <span key={i} className="inline-flex rounded-pill" style={{ marginLeft: i === 0 ? 0 : -6, zIndex: who.length - i, boxShadow: called ? "0 0 0 2px var(--ground), 0 0 0 4px var(--chalk)" : undefined }}>
-                    <Avatar name={p.name} hue={p.hue} size={24} ring={called ? undefined : "var(--ground)"} />
+                    <Avatar name={p.name} hue={p.hue} size={24} ghost={p.ghost} ring={called ? undefined : "var(--ground)"} />
                   </span>
                 ))}
               </span>

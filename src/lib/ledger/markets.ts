@@ -98,7 +98,7 @@ export function outcomeAllowed(kind: string, outcome: bigint, options = 0): bool
 export class MarketError extends Error {
   constructor(
     message: string,
-    public readonly code: "not_found" | "not_yours" | "not_member" | "wrong_state" | "bad_input" | "bad_signature" | "chain" | "slow_down",
+    public readonly code: "not_found" | "not_yours" | "not_member" | "wrong_state" | "bad_input" | "bad_signature" | "chain" | "slow_down" | "wrong_number",
   ) {
     super(message);
     this.name = "MarketError";
@@ -396,6 +396,9 @@ export async function enterMarket(input: { dareId: string; userId: string; stake
   if (!ok) throw new MarketError("That didn't come from your account.", "bad_signature");
 
   const existing = await positionsOf(d.id);
+  // On a blind market an entry is final once made (3.22, 3.31): you see everyone's once you're in, so nobody may change theirs after seeing the others. Keeping a bound ghost's unsigned numbers as they are is the signature, not a change.
+  const held = existing.find((p) => p.userId === input.userId);
+  if (held && d.revealMode === "blind" && (held.stake !== input.stake || held.value !== input.value)) throw new MarketError("Yours is final on this one.", "wrong_state");
   // An argument is between two people. A third number would make it a different kind of question.
   if (d.pace === "argument" && existing.length >= 2 && !existing.some((p) => p.userId === input.userId)) throw new MarketError("This one's between the two of them. You can watch how it comes out.", "wrong_state");
   if (!existing.some((p) => p.userId === input.userId) && existing.length >= MAX_POSITIONS) throw new MarketError(`This one is full at ${MAX_POSITIONS}.`, "wrong_state");
@@ -436,7 +439,7 @@ export async function lockMarket(dareId: string, byUserId: string | null): Promi
   if (byUserId !== null && d.creatorId !== byUserId) throw new MarketError("Only the person who asked it can lock it.", "not_yours");
   if (stateOf(d) !== "open" || !d.creatorSignature) throw new MarketError("It can't be locked right now.", "wrong_state");
   const positions = await positionsOf(d.id);
-  if (positions.length < 2) throw new MarketError("It takes two to lock it in.", "wrong_state");
+  if (positions.length < 2) throw new MarketError("It takes two to close it.", "wrong_state");
   // Nothing goes onchain for a position nobody signed (PLANNING.md section 4): a ghost's number, or one bound to
   // an account but never signed, makes the market provisional. It locks here, and its transfers become proposals.
   if (positions.some((p) => !p.userId || !p.enterSignature)) {

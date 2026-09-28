@@ -27,7 +27,7 @@ export default async function PeoplePage() {
   const nobody = people.people.length === 0 && people.square.length === 0 && ghosts.length === 0;
 
   return (
-    <Screen>
+    <Screen root>
       <h1 className="pt-5 text-label text-ink-3">People</h1>
       <div className="flex flex-col gap-7 py-4">
         {nobody ? (

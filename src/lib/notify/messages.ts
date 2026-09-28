@@ -42,11 +42,6 @@ export function resultNotice(input: { deciderName: string; title: string; outcom
   };
 }
 
-/** What the voter's own composer opens with: their words, from their number, into whatever chat they choose. */
-export function relayText(input: { title: string; cast: number; quorum: number }): string {
-  return `Called “${short(input.title)}”, ${input.cast} of ${input.quorum} so far. Your turn:`;
-}
-
 /**
  * Who is told what after a vote. Never the voter, never anyone who has already voted, and never a request
  * once it is decided.
@@ -67,32 +62,12 @@ export function joinedNotice(input: { joinerName: string; title: string; inCount
   return { title: `${input.joinerName} is in`, body: `“${short(input.title)}?” ${input.inCount === 2 ? "That's two of you." : `That's ${input.inCount} in.`}`, url: `${input.appUrl}/m/${input.marketId}` };
 }
 
-/** One tap from someone waiting: "we're waiting on you". A person acting, by name, on demand. */
-export function nudgeNotice(input: { nudgerName: string; title: string; stage: "enter" | "vote"; marketId: string; appUrl: string }): Notice {
-  return {
-    title: `${input.nudgerName} is waiting on you`,
-    body: input.stage === "enter" ? `“${short(input.title)}?” Everyone else has a number in.` : `“${short(input.title)}?” It needs your call on how it came out.`,
-    url: `${input.appUrl}/m/${input.marketId}${input.stage === "vote" ? "#ballot" : ""}`,
-  };
-}
+/** A netting is about two people and no one row (index.ts): once per pair per window. The nudge that shared this window is gone (3.42: nothing but the icons reaches anyone). */
+export const NOTICE_WINDOW_MS = 6 * 3_600_000;
 
-export const NUDGE_WINDOW_MS = 6 * 3_600_000;
-
-/**
- * Who a nudge goes to: while numbers are open, whoever in the group has not put one in; once locked, whoever in
- * the quorum has not called it. Never the person nudging, and only someone who is in the question may nudge, so
- * it is always "we're waiting on you" from somebody who is themselves in.
- */
-export function nudgeTargets(input: { stage: "enter" | "vote"; nudgerId: string; nudgerIsIn: boolean; memberIds: string[]; enteredIds: string[]; quorumIds: string[]; votedIds: string[] }): string[] {
-  if (!input.nudgerIsIn) return [];
-  const done = new Set(input.stage === "enter" ? input.enteredIds : input.votedIds);
-  const pool = input.stage === "enter" ? input.memberIds : input.quorumIds;
-  return Array.from(new Set(pool)).filter((id) => id !== input.nudgerId && !done.has(id));
-}
-
-/** The same person is nudged about the same question at most once per window, whoever is asking. */
-export function nudgeSeq(at: Date): number {
-  return Math.floor(at.getTime() / NUDGE_WINDOW_MS);
+/** The same pair hears about a netting at most once per window, however many nettings land in it. */
+export function windowSeq(at: Date): number {
+  return Math.floor(at.getTime() / NOTICE_WINDOW_MS);
 }
 
 /** To the asker, once, when the time they set has come: the consequence of their own act, never a reminder. */

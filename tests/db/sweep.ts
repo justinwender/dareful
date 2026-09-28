@@ -29,6 +29,7 @@ async function main(): Promise<void> {
       await tx.delete(schema.notificationLog).where(inArray(schema.notificationLog.dareId, ids));
       await tx.delete(schema.roomCodes).where(inArray(schema.roomCodes.dareId, ids));
       await tx.delete(schema.dareNumberSeries).where(inArray(schema.dareNumberSeries.dareId, ids));
+      await tx.delete(schema.nowArchive).where(inArray(schema.nowArchive.dareId, ids));
       // Photos on a market (memories and evidence) hang off the market and go before it.
       await tx.delete(schema.media).where(inArray(schema.media.dareId, ids));
       await tx.delete(schema.dareVotes).where(inArray(schema.dareVotes.dareId, ids));
@@ -71,6 +72,7 @@ async function main(): Promise<void> {
     if (c.length) conds.push(inArray(P.fromClaim, c), inArray(P.toClaim, c), inArray(P.fromBoundClaim, c), inArray(P.toBoundClaim, c));
     await tx.delete(P).where(or(...conds));
     if (c.length) {
+      await tx.delete(schema.claimNumberAttempts).where(inArray(schema.claimNumberAttempts.claimId, c));
       await tx.delete(schema.claimTokens).where(inArray(schema.claimTokens.claimId, c));
       await tx.delete(schema.claimLinks).where(inArray(schema.claimLinks.claimId, c));
       await tx.delete(M).where(inArray(M.claimId, c));

@@ -10,7 +10,7 @@
  * A phone hash is never exposed: a creator learns that a picked contact resolved to someone, never a way to
  * ask whether an arbitrary number is here.
  */
-import { and, asc, desc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { hashToken, newToken } from "./tokens";
 
@@ -324,9 +324,10 @@ export async function bindClaimToUser(claimId: string, userId: string): Promise<
       .returning({ id: schema.obligationProposals.id, status: schema.obligationProposals.status });
 
     // Market positions and personal links. A position the user already holds in the same market stands.
+    // `bound_claim` remembers the ghost, so the claimant screen can list the entry by the name it was typed under and leave it out (3.38).
     await tx.execute(sql`
       update ${schema.darePositions} p
-      set claim_id = null, user_id = ${userId}, acknowledged_at = coalesce(p.acknowledged_at, now())
+      set claim_id = null, user_id = ${userId}, acknowledged_at = coalesce(p.acknowledged_at, now()), bound_claim = ${claim.id}
       where p.claim_id = ${claim.id}
         and not exists (select 1 from ${schema.darePositions} q where q.dare_id = p.dare_id and q.user_id = ${userId})
     `);
@@ -615,4 +616,49 @@ export async function concede(proposalId: string, browserTokens: string[]): Prom
     )
     .returning({ id: schema.obligationProposals.id });
   return updated.length > 0;
+}
+
+// ------------------------------------------------------------------------------------- entries made from a link
+
+export type LinkEntry = { dare: typeof schema.dares.$inferSelect; /** The name the entry was typed under. */ name: string; stake: bigint; value: bigint };
+
+/**
+ * Entries this person made from a link before they had an account, found by the number (or the browser) that
+ * bound them (docs/design.md 3.17, 3.38): positions bound from a ghost and never signed, on markets still open.
+ * Each is theirs to keep (the signature, `enterMarket` with the same numbers) or leave out (`leaveEntry`).
+ */
+export async function linkEntriesFor(userId: string): Promise<LinkEntry[]> {
+  const rows = await db
+    .select({ stake: schema.darePositions.stake, value: schema.darePositions.value, dare: schema.dares, name: schema.participantClaims.displayName })
+    .from(schema.darePositions)
+    .innerJoin(schema.dares, eq(schema.dares.id, schema.darePositions.dareId))
+    .innerJoin(schema.participantClaims, eq(schema.participantClaims.id, schema.darePositions.boundClaim))
+    .where(and(eq(schema.darePositions.userId, userId), isNull(schema.darePositions.enterSignature), isNotNull(schema.darePositions.boundClaim), isNull(schema.darePositions.dismissedAt)))
+    .orderBy(schema.darePositions.enteredAt);
+  return rows.filter((r) => r.dare.lockedAt === null && r.dare.resolvedAt === null && r.dare.creatorSignature !== null).map((r) => ({ dare: r.dare, name: r.name, stake: r.stake, value: r.value }));
+}
+
+/**
+ * "One left out stays under the typed name, in stone, and never becomes this person's" (3.38): the unsigned
+ * position goes back to a fresh ghost with the name it was typed under and no number, so no login ever binds it
+ * again. The ghost takes the seat in the market's set that the entry had.
+ */
+export async function leaveEntry(dareId: string, userId: string): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const [p] = await tx
+      .select({ boundClaim: schema.darePositions.boundClaim, groupId: schema.dares.groupId, isDyad: schema.groups.isDyad })
+      .from(schema.darePositions)
+      .innerJoin(schema.dares, eq(schema.dares.id, schema.darePositions.dareId))
+      .innerJoin(schema.groups, eq(schema.groups.id, schema.dares.groupId))
+      .where(and(eq(schema.darePositions.dareId, dareId), eq(schema.darePositions.userId, userId), isNull(schema.darePositions.enterSignature), isNotNull(schema.darePositions.boundClaim)))
+      .limit(1);
+    if (!p || !p.boundClaim) return false;
+    const [was] = await tx.select({ displayName: schema.participantClaims.displayName, createdBy: schema.participantClaims.createdBy }).from(schema.participantClaims).where(eq(schema.participantClaims.id, p.boundClaim)).limit(1);
+    if (!was) return false;
+    const [fresh] = await tx.insert(schema.participantClaims).values({ displayName: was.displayName, phoneHash: null, createdBy: was.createdBy }).returning({ id: schema.participantClaims.id });
+    if (!fresh) return false;
+    await tx.update(schema.darePositions).set({ userId: null, claimId: fresh.id, boundClaim: null }).where(and(eq(schema.darePositions.dareId, dareId), eq(schema.darePositions.userId, userId)));
+    if (!p.isDyad) await tx.insert(schema.groupMembers).values({ groupId: p.groupId, claimId: fresh.id }).onConflictDoNothing();
+    return true;
+  });
 }

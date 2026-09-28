@@ -8,7 +8,7 @@
  *
  * Limits, enforced here and said plainly: one position per browser per market, and ten ghosts per market.
  */
-import { and, eq, isNull } from "drizzle-orm";
+import { and, count, eq, gt, ilike, isNotNull, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { claimsForBrowserTokens } from "./claims";
 import { denominationById } from "./denominations";
@@ -24,9 +24,33 @@ export type GhostWho = {
   name: string;
   /** Their own number, hashed at the edge; stored on the ghost so a phone login binds it. Never the number. */
   phoneHash: Buffer | null;
-  /** One of the group's ghosts they said was them, from the members list. */
+  /** One of the group's ghosts they said was them, picked from the suggestions under the name (3.17, frames 4 and 5). It joins only with the number it joined with before. */
   memberClaimId: string | null;
 };
+
+/** Wrong numbers one picked name takes in an hour before the check refuses to answer (3.17: the check confirms or denies a number, so tries are counted). */
+export const NUMBER_TRIES_PER_HOUR = 5;
+/** How many letters someone types before any name is suggested (3.17, frame 4): nobody's name is shown to someone who hasn't started typing their own. */
+export const SUGGEST_AFTER = 2;
+export const SUGGEST_AT_MOST = 3;
+
+/**
+ * A picked name joins only with the number it joined with before (3.17, frame 5). A different number, or none,
+ * is the field error; too many wrong ones for one name in an hour and the check stops answering, so a name
+ * cannot be taken by trying numbers. Nothing about any number is kept: one row per wrong try, by the name.
+ */
+async function checkPickedNumber(claimId: string, phoneHash: Buffer | null): Promise<void> {
+  const [claim] = await db.select({ phoneHash: schema.participantClaims.phoneHash, displayName: schema.participantClaims.displayName }).from(schema.participantClaims).where(eq(schema.participantClaims.id, claimId)).limit(1);
+  if (!claim) throw new MarketError("That name isn't here any more. Type your own.", "not_found");
+  const first = claim.displayName.trim().split(/\s+/)[0] ?? claim.displayName;
+  const since = new Date(Date.now() - 3_600_000);
+  const [tries] = await db.select({ n: count() }).from(schema.claimNumberAttempts).where(and(eq(schema.claimNumberAttempts.claimId, claimId), gt(schema.claimNumberAttempts.createdAt, since)));
+  if ((tries?.n ?? 0) >= NUMBER_TRIES_PER_HOUR) throw new MarketError(`Too many tries for ${first}. Give it an hour, or type your own name.`, "slow_down");
+  if (!claim.phoneHash || !phoneHash || !claim.phoneHash.equals(phoneHash)) {
+    await db.insert(schema.claimNumberAttempts).values({ claimId });
+    throw new MarketError(`That isn't the number ${first} joined with. If you're not ${first}, type your own name.`, "wrong_number");
+  }
+}
 
 async function isUnclaimedMember(groupId: string, claimId: string): Promise<boolean> {
   const [row] = await db
@@ -45,7 +69,11 @@ async function claimFor(d: { id: string; groupId: string; creatorId: string }, w
   if (inMarket) return { claimId: inMarket.id, viaToken: true };
   for (const c of held) if (await isUnclaimedMember(d.groupId, c.id)) return { claimId: c.id, viaToken: true };
   if (held[0]) return { claimId: held[0].id, viaToken: true };
-  if (who.memberClaimId && (await isUnclaimedMember(d.groupId, who.memberClaimId))) return { claimId: who.memberClaimId, viaToken: false };
+  if (who.memberClaimId) {
+    if (!(await isUnclaimedMember(d.groupId, who.memberClaimId))) throw new MarketError("That name isn't here any more. Type your own.", "not_found");
+    await checkPickedNumber(who.memberClaimId, who.phoneHash);
+    return { claimId: who.memberClaimId, viaToken: false };
+  }
   const name = who.name.trim().slice(0, 40);
   if (!name) throw new MarketError("Say what your friends call you.", "bad_input");
   if (who.phoneHash) {
@@ -75,6 +103,8 @@ export async function enterAsGhost(input: { dareId: string; who: GhostWho; token
   const existing = await positionsOf(d.id);
   const { claimId, viaToken } = await claimFor(d, input.who, input.tokens, existing);
   const mine = existing.find((p) => p.claimId === claimId) ?? null;
+  // Final once made on a blind market (3.22, 3.31), for a ghost as for anyone. An entry the asker removed may come in again.
+  if (mine && d.revealMode === "blind" && (mine.stake !== input.stake || mine.value !== input.value)) throw new MarketError("Yours is final on this one.", "wrong_state");
   if (!mine) {
     if (d.pace === "argument" && existing.length >= 2) throw new MarketError("This one's between the two of them. You can watch how it comes out.", "wrong_state");
     if (existing.length >= MAX_POSITIONS) throw new MarketError(`This one is full at ${MAX_POSITIONS}.`, "wrong_state");
@@ -133,15 +163,23 @@ export async function ghostPositionFor(dareId: string, tokens: string[]): Promis
   return null;
 }
 
-/** The group's unclaimed ghosts, for "is one of these you?" on the way in. Names only. */
-export async function ghostMembersOf(groupId: string): Promise<Array<{ claimId: string; displayName: string }>> {
-  return (
-    await db
-      .select({ claimId: schema.participantClaims.id, displayName: schema.participantClaims.displayName })
-      .from(schema.groupMembers)
-      .innerJoin(schema.participantClaims, eq(schema.participantClaims.id, schema.groupMembers.claimId))
-      .where(and(eq(schema.groupMembers.groupId, groupId), isNull(schema.groupMembers.leftAt), isNull(schema.participantClaims.claimedBy), isNull(schema.participantClaims.mergedInto)))
-  ).map((r) => ({ claimId: r.claimId, displayName: r.displayName }));
+/**
+ * "Is one of these you?" (3.17, frame 4): names for the letters typed so far, at most three, and only people without
+ * an account who joined this group's markets from a link with a number, since a picked name joins only with its
+ * number (frame 5) and a name that joined without one could never be proved. Nothing before `SUGGEST_AFTER` letters.
+ */
+export async function suggestGhostNames(groupId: string, typed: string): Promise<Array<{ claimId: string; displayName: string }>> {
+  const prefix = typed.trim();
+  if (prefix.length < SUGGEST_AFTER) return [];
+  const pattern = `${prefix.replace(/[%_\\]/g, (c) => `\\${c}`)}%`;
+  const rows = await db
+    .selectDistinct({ claimId: schema.participantClaims.id, displayName: schema.participantClaims.displayName })
+    .from(schema.participantClaims)
+    .innerJoin(schema.darePositions, eq(schema.darePositions.claimId, schema.participantClaims.id))
+    .innerJoin(schema.dares, eq(schema.dares.id, schema.darePositions.dareId))
+    .where(and(eq(schema.dares.groupId, groupId), isNotNull(schema.participantClaims.phoneHash), isNull(schema.participantClaims.claimedBy), isNull(schema.participantClaims.mergedInto), isNull(schema.darePositions.dismissedAt), ilike(schema.participantClaims.displayName, pattern)))
+    .limit(SUGGEST_AT_MOST);
+  return rows.map((r) => ({ claimId: r.claimId, displayName: r.displayName }));
 }
 
 /**

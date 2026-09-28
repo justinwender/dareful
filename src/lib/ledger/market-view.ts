@@ -50,7 +50,10 @@ const percentOf = (p: PositionRow) => Number(p.value) / 100;
 
 export function numbersVisible(d: DareRow, viewerHasPosition: boolean): boolean {
   if (d.lockedAt) return true;
-  return d.revealMode === "open" && viewerHasPosition;
+  // Nothing before you're in, everything after, on every market (3.22, 3.31; the eleventh session). What makes
+  // a blind market blind is that your entry is final once made (`enterMarket`, `enterAsGhost`), not that the
+  // picture waits for the lock: under the reveal at lock one holdout kept everyone else's view closed.
+  return viewerHasPosition;
 }
 
 /**
@@ -92,6 +95,8 @@ export async function marketCards(input: { viewerId: string; groupId?: string; w
   for (const d of dares) {
     const state = stateOf(d);
     if (state === "draft") continue;
+    // A removed market (3.15: the asker's swipe, while they were its one participant) is nobody's story: it leaves Now and every timeline, and only its own screen still opens from the link.
+    if (d.resolvedBy === "removed") continue;
     const ps = positions.filter((p) => p.dareId === d.id).sort((a, b) => a.enteredAt.getTime() - b.enteredAt.getTime());
     if (input.withUserId && !(ps.some((p) => p.userId === input.viewerId) && ps.some((p) => p.userId === input.withUserId))) continue;
     const denomination = denoms.get(d.denomId);

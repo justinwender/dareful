@@ -13,7 +13,7 @@ import { marketById, quorumOf, tally, VOID_OUTCOME, votesOf } from "@/lib/ledger
 import { firstName } from "@/lib/ui/copy";
 import { sendEmail, sendPush } from "./channels";
 import { positionsOf } from "@/lib/ledger/markets";
-import { backstopResultNotice, backstopWarningNotice, closedNotice, deadlineNotice, rulingNotice, joinedNotice, nettedNotice, nudgeNotice, nudgeSeq, nudgeTargets, openedNotice, pushElseEmail, recipientsAfterVote, resultNotice, voteRequest, type BackstopHow, type Notice, type WarningFlavour } from "./messages";
+import { backstopResultNotice, backstopWarningNotice, closedNotice, deadlineNotice, rulingNotice, joinedNotice, nettedNotice, openedNotice, windowSeq, pushElseEmail, recipientsAfterVote, resultNotice, voteRequest, type BackstopHow, type Notice, type WarningFlavour } from "./messages";
 
 /** Claims the (person, market, kind, count) slot; false if it was already told. This is what makes a retry silent. */
 export async function claimNotice(userId: string, dareId: string, kind: "vote_request" | "result" | "opened" | "joined" | "nudge" | "deadline" | "ruling" | "backstop_warning" | "backstop_result", seq: number, causedBy: string): Promise<string | null> {
@@ -27,9 +27,9 @@ export async function claimObligationNotice(userId: string, obligationId: string
   return row?.id ?? null;
 }
 
-/** A netting is about two people and no one row: once per pair per six-hour window, the nudge's window. */
+/** A netting is about two people and no one row: once per pair per six-hour window. */
 export async function claimPairNotice(userId: string, causedBy: string, now: Date): Promise<string | null> {
-  const [row] = await db.insert(schema.notificationLog).values({ userId, kind: "netted", seq: nudgeSeq(now), causedBy }).onConflictDoNothing().returning({ id: schema.notificationLog.id });
+  const [row] = await db.insert(schema.notificationLog).values({ userId, kind: "netted", seq: windowSeq(now), causedBy }).onConflictDoNothing().returning({ id: schema.notificationLog.id });
   return row?.id ?? null;
 }
 
@@ -137,38 +137,6 @@ export async function notifyJoined(dareId: string, joinerId: string): Promise<vo
   } catch (err) {
     console.error("notifying that someone joined failed", { dareId, err });
   }
-}
-
-export type NudgeResult = { waitingOn: number; told: number; reached: number };
-
-/**
- * "We're waiting on you", from one person who is in to whoever is not. It is a person acting, so it is allowed
- * where a timer would not be (Principle 1); and because a person can tap twice, each recipient hears about each
- * question at most once per six hours, whoever is asking. `reached` is how many a channel actually took, so the
- * screen can say so honestly and offer the person's own composer for the rest.
- */
-export async function sendNudge(dareId: string, nudgerId: string, now: Date): Promise<NudgeResult> {
-  const d = await marketById(dareId);
-  if (!d || !d.creatorSignature || d.resolvedAt) return { waitingOn: 0, told: 0, reached: 0 };
-  const stage = d.lockedAt ? ("vote" as const) : ("enter" as const);
-  const [positions, votes, members] = await Promise.all([positionsOf(dareId), votesOf(dareId), accountHolders(d.groupId)]);
-  const quorumWallets = stage === "vote" ? await quorumOf(d).catch(() => []) : [];
-  const quorumIds = quorumWallets.length ? (await db.select({ id: schema.users.id }).from(schema.users).where(inArray(sql`lower(${schema.users.governanceWallet})`, quorumWallets.map((w) => w.toLowerCase())))).map((u) => u.id) : [];
-  const targets = nudgeTargets({ stage, nudgerId, nudgerIsIn: positions.some((p) => p.userId === nudgerId), memberIds: members, enteredIds: positions.map((p) => p.userId).filter((x): x is string => x !== null), quorumIds, votedIds: votes.map((v) => v.userId) });
-  const nudgerName = await nameOf(nudgerId);
-  let told = 0;
-  let reached = 0;
-  await Promise.all(
-    targets.map(async (userId) => {
-      const id = await claimNotice(userId, dareId, "nudge", nudgeSeq(now), nudgerId);
-      if (!id) return;
-      told += 1;
-      await deliver(userId, id, nudgeNotice({ nudgerName, title: d.title, stage, marketId: d.id, appUrl: APP_URL() }));
-      const [row] = await db.select({ channels: schema.notificationLog.channels }).from(schema.notificationLog).where(eq(schema.notificationLog.id, id)).limit(1);
-      if ((row?.channels.length ?? 0) > 0) reached += 1;
-    }),
-  );
-  return { waitingOn: targets.length, told, reached };
 }
 
 /** The scheduler's one notice: the asker hears that the time they set has come. Caused by their own act of setting it. */

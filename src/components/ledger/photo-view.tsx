@@ -96,7 +96,7 @@ export function PhotoView({ items, index = 0, onClose }: { items: AlbumItem[]; i
   }
 
   return (
-    <div role="dialog" aria-modal="true" aria-label={alt} data-photo-view={id} className="fixed inset-x-0 top-0 bottom-[var(--viewport-gap)] z-40 flex flex-col bg-ground pt-[env(safe-area-inset-top)]">
+    <div role="dialog" aria-modal="true" aria-label={alt} data-photo-view={id} className="fixed inset-0 z-40 flex flex-col bg-ground pt-[env(safe-area-inset-top)]">
       <div className="flex h-14 shrink-0 items-center justify-end px-2">
         <button type="button" aria-label="Close" onClick={onClose} className="inline-flex h-12 w-12 items-center justify-center rounded-pill text-ink">
           <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">

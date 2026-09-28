@@ -29,7 +29,7 @@ export default async function WhatsOnPage() {
   const row = (g: (typeof on.days)[number]["games"][number]) => rowData(g.game, clock.zone, g.asked, g.yours[0] ? { label: g.yours[0].label, groupId: g.yours[0].groupId } : null);
   const nothing = on.days.length === 0;
   return (
-    <Screen>
+    <Screen root>
       <h1 className="pt-5 text-label text-ink-3">What’s on</h1>
       <div className="flex flex-col gap-7 py-4">
         {on.feed.failing ? <FeedFailed lastOk={on.feed.lastOkAt ? clockOf(on.feed.lastOkAt, clock.zone) : null} nothingSaved={nothing} /> : null}

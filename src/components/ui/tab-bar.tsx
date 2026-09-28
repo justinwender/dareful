@@ -42,8 +42,8 @@ export function TabBar({ active, live, start }: { active: RootPath; live: boolea
       {/* Room under the content for the bar, and for the Start button floating 16px above it. */}
       <div aria-hidden="true" style={{ height: `calc(${TAB_BAR_HEIGHT + (start ? 88 : 16)}px + env(safe-area-inset-bottom))` }} />
       {start ? <StartButton /> : null}
-      {/* Pinned at the screen's real bottom edge: `--viewport-gap` is zero everywhere but the installed app on an iOS that lays the page out short (globals.css). */}
-      <nav aria-label="Main" className="fixed inset-x-0 bottom-[var(--viewport-gap)] z-30 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)]">
+      {/* At the viewport's bottom edge. The installed app on iOS lays a page that fits the screen out short of it and pins this above the real edge, so every root is at least tall enough to scroll (`Screen root`, docs/decisions.md 2026-09-27, "The band, properly this time"). */}
+      <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)]">
         <div className="mx-auto grid w-full max-w-[430px] grid-cols-4" style={{ height: TAB_BAR_HEIGHT }}>
           {TABS.map((t) => {
             const on = t.href === active;
@@ -68,7 +68,7 @@ export function TabBar({ active, live, start }: { active: RootPath; live: boolea
 
 export function StartButton() {
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-[var(--viewport-gap)] z-30 mx-auto w-full max-w-[430px]">
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-[430px]">
       <Link
         prefetch={false}
         href="/m/new"

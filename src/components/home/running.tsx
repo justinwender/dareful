@@ -3,6 +3,7 @@ import { MarkRefStamp } from "@/components/ledger/mark-stamp";
 import { StateMark } from "@/components/ledger/state-mark";
 import { TeamPair } from "@/components/ledger/team-stamp";
 import { LinkPending } from "@/components/ui/link-pending";
+import { CallOff } from "./call-off";
 import { ON_WAY, type RunningRow } from "@/lib/ledger/home";
 import { hueFor } from "@/lib/ui/hue";
 
@@ -18,8 +19,9 @@ export function Running({ rows, viewerId }: { rows: RunningRow[]; viewerId: stri
     <section className="flex flex-col gap-[10px]">
       <h2 className="text-label text-ink-2">Running</h2>
       <div className="overflow-hidden rounded-card border border-line bg-surface">
-        {rows.map((r, i) => (
-          <Link prefetch={false} key={r.id} href={r.game ? r.game.href : `/m/${r.id}`} data-game-running={r.game ? "" : undefined} className={`relative grid items-center gap-3 px-4 py-[14px] ${r.mark || r.game ? "grid-cols-[40px_minmax(0,1fr)]" : "grid-cols-[minmax(0,1fr)]"} ${i > 0 ? "border-t border-line" : ""}`}>
+        {rows.map((r, i) => {
+          const row = (
+          <Link prefetch={false} href={r.game ? r.game.href : `/m/${r.id}`} data-game-running={r.game ? "" : undefined} className={`relative grid items-center gap-3 px-4 py-[14px] ${r.mark || r.game ? "grid-cols-[40px_minmax(0,1fr)]" : "grid-cols-[minmax(0,1fr)]"} ${i > 0 ? "border-t border-line" : ""}`}>
             <LinkPending />
             {r.game ? <TeamPair away={r.game.away} home={r.game.home} size={28} overlap /> : <MarkRefStamp mark={r.mark} size={40} ink={r.ink} />}
             <span className="flex min-w-0 flex-col gap-1">
@@ -32,7 +34,16 @@ export function Running({ rows, viewerId }: { rows: RunningRow[]; viewerId: stri
               </span>
             </span>
           </Link>
-        ))}
+          );
+          // A market you asked that nobody else is in answers a left swipe with Remove (3.15); every other row stays put.
+          return r.removable ? (
+            <CallOff key={r.id} kind="remove" dareId={r.id}>
+              {row}
+            </CallOff>
+          ) : (
+            <div key={r.id}>{row}</div>
+          );
+        })}
       </div>
     </section>
   );

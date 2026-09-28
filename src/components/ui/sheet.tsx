@@ -36,7 +36,7 @@ export function Sheet({ open, onClose, labelledBy, children, closeLabel, tall = 
 
   if (!open) return null;
   return (
-    <div className="fixed inset-x-0 top-0 bottom-[var(--viewport-gap)] z-50 flex flex-col justify-end">
+    <div className="fixed inset-0 z-50 flex flex-col justify-end">
       <button type="button" aria-label="Never mind" tabIndex={-1} onClick={onClose} className="absolute inset-0 touch-none bg-[var(--scrim)]" />
       <div
         ref={panel}

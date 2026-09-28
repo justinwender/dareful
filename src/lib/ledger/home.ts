@@ -16,6 +16,7 @@ import { membersOfGroups, peopleForUser, setLabel } from "./groups";
 import { marketCards, type MarketCardData } from "./market-view";
 import { pendingForDebtor, type ProposalRow } from "./proposals";
 import { againRowsFor, onWayFor } from "./again";
+import { archivedFor } from "./now-swipes";
 import { gamesOfMarkets } from "@/lib/sports";
 import { scoreLine } from "@/lib/sports/results";
 import type { TeamFace } from "@/lib/ui/team";
@@ -98,7 +99,7 @@ export function needFromMarket(m: Pick<MarketCardData, "dare" | "state" | "peopl
 export type PersonRow = { user: Person; token: { ownerId: string; denomination: DenominationRow; quantity: bigint } | null };
 
 /** A question in flight this person has already acted on: where it stands, and no action (docs/design.md 4.7). A game with more than one is one row, its href the game page. */
-export type RunningRow = { id: string; title: string; mark: MarkRef | null; ink: InkName; state: "in" | "locked" | "voting"; caption: string; game?: { away: TeamFace; home: TeamFace; href: string } | null; /** This person's last tap on it (the lock, the vote that decided it) is still going through (3.15, 5.2): the on-its-way mark stands in for the state mark. */ onWay?: true };
+export type RunningRow = { id: string; title: string; mark: MarkRef | null; ink: InkName; state: "in" | "locked" | "voting"; caption: string; game?: { away: TeamFace; home: TeamFace; href: string } | null; /** A market this person asked that nobody else is in: the row answers a left swipe with Remove (3.15). */ removable?: true; /** This person's last tap on it (the lock, the vote that decided it) is still going through (3.15, 5.2): the on-its-way mark stands in for the state mark. */ onWay?: true };
 
 export type HomeData = {
   needs: NeedRow[];
@@ -219,7 +220,7 @@ async function questionsFor(me: { id: string }, opts: { now: Date; closes: (at: 
     const n = needFromMarket(m, me.id, voted.has(m.dare.id), opts.now, opts.closes);
     if (n) needs.push({ ...n, groupId: m.dare.groupId } as NeedRow);
     else if (m.state === "open" || m.state === "locked") {
-      running.push({ id: m.dare.id, title: m.dare.title, mark: markRefOf(m.dare), ink: m.ink, state: m.state === "locked" ? (m.votesCast > 0 ? "voting" : "locked") : "in", caption: runningCaption(m, opts.closes) });
+      running.push({ id: m.dare.id, title: m.dare.title, mark: markRefOf(m.dare), ink: m.ink, state: m.state === "locked" ? (m.votesCast > 0 ? "voting" : "locked") : "in", caption: runningCaption(m, opts.closes), ...(m.state === "open" && m.dare.creatorId === me.id && m.people.length === 1 && m.viewerIn ? { removable: true as const } : {}) });
       runningGroup.set(m.dare.id, m.dare.groupId);
     } else over.push(m);
   }
@@ -301,7 +302,9 @@ export async function nowFor(me: { id: string; displayName: string }, opts: { no
   const happened: HomeData["happened"] = [...gamesOver];
   // What this person just did that is still going through (5.2): the yep, the settlement, the cancelling out, marked on its way.
   for (const w of onWay.rows) happened.push({ kind: "onway", at: w.at, href: w.href, subject: w.subject, owner: w.owner });
-  for (const m of over) happened.push({ kind: "market", at: m.at, market: { ...m, groupName: labelOf.get(m.dare.groupId) ?? m.groupName } });
+  // A finished market this person swiped off their Now stays off it (3.15, archive); it is nowhere else changed.
+  const archived = await archivedFor(me.id);
+  for (const m of over) if (!archived.has(m.dare.id)) happened.push({ kind: "market", at: m.at, market: { ...m, groupName: labelOf.get(m.dare.groupId) ?? m.groupName } });
   for (const o of covers) {
     const denomination = denoms.get(o.denomId);
     const from = userById.get(o.fromUser);

@@ -4,11 +4,11 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/ledger/avatar";
 import { Chip } from "@/components/ledger/chip";
-import { ProblemSummary } from "@/components/ledger/problem";
+import { FIELD_PROBLEM_CLASS, Problem, ProblemSummary } from "@/components/ledger/problem";
 import { signingProblem, useSigner } from "@/components/ledger/use-signer";
 import { Button } from "@/components/ui/button";
 import { PinnedSheet } from "@/components/ui/pinned-sheet";
-import { enterAsGhostAction, enterMarketAction, openMarketAction } from "@/lib/actions/markets";
+import { enterAsGhostAction, enterMarketAction, openMarketAction, suggestGhostNamesAction } from "@/lib/actions/markets";
 import { daresTypes } from "@/lib/chain/typed-data";
 import type { Hue } from "@/lib/ui/hue";
 import { OddsHeader, OddsLine } from "./odds-line";
@@ -32,9 +32,7 @@ export type StagePicture =
   /** A number market's axis, from what people entered (3.22). */
   | { kind: "numbers"; axis: NumberLineAxis; caption: string }
   /** A pick-one market's bars (3.31): what is riding on each answer, and the caption only when one stake is more than half. */
-  | { kind: "picks"; bars: PickOneBar[]; entries: number; caption: string | null }
-  /** Blind until lock: who is in, never where. No heights and no group's number, since an aggregate leaks the shape. */
-  | { kind: "blind"; inCount: number; ofCount: number };
+  | { kind: "picks"; bars: PickOneBar[]; entries: number; caption: string | null };
 
 const STAKES_MONEY = [500, 1000, 2000];
 const STAKES_COUNT = [1, 2, 3];
@@ -55,8 +53,6 @@ const ENTERING_MS = 1800;
  * count of answers, or your pick) so the terms behind six answers can be read (3.30). A touch on the bar raises it.
  */
 export type GhostEntry = {
-  /** The group's ghosts, for "is one of these you?"; names only. */
-  members: Array<{ claimId: string; name: string }>;
   /** This browser's ghost on this market, once in. */
   known: { name: string } | null;
 };
@@ -69,9 +65,11 @@ export function MarketStage(props: {
   ghost?: GhostEntry | null;
   unit: StakeUnit;
   state: "draft" | "open" | "locked";
-  me: { name: string; hue: Hue };
+  me: { name: string; hue: Hue; /** Entering without an account: the stone avatar with its dashed ring (3.1). */ ghost?: boolean };
   /** This person's position: a percent on a yes-or-no question, the whole number (as text) on a number question, the answer's index on a pick-one question. */
-  mine: { percent: number; number?: string; pick?: number; stake: string; stakeWords: string; /** A position bound to this account from a ghost's entry and never signed (PLANNING.md section 4, "One phone"): confirming it is entering. */ unsigned?: boolean } | null;
+  mine: { percent: number; number?: string; pick?: number; stake: string; stakeWords: string; /** A position bound to this account from a ghost's entry and never signed (PLANNING.md section 4, "One phone"): confirming it is entering. */ unsigned?: boolean; /** On a blind market an entry is final once made (3.22, 3.31): no Change, and the caption says so. */ final?: boolean } | null;
+  /** A blind market (3.31): one line above the primary says what is about to happen before anyone commits. */
+  blind?: boolean;
   picture: StagePicture | null;
   mark: string | null;
   /** A number question: what the number counts, and on a signed margin its shift and the two sides. Absent on a yes-or-no question. */
@@ -104,6 +102,25 @@ export function MarketStage(props: {
   const [ghostName, setGhostName] = useState("");
   const [ghostPhone, setGhostPhone] = useState("");
   const [ghostMember, setGhostMember] = useState<string | null>(null);
+  /** "Is one of these you?" (3.17, frame 4): names for the letters typed so far, at most three, and nothing before the first letters. */
+  const [suggestions, setSuggestions] = useState<Array<{ claimId: string; name: string }>>([]);
+  /** The picked name's number check, at its field (3.17, frame 5; 5.1). */
+  const [phoneProblem, setPhoneProblem] = useState<string | null>(null);
+  const suggesting = ghost !== null && !ghost.known && !ghostMember && ghostName.trim().length >= 2;
+  useEffect(() => {
+    if (!suggesting) return;
+    let alive = true;
+    const t = setTimeout(() => {
+      suggestGhostNamesAction(dareId, ghostName.trim())
+        .then((r) => alive && setSuggestions(r))
+        .catch(() => alive && setSuggestions([]));
+    }, 200);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [dareId, suggesting, ghostName]);
+  const shownSuggestions = suggesting ? suggestions : [];
   const pickOne = props.pickOne ?? null;
   const teams = props.teams ?? null;
   const shift = numberUnit?.margin ? BigInt(numberUnit.margin.shift) : null;
@@ -199,12 +216,15 @@ export function MarketStage(props: {
     const signedValue = pickOne ? BigInt(pick ?? 0) : numberUnit ? (number ?? 0n) : BigInt(valueBps);
     const position = pickOne ? { stake: stakeUnits, answer: Number(signedValue) } : numberUnit ? { stake: stakeUnits, number: signedValue.toString() } : { stake: stakeUnits, valueBps };
     if (ghost) {
-      // No signature: who they are goes in with the number, and the browser keeps a token for the ghost (3.17).
-      if (!ghost.known && !ghostMember && !ghostName.trim()) return setProblem("Say what your friends call you.");
+      // No signature: who they are goes in, with a number if they give one, and the browser keeps a token for the ghost (3.17). A picked name needs the number it joined with.
+      setPhoneProblem(null);
+      if (!ghost.known && !ghostName.trim()) return setProblem("Say what your friends call you.");
+      if (!ghost.known && ghostMember && !ghostPhone.trim()) return setPhoneProblem("A picked name needs the number it joined with.");
       setStep("sending");
       const r = await enterAsGhostAction(dareId, position, { name: ghost.known ? "" : ghostName.trim(), ...(!ghost.known && ghostPhone.trim() ? { phone: ghostPhone.trim() } : {}), ...(!ghost.known && ghostMember ? { memberClaimId: ghostMember } : {}) });
       if ("error" in r) {
-        setProblem(`Your number didn’t send. ${r.error}`);
+        if (r.at === "phone") setPhoneProblem(r.error);
+        else setProblem(`Your number didn’t send. ${r.error}`);
         setStep("idle");
         return;
       }
@@ -299,7 +319,6 @@ export function MarketStage(props: {
   const weights = picture?.kind === "weights" ? picture : null;
   const numbers = picture?.kind === "numbers" ? picture : null;
   const picks = picture?.kind === "picks" ? picture : null;
-  const blind = picture?.kind === "blind" ? picture : null;
   // A pick-one question's bars before the server's copy arrives: this person's stake on their pick alone.
   const ownBars: PickOneBar[] = (pickOne?.answers ?? []).map((a) => ({ stake: shown?.pick !== undefined && a.index === shown.pick ? shown.stake : "0", noStake: 0 }));
   const ownAxis = numberUnit && shown?.number !== undefined && !numbers ? numberAxis([{ id: "me", stake: BigInt(shown.stake), value: BigInt(shown.number) }], numberUnit) : null;
@@ -318,7 +337,7 @@ export function MarketStage(props: {
         aria-label="Where the stake sits"
       >
         <div className="flex items-center gap-3">
-          <Avatar name={me.name} hue={me.hue} size={36} />
+          <Avatar name={me.name} hue={me.hue} size={36} ghost={me.ghost} />
           <div className="flex min-w-0 flex-1 flex-col">
             <p className="text-body-strong text-ink">
               {entryLine(shown)}
@@ -328,13 +347,15 @@ export function MarketStage(props: {
                 shown.stakeWords,
                 state === "locked"
                   ? props.lockedLine
-                  : `yours to change ${props.changeUntil}`,
+                  : mine?.final
+                    ? "final"
+                    : `yours to change ${props.changeUntil}`,
               ]
                 .filter(Boolean)
                 .join(" · ")}
             </p>
           </div>
-          {state !== "locked" && !changing ? (
+          {state !== "locked" && !changing && !mine?.final ? (
             <Button
               variant="tertiary"
               onClick={() => {
@@ -356,25 +377,12 @@ export function MarketStage(props: {
             entries={picks ? picks.entries : 1}
             me={shown.pick !== undefined ? { name: me.name, hue: me.hue, stake: shown.stake, pick: shown.pick } : null}
             livePick={changing ? pick : null}
-            blind={blind ? { inCount: blind.inCount, ofCount: blind.ofCount } : null}
             heading={state === "locked" ? "Where everyone landed" : "Where the stake sits"}
             caption={picks ? picks.caption : null}
             rise={justIn !== null && mine === null}
           />
         ) : numberUnit ? (
-          blind ? (
-            // A blind number market draws no axis before the reveal (3.22): the ends alone would say what range everyone else picked.
-            <div className="flex flex-col gap-3">
-              <span className="self-center inline-flex h-7 items-center gap-1.5 rounded-pill border border-line-strong bg-ground px-3 text-caption text-ink-2">
-                <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="5" y="11" width="14" height="9" rx="2" />
-                  <path d="M8 11V8a4 4 0 0 1 8 0v3" />
-                </svg>
-                Numbers show when everyone’s in
-              </span>
-              <p className="text-caption text-ink-3">{blind.inCount} of {blind.ofCount} in.</p>
-            </div>
-          ) : numbers || ownAxis ? (
+          numbers || ownAxis ? (
             <NumberLine
               axis={numbers ? numbers.axis : serialiseAxis(ownAxis as NonNullable<typeof ownAxis>)}
               me={shown.number !== undefined ? { name: me.name, hue: me.hue, value: shown.number, stake: shown.stake } : null}
@@ -394,9 +402,6 @@ export function MarketStage(props: {
           }}
           liveValue={changing ? value : null}
           group={weights?.group ?? null}
-          blind={
-            blind ? { inCount: blind.inCount, ofCount: blind.ofCount } : null
-          }
           heading={
             state === "locked"
               ? "Where everyone landed"
@@ -422,6 +427,16 @@ export function MarketStage(props: {
   const foot = (
         <>
           <ProblemSummary messages={[problem]} />
+          {props.blind && !changing ? (
+            // A blind market (3.31): what is about to happen, said once before anyone commits, after the 16px lock glyph.
+            <p className="flex items-center gap-2 text-body-sm text-ink" data-blind-line="">
+              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+                <rect x="5" y="11" width="14" height="9" rx="2" />
+                <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+              </svg>
+              <span>You see everyone’s once you’re in. Yours is final then.</span>
+            </p>
+          ) : null}
           {props.consent ? (
             // The consent every entry gives (3.35, 4.9): one line in ink after the 16px ticket glyph, directly above the button that gives it.
             <p className="flex items-center gap-2 text-body-sm text-ink" data-consent-line="">
@@ -486,7 +501,9 @@ export function MarketStage(props: {
                       ? "Type your number"
                       : "Slide to pick your odds"
                 : ghost && !ghost.known
-                  ? `Join${pickOne || teams ? ":" : " at"} ${pickWords(pick)}`
+                  ? ghostName.trim()
+                    ? `Join as ${ghostName.trim().split(/\s+/)[0]}`
+                    : `Join${pickOne || teams ? ":" : " at"} ${pickWords(pick)}`
                   : state === "draft"
                     ? `Looks right. I’m in${pickOne || teams ? ":" : " at"} ${pickWords(pick)}`
                     : `I’m in${pickOne || teams ? ":" : " at"} ${pickWords(pick)}`}
@@ -636,15 +653,39 @@ export function MarketStage(props: {
             />
           ) : null}
           {ghost && !ghost.known ? (
-            // Who this is, without an account (3.17): a name, and a number so the entry is theirs when they sign in with it. No code is sent.
+            // Who this is, without an account (3.17): a name, and a number if they give one, so the entry is theirs when they sign in with it. A picked name joins only with its number.
             <div className="flex flex-col gap-3" data-ghost-fields="">
-              {ghost.members.length > 0 ? (
-                <div className="flex flex-col gap-2">
+              <label className="flex flex-col gap-1">
+                <span className="text-label text-ink-3">Your name</span>
+                <span className="relative">
+                  <input
+                    value={ghostName}
+                    onChange={(e) => {
+                      setGhostName(e.target.value);
+                      setGhostMember(null);
+                      setPhoneProblem(null);
+                    }}
+                    autoComplete="given-name"
+                    maxLength={40}
+                    aria-label="Your name"
+                    className="h-12 w-full rounded-button border border-line bg-ground px-4 text-body text-ink"
+                  />
+                  {ghostMember ? (
+                    // Picked from the names (3.17, frame 4): the check says so.
+                    <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="pointer-events-none absolute top-1/2 right-4 -translate-y-1/2 text-ink" data-picked-name="">
+                      <path d="M5 12.5l4.5 4.5L19 7.5" />
+                    </svg>
+                  ) : null}
+                </span>
+              </label>
+              {shownSuggestions.length > 0 ? (
+                <div className="flex flex-col gap-2" data-name-suggestions="">
                   <p className="text-label text-ink-3">Is one of these you?</p>
                   <div className="flex flex-wrap gap-2">
-                    {ghost.members.map((m) => (
-                      <button key={m.claimId} type="button" onClick={() => (setGhostMember(ghostMember === m.claimId ? null : m.claimId), setGhostName(""))} className="rounded-pill">
-                        <Chip size={36} selected={ghostMember === m.claimId}>
+                    {shownSuggestions.map((m) => (
+                      <button key={m.claimId} type="button" onClick={() => (setGhostMember(m.claimId), setGhostName(m.name), setSuggestions([]))} className="rounded-pill">
+                        <Chip size={36} selected={false}>
+                          <Avatar name={m.name} hue="stone" size={24} ghost />
                           {m.name}
                         </Chip>
                       </button>
@@ -652,16 +693,11 @@ export function MarketStage(props: {
                   </div>
                 </div>
               ) : null}
-              {ghostMember ? null : (
-                <label className="flex flex-col gap-1">
-                  <span className="text-label text-ink-3">Your name</span>
-                  <input value={ghostName} onChange={(e) => setGhostName(e.target.value)} autoComplete="given-name" maxLength={40} aria-label="Your name" className="h-12 w-full rounded-button border border-line bg-ground px-4 text-body text-ink" />
-                </label>
-              )}
               <label className="flex flex-col gap-1">
                 <span className="text-label text-ink-3">Your phone number</span>
-                <input value={ghostPhone} onChange={(e) => setGhostPhone(e.target.value)} type="tel" inputMode="tel" autoComplete="tel" maxLength={40} aria-label="Your phone number" className="h-12 w-full rounded-button border border-line bg-ground px-4 text-body text-ink" />
+                <input value={ghostPhone} onChange={(e) => (setGhostPhone(e.target.value), setPhoneProblem(null))} type="tel" inputMode="tel" autoComplete="tel" maxLength={40} aria-label="Your phone number" aria-invalid={phoneProblem ? true : undefined} aria-describedby={phoneProblem ? "ghost-phone-problem" : undefined} className={`h-12 w-full rounded-button border border-line bg-ground px-4 text-body text-ink${phoneProblem ? ` ${FIELD_PROBLEM_CLASS}` : ""}`} />
               </label>
+              <Problem id="ghost-phone-problem" message={phoneProblem} />
               <p className="text-caption text-ink-3">Nothing gets sent to it. Sign in with this number later and your entries are waiting.</p>
             </div>
           ) : null}

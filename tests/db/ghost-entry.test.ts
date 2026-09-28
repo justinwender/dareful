@@ -11,9 +11,9 @@ import { after, before, test } from "node:test";
 import { and, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { hashPhone } from "@/lib/auth/phone";
-import { bindClaimToUser } from "@/lib/ledger/claims";
+import { bindClaimToUser, leaveEntry, linkEntriesFor } from "@/lib/ledger/claims";
 import { ensureUsd } from "@/lib/ledger/denominations";
-import { enterAsGhost, ghostPositionFor, MAX_GHOSTS_PER_MARKET, removeGhostEntry } from "@/lib/ledger/ghost-entry";
+import { enterAsGhost, ghostPositionFor, MAX_GHOSTS_PER_MARKET, NUMBER_TRIES_PER_HOUR, removeGhostEntry, SUGGEST_AT_MOST, suggestGhostNames } from "@/lib/ledger/ghost-entry";
 import { createGroup, isMember } from "@/lib/ledger/groups";
 import * as markets from "@/lib/ledger/markets";
 import { isProvisional, thresholdFor } from "@/lib/ledger/provisional";
@@ -26,10 +26,10 @@ before(async () => {
 });
 after(cleanup);
 
-async function question(people: Signer[], over: Partial<markets.DraftInput> = {}) {
-  const g = await createGroup({ name: "ghost check (temporary)", createdBy: ana.user.id });
-  track.group(g.id);
-  if (people.length > 1) await db.insert(schema.groupMembers).values(people.slice(1).map((p) => ({ groupId: g.id, userId: p.user.id })));
+async function question(people: Signer[], over: Partial<markets.DraftInput> = {}, group?: string) {
+  const g = group ? { id: group } : await createGroup({ name: "ghost check (temporary)", createdBy: ana.user.id });
+  if (!group) track.group(g.id);
+  if (!group && people.length > 1) await db.insert(schema.groupMembers).values(people.slice(1).map((p) => ({ groupId: g.id, userId: p.user.id })));
   const usd = await ensureUsd(g.id, ana.user.id);
   const d0 = await markets.draftMarket({ creatorId: ana.user.id, groupId: g.id, denomId: usd.id, title: "Does John fall asleep during the movie?", termsText: "Yes if John is asleep at any point before the credits. No if he makes it.", resolvesBy: new Date(Date.now() + 3_600_000), ...over });
   const d = await markets.openMarket(d0.id, ana.user.id, await ana.ledger.signTypedData(markets.createTypedData(d0)));
@@ -145,4 +145,98 @@ test("the asker removes an entry from someone without an account before the lock
   await enter(ben, 3000n);
   await markets.lockMarket(d.id, ana.user.id);
   assert.equal(await codeOf(() => removeGhostEntry({ dareId: d.id, claimId: gabe.claimId, byUserId: ana.user.id })), "wrong_state", "locked: nobody is removed");
+});
+
+test("a picked name joins only with the number it joined with; a wrong one is refused at the field, and too many wrong ones in an hour stop the check answering", async () => {
+  const { d, g, enter, ghost } = await question([ana]);
+  await enter(ana, 7000n);
+  const phone = hashPhone(fictionalPhone());
+  const dani = await ghost({ name: "Dani", phoneHash: phone }, [], 9000n);
+  const other = hashPhone(fictionalPhone());
+  // A second question in the same set, where someone picks Dani's name (3.17, frames 4 and 5).
+  const q2 = await question([ana], {}, g);
+  await q2.enter(ana, 6000n);
+  const wrong = await q2.ghost({ name: "Dani", phoneHash: other, memberClaimId: dani.claimId }, [], 5000n).catch((e: unknown) => e);
+  assert.ok(wrong instanceof markets.MarketError && wrong.code === "wrong_number" && wrong.message === "That isn't the number Dani joined with. If you're not Dani, type your own name.", "a different number is the field error, in the design's words");
+  const none = await q2.ghost({ name: "Dani", phoneHash: null, memberClaimId: dani.claimId }, [], 5000n).catch((e: unknown) => e);
+  assert.ok(none instanceof markets.MarketError && none.code === "wrong_number", "no number at all is refused the same way");
+  assert.equal((await markets.positionsOf(q2.d.id)).length, 1, "nothing entered");
+  const right = await q2.ghost({ name: "Dani", phoneHash: phone, memberClaimId: dani.claimId }, [], 5000n);
+  assert.equal(right.claimId, dani.claimId, "the right number joins as the same ghost");
+  assert.equal((await markets.positionsOf(q2.d.id)).length, 2);
+  // The check confirms or denies a number, so tries are counted per name: past the limit it stops answering, right number or not.
+  const q3 = await question([ana], {}, g);
+  await q3.enter(ana, 6000n);
+  // Two wrong tries so far (the wrong number and the missing one): the rest up to the limit, then the one at it, then the one past it.
+  for (let i = 3; i < NUMBER_TRIES_PER_HOUR; i += 1) await q3.ghost({ name: "Dani", phoneHash: hashPhone(fictionalPhone()), memberClaimId: dani.claimId }, [], 5000n).catch(() => null);
+  const limited = await q3.ghost({ name: "Dani", phoneHash: hashPhone(fictionalPhone()), memberClaimId: dani.claimId }, [], 5000n).catch((e: unknown) => e);
+  assert.ok(limited instanceof markets.MarketError && limited.code === "wrong_number", `the ${NUMBER_TRIES_PER_HOUR}th wrong number is still a wrong number`);
+  const stopped = await q3.ghost({ name: "Dani", phoneHash: phone, memberClaimId: dani.claimId }, [], 5000n).catch((e: unknown) => e);
+  assert.ok(stopped instanceof markets.MarketError && stopped.code === "slow_down" && /Give it an hour/.test(stopped.message), "past the limit the check stops answering, even to the right number");
+  assert.equal(await codeOf(() => q3.ghost({ name: "Dani", phoneHash: other, memberClaimId: dani.claimId }, [], 5000n)), "slow_down");
+  const [tries] = await db.select().from(schema.claimNumberAttempts).where(eq(schema.claimNumberAttempts.claimId, dani.claimId)).limit(1);
+  assert.ok(tries && Object.keys(tries).every((k) => ["id", "claimId", "createdAt"].includes(k)), "a try keeps nothing of the number");
+  assert.equal(await isMember(g, dani.claimId).catch(() => false), false, "a claim is not a user member");
+  assert.equal(await codeOf(() => q3.ghost({ name: "Nobody", phoneHash: phone, memberClaimId: "00000000-0000-4000-8000-000000000000" }, [], 5000n)), "not_found", "a picked name that is not one of the set's ghosts");
+});
+
+test("names are suggested only after two letters, from ghosts with a number who joined this set's questions, three at most; someone who joined without a number is never suggested", async () => {
+  const { d, g, enter, ghost } = await question([ana]);
+  await enter(ana, 7000n);
+  await ghost({ name: "Dani Park", phoneHash: hashPhone(fictionalPhone()) }, [], 9000n);
+  await ghost({ name: "Dan", phoneHash: null }, [], 8000n);
+  await ghost({ name: "Danielle", phoneHash: hashPhone(fictionalPhone()) }, [], 7000n);
+  await ghost({ name: "Dante", phoneHash: hashPhone(fictionalPhone()) }, [], 6000n);
+  await ghost({ name: "Danny", phoneHash: hashPhone(fictionalPhone()) }, [], 5000n);
+  await ghost({ name: "Maya", phoneHash: hashPhone(fictionalPhone()) }, [], 4000n);
+  assert.deepEqual(await suggestGhostNames(g, "D"), [], "nothing before the first letters: nobody's name is shown to someone who hasn't started typing their own (3.17)");
+  assert.deepEqual(await suggestGhostNames(g, ""), []);
+  const d2 = await suggestGhostNames(g, "Da");
+  assert.equal(d2.length, SUGGEST_AT_MOST, "three at most");
+  assert.ok(d2.every((s) => s.displayName.startsWith("Da")) && !d2.some((s) => s.displayName === "Dan"), "only names starting with the letters, and never a name that joined without a number");
+  assert.deepEqual((await suggestGhostNames(g, "dani")).map((s) => s.displayName).sort(), ["Dani Park", "Danielle"], "case does not matter");
+  assert.deepEqual((await suggestGhostNames(g, "May")).map((s) => s.displayName), ["Maya"]);
+  const elsewhere = await question([ben]);
+  await elsewhere.enter(ben, 5000n).catch(() => null);
+  assert.deepEqual(await suggestGhostNames(elsewhere.g, "Da"), [], "another set's ghosts are not suggested here");
+  // A ghost the asker removed is not suggested by that entry.
+  const gone = await question([ana], {}, g);
+  await gone.enter(ana, 6000n);
+  const solo = await gone.ghost({ name: "Zed", phoneHash: hashPhone(fictionalPhone()) }, [], 5000n);
+  assert.deepEqual((await suggestGhostNames(g, "Ze")).map((s) => s.displayName), ["Zed"]);
+  await removeGhostEntry({ dareId: gone.d.id, claimId: solo.claimId, byUserId: ana.user.id });
+  assert.deepEqual(await suggestGhostNames(g, "Ze"), []);
+  void d;
+});
+
+test("on a blind question a ghost's entry is final once made, as anyone's is", async () => {
+  const { d, enter, ghost } = await question([ana], { revealMode: "blind" });
+  await enter(ana, 7000n);
+  const gabe = await ghost({ name: "Gabe" }, [], 9000n);
+  assert.equal(await codeOf(() => ghost({ name: "Gabe" }, [gabe.browserToken as string], 4000n)), "wrong_state", "the same browser cannot change it");
+  assert.equal((await markets.positionsOf(d.id)).find((p) => p.claimId === gabe.claimId)?.value, 9000n);
+  assert.equal(await codeOf(() => enter(ana, 6000n)), "wrong_state", "nor can the asker change theirs");
+});
+
+test("at sign-in an entry made from a link is listed by the name it was typed under, and one left out goes back to a fresh ghost in stone that no login binds again", async () => {
+  const { d, g, enter, ghost } = await question([ana]);
+  await enter(ana, 7000n);
+  const phone = hashPhone(fictionalPhone());
+  const dani = await ghost({ name: "Dani", phoneHash: phone }, [], 9000n);
+  const q2 = await question([ana], {}, g);
+  await q2.enter(ana, 6000n);
+  await q2.ghost({ name: "Dani", phoneHash: phone, memberClaimId: dani.claimId }, [], 3000n);
+  await bindClaimToUser(dani.claimId, cy.user.id);
+  const listed = await linkEntriesFor(cy.user.id);
+  assert.deepEqual(listed.map((e) => [e.dare.id, e.name, e.value]).sort(), [[d.id, "Dani", 9000n], [q2.d.id, "Dani", 3000n]].sort(), "both entries, by the typed name, with their numbers");
+  assert.equal(await leaveEntry(q2.d.id, cy.user.id), true);
+  const left = (await markets.positionsOf(q2.d.id)).find((p) => p.userId !== ana.user.id);
+  assert.ok(left && left.userId === null && left.claimId !== null && left.claimId !== dani.claimId, "the entry stands under a fresh ghost");
+  const [fresh] = await db.select().from(schema.participantClaims).where(eq(schema.participantClaims.id, left?.claimId as string));
+  assert.deepEqual([fresh?.displayName, fresh?.phoneHash, fresh?.claimedBy], ["Dani", null, null], "the typed name, no number, nobody's: it never becomes this person's");
+  assert.deepEqual((await linkEntriesFor(cy.user.id)).map((e) => e.dare.id), [d.id], "and it is off the list");
+  assert.equal(await leaveEntry(q2.d.id, cy.user.id), false, "nothing left to leave");
+  assert.equal(await isMember(g, cy.user.id), true);
+  await enter(cy, 9000n);
+  assert.deepEqual(await linkEntriesFor(cy.user.id), [], "keeping the other is the signature, and the list empties");
 });

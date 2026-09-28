@@ -42,13 +42,18 @@ test("in an open market, someone who has not picked sees who is in and nobody's 
   assert.deepEqual((await card(ben, d.id))?.people.map((p) => p.percent), [80, 35]);
 });
 
-test("a blind market hides every number from everyone until it is locked", async () => {
+test("a blind market shows nothing before you're in and everyone's once you are, and an entry on it is final once made", async () => {
   const { d, enter } = await openMarket("blind");
   await enter(ana, 2000n, 8000n);
   await enter(ben, 1000n, 3500n);
-  assert.deepEqual((await card(ben, d.id))?.people.map((p) => p.percent), [null, null]);
+  assert.deepEqual((await card(cy, d.id))?.people.map((p) => p.percent), [null, null], "nothing before you're in, as on any market (3.22)");
+  assert.deepEqual((await card(ben, d.id))?.people.map((p) => p.percent), [80, 35], "once in, everyone's so far (the eleventh session: blind's reveal moves from lock to entry)");
+  assert.equal(await enter(ben, 1000n, 6000n).then(() => "changed", (e: unknown) => (e instanceof markets.MarketError ? e.code : "other")), "wrong_state", "yours is final on a blind market: the server refuses a change once made");
+  assert.deepEqual((await card(ben, d.id))?.people.map((p) => p.percent), [80, 35], "and nothing moved");
+  await enter(ben, 1000n, 3500n);
+  assert.deepEqual((await card(ben, d.id))?.people.map((p) => p.percent), [80, 35], "the same numbers again are not a change: keeping a bound ghost's numbers is the signature");
   await db.update(schema.dares).set({ lockedAt: new Date() }).where(eq(schema.dares.id, d.id));
-  assert.deepEqual((await card(cy, d.id))?.people.map((p) => p.percent), [80, 35]);
+  assert.deepEqual((await card(cy, d.id))?.people.map((p) => p.percent), [80, 35], "after lock everyone in the group");
 });
 
 test("a market says what it needs from the person looking, and nothing once they have done it", async () => {

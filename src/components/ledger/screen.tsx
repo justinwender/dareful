@@ -6,10 +6,14 @@ import { cn } from "@/lib/utils";
 /**
  * One phone layout, 390px reference, 20px gutters, centered on wider viewports (docs/design.md 4.2). The bottom
  * padding grows by `--sheet-room` while a pinned sheet (3.24) is on the screen, so nothing is trapped under it.
+ * A root (`root`: Now, What's on, People, You) is at least one pixel taller than the large viewport, so the
+ * document always scrolls: the installed app on iOS 26 lays a page that fits the screen out short of it and
+ * pins the tab bar above the real edge, and a page that scrolls is laid out right (docs/decisions.md
+ * 2026-09-27, "The band, properly this time"; docs/testing.md item 61).
  */
-export function Screen({ children, className }: { children: ReactNode; className?: string }) {
+export function Screen({ children, className, root = false }: { children: ReactNode; className?: string; root?: boolean }) {
   return (
-    <main className={cn("mx-auto flex w-full max-w-[430px] flex-1 flex-col px-5 pb-[calc(max(2rem,env(safe-area-inset-bottom)+1rem)+var(--sheet-room,0px))]", className)}>
+    <main className={cn("mx-auto flex w-full max-w-[430px] flex-1 flex-col px-5 pb-[calc(max(2rem,env(safe-area-inset-bottom)+1rem)+var(--sheet-room,0px))]", root && "min-h-[calc(100lvh_+_1px)]", className)}>
       {/* The status bar is translucent in the installed app (viewport-fit=cover) and the body's top padding only
           keeps content out from under it at rest: scrolled, the content ran under the clock. This band is the
           ground, with its grain, fixed behind the status bar for exactly the top inset. Inside the screen rather

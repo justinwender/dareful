@@ -69,7 +69,7 @@ function markOf(p: Pick<MarketCardProps, "state" | "viewerIn" | "votesCast">): M
  * minted. The action lives on the market's own screen, never on the card.
  */
 export function MarketCard(p: MarketCardProps) {
-  const pins: Pin[] = p.people.filter((x): x is { id: string; name: string; percent: number } => x.percent !== null).map((x) => ({ id: x.id, name: x.name, percent: x.percent }));
+  const pins: Pin[] = p.people.filter((x): x is { id: string; name: string; ghost: boolean; percent: number } => x.percent !== null).map((x) => ({ id: x.id, name: x.name, percent: x.percent, ghost: x.ghost }));
   const mark = markOf(p);
   // The story is the link; its consequences sit under it, outside the link, because one of them may be a control.
   return (

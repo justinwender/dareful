@@ -130,7 +130,7 @@ export function PinnedSheet({
     <>
       <section
         aria-label={label}
-        className="fixed inset-x-0 bottom-[var(--viewport-gap)] z-30 flex justify-center"
+        className="fixed inset-x-0 bottom-0 z-30 flex justify-center"
       >
         <div
           ref={panel}

@@ -76,42 +76,42 @@ test("a memory goes on a market once it has ended, by someone who was in it, and
   assert.deepEqual(memories.map((m) => [m.id, m.author.displayName]), [[first.id, "Priya Raman"], [second.id, "Dev"]], "oldest first, credited to whoever added it");
 });
 
-test("a photo taken while it is open is its author's alone until it ends: refused to the other participant and the group at the door, in nobody's frame, never read by the model, and in the frame once it ends; only its author can remove it", async () => {
+test("a photo taken while it is open is everyone's the moment it lands: the other participant and the group at the door and in the frame, while it is open and through the vote; never someone who only has the link; never read by the model; only its author can remove it", async () => {
   const taken = await addMarketPhoto({ dareId: windowId, authorId: asker.user.id, bytes: await photo(), viewerZone: null, role: "memory" });
   objects.push(frameKey(taken.id), thumbKey(taken.id));
   assert.equal(taken.role, "memory", "a memory, never evidence: nothing has happened yet that it could prove");
   const row = await mediaById(taken.id);
   assert.ok(row);
   assert.equal(await canSee(row, asker.user.id), true, "the person who took it");
-  assert.equal(await canSee(row, friend.user.id), false, "the other participant, before the end: the door refuses");
-  assert.equal(await canSee(row, member.id), false, "someone in the group, before the end");
-  assert.equal(await canSee(row, outsider.id), false);
-  const before = await mediaOnMarket(windowId, friend.user.id);
-  assert.deepEqual([before.frame, before.memories, before.evidence, before.yours], [[], [], [], []], "in nobody's frame, not evidence, and not in the other participant's own row");
-  assert.deepEqual((await mediaOnMarket(windowId, asker.user.id)).yours.map((m) => m.id), [taken.id], "\"Yours from tonight\" for the person who took it");
-  assert.deepEqual((await frameOnMarkets([windowId])).get(windowId), [], "the timeline's frame agrees");
+  assert.equal(await canSee(row, friend.user.id), true, "the other participant, the moment it lands (3.39, amended 2026-09-27: the album is open the whole time)");
+  assert.equal(await canSee(row, member.id), true, "someone in the group it was asked in");
+  assert.equal(await canSee(row, outsider.id), false, "someone who only has the link is not admitted");
+  const open = await mediaOnMarket(windowId);
+  assert.deepEqual([open.frame.map((m) => m.id), open.memories.map((m) => m.id), open.evidence], [[taken.id], [taken.id], []], "in the frame for everyone admitted, and not evidence");
+  assert.deepEqual((await frameOnMarkets([windowId])).get(windowId)?.map((m) => m.id), [taken.id], "the frame of many agrees");
   assert.deepEqual(await evidenceFor(windowId), [], "the model never reads it");
   assert.equal(await code(async () => removeMarketPhoto({ mediaId: taken.id, byUserId: friend.user.id })), "not_yours", "only whoever added it can remove it");
-  // Locked, with the photo still on it: still the author's alone, and the model still never sees it.
+  // Locked, with the photo on it: still everyone's, through the vote, and the model still never sees it.
   await db.update(schema.dares).set({ lockedAt: new Date() }).where(eq(schema.dares.id, windowId));
-  assert.equal(await canSee(row, friend.user.id), false, "not on the locked or voting screens either");
-  assert.deepEqual((await mediaOnMarket(windowId, friend.user.id)).frame, []);
+  assert.equal(await canSee(row, friend.user.id), true, "through the vote");
+  assert.equal(await canSee(row, member.id), true);
+  assert.equal(await canSee(row, outsider.id), false);
+  assert.deepEqual((await mediaOnMarket(windowId)).frame.map((m) => m.id), [taken.id]);
   // A photo started before lock lands as a memory even if it finishes after (3.39).
   const late = await addMarketPhoto({ dareId: windowId, authorId: asker.user.id, bytes: await photo(), viewerZone: null, role: "memory" });
   objects.push(frameKey(late.id), thumbKey(late.id));
   assert.equal(late.role, "memory");
   assert.deepEqual(await evidenceFor(windowId), [], "still not evidence");
-  // Ended: it joins the frame for the participants and the group, in the order taken.
+  // Ended: the same frame for the participants and the group, in the order taken.
   await db.update(schema.dares).set({ resolvedAt: new Date(), resolvedOutcome: 1n, resolvedBy: "quorum" }).where(eq(schema.dares.id, windowId));
-  assert.equal(await canSee(row, friend.user.id), true, "once it ends, the other participant");
-  assert.equal(await canSee(row, member.id), true, "and the group it was asked in");
+  assert.equal(await canSee(row, friend.user.id), true, "and after");
+  assert.equal(await canSee(row, member.id), true);
   assert.equal(await canSee(row, outsider.id), false);
-  const after = await mediaOnMarket(windowId, asker.user.id);
+  const after = await mediaOnMarket(windowId);
   assert.deepEqual(after.frame.map((m) => m.id), [taken.id, late.id], "in the frame, in the order they were added");
-  assert.deepEqual(after.yours, [], "and the row goes");
   await removeMarketPhoto({ mediaId: late.id, byUserId: asker.user.id });
   assert.equal(await mediaById(late.id), null, "whoever added a memory can remove it, at any time");
-  assert.deepEqual((await mediaOnMarket(windowId, asker.user.id)).frame.map((m) => m.id), [taken.id]);
+  assert.deepEqual((await mediaOnMarket(windowId)).frame.map((m) => m.id), [taken.id]);
 });
 
 test("a screenshot goes with what happened while it is being called, by anyone in the group, three at most, and never into the frame", async () => {

@@ -14,7 +14,7 @@ import { db, schema } from "@/db";
 import { eq } from "drizzle-orm";
 import { readClaimTokens } from "@/lib/auth/claim-cookie";
 import { denominationById } from "@/lib/ledger/denominations";
-import { ghostMembersOf, ghostPositionFor } from "@/lib/ledger/ghost-entry";
+import { ghostPositionFor } from "@/lib/ledger/ghost-entry";
 import { answersOf, marketById, positionsOf, stateOf, unitOf } from "@/lib/ledger/markets";
 import { numbersVisible } from "@/lib/ledger/market-view";
 import { numberAxis, serialiseAxis } from "@/lib/ledger/number-axis";
@@ -64,7 +64,7 @@ export async function GhostMarketPage({ id, clock }: { id: string; clock: Awaite
   const state = stateOf(d);
   const now = new Date(clock.now);
   const ink = inkOf(d);
-  const [positions, group, denomination, tokens, members, fromTemplate] = await Promise.all([positionsOf(d.id), db.select({ name: schema.groups.name }).from(schema.groups).where(eq(schema.groups.id, d.groupId)).limit(1).then((r) => r[0] ?? null), denominationById(d.denomId), readClaimTokens(), ghostMembersOf(d.groupId), templateOfMarket(d)]);
+  const [positions, group, denomination, tokens, fromTemplate] = await Promise.all([positionsOf(d.id), db.select({ name: schema.groups.name }).from(schema.groups).where(eq(schema.groups.id, d.groupId)).limit(1).then((r) => r[0] ?? null), denominationById(d.denomId), readClaimTokens(), templateOfMarket(d)]);
   if (!denomination) return null;
   const ghostMine = await ghostPositionFor(d.id, tokens);
   const answers = answersOf(d);
@@ -100,7 +100,7 @@ export async function GhostMarketPage({ id, clock }: { id: string; clock: Awaite
           : null
         : show
           ? { kind: "weights", buckets: buckets(entries).map((b) => ({ n: b.n, stake: b.stake.toString(), noStake: b.noStake })), group: showsMarker(entries) && number !== null ? { percent: percentOf(number) } : null, caption: weightCaption({ entries, viewerId, nameOf: first, stakeWords }) }
-          : { kind: "blind", inCount: positions.length, ofCount: positions.length };
+          : null;
 
   const bandState: MarketMark = state === "open" ? (mine ? "in" : "open") : state === "locked" ? "locked" : state;
   const bandClock = state === "open" && d.resolvesBy ? `Closes ${closesLabel(d.resolvesBy, now, clock.zone)}` : null;
@@ -115,11 +115,12 @@ export async function GhostMarketPage({ id, clock }: { id: string; clock: Awaite
       <MarketStage
         dareId={d.id}
         signing={null}
-        ghost={{ members: mine ? [] : members.map((m) => ({ claimId: m.claimId, name: m.displayName })), known: ghostMine ? { name: ghostMine.displayName } : null }}
+        ghost={{ known: ghostMine ? { name: ghostMine.displayName } : null }}
         unit={unit}
         state="open"
-        me={{ name: ghostMine?.displayName ?? "You", hue: ghostMine ? hueFor(ghostMine.claimId) : "stone" }}
-        mine={mine ? { percent: numberUnit || pickAnswers ? 0 : Number(mine.value) / 100, ...(numberUnit ? { number: mine.value.toString() } : {}), ...(pickAnswers ? { pick: Number(mine.value) } : {}), stake: mine.stake.toString(), stakeWords: stakeWords(mine.stake) } : null}
+        me={{ name: ghostMine?.displayName ?? "You", hue: "stone", ghost: true }}
+        mine={mine ? { percent: numberUnit || pickAnswers ? 0 : Number(mine.value) / 100, ...(numberUnit ? { number: mine.value.toString() } : {}), ...(pickAnswers ? { pick: Number(mine.value) } : {}), stake: mine.stake.toString(), stakeWords: stakeWords(mine.stake), final: d.revealMode === "blind" } : null}
+        blind={d.revealMode === "blind"}
         picture={picture}
         numberUnit={numberUnit}
         teams={teams}

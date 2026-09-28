@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { Avatar } from "@/components/ledger/avatar";
 import { hueVar, type Hue } from "@/lib/ui/hue";
 import { answerShares } from "@/lib/ledger/pick-one";
-import { cn } from "@/lib/utils";
 
 /** An answer as the screen draws it: the words, or the person with their avatar (docs/design.md 3.31). */
 export type PickOneAnswer = { index: number; text: string; person: { name: string; hue: Hue } | null };
@@ -19,7 +18,7 @@ export type PickOneBar = { stake: string; noStake: number };
  * there is no aggregate of picks, only where the stake sits. Blind before lock: outlined tracks, your pick
  * marked with a 5px cap in your hue, the lock chip and the count, nothing else.
  */
-export function PickOneBars({ answers, bars, entries, me, livePick = null, blind, heading, caption, rise = false }: { answers: PickOneAnswer[]; bars: PickOneBar[]; entries: number; me: { name: string; hue: Hue; stake: string; pick: number } | null; /** While changing: where the pick is being moved to. The picture follows the tap; the server's copy follows the save. */ livePick?: number | null; blind: { inCount: number; ofCount: number } | null; heading: string; caption: string | null; /** The entering moment (3.30): the bars grow from the left, your stake fills in your hue, your avatar appears, the shares fade in last. */ rise?: boolean }) {
+export function PickOneBars({ answers, bars, entries, me, livePick = null, heading, caption, rise = false }: { answers: PickOneAnswer[]; bars: PickOneBar[]; entries: number; me: { name: string; hue: Hue; stake: string; pick: number } | null; /** While changing: where the pick is being moved to. The picture follows the tap; the server's copy follows the save. */ livePick?: number | null; heading: string; caption: string | null; /** The entering moment (3.30): the bars grow from the left, your stake fills in your hue, your avatar appears, the shares fade in last. */ rise?: boolean }) {
   const [risen, setRisen] = useState(!rise);
   useEffect(() => {
     if (!rise) return;
@@ -40,11 +39,11 @@ export function PickOneBars({ answers, bars, entries, me, livePick = null, blind
   const total = stakes.reduce((a, s) => a + s, 0n);
   const permille = (part: bigint) => (total === 0n ? 0 : Number((part * 1000n) / total));
   const shares = answerShares(stakes);
-  const showShares = !blind && entries >= 3;
+  const showShares = entries >= 3;
   return (
     <figure className="flex flex-col gap-3" aria-label={heading}>
       <figcaption className="text-label text-ink-2">{heading}</figcaption>
-      <ul className="flex flex-col gap-3" role="img" aria-label={blind ? `${blind.inCount} of ${blind.ofCount} in. Numbers show when everyone’s in.` : (caption ?? heading)}>
+      <ul className="flex flex-col gap-3" role="img" aria-label={caption ?? heading}>
         {answers.map((a, i) => {
           const mine = me !== null && a.index === to;
           const width = permille(stakes[i] ?? 0n) / 10;
@@ -65,37 +64,20 @@ export function PickOneBars({ answers, bars, entries, me, livePick = null, blind
                   </span>
                 ) : null}
               </div>
-              <div className={cn("relative h-3 overflow-hidden rounded-[6px]", blind ? "border border-line-strong" : "bg-surface")} aria-hidden="true">
-                {!blind ? (
-                  <>
+              <div className="relative h-3 overflow-hidden rounded-[6px] bg-surface" aria-hidden="true">
+                <>
                     <span className="absolute inset-y-0 left-0 rounded-[6px] bg-market-ink ease-out motion-safe:transition-[width]" style={{ width: risen ? `${width}%` : 0, transitionDuration: "700ms", transitionDelay: risen && !mine ? `${120 + i * 30}ms` : "0ms" }} />
                     {mine && me ? <span className="absolute inset-y-0 left-0 rounded-[6px] ease-out motion-safe:transition-[width]" style={{ width: risen ? `${myWidth}%` : 0, background: hueVar(me.hue), boxShadow: "2px 0 0 var(--ground)", transitionDuration: "400ms", transitionDelay: risen ? "300ms" : "0ms" }} /> : null}
                     {Array.from({ length: Math.min(bars[a.index]?.noStake ?? 0, 3) }, (_, k) => (
                       <span key={k} className="absolute top-1/2 h-2 w-2 -translate-y-1/2 rounded-pill border border-ink-2 bg-ground" style={{ left: 2 + k * 10 }} />
                     ))}
-                  </>
-                ) : mine && me ? (
-                  <span className="absolute inset-y-0 left-0 w-[5px] rounded-l-[6px]" style={{ background: hueVar(me.hue) }} />
-                ) : null}
+                </>
               </div>
             </li>
           );
         })}
       </ul>
-      {blind ? (
-        <div className="flex flex-col items-center gap-2">
-          <span className="inline-flex h-7 items-center gap-1.5 rounded-pill border border-line-strong bg-ground px-3 text-caption text-ink-2">
-            <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="5" y="11" width="14" height="9" rx="2" />
-              <path d="M8 11V8a4 4 0 0 1 8 0v3" />
-            </svg>
-            Numbers show when everyone’s in
-          </span>
-          <p className="text-caption text-ink-3">
-            {blind.inCount} of {blind.ofCount} in.
-          </p>
-        </div>
-      ) : caption ? (
+      {caption ? (
         <p className="text-caption text-ink-3">{caption}</p>
       ) : null}
     </figure>

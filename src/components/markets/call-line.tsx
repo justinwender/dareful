@@ -3,11 +3,11 @@ import { TeamStamp } from "@/components/ledger/team-stamp";
 import { hueFor } from "@/lib/ui/hue";
 import type { TeamFace } from "@/lib/ui/team";
 
-export type Pin = { id: string; name: string; percent: number };
+export type Pin = { id: string; name: string; percent: number; /** Someone in it without an account: the stone avatar with its dashed ring, everywhere they appear (3.1, 3.17). */ ghost?: boolean };
 
 /**
- * docs/design.md 3.5. The axis from No to Yes with everyone's avatar on it. Hidden while people are still
- * entering a blind market; full pins once everyone is in; and when it has resolved, the true half takes the
+ * docs/design.md 3.5. The axis from No to Yes with everyone's avatar on it. Hidden before the viewer is in (a
+ * dashed track and nothing said, 3.22); full pins once they are; and when it has resolved, the true half takes the
  * wash and the true end a solid cream cap. Pins closer than 6 points cluster once there are more than six.
  */
 export function CallLine({ pins, state, outcome, size = "card", surface = "var(--surface)", ends }: { pins: Pin[]; state: "hidden" | "in" | "resolved"; outcome?: 0 | 1; size?: "card" | "screen"; surface?: string; /** Between two teams (3.40): the away side at the low end and the home side at the high end, each a 20px stamp with its name, "Even" in the middle; the winner's name in ink once resolved. */ ends?: { away: TeamFace; home: TeamFace } | null }) {
@@ -17,7 +17,6 @@ export function CallLine({ pins, state, outcome, size = "card", surface = "var(-
     return (
       <div className="flex flex-col gap-2">
         <div className="flex h-[10px] items-center justify-center rounded-pill" style={{ background: "repeating-linear-gradient(90deg, var(--surface-2) 0 10px, var(--surface) 10px 20px)" }} />
-        <p className="self-center rounded-pill border border-line-strong px-3 py-1 text-caption text-ink-2">Numbers show when everyone’s in.</p>
       </div>
     );
   }
@@ -40,7 +39,7 @@ export function CallLine({ pins, state, outcome, size = "card", surface = "var(-
         {clusters.map((c, i) => (
           <span key={i} className="absolute top-1/2 flex -translate-y-1/2" style={{ left: `calc(${c.percent}% - ${pin / 2}px)`, zIndex: i + 1 }} title={c.members.map((m) => `${m.name} ${m.percent}%`).join(", ")}>
             {c.members.length === 1 || pins.length <= 6 ? (
-              <Avatar name={(c.members[0] as Pin).name} hue={hueFor((c.members[0] as Pin).id)} size={pin} ring={surface} />
+              <Avatar name={(c.members[0] as Pin).name} hue={hueFor((c.members[0] as Pin).id)} size={pin} ring={surface} ghost={(c.members[0] as Pin).ghost} />
             ) : (
               <span className="inline-flex items-center justify-center rounded-pill bg-ink text-label text-ground" style={{ width: pin, height: pin, boxShadow: `0 0 0 2px ${surface}` }}>
                 {c.members.length}
@@ -72,7 +71,7 @@ export function CallLine({ pins, state, outcome, size = "card", surface = "var(-
   );
 }
 
-export type RulerData = { leftLabel: string; rightLabel: string; /** The margin's ruler is centred on a tie (3.40): "Tie" in the middle, and the answer's words under its tick. */ midLabel?: string | null; answerLabel?: string | null; pins: Array<{ id: string; name: string; value: string; xPermille: number; off: "low" | "high" | null }>; answer: { value: string; xPermille: number } | null };
+export type RulerData = { leftLabel: string; rightLabel: string; /** The margin's ruler is centred on a tie (3.40): "Tie" in the middle, and the answer's words under its tick. */ midLabel?: string | null; answerLabel?: string | null; pins: Array<{ id: string; name: string; value: string; xPermille: number; off: "low" | "high" | null; /** In it without an account (3.1): stone, with the dashed ring. */ ghost?: boolean }>; answer: { value: string; xPermille: number } | null };
 
 /**
  * The ruler (docs/design.md 3.5, number markets): the call line become a number line. Its ends are the lowest
@@ -87,7 +86,6 @@ export function Ruler({ ruler, size = "card", surface = "var(--surface)", state 
     return (
       <div className="flex flex-col gap-2">
         <div className="flex h-[10px] items-center justify-center rounded-pill" style={{ background: "repeating-linear-gradient(90deg, var(--surface-2) 0 10px, var(--surface) 10px 20px)" }} />
-        <p className="self-center rounded-pill border border-line-strong px-3 py-1 text-caption text-ink-2">Numbers show when everyone’s in.</p>
       </div>
     );
   }
@@ -98,7 +96,7 @@ export function Ruler({ ruler, size = "card", surface = "var(--surface)", state 
   const lane = (pins: RulerData["pins"], at: "left" | "right") =>
     pins.length ? (
       <span className="absolute top-1/2 flex -translate-y-1/2" style={{ [at]: -side, zIndex: 20 }} title={pins.map((p) => `${p.name} ${p.value}`).join(", ")}>
-        <Avatar name={(pins[0] as { name: string }).name} hue={hueFor((pins[0] as { id: string }).id)} size={pin} ring={surface} />
+        <Avatar name={(pins[0] as { name: string }).name} hue={hueFor((pins[0] as { id: string }).id)} size={pin} ring={surface} ghost={(pins[0] as { ghost?: boolean }).ghost} />
       </span>
     ) : null;
   return (
@@ -110,7 +108,7 @@ export function Ruler({ ruler, size = "card", surface = "var(--surface)", state 
         {ruler.answer && state === "resolved" ? <span aria-hidden="true" className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-pill bg-chalk" style={{ width: size === "card" ? 4 : 6, height: pin + 8, left: `${ruler.answer.xPermille / 10}%`, zIndex: 30 }} /> : null}
         {on.map((p, i) => (
           <span key={p.id} className="absolute top-1/2 flex -translate-x-1/2 -translate-y-1/2" style={{ left: `${p.xPermille / 10}%`, zIndex: i + 1 }} title={`${p.name} ${p.value}`}>
-            <Avatar name={p.name} hue={hueFor(p.id)} size={pin} ring={surface} />
+            <Avatar name={p.name} hue={hueFor(p.id)} size={pin} ring={surface} ghost={p.ghost} />
           </span>
         ))}
         {lane(offLow, "left")}

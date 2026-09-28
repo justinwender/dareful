@@ -18,7 +18,7 @@ const STARTERS = ["Does John fall asleep during the movie?", "Does anyone actual
  */
 export function FirstRun({ today, games = [], viewerHue = "stone" }: { today: string; games?: GameRowData[]; viewerHue?: Hue }) {
   return (
-    <Screen>
+    <Screen root>
       <h2 className="pt-5 text-label text-ink-3">{today}</h2>
       <div className="flex flex-1 flex-col gap-7 py-6">
         <div className="flex flex-col gap-3">

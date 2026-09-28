@@ -40,9 +40,13 @@ function toCents(input: string): bigint | null {
  * (unit chips, most used first, and "$" for an amount), how many (a 48px minus, the count and unit, a 48px plus;
  * with "$", the amount in dollars), who picks up next as two rows that each show what they'll make (the token,
  * selected by default, or "Nobody's paying it back" after a dot in your hue, which is how the rally counts it,
- * 3.11), and one primary that says the whole thing ("I got Gabe a beer"). The creditor authors and the copy never
- * says who owes what (Principle 2). Logged, the sheet lowers back to the chalk and the page re-reads with the new
- * token in 3.2's proposed style until the other person says yep. No toast.
+ * 3.11), then, optional and below the choices so the sheet still opens short, what it was (the memo) and, on a cover
+ * that is not in dollars, what it cost (the magnitude Principle 4 keeps invisibly, never shown to anyone else; the
+ * owner's ruling of 2026-09-27, since the section's board does not mention dropping them), with no example text in
+ * either field (4.9); and one primary that says the whole thing ("I got Gabe a beer"). The creditor authors and the
+ * copy never says who owes what (Principle 2). Logged, the sheet lowers back to the chalk and the page re-reads
+ * with the new token in 3.2's proposed style until the other person says yep. No toast. A photo at logging is left
+ * out: settlement is the photo moment (Principle 6).
  */
 export function CoverSheet({ person, units, recent, viewer }: { person: { id: string; displayName: string; kind: "user" | "claim"; hue: Hue; ghost?: boolean }; /** The units already between the two of you, most used first. */ units: CoverUnit[]; /** Units this person has named elsewhere, without a template, offered after the presets. */ recent: CoverUnit[]; viewer: { id: string; displayName: string; hue: Hue } }) {
   const [raised, setRaised] = useState(false);
@@ -50,6 +54,9 @@ export function CoverSheet({ person, units, recent, viewer }: { person: { id: st
   const [count, setCount] = useState(1);
   const [dollars, setDollars] = useState("");
   const [payback, setPayback] = useState(true);
+  const [memo, setMemo] = useState("");
+  /** What it cost, on a cover that is not in dollars: a private note, never shown to anyone else (Principle 4). */
+  const [cost, setCost] = useState("");
   const [naming, setNaming] = useState(false);
   const [named, setNamed] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
@@ -59,6 +66,7 @@ export function CoverSheet({ person, units, recent, viewer }: { person: { id: st
   const has = (t: Template) => units.some((u) => u.template === t);
   const quantifiable = choice.kind === "usd" ? false : choice.kind === "existing" ? choice.unit.quantifiable : choice.quantifiable;
   const cents = dollars.trim() ? toCents(dollars) : null;
+  const costCents = choice.kind === "usd" ? null : cost.trim() ? toCents(cost) : null;
   /** The unit as the token draws it (3.2), so the row shows exactly what will appear on both pages. */
   const denomination = choice.kind === "usd" ? { label: "dollar", pluralLabel: "dollars", quantifiable: true, monetary: true, template: "usd", markKind: null, markValue: null } : choice.kind === "existing" ? { ...choice.unit, monetary: false } : { label: choice.label, pluralLabel: choice.plural, quantifiable: choice.quantifiable, monetary: false, template: choice.template, markKind: null, markValue: null };
   const quantity = choice.kind === "usd" ? (cents ?? 0n) : quantifiable ? BigInt(count) : 1n;
@@ -75,8 +83,9 @@ export function CoverSheet({ person, units, recent, viewer }: { person: { id: st
         groupId: null,
         unit: choice.kind === "usd" ? { kind: "usd" } : choice.kind === "existing" ? { kind: "existing", id: choice.unit.id } : { kind: "new", template: choice.template, label: choice.label },
         quantity: choice.kind === "usd" ? null : quantifiable ? String(count) : null,
-        amountCents: choice.kind === "usd" && cents !== null ? cents.toString() : null,
+        amountCents: choice.kind === "usd" && cents !== null ? cents.toString() : costCents !== null && costCents > 0n ? costCents.toString() : null,
         settleExpected: payback,
+        memo: memo.trim() || undefined,
       });
       if (r && "error" in r) setProblem(r.error);
     });
@@ -180,6 +189,32 @@ export function CoverSheet({ person, units, recent, viewer }: { person: { id: st
                 Nobody’s paying it back
               </span>
             </button>
+          </section>
+
+          <section className="flex flex-col gap-3" data-cover-notes="">
+            <h3 className="text-label text-ink-3">Optional</h3>
+            <div className="flex flex-col gap-2">
+              <label htmlFor="cover-memo" className="text-label text-ink-2">
+                What was it
+              </label>
+              <input id="cover-memo" value={memo} onChange={(e) => setMemo(e.target.value)} maxLength={140} data-cover-memo="" className="h-12 rounded-button border border-line bg-ground px-4 text-body text-ink" />
+            </div>
+            {choice.kind === "usd" ? null : (
+              <div className="flex flex-col gap-2">
+                <label htmlFor="cover-cost" className="text-label text-ink-2">
+                  What it cost
+                </label>
+                <div className="flex items-center gap-2">
+                  <span data-type-exempt="" className="text-numeral text-ink-2">
+                    $
+                  </span>
+                  <input id="cover-cost" inputMode="decimal" value={cost} onChange={(e) => setCost(e.target.value)} aria-describedby="cover-cost-help" data-cover-cost="" className="h-12 w-40 rounded-button border border-line bg-ground px-3 text-numeral text-ink" />
+                </div>
+                <p id="cover-cost-help" className="text-caption text-ink-3">
+                  Only you see this.
+                </p>
+              </div>
+            )}
           </section>
 
           <ProblemSummary messages={[problem]} />

@@ -211,6 +211,13 @@
       "when": 1790547715881,
       "tag": "0029_users_heads_up",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1790555430839,
+      "tag": "0030_swipes_holdouts_link",
+      "breakpoints": true
     }
   ]
 }

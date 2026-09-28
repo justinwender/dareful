@@ -1,17 +1,31 @@
 "use client";
 
 import { useEffect, useId, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import QRCode from "qrcode";
-import { AvatarStack } from "@/components/ledger/avatar";
+import { Avatar, AvatarStack } from "@/components/ledger/avatar";
+import { Button } from "@/components/ui/button";
 import { MarkRefStamp } from "@/components/ledger/mark-stamp";
 import { ProblemSummary } from "@/components/ledger/problem";
 import { Sheet } from "@/components/ui/sheet";
 import { roomCodeAction } from "@/lib/actions/join";
+import { removeGhostEntryAction } from "@/lib/actions/markets";
 import type { Hue } from "@/lib/ui/hue";
 import type { MarkRef } from "@/lib/ui/mark";
 import { cn } from "@/lib/utils";
 
-export type WhosInPerson = { name: string; hue: Hue; ghost?: boolean };
+export type WhosInPerson = { name: string; hue: Hue; ghost?: boolean; /** "Asked it", in the who's-in list. */ asked?: boolean; /** A ghost's claim, for the asker's Remove before the lock. */ claimId?: string };
+/** Someone the market was sent to who is not in yet (3.42, holdouts): a dashed avatar after the stack, never named as late. */
+export type Holdout = { name: string; hue: Hue };
+
+/** "Asked, not in yet" (3.1): no fill, a 1px dashed ring and the initial in ink-3, set apart from the stack. */
+export function HoldoutAvatar({ name, size = 28 }: { name: string; size?: 28 | 36 }) {
+  return (
+    <span aria-label={name} role="img" className="inline-flex shrink-0 items-center justify-center rounded-pill font-bold text-ink-3 outline-dashed outline-1 outline-line-strong" style={{ width: size, height: size, fontSize: Math.round(size * 0.42), lineHeight: 1 }} data-holdout="">
+      {(name.trim()[0] ?? "?").toUpperCase()}
+    </span>
+  );
+}
 
 /**
  * The who's-in row (docs/design.md 3.42): who is in, and the one place a market is shared from. On the left the
@@ -24,8 +38,9 @@ export type WhosInPerson = { name: string; hue: Hue; ghost?: boolean };
  * sentences and buttons in three places for one act. While you're the only one in, share is the screen's chalk.
  * Pass the phone is the fourth icon and ships with 3.45; until then the row has three.
  */
-export function WhosInRow({ people, count, share, code, chalk = false, className }: { people: WhosInPerson[]; count: string; /** The link and the question as its title; null where there is nothing to send (a void, an expiry). */ share: { url: string; title: string } | null; /** The code to scan: only while the market is open, and only for someone the code can be made for. */ code: { dareId: string; question: string; mark: MarkRef | null } | null; /** Share as the screen's chalk: a 44px chalk circle, while you're the only one in. */ chalk?: boolean; className?: string }) {
+export function WhosInRow({ people, holdouts = [], count, share, code, chalk = false, list = null, className }: { people: WhosInPerson[]; /** The people asked who are not in yet (3.42): dashed avatars after the stack, at most two drawn, then a dashed "+N". */ holdouts?: Holdout[]; count: string; /** The link and the question as its title; null where there is nothing to send (a void, an expiry). */ share: { url: string; title: string } | null; /** The code to scan: only while the market is open, and only for someone the code can be made for. */ code: { dareId: string; question: string; mark: MarkRef | null } | null; /** Share as the screen's chalk: a 44px chalk circle, while you're the only one in. */ chalk?: boolean; /** The who's-in sheet behind the stack (3.42): who is in, with the asker's Remove on a ghost's row before the lock. Null where the stack is not a button (the link page). */ list?: { dareId: string; canRemove: boolean } | null; className?: string }) {
   const [copied, setCopied] = useState(false);
+  const [listOpen, setListOpen] = useState(false);
   const [saidCopied, setSaidCopied] = useState(false);
   /** The clipboard refused (a browser that needs the page focused, or asks and is told no): the link itself, to copy by hand. A tap is never silently dropped (5.2). */
   const [byHand, setByHand] = useState(false);
@@ -65,12 +80,38 @@ export function WhosInRow({ people, count, share, code, chalk = false, className
 
   return (
     <section className={cn("flex flex-wrap items-start justify-between gap-3", className)} data-whos-in="" aria-label="Who's in">
-      <div className="flex min-w-0 flex-col gap-1">
-        {people.length > 0 ? <AvatarStack people={people} size={28} ring="var(--ground)" /> : null}
-        <p className="text-caption text-ink-2" data-whos-in-count="">
-          {count}
-        </p>
-      </div>
+      {(() => {
+        const shownHoldouts = holdouts.slice(0, holdouts.length > 2 ? 1 : 2);
+        const stack = (
+          <>
+            <span className="flex items-center">
+              {people.length > 0 ? <AvatarStack people={people} size={28} ring="var(--ground)" /> : null}
+              {shownHoldouts.length > 0 ? (
+                <span className="ml-1 flex items-center gap-1" data-holdouts={holdouts.length}>
+                  {shownHoldouts.map((h, i) => (
+                    <HoldoutAvatar key={i} name={h.name} />
+                  ))}
+                  {holdouts.length > shownHoldouts.length ? (
+                    <span aria-label={`and ${holdouts.length - shownHoldouts.length} more not in yet`} role="img" className="inline-flex h-7 w-7 items-center justify-center rounded-pill text-label text-ink-3 outline-dashed outline-1 outline-line-strong">
+                      +{holdouts.length - shownHoldouts.length}
+                    </span>
+                  ) : null}
+                </span>
+              ) : null}
+            </span>
+            <p className="text-caption text-ink-2" data-whos-in-count="">
+              {count}
+            </p>
+          </>
+        );
+        return list ? (
+          <button type="button" onClick={() => setListOpen(true)} aria-haspopup="dialog" aria-expanded={listOpen} aria-label={`Who’s in: ${count}`} data-whos-in-list="" className="flex min-w-0 flex-col items-start gap-1 rounded-button text-left">
+            {stack}
+          </button>
+        ) : (
+          <div className="flex min-w-0 flex-col gap-1">{stack}</div>
+        );
+      })()}
       {share ? (
         <div className="-mr-[11px] flex shrink-0 items-center gap-[2px]" role="group" aria-label="Share it">
           <button type="button" aria-label="Share" data-share="" onClick={send} className={cn("flex h-11 w-11 items-center justify-center rounded-pill transition-opacity duration-[120ms] active:opacity-[0.88]", chalk ? "bg-chalk text-on-chalk" : "text-ink")}>
@@ -107,6 +148,7 @@ export function WhosInRow({ people, count, share, code, chalk = false, className
         </div>
       ) : null}
       {code && share ? <CodeSheet open={codeOpen} onClose={() => setCodeOpen(false)} dareId={code.dareId} url={share.url} question={code.question} mark={code.mark} /> : null}
+      {list ? <WhosInSheet open={listOpen} onClose={() => setListOpen(false)} people={people} dareId={list.dareId} canRemove={list.canRemove} /> : null}
       {byHand && share ? (
         <input readOnly value={share.url} aria-label="The link, to copy by hand" data-copy-by-hand="" onFocus={(e) => e.currentTarget.select()} className="mt-2 h-11 w-full basis-full rounded-button border border-line bg-surface px-3 text-body-sm text-ink" />
       ) : null}
@@ -177,6 +219,71 @@ function CodeSheet({ open, onClose, dareId, url, question, mark }: { open: boole
         ) : null}
         <ProblemSummary messages={[problem]} />
       </div>
+    </Sheet>
+  );
+}
+
+/**
+ * Who's in (3.42): one 56px row per person in, the 36px avatar, the name and a caption only where it says something
+ * ("Asked it"; "From the link, no account", whose avatar is stone with the dashed ring). No numbers: where people
+ * landed is the weight line's job. For the asker, until the lock, a row from someone without an account carries
+ * Remove, for a forwarded link that brought in a stranger, since a typed name counts as soon as it is entered
+ * (3.17). It asks once, inside the same sheet; the entry comes out, the count drops, and nothing is sent to anyone.
+ */
+function WhosInSheet({ open, onClose, people, dareId, canRemove }: { open: boolean; onClose: () => void; people: WhosInPerson[]; dareId: string; canRemove: boolean }) {
+  const titleId = useId();
+  const router = useRouter();
+  const [asking, setAsking] = useState<WhosInPerson | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const first = (name: string) => name.trim().split(/\s+/)[0] ?? name;
+  return (
+    <Sheet open={open} onClose={onClose} labelledBy={titleId}>
+      <h2 id={titleId} className="text-body-strong text-ink">
+        {asking ? `Remove ${first(asking.name)}’s entry?` : "Who’s in"}
+      </h2>
+      {asking ? (
+        <div className="flex flex-col gap-4" data-remove-entry-ask="">
+          <p className="text-body-sm text-ink-2">It comes out before anything is decided, and nothing changes hands.</p>
+          <ProblemSummary messages={[problem]} />
+          <Button
+            variant="primary"
+            loading={pending}
+            onClick={() =>
+              start(async () => {
+                setProblem(null);
+                const r = await removeGhostEntryAction(dareId, asking.claimId as string);
+                if ("error" in r) return setProblem(r.error);
+                setAsking(null);
+                onClose();
+                router.refresh();
+              })
+            }
+          >
+            Remove it
+          </Button>
+          <Button variant="secondary" disabled={pending} onClick={() => setAsking(null)}>
+            Keep it
+          </Button>
+        </div>
+      ) : (
+        <ul className="flex flex-col" data-whos-in-rows="">
+          {people.map((p, i) => (
+            <li key={i} className="flex min-h-14 items-center gap-3">
+              <Avatar name={p.name} hue={p.hue} size={36} ghost={p.ghost} />
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="truncate text-body-strong text-ink">{p.name}</span>
+                {p.asked ? <span className="text-caption text-ink-3">Asked it</span> : p.ghost ? <span className="text-caption text-ink-3">From the link, no account</span> : null}
+              </span>
+              {canRemove && p.ghost && p.claimId ? (
+                <Button variant="row" onClick={() => setAsking(p)}>
+                  Remove
+                </Button>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      )}
     </Sheet>
   );
 }

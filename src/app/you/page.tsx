@@ -22,7 +22,7 @@ export default async function YouPage() {
   const clock = await viewerClock();
   const live = await liveFor(me, new Date(clock.now));
   return (
-    <Screen>
+    <Screen root>
       <h1 className="pt-5 text-label text-ink-3">You</h1>
       <div className="flex flex-col gap-6 py-4">
         <div className="flex items-center gap-4">

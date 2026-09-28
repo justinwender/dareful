@@ -14,7 +14,7 @@ import { db, schema } from "@/db";
 import { marketById, stateOf } from "@/lib/ledger/markets";
 import { isMember } from "@/lib/ledger/groups";
 import { NotAPhoto, processPhoto } from "./pipeline";
-import { ENDED, evidenceAllowed, evidenceItems, frameItems, memoryAllowed, memoryVisible, recordItems, removeAllowed, yoursItems, type MediaRole, type Refusal } from "./roles";
+import { evidenceAllowed, evidenceItems, frameItems, memoryAllowed, recordItems, removeAllowed, type MediaRole, type Refusal } from "./roles";
 import { putObject, removeObjects, signedUrl } from "./storage";
 
 export type MediaRow = typeof schema.media.$inferSelect;
@@ -47,8 +47,7 @@ export async function canSee(media: MediaRow, viewerId: string): Promise<boolean
   if (media.dareId) {
     const d = await marketById(media.dareId);
     if (!d) return false;
-    // A memory taken before the market ends is its author's alone until then (3.39): the door refuses everyone else, participant or not.
-    if (media.role === "memory" && !memoryVisible({ state: stateOf(d), authorId: media.authorId, viewerId })) return false;
+    // The album is open the whole time (3.39, amended 2026-09-27): a memory is everyone's the moment it lands, and "everyone" is the market's rule, the participants and the group it was asked in. Someone who only opened the link is neither.
     const [inIt] = await db.select({ dareId: schema.darePositions.dareId }).from(schema.darePositions).where(and(eq(schema.darePositions.dareId, media.dareId), eq(schema.darePositions.userId, viewerId))).limit(1);
     if (inIt) return true;
     const [member] = await db.select({ groupId: schema.groupMembers.groupId }).from(schema.groupMembers).where(and(eq(schema.groupMembers.groupId, d.groupId), eq(schema.groupMembers.userId, viewerId), isNull(schema.groupMembers.leftAt))).limit(1);
@@ -179,33 +178,30 @@ export async function removeMarketPhoto(input: { mediaId: string; byUserId: stri
 }
 
 /**
- * Every photo on a market with its author, split four ways (roles.ts): the frame (the claimant's attachments,
- * then the memories, and nothing before the market ends), the evidence (everything attached while it was being
- * called, for the raised sheet and the model), the record (evidence that was not the claimant's, behind More
- * once it has ended) and, for the viewer named, their own memories while it has not ended ("Yours from tonight",
- * 3.39). The claimant is the first voter, which is what the claim card shows.
+ * Every photo on a market with its author, split three ways (roles.ts): the frame (the claimant's attachments,
+ * then the memories, from the first one on: the album is open the whole time, 3.39 amended 2026-09-27), the
+ * evidence (everything attached while it was being called, for the raised sheet and the model) and the record
+ * (evidence that was not the claimant's, behind More once it has ended). The claimant is the first voter, which
+ * is what the claim card shows. Who may see any of it is the door's question (`canSee`), asked before this.
  */
-export async function mediaOnMarket(dareId: string, viewerId: string | null = null): Promise<{ frame: MarketMedia[]; memories: MarketMedia[]; evidence: MarketMedia[]; record: MarketMedia[]; yours: MarketMedia[]; claimantId: string | null }> {
-  const [rows, claimantId, d] = await Promise.all([
+export async function mediaOnMarket(dareId: string): Promise<{ frame: MarketMedia[]; memories: MarketMedia[]; evidence: MarketMedia[]; record: MarketMedia[]; claimantId: string | null }> {
+  const [rows, claimantId] = await Promise.all([
     db.select({ id: schema.media.id, role: schema.media.role, authorId: schema.media.authorId, capturedAt: schema.media.capturedAt, createdAt: schema.media.createdAt }).from(schema.media).where(eq(schema.media.dareId, dareId)),
     claimantsOf([dareId]).then((m) => m.get(dareId) ?? null),
-    marketById(dareId),
   ]);
-  return splitMedia(rows, await namesOf(rows.map((r) => r.authorId)), claimantId, d ? ENDED.has(stateOf(d)) : false, viewerId);
+  return splitMedia(rows, await namesOf(rows.map((r) => r.authorId)), claimantId);
 }
 
-/** The frame of many markets at once (a timeline, a tile): the claim's clip first, then the memories; nothing for a market that has not ended. */
+/** The frame of many markets at once (a timeline, a tile, the night): the claim's clip first, then the memories. The callers that mean only markets that have ended (a timeline's stories, the rest of that night) pick those ids themselves. */
 export async function frameOnMarkets(dareIds: string[]): Promise<Map<string, MarketMedia[]>> {
   const out = new Map<string, MarketMedia[]>();
   if (dareIds.length === 0) return out;
-  const [rows, claimants, dares] = await Promise.all([
+  const [rows, claimants] = await Promise.all([
     db.select({ id: schema.media.id, dareId: schema.media.dareId, role: schema.media.role, authorId: schema.media.authorId, capturedAt: schema.media.capturedAt, createdAt: schema.media.createdAt }).from(schema.media).where(inArray(schema.media.dareId, dareIds)),
     claimantsOf(dareIds),
-    db.select().from(schema.dares).where(inArray(schema.dares.id, dareIds)),
   ]);
   const names = await namesOf(rows.map((r) => r.authorId));
-  const ended = new Set(dares.filter((d) => ENDED.has(stateOf(d))).map((d) => d.id));
-  for (const dareId of dareIds) out.set(dareId, splitMedia(rows.filter((r) => r.dareId === dareId), names, claimants.get(dareId) ?? null, ended.has(dareId), null).frame);
+  for (const dareId of dareIds) out.set(dareId, splitMedia(rows.filter((r) => r.dareId === dareId), names, claimants.get(dareId) ?? null).frame);
   return out;
 }
 
@@ -225,7 +221,7 @@ async function namesOf(ids: string[]): Promise<Map<string, string>> {
   return new Map(users.map((u) => [u.id, u.displayName]));
 }
 
-function splitMedia(rows: Array<{ id: string; role: string; authorId: string; capturedAt: Date | null; createdAt: Date }>, names: Map<string, string>, claimantId: string | null, ended: boolean, viewerId: string | null): { frame: MarketMedia[]; memories: MarketMedia[]; evidence: MarketMedia[]; record: MarketMedia[]; yours: MarketMedia[]; claimantId: string | null } {
+function splitMedia(rows: Array<{ id: string; role: string; authorId: string; capturedAt: Date | null; createdAt: Date }>, names: Map<string, string>, claimantId: string | null): { frame: MarketMedia[]; memories: MarketMedia[]; evidence: MarketMedia[]; record: MarketMedia[]; claimantId: string | null } {
   const shape = (r: (typeof rows)[number]): MarketMedia => ({ id: r.id, role: r.role === "evidence" ? "evidence" : "memory", author: { id: r.authorId, displayName: names.get(r.authorId) ?? "Someone" }, capturedAt: r.capturedAt, createdAt: r.createdAt });
-  return { frame: frameItems(rows, claimantId, ended).map(shape), memories: frameItems(rows, null, ended).map(shape), evidence: evidenceItems(rows).map(shape), record: recordItems(rows, claimantId).map(shape), yours: viewerId ? yoursItems(rows, viewerId, ended).map(shape) : [], claimantId };
+  return { frame: frameItems(rows, claimantId).map(shape), memories: frameItems(rows, null).map(shape), evidence: evidenceItems(rows).map(shape), record: recordItems(rows, claimantId).map(shape), claimantId };
 }

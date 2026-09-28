@@ -1172,6 +1172,12 @@ the sheet reading "This one's finished" and nothing to join); **closed but unres
 one closed at 11pm, so you can watch but not enter." in the sheet); **revoked or malformed
 link** (the code screen with a form-level message).
 
+(Amended 2026-09-27, the owner's two additions. "That isn't the number Dani joined with"
+confirms or denies a number, so wrong tries on a picked name are counted and refused past a few
+an hour, whatever number is offered then. People can join without a number: the chalk waits for
+the name alone, and for the number too only when a name was picked; a name that joined without
+a number is never among the suggestions, since it could never be proved.)
+
 ### 3.18 Person row
 
 56px minimum height, 12px gap, 36px avatar, name in `body` 600, and the person's open
@@ -2438,6 +2444,12 @@ screenshot has none). On the right the claimant's 22px avatar and "Priya says he
 chip; with none, the card is the avatar and the words alone. Tapping the clip opens it full
 screen.
 
+**Amended 2026-09-27: the album is open the whole time.** The frame this section describes no
+longer fills at the end: it has been everyone's since the first photo (3.39, amendment). What
+changes here is only that "the news" the settled screen leads with may already have been seen
+while the market ran; the order, the credits, the empty slot, the add tile and who may add are
+as written.
+
 ### 3.38 The rest of the screens, in text
 
 Every screen that matters, in words, where its board drew more than its component sections say.
@@ -2649,7 +2661,8 @@ end, when adding opens the library first. On an iPhone a photo taken this way is
 the phone's own photos, so its full-screen view offers "Save to your phone" through the share
 sheet, and the phone keeps the file until it is stored.
 
-**Before it ends, only you see it.** Once you have added one, the frame shows it, credited to
+**Before it ends, only you see it.** (Superseded 2026-09-27; see the amendment at the end of
+this section.) Once you have added one, the frame shows it, credited to
 "You", the strip holds the rest (three, then `+N`, then the add tile), and one `caption` sits
 under the strip: "Everyone sees these once it's over." A photo still going up is its square at
 0.88 opacity with the 2px runner of 5.2 along its bottom edge; one that fails keeps its square
@@ -2670,6 +2683,20 @@ strip move up under the outcome and become everyone's (3.37).
 itself goes at lock. Taking a photo sends nobody anything. An argument locks the moment the
 second person is in, so its open window is usually seconds, and the button follows the same
 rule. Type: the section's words are 13, and nothing new joins the screen's sizes.
+
+**Amended 2026-09-27: the album is open the whole time.** The owner's decision: from the first
+photo onward, everyone the market's rule admits (its participants and the group it was asked
+in) sees every photo, while it is open, through the vote and after. It is a social album, and
+keeping photos private until the end risked stranding them on markets that never finish. So:
+the frame and its strip show every memory to everyone admitted from the moment each lands,
+credited as always; the same slot and frame sit last on the screen, under the details, while
+the market is open and while it is being called, with the add tile and the empty slot only for
+someone who is in while it is open (adding after lock is evidence, through the claim, as
+before); someone in the group who is not in sees the frame and no add; and the caption
+"Everyone sees these once it's over." is gone, since it is no longer true. The rule lives at the
+door, not only on the screen. Someone who has opened the link but not entered is not admitted,
+so the link page (3.17) shows no photos. The claim's evidence stays on the claim card, never in
+this frame, and a memory still never reaches the proposal or the tiebreaker.
 
 ### 3.40 Between two teams: who wins and the margin
 
@@ -2927,6 +2954,13 @@ proposed mark. No toast.
 
 A round for the table, a receipt, or credit card roulette covers more than one person, and the
 person view is about one. Where a group's cover lives is not placed yet (7).
+
+(Amended 2026-09-27, the owner's rulings on the build. Item 4, "Add a photo of it", is left
+out: settlement is the photo moment (Principle 6). Between item 3 and the primary, optional and
+below the main choices so the sheet still opens short, two fields the board never mentioned
+dropping and Principle 4 rests on: "What was it", the memo, and, on a cover that is not in
+dollars, "What it cost", the private magnitude with the caption "Only you see this."; no example
+text in either, per 4.9.)
 
 **The +** (frame 4). Start opens the question step directly (3.29), with "Got a code?" at its
 top right. The Start sheet is gone (6.1).
@@ -3382,7 +3416,9 @@ Keep, at the point of consequence:
 - "Nothing gets sent to it. Sign in with this number later and your entries are waiting." Under
   the phone number on the link page, because it says what the number is for (3.17).
 - The weight-line caption, but only when one stake is more than half the total.
-- "Everyone sees these once it's over." Under your own photos while the market is open (3.39).
+- (Cut 2026-09-27: "Everyone sees these once it's over." was under your own photos while the
+  market was open; the album is open the whole time now, 3.39, so nothing is true for a caption
+  to say.)
 - "Any margin. Tap the number to type one." On the margin's entry, because past the ends typing
   is the only way further, and nothing else on the screen shows it (3.40).
 - "Turn it off any time on You, under One tap." In the One tap ask (3.41).
@@ -3597,7 +3633,10 @@ clearly distinct destinations; each destination does one job and has one obvious
 
 - **Now.** What is live and what is waiting on this person. The root, the back-stop for every
   other screen, and the only screen that carries the citron dot. Contents and ordering: 4.7.
-  Every market row carries its stamp on its ink's field colour.
+  Every market row carries its stamp on its ink's field colour. (Amended 2026-09-27: "Got a
+  code?" also sits at Now's top right, on the line with the date, placed as the question step
+  places it, so joining by code is one tap from home; an empty Now keeps the compact boxes of
+  3.16. Now still starts nothing: joining is arriving, not asking.)
 - **What's on.** Public questions about things everyone is watching, to start with your own
   friends (3.32). The only destination holding things nothing in the app has pointed you to,
   which is the only reason it has a tab (6.2, rule 6).

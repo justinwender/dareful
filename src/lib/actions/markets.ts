@@ -4,7 +4,7 @@ import { pendingCopy, SendPending } from "@/lib/chain/relayer";
 
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
-import { notifyAfterVote, notifyJoined, notifyOpened, notifyRuling, sendNudge, voteCounts, type NudgeResult, type VoteCounts } from "@/lib/notify";
+import { notifyAfterVote, notifyJoined, notifyOpened, notifyRuling, voteCounts, type VoteCounts } from "@/lib/notify";
 import { carefulQuestions, declined, SUBJECT_KINDS, triage } from "@/lib/ai/settler";
 import { afterEntry, arbitrateMarket, proposeForArgument, stateCase } from "@/lib/ledger/settle";
 import { isHex, type Hex } from "viem";
@@ -24,7 +24,9 @@ import { currentUser, requireUser } from "@/lib/auth/session";
 import { headers } from "next/headers";
 import { regionFromHeaders, tryHashPhone } from "@/lib/auth/phone";
 import { addClaimToken, readClaimTokens } from "@/lib/auth/claim-cookie";
-import { enterAsGhost, removeGhostEntry } from "@/lib/ledger/ghost-entry";
+import { enterAsGhost, removeGhostEntry, suggestGhostNames } from "@/lib/ledger/ghost-entry";
+import { leaveEntry } from "@/lib/ledger/claims";
+import { archiveMarket, removeMarket } from "@/lib/ledger/now-swipes";
 import { db, schema } from "@/db";
 import { and, asc, eq } from "drizzle-orm";
 import { denominationById, ensureUnitInGroup, ensureUsd } from "@/lib/ledger/denominations";
@@ -288,7 +290,7 @@ const GhostWho = z.object({ name: z.string().trim().max(40).default(""), phone: 
  * position is a ghost's, the browser keeps a token for it, and the ghost binds at a login here or with that
  * number. Someone who is signed in enters as themselves; this door is shut to them.
  */
-export async function enterAsGhostAction(rawId: string, rawPosition: z.infer<typeof Position>, rawWho: z.infer<typeof GhostWho>): Promise<{ ok: true; name: string } | { error: string }> {
+export async function enterAsGhostAction(rawId: string, rawPosition: z.infer<typeof Position>, rawWho: z.infer<typeof GhostWho>): Promise<{ ok: true; name: string } | { error: string; /** The field the refusal is about (5.1): the number, for a picked name. */ at?: "phone" }> {
   if (await currentUser()) return { error: "You’re signed in, so put your number on it as yourself." };
   const id = uuid.safeParse(rawId);
   const position = Position.safeParse(rawPosition);
@@ -303,6 +305,8 @@ export async function enterAsGhostAction(rawId: string, rawPosition: z.infer<typ
     const [claim] = await db.select({ displayName: schema.participantClaims.displayName }).from(schema.participantClaims).where(eq(schema.participantClaims.id, r.claimId)).limit(1);
     name = claim?.displayName ?? name;
   } catch (err) {
+    // The picked name's number check lands at its field (3.17, frame 5; 5.1).
+    if (err instanceof MarketError && (err.code === "wrong_number" || err.code === "slow_down")) return { error: err.message, at: "phone" };
     return { error: say(err, "That didn't go through. Try again.") };
   }
   let lockedNow = false;
@@ -329,22 +333,6 @@ export async function removeGhostEntryAction(rawId: string, rawClaimId: string):
   }
   revalidatePath(`/m/${id.data}`);
   return { ok: true };
-}
-
-/**
- * "We're waiting on you", sent by a person, on demand. Says back how many it was for and how many a channel
- * actually reached, so the screen never claims a nudge landed when it only reached the in-app strip.
- */
-export async function nudgeAction(rawId: string): Promise<({ ok: true } & NudgeResult) | { error: string }> {
-  const user = await requireUser();
-  const id = uuid.safeParse(rawId);
-  if (!id.success) return { error: "That one doesn't exist." };
-  try {
-    return { ok: true, ...(await sendNudge(id.data, user.id, new Date())) };
-  } catch (err) {
-    console.error("nudge failed", err);
-    return { error: "That didn't go through. Try again." };
-  }
 }
 
 export async function lockMarketAction(rawId: string): Promise<{ ok: true; /** Sent and still going through (docs/design.md 5.2): the band shows it on its way. */ pending?: true } | { error: string }> {
@@ -540,4 +528,55 @@ export async function pickInkAction(rawId: string, rawInk: string): Promise<{ ok
   } catch (err) {
     return { error: say(err, "Couldn’t change that.") };
   }
+}
+
+/** "Is one of these you?" (3.17, frame 4): names for the letters typed, at most three, and nothing before the first letters. Only from the link page, for a market that is open. */
+export async function suggestGhostNamesAction(rawId: string, rawTyped: string): Promise<Array<{ claimId: string; name: string }>> {
+  if (await currentUser()) return [];
+  const id = uuid.safeParse(rawId);
+  const typed = z.string().max(40).safeParse(rawTyped);
+  if (!id.success || !typed.success) return [];
+  const d = await marketById(id.data);
+  if (!d || stateOf(d) !== "open") return [];
+  return (await suggestGhostNames(d.groupId, typed.data)).map((r) => ({ claimId: r.claimId, name: r.displayName }));
+}
+
+/** The swipe on Now that removes a market you asked that nobody else is in (3.15): a void only the asker can make, counted against nobody. */
+export async function removeMarketAction(rawId: string): Promise<{ ok: true } | { error: string }> {
+  const user = await requireUser();
+  const id = uuid.safeParse(rawId);
+  if (!id.success) return { error: "That one doesn't exist." };
+  try {
+    await removeMarket(id.data, user.id);
+  } catch (err) {
+    return { error: say(err, "That didn't go through. Try again.") };
+  }
+  revalidatePath("/");
+  revalidatePath(`/m/${id.data}`);
+  return { ok: true };
+}
+
+/** The swipe on Now that archives a finished market off this person's Now (3.15): nothing else changes. */
+export async function archiveMarketAction(rawId: string): Promise<{ ok: true } | { error: string }> {
+  const user = await requireUser();
+  const id = uuid.safeParse(rawId);
+  if (!id.success) return { error: "That one doesn't exist." };
+  try {
+    await archiveMarket(id.data, user.id);
+  } catch (err) {
+    return { error: say(err, "That didn't go through. Try again.") };
+  }
+  revalidatePath("/");
+  return { ok: true };
+}
+
+/** The claimant screen's "leave it out" for an entry made from a link (3.38): it goes back to a fresh ghost under the typed name and never becomes this person's. */
+export async function leaveEntriesAction(rawIds: string[]): Promise<{ ok: true; left: number } | { error: string }> {
+  const user = await requireUser();
+  const ids = z.array(uuid).max(50).safeParse(rawIds);
+  if (!ids.success) return { error: "That didn't come through. Try again." };
+  let left = 0;
+  for (const dareId of ids.data) if (await leaveEntry(dareId, user.id)) left += 1;
+  revalidatePath("/welcome");
+  return { ok: true, left };
 }

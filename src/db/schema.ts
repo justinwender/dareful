@@ -515,7 +515,7 @@ export const dares = pgTable(
     check("dares_reveal_mode_known", sql`${t.revealMode} in ('open', 'blind')`),
     check(
       "dares_resolved_by_known",
-      sql`${t.resolvedBy} is null or ${t.resolvedBy} in ('quorum', 'arbitration', 'provisional', 'expired', 'feed')`,
+      sql`${t.resolvedBy} is null or ${t.resolvedBy} in ('quorum', 'arbitration', 'provisional', 'expired', 'feed', 'removed')`,
     ),
     check("dares_threshold_positive", sql`${t.threshold} > 0`),
     check(
@@ -555,6 +555,8 @@ export const darePositions = pgTable(
     acknowledgedAt: ts("acknowledged_at"),
     /** Creator removed this ghost; the row stays for the record and does not count. */
     dismissedAt: ts("dismissed_at"),
+    /** The ghost this position came from when a phone login bound it to the user (docs/design.md 3.17, 3.38): the claimant screen lists it by the name typed, and leaving it out sends it back to a fresh ghost under that name. Null once signed or when it was never a ghost's. */
+    boundClaim: uuid("bound_claim").references(() => participantClaims.id),
   },
   (t) => [
     check("dare_positions_user_xor_claim", sql`(${t.userId} is null) <> (${t.claimId} is null)`),
@@ -568,6 +570,40 @@ export const darePositions = pgTable(
     unique("dare_positions_dare_user").on(t.dareId, t.userId),
     unique("dare_positions_dare_claim").on(t.dareId, t.claimId),
   ],
+).enableRLS();
+
+/**
+ * A finished market this person swiped off their Now (docs/design.md 3.15, archive): it changes nothing but this
+ * person's Now, and the market, its story and its photos stay where they were for everyone.
+ */
+export const nowArchive = pgTable(
+  "now_archive",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    dareId: uuid("dare_id")
+      .notNull()
+      .references(() => dares.id),
+    archivedAt: ts("archived_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.dareId] })],
+).enableRLS();
+
+/**
+ * A wrong number offered for a picked name on the link page (docs/design.md 3.17, frame 5): the check confirms or
+ * denies a number, so tries are counted per name and refused past a few an hour. Nothing about the number is kept.
+ */
+export const claimNumberAttempts = pgTable(
+  "claim_number_attempts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    claimId: uuid("claim_id")
+      .notNull()
+      .references(() => participantClaims.id),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("claim_number_attempts_claim_created").on(t.claimId, t.createdAt)],
 ).enableRLS();
 
 /** What each participant said when a market went to arbitration. */
