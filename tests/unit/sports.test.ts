@@ -373,6 +373,29 @@ test("a game with more than one question in the same set of people is one row on
   assert.deepEqual([over.over.length, over.happened.length, over.happened[0]?.meta], [0, 1, "Final: Bills 24, Chiefs 17"]);
 });
 
+test("a game's row on Now swipes as one (3.15, ruled 2026-09-27): removable only when every question of the game here is this person's alone, and its questions ride the row to remove or archive together", () => {
+  const away = { abbr: "KC", name: "Chiefs", color: null };
+  const home = { abbr: "BUF", name: "Bills", color: null };
+  const games = new Map([["a", { gameId: "g", name: "Chiefs at Bills", away, home, score: null }], ["b", { gameId: "g", name: "Chiefs at Bills", away, home, score: null }], ["c", { gameId: "g", name: "Chiefs at Bills", away, home, score: "Bills 24, Chiefs 17" }]]);
+  const t = new Date("2026-09-27T17:00:00Z");
+  const run = (id: string, removable?: true) => ({ id, caption: "You’re in at 70% · just you so far", state: "in" as const, groupId: "s1", ...(removable ? { removable } : {}) });
+  // Both questions this person's alone: one row, removable, carrying both.
+  const alone = collapseGames({ needs: [], running: [run("a", true), run("b", true)], over: [] }, games);
+  assert.equal(alone.running.length, 1);
+  const row = alone.running[0]!;
+  assert.deepEqual([row.removable, "game" in row && row.game ? row.game.ids : null], [true, ["a", "b"]], "the game's row removes both, as one");
+  // Someone else in one of them: the row stays put.
+  const shared = collapseGames({ needs: [], running: [run("a", true), run("b")], over: [] }, games);
+  assert.equal(shared.running[0]?.removable, undefined, "nobody else may be in any of its questions");
+  // A question of the game still needing this person (asked by someone else): the game is a needs row, not a running one, so nothing to remove there either.
+  const need = { kind: "enter" as const, key: "c", context: "Closes tonight", deadline: t, since: t, href: "/m/c", verb: "Enter", groupId: "s1", state: "open" as const };
+  const mixed = collapseGames({ needs: [need], running: [run("a", true)], over: [] }, games);
+  assert.deepEqual([mixed.needs.length, mixed.running.length], [1, 0]);
+  // Over: the game's finished questions ride the Just happened row, to archive together.
+  const over = collapseGames({ needs: [], running: [], over: [{ dare: { id: "c", groupId: "s1" }, at: t, state: "resolved" }, { dare: { id: "a", groupId: "s1" }, at: t, state: "resolved" }] }, games);
+  assert.deepEqual(over.happened[0]?.ids, ["c", "a"], "both questions, for the archive");
+});
+
 test("the consent line on a game's terms step is true for every question chosen: the score's alone, the play-by-play's alone, and both in one line with the first drive among them", () => {
   assert.equal(consentFor(["home_wins", "margin", "total"]), CONSENT, "questions the score settles: the score's line");
   assert.equal(consentFor(["first_drive"]), DRIVE_CONSENT, "the first drive alone: the play-by-play's line");

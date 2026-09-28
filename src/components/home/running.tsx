@@ -35,9 +35,9 @@ export function Running({ rows, viewerId }: { rows: RunningRow[]; viewerId: stri
             </span>
           </Link>
           );
-          // A market you asked that nobody else is in answers a left swipe with Remove (3.15); every other row stays put.
+          // A market you asked that nobody else is in answers a left swipe with Remove (3.15); a game's row does too, as one, when nobody else is in any of its questions; every other row stays put.
           return r.removable ? (
-            <CallOff key={r.id} kind="remove" dareId={r.id}>
+            <CallOff key={r.id} kind="remove" dareId={r.id} ids={r.game?.ids} game={Boolean(r.game)}>
               {row}
             </CallOff>
           ) : (

@@ -13,7 +13,7 @@ import { createGroup } from "@/lib/ledger/groups";
 import { nowFor } from "@/lib/ledger/home";
 import { marketCards } from "@/lib/ledger/market-view";
 import * as markets from "@/lib/ledger/markets";
-import { archivedFor, archiveMarket, removeMarket } from "@/lib/ledger/now-swipes";
+import { archivedFor, archiveMarket, archiveMarkets, removeMarket, removeMarkets } from "@/lib/ledger/now-swipes";
 import { cleanup, codeOf, tempSigner, track, type Signer } from "./fixture";
 
 let ana: Signer, ben: Signer;
@@ -69,4 +69,25 @@ test("archiving a finished market changes nothing but this person's Now: it leav
   assert.equal((await now(ana)).happened.some((e) => e.kind === "market" && e.market.dare.id === d.id), false, "off this person's Now");
   assert.equal((await now(ben)).happened.some((e) => e.kind === "market" && e.market.dare.id === d.id), true, "and still on the other person's");
   assert.equal((await marketCards({ viewerId: ana.user.id })).some((m) => m.dare.id === d.id), true, "the story stays where it was, for everyone");
+});
+
+test("a game's questions swipe as one (ruled 2026-09-27): removing several is all or nothing, refused whole when anyone else is in any of them; archiving several needs every one to have ended", async () => {
+  const one = await question("Does the first of the pair go?");
+  const two = await question("Does the second of the pair go?");
+  await one.enter(ana, 7000n);
+  await two.enter(ana, 6000n);
+  await two.enter(ben, 3000n);
+  assert.equal(await codeOf(() => removeMarkets([one.d.id, two.d.id], ana.user.id)), "wrong_state", "ben is in the second, so neither goes");
+  assert.equal(markets.stateOf((await markets.marketById(one.d.id))!), "open", "the first is untouched: all or nothing");
+  assert.equal(await codeOf(() => archiveMarkets([one.d.id, two.d.id], ana.user.id)), "wrong_state", "still running, so nothing archives");
+  assert.deepEqual([...(await archivedFor(ana.user.id))].filter((id) => id === one.d.id || id === two.d.id), [], "neither archived");
+  const three = await question("Does the third go with the first?");
+  await three.enter(ana, 5000n);
+  await removeMarkets([one.d.id, three.d.id], ana.user.id);
+  assert.deepEqual([(await markets.marketById(one.d.id))!.resolvedBy, (await markets.marketById(three.d.id))!.resolvedBy], ["removed", "removed"], "both this person's alone: both go");
+  await db.update(schema.dares).set({ lockedAt: new Date(), resolvedAt: new Date(), resolvedOutcome: 1n, resolvedBy: "quorum" }).where(eq(schema.dares.id, two.d.id));
+  await archiveMarkets([two.d.id, one.d.id], ana.user.id);
+  const archived = await archivedFor(ana.user.id);
+  assert.ok(archived.has(two.d.id) && archived.has(one.d.id), "ended (settled, and called off) archive together");
+  assert.equal(await codeOf(() => removeMarkets([], ana.user.id)), "not_found", "nothing is not a swipe");
 });

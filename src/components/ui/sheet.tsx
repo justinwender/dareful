@@ -13,7 +13,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
  * A modal sheet closes with a 48px close at its top right and by dragging down (docs/design.md 6.4). The drag
  * is read from the handle row only, so the sheet's own content still scrolls. A sheet never opens another sheet.
  */
-export function Sheet({ open, onClose, labelledBy, children, closeLabel, tall = false }: { open: boolean; onClose: () => void; labelledBy: string; children: ReactNode; /** A word in the close position instead of the cross ("Done" on the mark picker, 3.29). */ closeLabel?: string; /** A fixed 560px sheet (the mark picker), instead of one that fits its content. */ tall?: boolean }) {
+export function Sheet({ open, onClose, labelledBy, children, closeLabel, tall = false, clear = false }: { open: boolean; onClose: () => void; labelledBy: string; children: ReactNode; /** A word in the close position instead of the cross ("Done" on the mark picker, 3.29). */ closeLabel?: string; /** A fixed 560px sheet (the mark picker), instead of one that fits its content. */ tall?: boolean; /** No scrim, and what is behind the sheet stays touchable: the sticker sheet over a photo (3.28), where the person holds the photo itself while the sheet says how. Closes only by its close and its handle. */ clear?: boolean }) {
   const panel = useRef<HTMLDivElement>(null);
   const startY = useRef<number | null>(null);
   // The distance so far lives in a ref as well as in state: a flick can end before the last move has rendered,
@@ -36,15 +36,15 @@ export function Sheet({ open, onClose, labelledBy, children, closeLabel, tall = 
 
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end">
-      <button type="button" aria-label="Never mind" tabIndex={-1} onClick={onClose} className="absolute inset-0 touch-none bg-[var(--scrim)]" />
+    <div className={`fixed inset-0 z-50 flex flex-col justify-end ${clear ? "pointer-events-none" : ""}`} data-sheet={clear ? "clear" : ""}>
+      {clear ? null : <button type="button" aria-label="Never mind" tabIndex={-1} onClick={onClose} className="absolute inset-0 touch-none bg-[var(--scrim)]" />}
       <div
         ref={panel}
         role="dialog"
-        aria-modal="true"
+        aria-modal={clear ? undefined : "true"}
         aria-labelledby={labelledBy}
         style={dy > 0 ? { transform: `translateY(${dy}px)` } : undefined}
-        className={`relative mx-auto flex w-full max-w-[430px] flex-col gap-5 overflow-y-auto overscroll-contain rounded-t-card border border-b-0 border-line bg-surface px-4 pt-2 pb-[max(1.5rem,env(safe-area-inset-bottom))] motion-safe:animate-[sheet-up_200ms_ease-out] ${tall ? "h-[min(560px,85%)]" : "max-h-[85%]"}`}
+        className={`relative mx-auto flex w-full max-w-[430px] flex-col gap-5 overflow-y-auto overscroll-contain rounded-t-card border border-b-0 border-line bg-surface px-4 pt-2 pb-[max(1.5rem,env(safe-area-inset-bottom))] motion-safe:animate-[sheet-up_200ms_ease-out] ${tall ? "h-[min(560px,85%)]" : "max-h-[85%]"} ${clear ? "pointer-events-auto shadow-[0_-8px_24px_rgba(0,0,0,0.35)]" : ""}`}
       >
         <div
           className="relative -mb-2 flex h-10 shrink-0 touch-none select-none items-center justify-center"

@@ -99,12 +99,12 @@ export function needFromMarket(m: Pick<MarketCardData, "dare" | "state" | "peopl
 export type PersonRow = { user: Person; token: { ownerId: string; denomination: DenominationRow; quantity: bigint } | null };
 
 /** A question in flight this person has already acted on: where it stands, and no action (docs/design.md 4.7). A game with more than one is one row, its href the game page. */
-export type RunningRow = { id: string; title: string; mark: MarkRef | null; ink: InkName; state: "in" | "locked" | "voting"; caption: string; game?: { away: TeamFace; home: TeamFace; href: string } | null; /** A market this person asked that nobody else is in: the row answers a left swipe with Remove (3.15). */ removable?: true; /** This person's last tap on it (the lock, the vote that decided it) is still going through (3.15, 5.2): the on-its-way mark stands in for the state mark. */ onWay?: true };
+export type RunningRow = { id: string; title: string; mark: MarkRef | null; ink: InkName; state: "in" | "locked" | "voting"; caption: string; /** The set of people it belongs to, for collapsing a game's questions into one row. */ groupId?: string; game?: { away: TeamFace; home: TeamFace; href: string; /** The game's questions in this set, which the row swipes as one (3.15, ruled 2026-09-27). */ ids: string[] } | null; /** A market this person asked that nobody else is in, or a game none of whose questions anyone else is in: the row answers a left swipe with Remove (3.15). */ removable?: true; /** This person's last tap on it (the lock, the vote that decided it) is still going through (3.15, 5.2): the on-its-way mark stands in for the state mark. */ onWay?: true };
 
 export type HomeData = {
   needs: NeedRow[];
   running: RunningRow[];
-  happened: Array<{ kind: "market"; at: Date; market: MarketCardData } | { kind: "onway"; at: Date; href: string; subject: string; owner: Person } | { kind: "game"; at: Date; href: string; name: string; away: TeamFace; home: TeamFace; /** "Final: Bills 24, Chiefs 17", or how many questions when the score is not in. */ meta: string; state: "resolved" | "voided" | "expired" } | { kind: "cover"; at: Date; obligation: typeof schema.obligations.$inferSelect; denomination: DenominationRow; from: Person; to: Person; groupLabel: string | null } | { kind: "closed"; at: Date; obligation: typeof schema.obligations.$inferSelect; denomination: DenominationRow; from: Person; to: Person; groupLabel: string | null; state: "settled" | "forgiven" }>;
+  happened: Array<{ kind: "market"; at: Date; market: MarketCardData } | { kind: "onway"; at: Date; href: string; subject: string; owner: Person } | { kind: "game"; at: Date; href: string; name: string; away: TeamFace; home: TeamFace; /** "Final: Bills 24, Chiefs 17", or how many questions when the score is not in. */ meta: string; state: "resolved" | "voided" | "expired"; /** The game's finished questions in this set, which the row archives as one (3.15, ruled 2026-09-27). */ ids: string[] } | { kind: "cover"; at: Date; obligation: typeof schema.obligations.$inferSelect; denomination: DenominationRow; from: Person; to: Person; groupLabel: string | null } | { kind: "closed"; at: Date; obligation: typeof schema.obligations.$inferSelect; denomination: DenominationRow; from: Person; to: Person; groupLabel: string | null; state: "settled" | "forgiven" }>;
   /** People with something open: a row each. */
   people: PersonRow[];
   /** Everyone who is square: one row, an avatar stack and a sentence, never a column of "nothing open". */
@@ -147,7 +147,7 @@ export type PeopleData = Pick<HomeData, "people" | "square">;
  * you the tiers of `orderNeeds`. The row's subject is the game, its meta the pressing question's reason or
  * clock and how many questions, and its verb the pressing question's. Pure, so the collapse has tests.
  */
-export function collapseGames<N extends { kind: NeedRow["kind"]; key: string; context: string; deadline: Date | null; since: Date; href: string; verb: string; groupId: string } & Partial<QuestionLook>, R extends { id: string; caption: string; state: RunningRow["state"] }, O extends { dare: { id: string; groupId: string }; at: Date; state: string }>(
+export function collapseGames<N extends { kind: NeedRow["kind"]; key: string; context: string; deadline: Date | null; since: Date; href: string; verb: string; groupId: string } & Partial<QuestionLook>, R extends { id: string; caption: string; state: RunningRow["state"]; groupId?: string; removable?: true }, O extends { dare: { id: string; groupId: string }; at: Date; state: string }>(
   input: { needs: N[]; running: R[]; over: O[] },
   games: Map<string, { gameId: string; name: string; away: TeamFace; home: TeamFace; score: string | null }>,
 ): { needs: Array<N | Extract<NeedRow, { kind: "game" }>>; running: Array<R | RunningRow>; over: O[]; happened: Array<Extract<HomeData["happened"][number], { kind: "game" }>> } {
@@ -162,7 +162,7 @@ export function collapseGames<N extends { kind: NeedRow["kind"]; key: string; co
   const counts = new Map<string, number>();
   const bump = (k: string | null) => k && counts.set(k, (counts.get(k) ?? 0) + 1);
   for (const n of input.needs) bump(keyOf(n.key, n.groupId));
-  for (const r of input.running) bump(keyOf(r.id, groupOf.get(r.id) ?? runningGroup.get(r.id)));
+  for (const r of input.running) bump(keyOf(r.id, r.groupId ?? groupOf.get(r.id)));
   for (const o of input.over) bump(keyOf(o.dare.id, o.dare.groupId));
   const collapsed = (k: string | null) => k !== null && (counts.get(k) ?? 0) > 1;
   const seen = new Set<string>();
@@ -179,8 +179,14 @@ export function collapseGames<N extends { kind: NeedRow["kind"]; key: string; co
     needs.push({ kind: "game", key: k as string, href: `/on/${g.gameId}?g=${n.groupId}`, verb: n.verb, context: `${n.context} · ${counts.get(k as string)} questions`, subject: g.name, question: false, deadline: n.deadline, since: n.since, groupId: n.groupId, game: { away: g.away, home: g.home, questions: counts.get(k as string) ?? 0, questionHref: n.href, state: n.state ?? "open" }, pressing: n.kind === "vote" || n.kind === "lock" || n.kind === "finish" ? n.kind : "enter" });
   }
   const running: Array<R | RunningRow> = [];
+  // A game's running questions by game and set: the row swipes them as one, and only when every one of the game's questions is here and removable (ruled 2026-09-27: remove only when nobody else is in any of them).
+  const runningByKey = new Map<string, R[]>();
   for (const r of input.running) {
-    const groupId = groupOf.get(r.id) ?? runningGroup.get(r.id);
+    const k = keyOf(r.id, r.groupId ?? groupOf.get(r.id));
+    if (k) runningByKey.set(k, [...(runningByKey.get(k) ?? []), r]);
+  }
+  for (const r of input.running) {
+    const groupId = r.groupId ?? groupOf.get(r.id);
     const k = keyOf(r.id, groupId);
     if (!collapsed(k)) {
       running.push(r);
@@ -189,10 +195,17 @@ export function collapseGames<N extends { kind: NeedRow["kind"]; key: string; co
     if (seen.has(k as string)) continue;
     seen.add(k as string);
     const g = games.get(r.id)!;
-    running.push({ id: r.id, title: g.name, mark: null, ink: "clay", state: r.state, caption: `${r.caption} · ${counts.get(k as string)} questions`, game: { away: g.away, home: g.home, href: `/on/${g.gameId}?g=${groupId}` } });
+    const rows = runningByKey.get(k as string) ?? [];
+    const removable = rows.length === (counts.get(k as string) ?? 0) && rows.every((x) => x.removable === true);
+    running.push({ id: r.id, title: g.name, mark: null, ink: "clay", state: r.state, caption: `${r.caption} · ${counts.get(k as string)} questions`, game: { away: g.away, home: g.home, href: `/on/${g.gameId}?g=${groupId}`, ids: rows.map((x) => x.id) }, ...(removable ? { removable: true as const } : {}) });
   }
   const over: O[] = [];
   const happened: Array<Extract<HomeData["happened"][number], { kind: "game" }>> = [];
+  const overByKey = new Map<string, string[]>();
+  for (const o of input.over) {
+    const k = keyOf(o.dare.id, o.dare.groupId);
+    if (k) overByKey.set(k, [...(overByKey.get(k) ?? []), o.dare.id]);
+  }
   for (const o of input.over) {
     const k = keyOf(o.dare.id, o.dare.groupId);
     if (!collapsed(k)) {
@@ -202,13 +215,10 @@ export function collapseGames<N extends { kind: NeedRow["kind"]; key: string; co
     if (seen.has(k as string)) continue;
     seen.add(k as string);
     const g = games.get(o.dare.id)!;
-    happened.push({ kind: "game", at: o.at, href: `/on/${g.gameId}?g=${o.dare.groupId}`, name: g.name, away: g.away, home: g.home, meta: g.score ? `Final: ${g.score}` : `${counts.get(k as string)} questions`, state: o.state === "voided" ? "voided" : o.state === "expired" ? "expired" : "resolved" });
+    happened.push({ kind: "game", at: o.at, href: `/on/${g.gameId}?g=${o.dare.groupId}`, name: g.name, away: g.away, home: g.home, meta: g.score ? `Final: ${g.score}` : `${counts.get(k as string)} questions`, state: o.state === "voided" ? "voided" : o.state === "expired" ? "expired" : "resolved", ids: overByKey.get(k as string) ?? [o.dare.id] });
   }
   return { needs, running, over, happened };
 }
-/** The set of people each running question belongs to, kept beside the rows since a running row does not carry it. */
-const runningGroup = new Map<string, string>();
-
 /** Every question this person can see, sorted into what needs them, what is running, and what is over. */
 async function questionsFor(me: { id: string }, opts: { now: Date; closes: (at: Date) => string }): Promise<{ needs: NeedRow[]; running: RunningRow[]; over: MarketCardData[]; gamesOver: Array<Extract<HomeData["happened"][number], { kind: "game" }>> }> {
   const [cards, myVotes] = await Promise.all([marketCards({ viewerId: me.id, limit: 40 }), db.select({ dareId: schema.dareVotes.dareId }).from(schema.dareVotes).where(eq(schema.dareVotes.userId, me.id))]);
@@ -220,8 +230,7 @@ async function questionsFor(me: { id: string }, opts: { now: Date; closes: (at: 
     const n = needFromMarket(m, me.id, voted.has(m.dare.id), opts.now, opts.closes);
     if (n) needs.push({ ...n, groupId: m.dare.groupId } as NeedRow);
     else if (m.state === "open" || m.state === "locked") {
-      running.push({ id: m.dare.id, title: m.dare.title, mark: markRefOf(m.dare), ink: m.ink, state: m.state === "locked" ? (m.votesCast > 0 ? "voting" : "locked") : "in", caption: runningCaption(m, opts.closes), ...(m.state === "open" && m.dare.creatorId === me.id && m.people.length === 1 && m.viewerIn ? { removable: true as const } : {}) });
-      runningGroup.set(m.dare.id, m.dare.groupId);
+      running.push({ id: m.dare.id, title: m.dare.title, mark: markRefOf(m.dare), ink: m.ink, state: m.state === "locked" ? (m.votesCast > 0 ? "voting" : "locked") : "in", caption: runningCaption(m, opts.closes), groupId: m.dare.groupId, ...(m.state === "open" && m.dare.creatorId === me.id && m.people.length === 1 && m.viewerIn ? { removable: true as const } : {}) });
     } else over.push(m);
   }
   // A game with more than one question in the same set is one row (4.7).
@@ -305,6 +314,11 @@ export async function nowFor(me: { id: string; displayName: string }, opts: { no
   // A finished market this person swiped off their Now stays off it (3.15, archive); it is nowhere else changed.
   const archived = await archivedFor(me.id);
   for (const m of over) if (!archived.has(m.dare.id)) happened.push({ kind: "market", at: m.at, market: { ...m, groupName: labelOf.get(m.dare.groupId) ?? m.groupName } });
+  // A finished game archives as one row (ruled 2026-09-27): it stays while any of its questions here is not archived.
+  for (let i = happened.length - 1; i >= 0; i--) {
+    const e = happened[i]!;
+    if (e.kind === "game" && e.ids.every((id) => archived.has(id))) happened.splice(i, 1);
+  }
   for (const o of covers) {
     const denomination = denoms.get(o.denomId);
     const from = userById.get(o.fromUser);

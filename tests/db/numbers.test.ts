@@ -115,7 +115,7 @@ test("the shirts on the chain: five people, one far outlier, three votes for 14 
   assert.deepEqual([after.status, after.outcome], [1, 14n]);
 
   // Every participant's record moved (PLANNING.md 8e): the miss as a fraction of the scale, and the asker's clean resolution.
-  assert.deepEqual((await calibrationFor(john.user.id)).numeric, { resolved: 1, meanMissBps: 10000 });
-  assert.deepEqual((await calibrationFor(theo.user.id)).numeric, { resolved: 1, meanMissBps: 1000 });
+  assert.deepEqual((await calibrationFor(john.user.id)).numeric, { resolved: 1, meanMissBps: 10000, band: null });
+  assert.deepEqual((await calibrationFor(theo.user.id)).numeric, { resolved: 1, meanMissBps: 1000, band: null });
   assert.deepEqual(await cleanResolution(priya.user.id), { ended: 1, clean: 1 });
 });

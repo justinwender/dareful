@@ -61,7 +61,7 @@ let gabe: string, linkToken: string, inviteToken: string, groupId: string, bound
 let asker: Signer, friend: Signer, stranger: Signer, cAsker: string, cFriend: string, cStranger: string, marketId: string, draftId: string, owedId: string, photoId: string, settledMarketId: string, mintedId: string;
 let numberId: string, aiScaleId: string, blindNumberId: string, answeredId: string;
 let memoryIds: string[] = [], evidenceOnSettledId: string, evidenceId: string, evidenceMarketId: string, stickerId: string, stickerMarketId: string;
-let nia: Signer, cNia: string, calledId: string, calledClipId: string, voidedId: string, memoryId: string;
+let nia: Signer, rae: Signer, cNia: string, calledId: string, calledClipId: string, voidedId: string, memoryId: string;
 let pickOpenId: string, pickBlindId: string, pickLockedId: string, pickVotingId: string, pickSettledId: string;
 let windowId: string, windowPhotoId: string;
 let feedOpenId: string, feedMarginId: string, feedVotingId: string, feedSettledId: string, feedHome = "", feedAway = "", feedHomeAbbr = "", feedAwayAbbr = "", cRae: string, feedGameId: string, feedGroupId: string, nightGameId: string, nightGroupId: string;
@@ -273,7 +273,7 @@ before(async () => {
 
   // A photo taken while a question is open (docs/design.md 3.39): nia and the friend in, a third person not yet, nia's photo in the
   // bucket, and nobody else's to see until it ends. A set of three, so everyone is not in and nobody's Now lights a lock.
-  const rae = await tempSigner("Rae");
+  rae = await tempSigner("Rae");
   const wg = await createGroup({ name: "Open window (check)", createdBy: nia.user.id });
   track.group(wg.id);
   await db.insert(schema.groupMembers).values([{ groupId: wg.id, userId: friend.user.id }, { groupId: wg.id, userId: rae.user.id }]);
@@ -874,9 +874,10 @@ test("the market screen keeps its one move in the pinned sheet: the odds line be
   const after = await get(`/m/${marketId}`, cAsker);
   assert.ok(!/<section aria-label="Your number"/.test(after.html) && !/<section aria-label="Get people in"/.test(after.html), "once in, nothing is your move: no sheet (3.24)");
   assert.ok(after.html.includes('data-holdouts="1"') && after.html.includes('data-holdout=""') && after.html.includes('data-whos-in-list=""'), "the friend, asked and not in, follows the stack as a dashed avatar, and the stack opens who's in (3.42)");
-  assert.ok(!after.html.includes("data-ghost-entries") && !after.text.includes("waiting on") && !after.html.includes("data-nudge"), "nothing else nudges: no list of ghosts, no nudge");
+  assert.ok(!after.html.includes("data-ghost-entries"), "no list of ghosts: who is in is behind the stack");
+  assert.ok(after.html.includes('data-nudge=""') && after.text.includes(`Waiting on ${friend.user.displayName.split(" ")[0]}.`) && after.text.includes("Nudge "), "the nudge is back (Round B): the only way someone in reaches the people not in");
   assert.ok(after.html.includes('data-whos-in=""') && after.html.includes('data-share=""') && after.html.includes('data-copy=""') && after.html.includes('data-code=""'), "the icons end the who's-in row: share, copy, the code to scan (3.42)");
-  assert.ok(after.text.includes("Just you so far") && /data-share=""[^>]*bg-chalk/.test(after.html), "while you're the only one in, share is the screen's chalk");
+  assert.ok(after.text.includes("1 of 2 in") && !after.text.includes("Just you so far") && /data-share=""[^>]*bg-chalk/.test(after.html), "alone with someone named: the holdouts rule from the first entry, and share still the chalk (ruled 2026-09-27)");
   assert.ok(!after.text.includes("Send it to the chat") && !after.text.includes("Anyone with the link") && !after.text.includes("show a code"), "the four sentences and buttons are gone (4.9)");
   assert.ok(!after.text.includes("Slide to pick your odds"), "the odds line has become the weight line");
   assert.ok(!before.html.includes('data-whos-in=""') && before.text.includes("One friend is in. Where they landed shows once you are."), "before you're in: who is in and no number, and no icons, since sharing belongs to people who are in (3.38, 3.42)");
@@ -1415,7 +1416,46 @@ test("holdouts: with others in and some still out the count says both numbers an
   const notAsker = await get(`/m/${windowId}`, cFriend);
   assert.ok(!notAsker.html.includes('data-close-early=""') && notAsker.text.includes("2 of 3 in"), "only the asker closes early; everyone in sees the count");
   const alone = await get(`/m/${marketId}`, cAsker);
-  assert.ok(alone.text.includes("Just you so far") && !alone.html.includes('data-close-early=""'), "alone, the count says so and there is nothing to close with");
+  assert.ok(alone.text.includes("1 of 2 in") && alone.html.includes('data-holdouts="1"') && !alone.html.includes('data-close-early=""'), "alone with someone named: the holdouts rule, and nothing to close with");
+  // "Just you so far" only when nobody was named (ruled 2026-09-27): a question in a set of one.
+  const solo = await createGroup({ name: "Nobody named (check)", createdBy: asker.user.id });
+  track.group(solo.id);
+  const soloUsd = await ensureUsd(solo.id, asker.user.id);
+  const s0 = await markets.draftMarket({ creatorId: asker.user.id, groupId: solo.id, denomId: soloUsd.id, title: "Does the solo question stay just you?", termsText: "Yes if nobody was named.", resolvesBy: new Date(Date.now() + 86_400_000) });
+  const sd = await markets.openMarket(s0.id, asker.user.id, await asker.ledger.signTypedData(markets.createTypedData(s0)));
+  await markets.enterMarket({ dareId: sd.id, userId: asker.user.id, stake: 500n, value: 6000n, signature: await asker.ledger.signTypedData(markets.enterTypedData(sd, 500n, 6000n)) });
+  const justYou = await get(`/m/${sd.id}`, cAsker);
+  assert.ok(justYou.text.includes("Just you so far") && !justYou.html.includes("data-holdouts=") && /data-share=""[^>]*bg-chalk/.test(justYou.html) && !justYou.html.includes('data-nudge=""'), "nobody named: just you so far, share the chalk, and nobody to nudge");
+});
+
+test("the nudge and the relay are back for entering and for voting, and who's in carries the people still out with a nudge beside each; nobody outside nudges", async () => {
+  // Nia's window question, open: rae asked and not in. Anyone in may nudge; the stack's sheet lists rae as still out.
+  const open = await get(`/m/${windowId}`, cNia);
+  assert.ok(open.html.includes('data-nudge=""') && open.text.includes(`Waiting on ${rae.user.displayName.split(" ")[0]}.`) && open.html.includes('data-still-out="1"'), "the nudge card, and one person still out behind the stack (3.42, amended)");
+  const inNotAsker = await get(`/m/${windowId}`, cFriend);
+  assert.ok(inNotAsker.html.includes('data-nudge=""') && inNotAsker.html.includes('data-still-out="1"'), "anyone in may nudge: it is a person acting, from inside");
+  const out = await get(`/m/${windowId}`, cRae);
+  assert.ok(!out.html.includes('data-nudge=""') && !out.html.includes("data-still-out="), "someone not in has nothing to nudge with, and no list");
+  // Locked, with nobody voted yet: the same nudge reaches whoever in the quorum has not called it.
+  const locked = await get(`/m/${feedVotingId}`, cNia);
+  assert.ok(locked.html.includes('data-nudge=""') && locked.text.includes(`Waiting on ${rae.user.displayName.split(" ")[0]}.`) && locked.html.includes('data-still-out="1"'), "once locked, the nudge to vote and the still-out list");
+});
+
+test("the You page: identity with one caption, how your calls land under the floor as the count and the calls themselves, the questions asked in counts, and the Account rows; nothing yet is one line", async () => {
+  const you = await get("/you", cAsker);
+  assert.equal(you.status, 200);
+  assert.ok(/In \d+ markets since /.test(you.text) || /In one market since /.test(you.text), "the header's caption counts markets since when (3.34)");
+  assert.ok(you.html.includes('data-you-calls="early"') && /Your picture draws at 10 resolved calls\. \d+ so far\./.test(you.text) && you.html.includes('data-diagonal=""') && !you.html.includes('data-calls-plot=""'), "under ten: the frame with only the diagonal and the count as a fact, never a plot");
+  assert.ok(you.html.includes('data-you-call-rows=""') && /You said \d+% · it (happened|didn’t)/.test(you.text), "the calls themselves as rows");
+  assert.ok(you.html.includes("data-you-asked=") && /(\d+ of the \d+ questions|The one question) you asked (ended cleanly|was voided)/.test(you.text) && !/\d+% of the questions/.test(you.text), "questions you asked, in counts and never a percentage");
+  for (const row of ["units", "marks", "number", "signout"]) assert.ok(you.html.includes(`data-account-row="${row}"`), `the ${row} row`);
+  assert.ok(you.text.includes("Used to sign in. Nobody else sees it.") && you.text.includes("Sign out") && !you.text.includes("One tap"), "the captions, and no One tap row (Round B)");
+  assert.ok(!/\brank\b|\bgrade\b|\bscore\b/i.test(you.text), "no score, grade or rank");
+  // A fresh account: joined today, nothing resolved yet, and no empty chart.
+  const fresh = await tempUser("Fresh Check");
+  const cFresh = await cookieFor(fresh.id);
+  const empty = await get("/you", cFresh);
+  assert.ok(empty.text.includes("Joined today") && empty.html.includes('data-you-nothing=""') && empty.text.includes("Nothing has resolved yet.") && !empty.html.includes("data-you-calls=") && !empty.html.includes("data-you-numbers=") && !empty.html.includes("data-you-asked="), "one line, no zeros (3.34, 4.7)");
 });
 
 test("the swipes on Now: a market you asked that nobody else is in answers Remove, a finished one answers Archive, and a row someone else is in stays put", async () => {
@@ -1429,6 +1469,10 @@ test("the swipes on Now: a market you asked that nobody else is in answers Remov
   const n = await get("/", cNia);
   const niaRunning = n.html.split("Running")[1]?.split("Just happened")[0] ?? "";
   assert.ok(niaRunning.includes(`/m/${windowId}`) && !new RegExp(`data-call-off="remove"[^>]*>[\\s\\S]*?/m/${windowId}`).test(niaRunning), "a market other people are in isn't one person's to remove");
+  // A game swipes as one row (ruled 2026-09-27): the asker's two open questions on the feed game, alone in both, wear Remove together; nia's finished night game wears Archive.
+  assert.ok(new RegExp(`data-call-off="remove"[^>]*data-call-off-game=""[^>]*>[\\s\\S]*?data-game-running=""[\\s\\S]*?/on/${feedGameId}`).test(running), "the game's running row removes its questions as one, since nobody else is in any of them");
+  const niaHappened = n.html.split("Just happened")[1] ?? "";
+  assert.ok(new RegExp(`data-call-off="archive"[^>]*data-call-off-game=""[^>]*>[\\s\\S]*?data-game-happened=""[\\s\\S]*?/on/${nightGameId}`).test(niaHappened), "a finished game archives as one row");
 });
 
 test("a removed market reads as called off on its own screen, with nobody else got in, and is off Now", async () => {

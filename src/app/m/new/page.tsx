@@ -9,6 +9,8 @@ import { openInksByGroup, recentCompanions } from "@/lib/ledger/markets";
 import { templateById } from "@/lib/sports";
 import { clockOf, closesLabel } from "@/lib/ui/copy";
 import { stickersOf } from "@/lib/media/marks";
+import type { InkName } from "@/lib/ui/ink";
+import type { PickedMark } from "@/lib/ui/mark";
 import { storageConfigured } from "@/lib/media/storage";
 import { setCaption } from "@/lib/ui/copy";
 import { hueFor } from "@/lib/ui/hue";
@@ -17,7 +19,7 @@ import { viewerClock } from "@/lib/ui/zone";
 export const dynamic = "force-dynamic";
 
 /** Asking: the question, who's in, then the terms (docs/design.md 3.20, section 7). */
-export default async function AskPage({ searchParams }: { searchParams: Promise<{ line?: string; pace?: string; template?: string }> }) {
+export default async function AskPage({ searchParams }: { searchParams: Promise<{ line?: string; pace?: string; template?: string; sticker?: string }> }) {
   const me = await currentUser();
   if (!me) redirect("/");
   const sp = await searchParams;
@@ -59,5 +61,14 @@ export default async function AskPage({ searchParams }: { searchParams: Promise<
   );
   // The form owns the screen (docs/design.md 3.29): a picked mark retints the band, the ground and the sheet, so the room is the form's to paint.
   const stickers = await stickersOf(me.id);
-  return <AskForm chrome={<TopBar back title={template ? "Ask your friends" : pace === "argument" ? "Settle an argument" : "Ask something"} right={template ? undefined : <ButtonLink href="/join" variant="tertiary">Got a code?</ButtonLink>} />} me={{ id: me.id, name: me.displayName, hue: hueFor(me.id) }} sets={options} people={people.map((p) => ({ id: p.user.id, name: p.user.displayName, hue: hueFor(p.user.id) }))} initialLine={sp.line} initialPace={template ? "dare" : pace} stickers={stickers} canPaste={storageConfigured()} template={template} />;
+  // "Ask something with it" from a sticker just made (3.28, frame 3): the question step opens with that sticker as its mark, only if it is this person's.
+  const initialMark = initialStickerMark(sp.sticker, stickers);
+  return <AskForm chrome={<TopBar back title={template ? "Ask your friends" : pace === "argument" ? "Settle an argument" : "Ask something"} right={template ? undefined : <ButtonLink href="/join" variant="tertiary">Got a code?</ButtonLink>} />} me={{ id: me.id, name: me.displayName, hue: hueFor(me.id) }} sets={options} people={people.map((p) => ({ id: p.user.id, name: p.user.displayName, hue: hueFor(p.user.id) }))} initialLine={sp.line} initialPace={template ? "dare" : pace} stickers={stickers} canPaste={storageConfigured()} template={template} initialMark={initialMark} />;
+}
+
+/** Pure: the sticker named in the address as the preset mark, when it is one of this person's own; anything else is no mark. */
+export function initialStickerMark(param: string | undefined, mine: ReadonlyArray<{ id: string; ink: InkName | null }>): PickedMark | null {
+  if (!param || !/^[0-9a-f-]{36}$/i.test(param)) return null;
+  const s = mine.find((x) => x.id === param.toLowerCase());
+  return s ? { kind: "sticker", id: s.id, ink: s.ink } : null;
 }

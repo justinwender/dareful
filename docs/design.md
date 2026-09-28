@@ -1068,6 +1068,13 @@ the market expire at its close, which counts against nobody in the same way. Arc
 nothing but this person's Now: the market, its story and its photos stay where they were for
 everyone, on the person views of the people in it included.
 
+(Amended 2026-09-27, the owner's ruling. A game with more than one question in a set is one row
+on Now (4.7), and it swipes as one: its Just happened row archives every one of its questions
+here once the game is finished, and its Running row removes them together, only when nobody
+else is in any of them. The ask names the game: "Remove this game?", "Its questions leave Now,
+and they count against nobody."; the archive ask is the same as a market's. A game with a
+question anyone else is in stays put, as a market does.)
+
 ### 3.16 Code input
 
 Two forms of the same thing.
@@ -1756,6 +1763,12 @@ whether the phone's own subject lift works on an image inside the installed app.
 Either way the photo's credit chip and counter stay, and the sticker belongs to whoever made it
 (below).
 
+(Amended 2026-09-27, built: the owner confirmed the lift works inside the installed app
+(docs/testing.md item 59), so frames 1 to 3 are built as above. The sheet over the photo has no
+scrim and lets touches through around its panel, since the photo itself is what the person
+holds; it closes by its close or its handle. "Done" returns to the photo. Frame 5 is a later
+round, with this path as its fallback.)
+
 **Storage.** A sticker belongs to the person who made it and can mark any question they ask, so
 it is not a `media` row on one event. It is a row in `picture_marks` holding both keys (the
 512px source with alpha and the 256px derivative), the size and the ink. `media` keeps exactly
@@ -2229,6 +2242,15 @@ band, a tertiary "Measure the screen" sits under the card; it leaves with the ca
 submission, an "Appearance" row joins the card (8.1). When pass the phone is built (3.45, the
 round after this one), "Your PIN for a friend's phone" joins it under One tap; until then it is
 not drawn on `You`.
+
+(Amended 2026-09-27, built. The screen is as above, with three readings: the "One tap" row is
+not drawn, since pass the phone takes its place in the next part (the owner's brief for Round B;
+3.41's ask is dropped there); "Your number" carries its caption and no chevron, because the app
+never holds the number, only its salted hash, so there is nothing behind the row to open; and
+"Your units" and "Your marks" open a sheet listing what this person has used, read-only, since
+the editor and the marks list behind them are not designed (7). The calls themselves are listed
+as rows under the floor only, as `YouEarly` draws them. "In 43 markets since March" counts the
+markets this person is in, any state but a draft or a removal, since the first entry.)
 
 This revision draws the stats on You only. Whether friends ever see someone's clean-resolution
 rate is a separate decision, and nothing here depends on it.
@@ -2923,6 +2945,21 @@ with an account, since the asker sent it to them.
 **Words.** "Just you so far", "4 of you in", "4 of 6 in", "Close it with 4", "Who's in". Never
 "waiting on", never a name beside "hasn't", never a count of hours or days.
 
+(Amended 2026-09-27, the owner's two rulings on the build. **The count while the asker is
+alone:** when the asker named people, the holdouts rule holds from the first entry, "1 of 6 in"
+with the dashed avatars; "Just you so far" is only for a question where nobody was named. Share
+stays the chalk while the asker is alone either way. **The nudge and the relay are back**,
+for entering and for voting: the nudge is the only way someone in a market can prod the people
+who have not entered or voted, and the relay, the person's own composer from their own number,
+is the only way to reach someone who signed up by phone without installing the app, since
+texting is not set up. The card under the row, "Waiting on Maya and John.", with "Nudge them",
+says honestly what it reached and offers the relay for anyone no device took; and who's in
+lists the people still out under "Not in yet" (or "Still to call it" once locked), each with
+"Nudge Maya" beside them for anyone who is in, the relay taking the button's place when nothing
+of theirs takes messages. A person hears about a question at most once per six hours, whoever
+taps. "The icons are how they're reached; nothing else nudges them" above is superseded by
+this.)
+
 ### 3.43 I got this one
 
 Logging a cover lives on the person view, because a cover is always between you and one person,
@@ -3123,6 +3160,12 @@ Four channels, and each one carries exactly one thing.
 The one exception is `--live`, citron, meaning "waiting on you, with a clock". At most one
 citron element in a viewport, never larger than a 6px dot or a 2px rule, and it disappears when
 the thing is handled.
+
+(Amended 2026-09-27, the owner's ruling. The two swipe colours in 1.1, `--remove` and
+`--archive`, are the second exception, and they belong to a gesture rather than to anything on
+the screen: red behind the remove glyph and amber behind the archive glyph, in Now's swipe
+action (3.15) and nowhere else, never as text, never on a market, never beside a number. "No red
+and no green anywhere in the product" reads with that one square excepted.)
 
 ### 4.6 Copy rules
 

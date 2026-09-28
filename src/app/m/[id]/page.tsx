@@ -47,6 +47,7 @@ import { leanPill, type TeamFace } from "@/lib/ui/team";
 import { farOffThreshold } from "@/lib/ledger/scale";
 import { InvitePreview } from "@/components/markets/invite-preview";
 import { WhosInRow } from "@/components/markets/whos-in-row";
+import { Nudge } from "@/components/notify/nudge";
 import { HeadsUp } from "@/components/notify/heads-up";
 import { onWayFor } from "@/lib/ledger/again";
 import {
@@ -662,6 +663,7 @@ export default async function MarketPage({
         .from(schema.users)
         .where(inArray(schema.users.id, waitingIds))
     : [];
+  const waitingNames = waitingUsers.map((u) => firstName(u.displayName));
   const edges =
     state === "resolved"
       ? await db
@@ -962,7 +964,8 @@ export default async function MarketPage({
       : null;
   const frameItems = media.frame.map((m) => ({ id: m.id, author: { name: m.author.displayName, hue: hueFor(m.author.id) }, removable: m.role === "memory" && m.author.id === me.id }));
   // The frame, or the empty slot for someone who can add, or nothing (3.8): never an empty frame.
-  const frameOrSlot = (height: 200 | 260) => (frameItems.length > 0 ? <MediaFrame items={frameItems} height={height} inset add={canAdd ? { night } : null} /> : canAdd ? <EmptySlot /> : null);
+  // "Make a sticker" in the full-screen photo (3.28), for any photo the viewer can see, while a cutout can be stored.
+  const frameOrSlot = (height: 200 | 260) => (frameItems.length > 0 ? <MediaFrame items={frameItems} height={height} inset add={canAdd ? { night } : null} stickers={storageConfigured()} /> : canAdd ? <EmptySlot /> : null);
   const endedCaption =
     state === "voided"
       ? d.resolvedBy === "removed"
@@ -1008,13 +1011,18 @@ export default async function MarketPage({
   const alone = positions.length === 1 && mine !== null && d.creatorId === me.id;
   // Holdouts (3.42): the people the market was sent to who are not in yet follow the stack as dashed avatars while it is open, and the count names both numbers.
   const holdouts = state === "open" ? waitingUsers.map((u) => ({ name: u.displayName, hue: hueFor(u.id) })) : [];
+  // The count (3.42, ruled 2026-09-27): when the asker named people, the holdouts rule from the first entry ("1 of 6 in", with the dashed avatars); "Just you so far" only when nobody was named. Share stays the chalk while the asker is alone either way.
+  const whosInCount = holdouts.length > 0 ? `${positions.length} of ${positions.length + holdouts.length} in` : alone ? "Just you so far" : `${positions.length} of you in`;
+  // The people still out, in who's in (3.42, amended 2026-09-27): asked and not in while open, in the quorum and not voted once locked, each with a nudge beside them for anyone who is in.
+  const stillOut = state === "open" || state === "locked" ? waitingUsers.map((u) => ({ id: u.id, name: u.displayName, hue: hueFor(u.id) })) : [];
+  const relayWords = state === "locked" ? `We’re waiting on your call: ${d.title}` : `We’re waiting on you: ${d.title}`;
   const whosIn = (
-    <WhosInRow people={whosInPeople} holdouts={holdouts} count={alone ? "Just you so far" : holdouts.length > 0 ? `${positions.length} of ${positions.length + holdouts.length} in` : `${positions.length} of you in`} share={{ url: `${appUrl}/m/${d.id}`, title: d.title }} code={state === "open" ? { dareId: d.id, question: d.title, mark: markRefOf(d) } : null} chalk={state === "open" && alone} list={{ dareId: d.id, canRemove: state === "open" && d.creatorId === me.id }} />
+    <WhosInRow people={whosInPeople} holdouts={holdouts} count={whosInCount} share={{ url: `${appUrl}/m/${d.id}`, title: d.title }} code={state === "open" ? { dareId: d.id, question: d.title, mark: markRefOf(d) } : null} chalk={state === "open" && alone} list={{ dareId: d.id, canRemove: state === "open" && d.creatorId === me.id, out: stillOut, stage: state === "locked" ? "vote" : "enter", canNudge: mine !== null, relay: { url: `${appUrl}/m/${d.id}`, text: relayWords } }} />
   );
   // The photos while it is open and through the vote (3.37 and 3.39, amended 2026-09-27: the album is open the whole time): the same slot and frame as after it ends, last on the screen under the details, for everyone the door admits, someone in and the group it was asked in (a signed-in viewer past this point is one or the other: a non-member got the invitation above). The add tile and the empty slot are for someone who can add, which before the end means someone who is in while it is open; someone who only opened the link sees nothing here.
   const albumItems = media.memories.map((m) => ({ id: m.id, author: { name: m.author.displayName, hue: hueFor(m.author.id) }, removable: m.author.id === me.id }));
   // The memories alone: while it is being called, the claim's clip is on the claim card, never in a frame.
-  const openFrame = albumItems.length > 0 ? <MediaFrame items={albumItems} height={200} inset add={canAdd ? { night } : null} /> : canAdd ? <EmptySlot /> : null;
+  const openFrame = albumItems.length > 0 ? <MediaFrame items={albumItems} height={200} inset add={canAdd ? { night } : null} stickers={storageConfigured()} /> : canAdd ? <EmptySlot /> : null;
   const openPhotos =
     (state === "open" || state === "locked") && openFrame ? (
       <section className="flex flex-col gap-2" data-open-photos="">
@@ -1189,6 +1197,8 @@ export default async function MarketPage({
               )}
               {/* The asker's close, under the row and never the primary while the close is still ahead (3.42): it asks once, naming who it leaves out. Who is in without an account is the asker's to remove from who's in, behind the stack. */}
               {mine && d.creatorId === me.id && positions.length >= 2 ? <LockButton dareId={d.id} count={positions.length} leftOut={holdouts} variant="tertiary" /> : null}
+              {/* The nudge (3.42, amended 2026-09-27; restored in Round B): the only way someone in reaches the people asked who are not in, with the relay for anyone no device reaches. */}
+              {mine ? <Nudge dareId={d.id} names={waitingNames} url={`${appUrl}/m/${d.id}`} relay={relayWords} /> : null}
             </>
           ) : null}
 
@@ -1240,6 +1250,8 @@ export default async function MarketPage({
                 </ul>
               </section>
               {mine ? whosIn : null}
+              {/* Once locked, the same nudge reaches whoever in the quorum has not called it (restored in Round B). */}
+              {mine ? <Nudge dareId={d.id} names={waitingNames} url={`${appUrl}/m/${d.id}`} relay={relayWords} /> : null}
             </>
           ) : null}
 

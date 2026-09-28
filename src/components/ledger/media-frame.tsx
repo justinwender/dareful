@@ -25,7 +25,7 @@ export type FrameItem = { id: string; author: { name: string; hue: Hue }; /** Wh
  * is still shown, and a tap on the card goes to the story. Interactive, a tap on the photo opens it full screen
  * (3.8, 3.39), with "Save to your phone" and, for whoever added a memory, "Remove".
  */
-export function MediaFrame({ items, height, interactive = true, inset = false, add = null, className }: { items: FrameItem[]; height: 180 | 200 | 240 | 260; interactive?: boolean; /** 12px from the screen's edges, radius 12 (3.8); otherwise edge to edge inside a card. */ inset?: boolean; /** The add tile at the end of the strip (3.8), for someone who can add: its name says the night. Never pushed off the row: three squares and "+N" before it. */ add?: { night: string } | null; className?: string }) {
+export function MediaFrame({ items, height, interactive = true, inset = false, add = null, stickers = false, className }: { items: FrameItem[]; height: 180 | 200 | 240 | 260; interactive?: boolean; /** "Make a sticker" in the full-screen view (3.28): a cutout can be stored and the viewer is signed in. */ stickers?: boolean; /** 12px from the screen's edges, radius 12 (3.8); otherwise edge to edge inside a card. */ inset?: boolean; /** The add tile at the end of the strip (3.8), for someone who can add: its name says the night. Never pushed off the row: three squares and "+N" before it. */ add?: { night: string } | null; className?: string }) {
   const [current, setCurrent] = useState(0);
   const [showAll, setShowAll] = useState(false);
   const [state, setState] = useState<Record<string, "loading" | "ok" | "failed">>({});
@@ -87,7 +87,7 @@ export function MediaFrame({ items, height, interactive = true, inset = false, a
           </span>
         </figcaption>
       </div>
-      {viewing ? <PhotoView items={items.map((item, i) => ({ id: item.id, alt: `Photo ${i + 1} of ${items.length}, added by ${firstName(item.author.name)}`, removable: item.removable === true }))} index={Math.min(current, items.length - 1)} onClose={() => setViewing(false)} /> : null}
+      {viewing ? <PhotoView items={items.map((item, i) => ({ id: item.id, alt: `Photo ${i + 1} of ${items.length}, added by ${firstName(item.author.name)}`, removable: item.removable === true }))} index={Math.min(current, items.length - 1)} onClose={() => setViewing(false)} stickers={stickers} /> : null}
       {rest.length > 0 || add ? (
         <div className={cn("flex gap-[6px] overflow-x-auto [scrollbar-width:none]", inset && "px-0")} role={interactive ? "group" : undefined} aria-label={interactive ? "The rest of the photos" : undefined}>
           {squares.map((item) => {

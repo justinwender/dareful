@@ -93,19 +93,22 @@ export function JustHappened({ rows, viewerId, clock }: { rows: HomeData["happen
             );
           }
           if (e.kind === "game") {
+            // A finished game archives as one row (3.15, ruled 2026-09-27): its questions in this set leave this person's Now together.
             return (
-              <Link prefetch={false} key={`g-${e.href}`} href={e.href} data-game-happened="" className={`relative grid grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-[14px] ${divider}`}>
-                <LinkPending />
-                <TeamPair away={e.away} home={e.home} size={28} overlap />
-                <span className="flex min-w-0 flex-col gap-1">
-                  <span className="text-body-strong text-ink">{e.name}</span>
-                  <span className="flex items-center gap-2 text-caption text-ink-3">
-                    <StateMark state={e.state} />
-                    <span className="truncate">{e.meta}</span>
+              <CallOff key={`g-${e.href}`} kind="archive" dareId={e.ids[0] ?? ""} ids={e.ids} game>
+                <Link prefetch={false} href={e.href} data-game-happened="" className={`relative grid grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-[14px] ${divider}`}>
+                  <LinkPending />
+                  <TeamPair away={e.away} home={e.home} size={28} overlap />
+                  <span className="flex min-w-0 flex-col gap-1">
+                    <span className="text-body-strong text-ink">{e.name}</span>
+                    <span className="flex items-center gap-2 text-caption text-ink-3">
+                      <StateMark state={e.state} />
+                      <span className="truncate">{e.meta}</span>
+                    </span>
                   </span>
-                </span>
-                <span />
-              </Link>
+                  <span />
+                </Link>
+              </CallOff>
             );
           }
           const owner = e.from;

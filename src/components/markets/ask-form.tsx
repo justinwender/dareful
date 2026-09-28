@@ -49,7 +49,7 @@ type Choice = { text: string; userId: string | null };
  */
 export type TemplateForAsking = { id: string; title: string; terms: string; kind: "binary" | "numeric" | "categorical"; gameName: string; /** "Sunday at 1pm": when it closes, in the asker's zone. */ closes: string; decidedByScore: boolean; /** "Off by 28 points or more scores nothing.", where the template sets a scale. */ scored: string | null };
 
-export function AskForm({ sets, people, initialLine = "", initialPace = "dare", me, chrome, stickers = [], canPaste = false, template = null }: { sets: SetOption[]; people: Person[]; initialLine?: string; initialPace?: "dare" | "argument"; me: { id: string; name: string; hue: Hue }; /** The screen's top bar, rendered by the page; the form owns the screen so a picked mark can retint all of it (3.29). */ chrome: ReactNode; /** This person's stickers for the picker (3.28), and whether a cutout can be pasted at all. */ stickers?: Sticker[]; canPaste?: boolean; /** A public question (3.33): the flow starts at who's in, with the wording locked. */ template?: TemplateForAsking | null }) {
+export function AskForm({ sets, people, initialLine = "", initialPace = "dare", me, chrome, stickers = [], canPaste = false, template = null, initialMark = null }: { sets: SetOption[]; people: Person[]; initialLine?: string; initialPace?: "dare" | "argument"; me: { id: string; name: string; hue: Hue }; /** The screen's top bar, rendered by the page; the form owns the screen so a picked mark can retint all of it (3.29). */ chrome: ReactNode; /** This person's stickers for the picker (3.28), and whether a cutout can be pasted at all. */ stickers?: Sticker[]; canPaste?: boolean; /** A public question (3.33): the flow starts at who's in, with the wording locked. */ template?: TemplateForAsking | null; /** A sticker just made from a photo (3.28): the question step opens with it as the mark. */ initialMark?: PickedMark | null }) {
   const router = useRouter();
   const [step, setStep] = useState<"question" | "declined" | "criterion" | "subject" | "careful" | "who" | "terms">(template ? "who" : "question");
   /** A named subject the model could not place (a person, a pet, a thing): asked in one tap before the three questions. */
@@ -63,7 +63,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
   // The answers (3.29): two to six, in the asker's order; a person answer is anyone the asker knows here, or the asker.
   const [choices, setChoices] = useState<Choice[]>([{ text: "", userId: null }, { text: "", userId: null }]);
   // The mark (3.29), and the id the market will have, made here so the ink previewed is the ink stored.
-  const [mark, setMark] = useState<PickedMark | null>(null);
+  const [mark, setMark] = useState<PickedMark | null>(initialMark);
   const markName = mark ? (mark.kind === "emoji" ? (mark.name ? mark.name.charAt(0).toUpperCase() + mark.name.slice(1) : "Your mark") : "Your sticker") : null;
   const [pickingMark, setPickingMark] = useState(false);
   const [draftId] = useState(() => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : null));

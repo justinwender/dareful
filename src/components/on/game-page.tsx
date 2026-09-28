@@ -303,7 +303,7 @@ export async function GamePage({ id, g, add, start }: { id: string; g: string | 
               <p className="text-caption text-ink-2">{askerLine}</p>
             </section>
             {chips}
-            {items.length > 0 ? <MediaFrame items={items} height={260} inset add={inAny && storageConfigured() && first ? { night } : null} /> : inAny && storageConfigured() && first ? <EmptySlot /> : null}
+            {items.length > 0 ? <MediaFrame items={items} height={260} inset add={inAny && storageConfigured() && first ? { night } : null} stickers={storageConfigured()} /> : inAny && storageConfigured() && first ? <EmptySlot /> : null}
             <section className="flex flex-col gap-[10px]">
               <SectionLabel>Questions</SectionLabel>
               {cardsList}

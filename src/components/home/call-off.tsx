@@ -16,9 +16,11 @@ const REVEAL = 76;
  * finished market slides over the archive square. A tap on either opens a modal sheet that asks once, then the
  * row collapses over 200ms and nothing announces it (a section it empties goes with it on the re-read). No hint
  * teaches the swipe: it is the platform's gesture, and nothing depends on finding it, so the square is a real
- * button, reachable by keyboard too. Every other row stays put: it is not wrapped in this.
+ * button, reachable by keyboard too. Every other row stays put: it is not wrapped in this. A game's questions in
+ * one set are one row and swipe as one (ruled 2026-09-27): archived together when the game is finished, removed
+ * together only when nobody else is in any of them.
  */
-export function CallOff({ kind, dareId, children }: { kind: "remove" | "archive"; dareId: string; children: ReactNode }) {
+export function CallOff({ kind, dareId, ids, game = false, children }: { kind: "remove" | "archive"; /** The one question, or the first of a game's. */ dareId: string; /** A game's questions in this set, which swipe as one (ruled 2026-09-27); the one question when absent. */ ids?: string[]; /** A game row: the ask names the game and its questions. */ game?: boolean; children: ReactNode }) {
   const router = useRouter();
   const titleId = useId();
   const [dx, setDx] = useState(0);
@@ -59,7 +61,8 @@ export function CallOff({ kind, dareId, children }: { kind: "remove" | "archive"
   function act() {
     setProblem(null);
     start(async () => {
-      const r = kind === "remove" ? await removeMarketAction(dareId) : await archiveMarketAction(dareId);
+      const all = ids && ids.length > 0 ? ids : [dareId];
+      const r = kind === "remove" ? await removeMarketAction(all) : await archiveMarketAction(all);
       if ("error" in r) return setProblem(r.error);
       setOpen(false);
       setGone(true);
@@ -68,7 +71,7 @@ export function CallOff({ kind, dareId, children }: { kind: "remove" | "archive"
   }
   const name = kind === "remove" ? "Remove" : "Archive";
   return (
-    <div className="relative overflow-hidden motion-safe:transition-[max-height,opacity] motion-safe:duration-200" style={gone ? { maxHeight: 0, opacity: 0 } : { maxHeight: 200 }} data-call-off={kind} data-call-off-open={dx < 0 ? "" : undefined}>
+    <div className="relative overflow-hidden motion-safe:transition-[max-height,opacity] motion-safe:duration-200" style={gone ? { maxHeight: 0, opacity: 0 } : { maxHeight: 200 }} data-call-off={kind} data-call-off-game={game ? "" : undefined} data-call-off-open={dx < 0 ? "" : undefined}>
       <button type="button" aria-label={name} onClick={() => setOpen(true)} className={`absolute inset-y-0 right-0 flex items-center justify-center ${kind === "remove" ? "bg-remove text-chalk" : "bg-archive text-on-chalk"}`} style={{ width: REVEAL }} data-call-off-square="" tabIndex={dx < 0 ? 0 : -1}>
         {kind === "remove" ? (
           <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -109,10 +112,10 @@ export function CallOff({ kind, dareId, children }: { kind: "remove" | "archive"
       </div>
       <Sheet open={open} onClose={() => setOpen(false)} labelledBy={titleId}>
         <h2 id={titleId} className="text-body-strong text-ink">
-          {kind === "remove" ? "Remove this market?" : "Archive this?"}
+          {kind === "remove" ? (game ? "Remove this game?" : "Remove this market?") : "Archive this?"}
         </h2>
         <div className="flex flex-col gap-4" data-call-off-ask={kind}>
-          <p className="text-body-sm text-ink-2">{kind === "remove" ? "It leaves Now, and it counts against nobody." : "It leaves Now. You can still find it from the people in it."}</p>
+          <p className="text-body-sm text-ink-2">{kind === "remove" ? (game ? "Its questions leave Now, and they count against nobody." : "It leaves Now, and it counts against nobody.") : "It leaves Now. You can still find it from the people in it."}</p>
           <ProblemSummary messages={[problem]} />
           <Button variant="primary" loading={pending} onClick={act}>
             {kind === "remove" ? "Remove it" : "Archive it"}

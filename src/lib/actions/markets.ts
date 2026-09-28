@@ -4,7 +4,7 @@ import { pendingCopy, SendPending } from "@/lib/chain/relayer";
 
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
-import { notifyAfterVote, notifyJoined, notifyOpened, notifyRuling, voteCounts, type VoteCounts } from "@/lib/notify";
+import { notifyAfterVote, notifyJoined, notifyOpened, notifyRuling, sendNudge, voteCounts, type NudgeResult, type VoteCounts } from "@/lib/notify";
 import { carefulQuestions, declined, SUBJECT_KINDS, triage } from "@/lib/ai/settler";
 import { afterEntry, arbitrateMarket, proposeForArgument, stateCase } from "@/lib/ledger/settle";
 import { isHex, type Hex } from "viem";
@@ -26,7 +26,7 @@ import { regionFromHeaders, tryHashPhone } from "@/lib/auth/phone";
 import { addClaimToken, readClaimTokens } from "@/lib/auth/claim-cookie";
 import { enterAsGhost, removeGhostEntry, suggestGhostNames } from "@/lib/ledger/ghost-entry";
 import { leaveEntry } from "@/lib/ledger/claims";
-import { archiveMarket, removeMarket } from "@/lib/ledger/now-swipes";
+import { archiveMarkets, removeMarkets, SWIPE_AT_MOST } from "@/lib/ledger/now-swipes";
 import { db, schema } from "@/db";
 import { and, asc, eq } from "drizzle-orm";
 import { denominationById, ensureUnitInGroup, ensureUsd } from "@/lib/ledger/denominations";
@@ -55,6 +55,27 @@ function scaleTokenValid(userId: string, range: string | null, typical: string, 
   const want = Buffer.from(scaleToken(userId, range, typical));
   const got = Buffer.from(token);
   return want.length === got.length && timingSafeEqual(want, got);
+}
+
+/**
+ * "We're waiting on you" (docs/design.md 3.42, amended 2026-09-27: the nudge is the only way someone in a market
+ * reaches the people not in or not voted). One tap, from someone who is in; the server works out who is still
+ * out and tells each at most once per window. `rawTo` narrows it to one person, from the row beside their name
+ * in who's in. Reports how many were told and how many a channel actually reached, so the screen never claims a
+ * nudge landed when it only reached the in-app strip.
+ */
+export async function nudgeAction(rawId: string, rawTo?: string): Promise<({ ok: true } & NudgeResult) | { error: string }> {
+  const user = await requireUser();
+  const id = uuid.safeParse(rawId);
+  if (!id.success) return { error: "That one doesn't exist." };
+  const to = rawTo === undefined ? null : uuid.safeParse(rawTo);
+  if (to && !to.success) return { error: "That one doesn't exist." };
+  try {
+    return { ok: true, ...(await sendNudge(id.data, user.id, new Date(), to ? to.data : null)) };
+  } catch (err) {
+    console.error("nudge failed", err);
+    return { error: "That didn't go through. Try again." };
+  }
 }
 
 /**
@@ -542,27 +563,27 @@ export async function suggestGhostNamesAction(rawId: string, rawTyped: string): 
 }
 
 /** The swipe on Now that removes a market you asked that nobody else is in (3.15): a void only the asker can make, counted against nobody. */
-export async function removeMarketAction(rawId: string): Promise<{ ok: true } | { error: string }> {
+export async function removeMarketAction(rawIds: string | string[]): Promise<{ ok: true } | { error: string }> {
   const user = await requireUser();
-  const id = uuid.safeParse(rawId);
-  if (!id.success) return { error: "That one doesn't exist." };
+  const ids = z.array(uuid).min(1).max(SWIPE_AT_MOST).safeParse(Array.isArray(rawIds) ? rawIds : [rawIds]);
+  if (!ids.success) return { error: "That one doesn't exist." };
   try {
-    await removeMarket(id.data, user.id);
+    await removeMarkets(ids.data, user.id);
   } catch (err) {
     return { error: say(err, "That didn't go through. Try again.") };
   }
   revalidatePath("/");
-  revalidatePath(`/m/${id.data}`);
+  for (const id of ids.data) revalidatePath(`/m/${id}`);
   return { ok: true };
 }
 
-/** The swipe on Now that archives a finished market off this person's Now (3.15): nothing else changes. */
-export async function archiveMarketAction(rawId: string): Promise<{ ok: true } | { error: string }> {
+/** The swipe on Now that archives a finished market, or a finished game's questions as one row, off this person's Now (3.15): nothing else changes. */
+export async function archiveMarketAction(rawIds: string | string[]): Promise<{ ok: true } | { error: string }> {
   const user = await requireUser();
-  const id = uuid.safeParse(rawId);
-  if (!id.success) return { error: "That one doesn't exist." };
+  const ids = z.array(uuid).min(1).max(SWIPE_AT_MOST).safeParse(Array.isArray(rawIds) ? rawIds : [rawIds]);
+  if (!ids.success) return { error: "That one doesn't exist." };
   try {
-    await archiveMarket(id.data, user.id);
+    await archiveMarkets(ids.data, user.id);
   } catch (err) {
     return { error: say(err, "That didn't go through. Try again.") };
   }

@@ -9,7 +9,7 @@ import { MarkRefStamp } from "@/components/ledger/mark-stamp";
 import { ProblemSummary } from "@/components/ledger/problem";
 import { Sheet } from "@/components/ui/sheet";
 import { roomCodeAction } from "@/lib/actions/join";
-import { removeGhostEntryAction } from "@/lib/actions/markets";
+import { nudgeAction, removeGhostEntryAction } from "@/lib/actions/markets";
 import type { Hue } from "@/lib/ui/hue";
 import type { MarkRef } from "@/lib/ui/mark";
 import { cn } from "@/lib/utils";
@@ -17,6 +17,10 @@ import { cn } from "@/lib/utils";
 export type WhosInPerson = { name: string; hue: Hue; ghost?: boolean; /** "Asked it", in the who's-in list. */ asked?: boolean; /** A ghost's claim, for the asker's Remove before the lock. */ claimId?: string };
 /** Someone the market was sent to who is not in yet (3.42, holdouts): a dashed avatar after the stack, never named as late. */
 export type Holdout = { name: string; hue: Hue };
+/** Someone still out, in who's in (3.42, amended 2026-09-27): asked and not in while it is open, or in the quorum and not voted once it is locked, with a nudge beside them for anyone who is in. */
+export type StillOut = { id: string; name: string; hue: Hue };
+/** The who's-in sheet behind the stack: who is in, the asker's Remove on a ghost's row before the lock, and the people still out with a nudge beside each. */
+export type WhosInList = { dareId: string; canRemove: boolean; out?: StillOut[]; stage?: "enter" | "vote"; /** Whether this viewer is in, so may nudge (Principle 1: a person acting, from inside). */ canNudge?: boolean; /** The relay for someone no device reaches: the person's own composer, with these words and the link. */ relay?: { url: string; text: string } };
 
 /** "Asked, not in yet" (3.1): no fill, a 1px dashed ring and the initial in ink-3, set apart from the stack. */
 export function HoldoutAvatar({ name, size = 28 }: { name: string; size?: 28 | 36 }) {
@@ -38,7 +42,7 @@ export function HoldoutAvatar({ name, size = 28 }: { name: string; size?: 28 | 3
  * sentences and buttons in three places for one act. While you're the only one in, share is the screen's chalk.
  * Pass the phone is the fourth icon and ships with 3.45; until then the row has three.
  */
-export function WhosInRow({ people, holdouts = [], count, share, code, chalk = false, list = null, className }: { people: WhosInPerson[]; /** The people asked who are not in yet (3.42): dashed avatars after the stack, at most two drawn, then a dashed "+N". */ holdouts?: Holdout[]; count: string; /** The link and the question as its title; null where there is nothing to send (a void, an expiry). */ share: { url: string; title: string } | null; /** The code to scan: only while the market is open, and only for someone the code can be made for. */ code: { dareId: string; question: string; mark: MarkRef | null } | null; /** Share as the screen's chalk: a 44px chalk circle, while you're the only one in. */ chalk?: boolean; /** The who's-in sheet behind the stack (3.42): who is in, with the asker's Remove on a ghost's row before the lock. Null where the stack is not a button (the link page). */ list?: { dareId: string; canRemove: boolean } | null; className?: string }) {
+export function WhosInRow({ people, holdouts = [], count, share, code, chalk = false, list = null, className }: { people: WhosInPerson[]; /** The people asked who are not in yet (3.42): dashed avatars after the stack, at most two drawn, then a dashed "+N". */ holdouts?: Holdout[]; count: string; /** The link and the question as its title; null where there is nothing to send (a void, an expiry). */ share: { url: string; title: string } | null; /** The code to scan: only while the market is open, and only for someone the code can be made for. */ code: { dareId: string; question: string; mark: MarkRef | null } | null; /** Share as the screen's chalk: a 44px chalk circle, while you're the only one in. */ chalk?: boolean; /** The who's-in sheet behind the stack (3.42): who is in, with the asker's Remove on a ghost's row before the lock. Null where the stack is not a button (the link page). */ list?: WhosInList | null; className?: string }) {
   const [copied, setCopied] = useState(false);
   const [listOpen, setListOpen] = useState(false);
   const [saidCopied, setSaidCopied] = useState(false);
@@ -105,7 +109,7 @@ export function WhosInRow({ people, holdouts = [], count, share, code, chalk = f
           </>
         );
         return list ? (
-          <button type="button" onClick={() => setListOpen(true)} aria-haspopup="dialog" aria-expanded={listOpen} aria-label={`Who’s in: ${count}`} data-whos-in-list="" className="flex min-w-0 flex-col items-start gap-1 rounded-button text-left">
+          <button type="button" onClick={() => setListOpen(true)} aria-haspopup="dialog" aria-expanded={listOpen} aria-label={`Who’s in: ${count}`} data-whos-in-list="" data-still-out={list.out?.length ?? 0} className="flex min-w-0 flex-col items-start gap-1 rounded-button text-left">
             {stack}
           </button>
         ) : (
@@ -148,7 +152,7 @@ export function WhosInRow({ people, holdouts = [], count, share, code, chalk = f
         </div>
       ) : null}
       {code && share ? <CodeSheet open={codeOpen} onClose={() => setCodeOpen(false)} dareId={code.dareId} url={share.url} question={code.question} mark={code.mark} /> : null}
-      {list ? <WhosInSheet open={listOpen} onClose={() => setListOpen(false)} people={people} dareId={list.dareId} canRemove={list.canRemove} /> : null}
+      {list ? <WhosInSheet open={listOpen} onClose={() => setListOpen(false)} people={people} list={list} /> : null}
       {byHand && share ? (
         <input readOnly value={share.url} aria-label="The link, to copy by hand" data-copy-by-hand="" onFocus={(e) => e.currentTarget.select()} className="mt-2 h-11 w-full basis-full rounded-button border border-line bg-surface px-3 text-body-sm text-ink" />
       ) : null}
@@ -229,8 +233,13 @@ function CodeSheet({ open, onClose, dareId, url, question, mark }: { open: boole
  * landed is the weight line's job. For the asker, until the lock, a row from someone without an account carries
  * Remove, for a forwarded link that brought in a stranger, since a typed name counts as soon as it is entered
  * (3.17). It asks once, inside the same sheet; the entry comes out, the count drops, and nothing is sent to anyone.
+ * Under the people in, the people still out (amended 2026-09-27): asked and not in while it is open, in the quorum
+ * and not voted once locked, each with a Nudge beside them for anyone who is in; a nudge nobody's device took
+ * offers the relay, the person's own composer, in its place.
  */
-function WhosInSheet({ open, onClose, people, dareId, canRemove }: { open: boolean; onClose: () => void; people: WhosInPerson[]; dareId: string; canRemove: boolean }) {
+function WhosInSheet({ open, onClose, people, list }: { open: boolean; onClose: () => void; people: WhosInPerson[]; list: WhosInList }) {
+  const { dareId, canRemove } = list;
+  const out = list.out ?? [];
   const titleId = useId();
   const router = useRouter();
   const [asking, setAsking] = useState<WhosInPerson | null>(null);
@@ -267,23 +276,101 @@ function WhosInSheet({ open, onClose, people, dareId, canRemove }: { open: boole
           </Button>
         </div>
       ) : (
-        <ul className="flex flex-col" data-whos-in-rows="">
-          {people.map((p, i) => (
-            <li key={i} className="flex min-h-14 items-center gap-3">
-              <Avatar name={p.name} hue={p.hue} size={36} ghost={p.ghost} />
-              <span className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate text-body-strong text-ink">{p.name}</span>
-                {p.asked ? <span className="text-caption text-ink-3">Asked it</span> : p.ghost ? <span className="text-caption text-ink-3">From the link, no account</span> : null}
-              </span>
-              {canRemove && p.ghost && p.claimId ? (
-                <Button variant="row" onClick={() => setAsking(p)}>
-                  Remove
-                </Button>
-              ) : null}
-            </li>
-          ))}
-        </ul>
+        <>
+          <ul className="flex flex-col" data-whos-in-rows="">
+            {people.map((p, i) => (
+              <li key={i} className="flex min-h-14 items-center gap-3">
+                <Avatar name={p.name} hue={p.hue} size={36} ghost={p.ghost} />
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate text-body-strong text-ink">{p.name}</span>
+                  {p.asked ? <span className="text-caption text-ink-3">Asked it</span> : p.ghost ? <span className="text-caption text-ink-3">From the link, no account</span> : null}
+                </span>
+                {canRemove && p.ghost && p.claimId ? (
+                  <Button variant="row" onClick={() => setAsking(p)}>
+                    Remove
+                  </Button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+          {out.length > 0 ? (
+            <div className="flex flex-col gap-1" data-still-out-rows="">
+              <p className="text-label text-ink-3">{list.stage === "vote" ? "Still to call it" : "Not in yet"}</p>
+              <ul className="flex flex-col">
+                {out.map((o) => (
+                  <StillOutRow key={o.id} person={o} dareId={dareId} canNudge={list.canNudge === true} relay={list.relay ?? null} />
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </>
       )}
     </Sheet>
+  );
+}
+
+/**
+ * One person still out (3.42, amended 2026-09-27): the dashed avatar, the name, and for anyone who is in a Nudge
+ * beside them, which tells that one person once per window and says what it reached. When no device of theirs
+ * takes messages, the row offers the relay instead: the person's own composer, from their own number, which is
+ * the only way to reach someone who signed up by phone and never installed the app.
+ */
+function StillOutRow({ person, dareId, canNudge, relay }: { person: StillOut; dareId: string; canNudge: boolean; relay: { url: string; text: string } | null }) {
+  const [said, setSaid] = useState<string | null>(null);
+  const [offerRelay, setOfferRelay] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const first = person.name.trim().split(/\s+/)[0] ?? person.name;
+  function nudge() {
+    setProblem(null);
+    start(async () => {
+      const r = await nudgeAction(dareId, person.id);
+      if ("error" in r) return setProblem(r.error);
+      if (r.waitingOn === 0) return setSaid("Nothing left to wait on.");
+      if (r.told === 0) {
+        setOfferRelay(true);
+        return setSaid("Told in the last few hours");
+      }
+      setOfferRelay(r.reached === 0);
+      setSaid(r.reached > 0 ? "Told them" : "No device of theirs takes messages from here");
+    });
+  }
+  async function sayIt() {
+    if (!relay) return;
+    const text = `${relay.text} ${relay.url}`;
+    if (typeof navigator !== "undefined" && "share" in navigator) {
+      try {
+        await navigator.share({ text });
+        return;
+      } catch {
+        // fall through to sms:
+      }
+    }
+    window.location.href = `sms:?&body=${encodeURIComponent(text)}`;
+  }
+  return (
+    <li className="flex min-h-14 flex-col justify-center gap-1" data-still-out-row={person.id}>
+      <div className="flex items-center gap-3">
+        <HoldoutAvatar name={person.name} size={36} />
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate text-body-strong text-ink">{person.name}</span>
+          {said ? (
+            <span role="status" className="text-caption text-ink-3">
+              {said}
+            </span>
+          ) : null}
+        </span>
+        {canNudge && !said ? (
+          <Button variant="row" onClick={nudge} loading={pending} data-nudge-one={person.id}>
+            {`Nudge ${first}`}
+          </Button>
+        ) : offerRelay && relay ? (
+          <Button variant="row" onClick={() => void sayIt()} data-relay-one={person.id}>
+            Say it yourself
+          </Button>
+        ) : null}
+      </div>
+      <ProblemSummary messages={[problem]} />
+    </li>
   );
 }

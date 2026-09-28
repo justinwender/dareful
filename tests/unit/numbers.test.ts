@@ -10,7 +10,7 @@ import { test } from "node:test";
 import { nets, scoreNumeric, settle } from "@/lib/ledger/scoring";
 import { axisEnds, numberAxis, ruler, sliceOf, splitOffAxis, unitPhrase, weightedMedian, withSeparators } from "@/lib/ledger/number-axis";
 import { checkScale, farOffThreshold, oneSignificant, parseAskerScale, scaleAfterward } from "@/lib/ledger/scale";
-import { binaryBins, MIN_CALIBRATION, numericMiss } from "@/lib/ledger/calibration";
+import { binaryBins, headlineBin, middleHalf, MIN_CALIBRATION, numericMiss, wilson80 } from "@/lib/ledger/calibration";
 import { callToOutcome, outcomeAllowed, valueAllowed, VOID_OUTCOME } from "@/lib/ledger/markets";
 import { pulseOf } from "@/lib/ledger/pulse";
 import { resultNotice, rulingNotice } from "@/lib/notify/messages";
@@ -235,9 +235,26 @@ test("calibration bins are the tenths of the weight line, hits are what came tru
   assert.equal(MIN_CALIBRATION, 10);
   assert.equal(binaryBins(Array.from({ length: 10 }, () => rows[0] as (typeof rows)[number])).enough, true);
   assert.deepEqual(binaryBins([]), { resolved: 0, enough: false, bins: [], meanScore: null });
-  // A number market's record is the score's complement: the miss as a fraction of the scale.
-  assert.deepEqual(numericMiss([10000, 8000, 9000, 7500, 0]), { resolved: 5, meanMissBps: 3100 });
-  assert.deepEqual(numericMiss([]), { resolved: 0, meanMissBps: null });
+  // A number market's record is the score's complement: the miss as a fraction of the scale; the band is the middle half of the misses (3.34), the hinges of [0, 1000, 2000, 2500, 10000].
+  assert.deepEqual(numericMiss([10000, 8000, 9000, 7500, 0]), { resolved: 5, meanMissBps: 3100, band: [500, 6250] });
+  assert.deepEqual(numericMiss([]), { resolved: 0, meanMissBps: null, band: null });
+  assert.deepEqual(numericMiss([9000]), { resolved: 1, meanMissBps: 1000, band: null }, "half of one miss is nothing");
+  assert.deepEqual(middleHalf([4, 1, 3, 2]), [1.5, 3.5].map(Math.round), "an even count splits clean: the hinges are the medians of the two halves");
+});
+
+test("the whisker behind a dot is the 80% Wilson interval, which stays inside 0 and 1 on two calls, and the headline names the fullest bin, the bolder one between equals", () => {
+  const close = (got: [number, number], want: [number, number]) => assert.ok(Math.abs(got[0] - want[0]) < 0.001 && Math.abs(got[1] - want[1]) < 0.001, `${got} vs ${want}`);
+  close(wilson80(7, 10), [0.4974, 0.8462]);
+  close(wilson80(2, 2), [0.5491, 1]);
+  close(wilson80(0, 3), [0, 0.3538]);
+  assert.deepEqual(wilson80(0, 0), [0, 1], "no calls, no claim");
+  const bins = [
+    { bucket: 3, count: 4, hits: 1, meanBps: 2600 },
+    { bucket: 7, count: 4, hits: 3, meanBps: 6800 },
+    { bucket: 9, count: 2, hits: 2, meanBps: 9000 },
+  ];
+  assert.equal(headlineBin(bins)?.bucket, 7, "the fullest bin, and between equals the one said at higher confidence");
+  assert.equal(headlineBin([]), null);
 });
 
 // ------------------------------------------------------------------------------------- what a number market takes

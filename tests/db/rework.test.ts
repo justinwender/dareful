@@ -10,7 +10,7 @@ import { ensureUsd } from "@/lib/ledger/denominations";
 import { createOccasionGroup, dismissNamePrompt, isMember, nameGroup, peopleSetsFor, setForPeople } from "@/lib/ledger/groups";
 import { homeFor } from "@/lib/ledger/home";
 import * as markets from "@/lib/ledger/markets";
-import { claimNotice, notifyJoined, notifyOpened } from "@/lib/notify";
+import { claimNotice, notifyJoined, notifyOpened, sendNudge } from "@/lib/notify";
 import { CODE_GUESSES_PER_HOUR, joinByCode, joinByMarketLink, roomCodeFor } from "@/lib/ledger/rooms";
 import { cleanup, codeOf, tempSigner, track, type Signer } from "./fixture";
 
@@ -190,6 +190,28 @@ test("asking tells the rest of the group once; getting in tells the asker once p
   await enter(ben, 6000n);
   await notifyJoined(d.id, ben.user.id);
   assert.deepEqual((await told(d.id)).filter((x) => x.startsWith("joined")), ["joined:ana<-ben"]);
+});
+
+test("a nudge reaches whoever is not in, once per window however many times it is tapped, and only from someone who is in", async () => {
+  const { g, d } = await open();
+  await db.insert(schema.groupMembers).values([ben, cy].map((p) => ({ groupId: g.id, userId: p.user.id })));
+  await markets.enterMarket({ dareId: d.id, userId: ana.user.id, stake: 1000n, value: 5000n, signature: await ana.ledger.signTypedData(markets.enterTypedData(d, 1000n, 5000n)) });
+  const now = new Date();
+  assert.deepEqual(await sendNudge(d.id, cy.user.id, now), { waitingOn: 0, told: 0, reached: 0 }, "cy is not in, so cy cannot say we");
+  assert.deepEqual(await sendNudge(d.id, ana.user.id, now), { waitingOn: 2, told: 2, reached: 0 });
+  assert.deepEqual(await sendNudge(d.id, ana.user.id, now), { waitingOn: 2, told: 0, reached: 0 }, "the second tap tells nobody again");
+  assert.deepEqual((await told(d.id)).filter((x) => x.startsWith("nudge")), ["nudge:ben<-ana", "nudge:cy<-ana"]);
+});
+
+test("a nudge beside one name in who's in tells that person alone, in the same window as the nudge to everyone", async () => {
+  const { g, d } = await open("Does the one-name nudge stay on one name?");
+  await db.insert(schema.groupMembers).values([ben, cy].map((p) => ({ groupId: g.id, userId: p.user.id })));
+  await markets.enterMarket({ dareId: d.id, userId: ana.user.id, stake: 1000n, value: 5000n, signature: await ana.ledger.signTypedData(markets.enterTypedData(d, 1000n, 5000n)) });
+  const now = new Date();
+  assert.deepEqual(await sendNudge(d.id, ana.user.id, now, ben.user.id), { waitingOn: 1, told: 1, reached: 0 }, "ben alone");
+  assert.deepEqual((await told(d.id)).filter((x) => x.startsWith("nudge")), ["nudge:ben<-ana"], "cy heard nothing");
+  assert.deepEqual(await sendNudge(d.id, ana.user.id, now, ana.user.id), { waitingOn: 0, told: 0, reached: 0 }, "never yourself");
+  assert.deepEqual(await sendNudge(d.id, ana.user.id, now), { waitingOn: 2, told: 1, reached: 0 }, "then everyone: cy is told, ben already was this window");
 });
 
 test("a question this person has acted on is running, and once it is over it just happened", async () => {
