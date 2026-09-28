@@ -218,6 +218,20 @@
       "when": 1790555430839,
       "tag": "0030_swipes_holdouts_link",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1790596359080,
+      "tag": "0031_pass_the_phone",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1790596986809,
+      "tag": "0032_pin_locked_notice",
+      "breakpoints": true
     }
   ]
 }

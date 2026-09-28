@@ -9,6 +9,8 @@ import { MarkRefStamp } from "@/components/ledger/mark-stamp";
 import { UnitGlyph } from "@/components/ledger/glyphs";
 import type { MarkRef } from "@/lib/ui/mark";
 import type { GlyphKey } from "@/lib/ui/units";
+import type { Hue } from "@/lib/ui/hue";
+import { PassThePhoneRow } from "./pass-the-phone";
 
 export type UnitRow = { id: string; label: string; pluralLabel: string; glyph: GlyphKey | null; monetary: boolean; emoji: string | null };
 
@@ -18,9 +20,9 @@ export type UnitRow = { id: string; label: string; pluralLabel: string; glyph: G
  * Sign out asks once in a sheet (3.12, destructive). The unit editor and the marks list behind the rows are not
  * designed (section 7): the two rows open a sheet that lists what this person has used and changes nothing. The
  * number is never held here (only its salted hash, to find entries made under it), so that row states what it
- * is for and opens nothing. Pass the phone joins this card in the next part; One tap does not (Round B).
+ * is for and opens nothing. Pass the phone is the row with the switch (3.45); One tap is not drawn (3.41, amended).
  */
-export function AccountRows({ units, marks, unitsCaption, marksCaption }: { units: UnitRow[]; marks: MarkRef[]; unitsCaption: string; marksCaption: string }) {
+export function AccountRows({ units, marks, unitsCaption, marksCaption, passThePhone, hue }: { units: UnitRow[]; marks: MarkRef[]; unitsCaption: string; marksCaption: string; /** Pass the phone (3.45): whether it is on, and which half is missing while it is being set up. */ passThePhone: { on: boolean; delegated: boolean; pinSet: boolean }; hue: Hue }) {
   const [open, setOpen] = useState<"units" | "marks" | "signout" | null>(null);
   const titleId = useId();
   const router = useRouter();
@@ -43,6 +45,7 @@ export function AccountRows({ units, marks, unitsCaption, marksCaption }: { unit
         <Row title="Your units" caption={unitsCaption} onClick={() => setOpen("units")} data-account-row="units" />
         <Row title="Your marks" caption={marksCaption} onClick={() => setOpen("marks")} data-account-row="marks" />
         <Row title="Your number" caption="Used to sign in. Nobody else sees it." data-account-row="number" />
+        <PassThePhoneRow status={passThePhone} hue={hue} />
         <Row title="Sign out" onClick={() => setOpen("signout")} data-account-row="signout" />
       </div>
       <Sheet open={open === "units"} onClose={() => setOpen(null)} labelledBy={`${titleId}-units`}>

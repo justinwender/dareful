@@ -2244,8 +2244,9 @@ round after this one), "Your PIN for a friend's phone" joins it under One tap; u
 not drawn on `You`.
 
 (Amended 2026-09-27, built. The screen is as above, with three readings: the "One tap" row is
-not drawn, since pass the phone takes its place in the next part (the owner's brief for Round B;
-3.41's ask is dropped there); "Your number" carries its caption and no chevron, because the app
+not drawn, since pass the phone takes its place (built 2026-09-28: the row "Pass the phone" with the
+switch, `body` 600 over the `caption` "Get into a market from a friend's phone, with your PIN. Voting
+always asks.", between "Your number" and "Sign out"; 3.41's ask is dropped, 3.45); "Your number" carries its caption and no chevron, because the app
 never holds the number, only its salted hash, so there is nothing behind the row to open; and
 "Your units" and "Your marks" open a sheet listing what this person has used, read-only, since
 the editor and the marks list behind them are not designed (7). The calls themselves are listed
@@ -2866,6 +2867,19 @@ entering along with confirming, closing and netting. If that turns out not to ho
 "getting in" from both lines, and the ask comes only after a first settle, yep or call-it-even.
 Pass the phone (3.45) waits on the same check.
 
+(Amended 2026-09-28, the owner's ruling. **The ask is dropped, and the row is Pass the phone.** On the
+phone holding the login, routine actions already show no confirmation: the wallet provider's sheet is off,
+and the app's own button is the whole act (docs/decisions.md 2026-09-27, "What delegation would remove,
+flow by flow"), so "Skip this step next time?" would offer to skip a step that is not there. Delegation's
+real uses are the two devices that cannot sign: a friend's phone (3.45) and a second device of the
+person's own without the login. So the delegated share is used only there, signing stays on the device
+that holds the login, the ask at the first routine action is never shown, and the switch on You is "Pass
+the phone" (3.45), which takes One tap's place in the Account card and sets the PIN in the same flow.
+The two rows above, what it covers and what it never will, are kept in that sheet's words: "It allows:
+getting into a market from a friend's phone, with your PIN" and "It never allows: saying what happened,
+voting, settling, or calling it even". Everything under "What never changes" and "When it stops working"
+still holds.)
+
 ### 3.42 The who's-in row: sharing, holdouts, and who's in
 
 The row that says who is in, and the one place a market is shared from. It replaces "They're
@@ -3075,6 +3089,16 @@ name and a number on the link page, a pick and a PIN here.
 
 The entry goes through Maya's own One tap, which is why One tap is a condition; the PIN is what
 says it's her on a phone that isn't hers. Nothing of hers is stored on Sam's phone.
+
+(Amended 2026-09-28, the owner's ruling and the build. One tap is not a separate switch: "Pass the phone"
+on You (3.34) is the one row, and turning it on delegates the ledger wallet and sets the PIN in one flow,
+only from the person's own phone; "set up One tap and a PIN" above reads "set up pass the phone". Turning
+it off revokes the delegation, wipes what the server stored and clears the PIN. The PIN is four digits,
+kept under a slow hash, never logged; five wrong tries in a row lock it for an hour, and the owner hears
+on their own account, naming whose phone. A watched PIN stays fixable: in an open market the entry can be
+changed from the person's own phone until the close; a blind entry is final, so its owner can withdraw it
+from their own phone before the close, and cannot enter again, so the remedy is never a way around blind.
+The steps above are built in Round B's part 3.)
 
 ---
 

@@ -33,7 +33,7 @@ export function ConfirmProposal({ payload, again }: { payload: ConfirmPayload; /
     setError(null);
     try {
       setState("signing");
-      const signature = await sign(payload.ledgerWallet, { domain: payload.domain, types: ledgerTypes, primaryType: "Confirm", message: { ...payload.message, qty: BigInt(payload.message.qty) } }, "confirm");
+      const signature = await sign(payload.ledgerWallet, { domain: payload.domain, types: ledgerTypes, primaryType: "Confirm", message: { ...payload.message, qty: BigInt(payload.message.qty) } }, "confirm", { action: "confirm", proposalId: payload.proposalId });
       setState("sending");
       const result = await confirmProposalAction(payload.proposalId, signature);
       if ("error" in result) {

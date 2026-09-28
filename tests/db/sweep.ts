@@ -91,6 +91,9 @@ async function main(): Promise<void> {
       await tx.delete(schema.participantClaims).where(inArray(schema.participantClaims.id, c));
     }
     await tx.delete(schema.pictureMarks).where(inArray(schema.pictureMarks.ownerId, u));
+    await tx.delete(schema.passThePhone).where(inArray(schema.passThePhone.userId, u));
+    await tx.delete(schema.delegatedSignatures).where(inArray(schema.delegatedSignatures.userId, u));
+    await tx.delete(schema.delegations).where(inArray(schema.delegations.userId, u));
     await tx.delete(schema.users).where(inArray(schema.users.id, u));
   });
   console.log(`swept ${u.length} temporary users, ${c.length} ghosts, ${g.length} groups`);

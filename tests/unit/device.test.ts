@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { JwtVerifiedCredentialFromJSON, JwtVerifiedCredentialToJSON } from "@dynamic-labs/sdk-api-core";
-import { deviceState, type Me } from "@/lib/auth/device";
+import { serverMaySign, deviceState, type Me } from "@/lib/auth/device";
 import { evmAddressesOf } from "@/lib/auth/jwt";
 
 const L = "0x" + "a".repeat(40);
@@ -56,4 +56,16 @@ test("the recorded credential has the keys Dynamic's serializer writes, so the t
 
 test("the same credential on another chain is not one of the two", () => {
   assert.deepEqual(evmAddressesOf({ sub: "u", verified_credentials: [{ ...recorded, chain: "solana" }] } as never), []);
+});
+
+test("the server's share is asked for only where the device cannot sign: a second device without the login, for a named routine action of the ledger wallet's", () => {
+  const me = { dynamicUserId: "d", ledgerWallet: "0xAbC0000000000000000000000000000000000001", governanceWallet: "0xDef0000000000000000000000000000000000002", passThePhone: true };
+  const ledger = me.ledgerWallet.toLowerCase();
+  assert.equal(serverMaySign({ via: true, state: "signed-out", me, address: ledger }), true, "a second device, pass the phone on, the ledger wallet, a named action");
+  assert.equal(serverMaySign({ via: true, state: "ready", me, address: ledger }), false, "the phone holding the login signs on the device");
+  assert.equal(serverMaySign({ via: true, state: "checking", me, address: ledger }), false, "not before the device knows what it holds");
+  assert.equal(serverMaySign({ via: true, state: "signed-out", me: { ...me, passThePhone: false }, address: ledger }), false, "pass the phone off: the code step, as before");
+  assert.equal(serverMaySign({ via: true, state: "signed-out", me, address: me.governanceWallet }), false, "never the governance wallet: a vote is never asked of the server");
+  assert.equal(serverMaySign({ via: false, state: "signed-out", me, address: ledger }), false, "an action with no name for the server is the device's");
+  assert.equal(serverMaySign({ via: true, state: "signed-out", me: null, address: ledger }), false);
 });

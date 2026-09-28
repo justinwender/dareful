@@ -5,7 +5,9 @@ import { useUserWallets } from "@dynamic-labs/sdk-react-core";
 import { isEthereumWallet } from "@dynamic-labs/ethereum";
 import type { Hex, TypedDataDomain } from "viem";
 import { useDevice } from "@/components/auth/device";
-import type { DeviceState } from "@/lib/auth/device";
+import { serverMaySign, type DeviceState, type Me } from "@/lib/auth/device";
+import { signFromThisDeviceAction } from "@/lib/actions/pass-the-phone";
+import type { Via } from "@/lib/ledger/via";
 import { mark } from "@/lib/ui/timing";
 
 export class SignerError extends Error {}
@@ -23,8 +25,11 @@ const SIGN_IN_WAIT_MS = 180_000;
 
 /**
  * Signs typed data with one of the person's two embedded keys, chosen by its recorded address: the ledger one
- * for anything that binds only them (a position, a yep), the governance one for a vote. The server holds
- * neither in this phase, so every one of these is a prompt.
+ * for anything that binds only them (a position, a yep), the governance one for a vote. On the device that
+ * holds the login every one of these is signed here, on the device. A device of the person's without the
+ * login (a second phone, the installed app after its storage was cleared) asks the server to sign a routine
+ * action from its own inputs when pass the phone is on (`via`, 3.41 amended 2026-09-28; 3.45), and only then;
+ * a vote never has a `via`, and otherwise the tap opens the code step as before.
  *
  * Every signature in the app goes through here, and what this device can do is decided in one place
  * (`useDevice`). A device that has not checked who it is holding is normal, not broken: the tap opens the
@@ -33,15 +38,25 @@ const SIGN_IN_WAIT_MS = 180_000;
  */
 export function useSigner() {
   const wallets = useUserWallets();
-  const { state, signIn } = useDevice();
-  const live = useRef<{ wallets: typeof wallets; state: DeviceState }>({ wallets, state });
+  const { state, signIn, me } = useDevice();
+  const live = useRef<{ wallets: typeof wallets; state: DeviceState; me: Me | null }>({ wallets, state, me });
   useEffect(() => {
-    live.current = { wallets, state };
-  }, [wallets, state]);
+    live.current = { wallets, state, me };
+  }, [wallets, state, me]);
 
   return useCallback(
-    async (address: string, typed: Typed, label: string): Promise<Hex> => {
+    async (address: string, typed: Typed, label: string, via?: Via): Promise<Hex> => {
       const find = () => live.current.wallets.find((w) => w.address.toLowerCase() === address.toLowerCase());
+      // The server's share is used only where the device cannot sign: a second device without the login, for a routine action it can name.
+      if (via && serverMaySign({ via: true, state: live.current.state, me: live.current.me, address })) {
+        const done = mark(`sign from the server: ${label}`);
+        try {
+          const r = await signFromThisDeviceAction(via);
+          if (r.ok) return r.signature;
+        } finally {
+          done();
+        }
+      }
       if (live.current.state === "signed-out" || live.current.state === "other-account") await signIn();
       const deadline = Date.now() + SIGN_IN_WAIT_MS;
       while (!find() && live.current.state !== "keys-missing" && Date.now() < deadline) await new Promise((r) => setTimeout(r, 250));

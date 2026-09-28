@@ -49,7 +49,7 @@ export function NetObligations({ otherId, lines, domain, onWay = [] }: { otherId
         return;
       }
       const m = payload.message;
-      const signature = await sign(payload.ledgerWallet, { domain, types: ledgerTypes, primaryType: "Net", message: { groupId: m.groupId, denomId: m.denomId, a: m.a, b: m.b, nonce: BigInt(m.nonce) } }, "net");
+      const signature = await sign(payload.ledgerWallet, { domain, types: ledgerTypes, primaryType: "Net", message: { groupId: m.groupId, denomId: m.denomId, a: m.a, b: m.b, nonce: BigInt(m.nonce) } }, "net", { action: "net", otherUserId: otherId, groupId: line.groupId, denomId: line.denomId });
       setPhase("sending");
       const result = await netAction(otherId, line.groupId, line.denomId, signature);
       if ("error" in result) {

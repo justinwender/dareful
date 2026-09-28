@@ -13,10 +13,10 @@ import { marketById, quorumOf, tally, VOID_OUTCOME, votesOf } from "@/lib/ledger
 import { firstName } from "@/lib/ui/copy";
 import { sendEmail, sendPush } from "./channels";
 import { positionsOf } from "@/lib/ledger/markets";
-import { backstopResultNotice, backstopWarningNotice, closedNotice, deadlineNotice, rulingNotice, joinedNotice, nettedNotice, nudgeNotice, nudgeSeq, nudgeTargets, openedNotice, pushElseEmail, recipientsAfterVote, resultNotice, voteRequest, type BackstopHow, type Notice, type WarningFlavour } from "./messages";
+import { backstopResultNotice, backstopWarningNotice, closedNotice, deadlineNotice, enteredFromNotice, rulingNotice, joinedNotice, nettedNotice, nudgeNotice, nudgeSeq, nudgeTargets, openedNotice, pinLockedNotice, pushElseEmail, recipientsAfterVote, resultNotice, voteRequest, type BackstopHow, type Notice, type WarningFlavour } from "./messages";
 
 /** Claims the (person, market, kind, count) slot; false if it was already told. This is what makes a retry silent. */
-export async function claimNotice(userId: string, dareId: string, kind: "vote_request" | "result" | "opened" | "joined" | "nudge" | "deadline" | "ruling" | "backstop_warning" | "backstop_result", seq: number, causedBy: string): Promise<string | null> {
+export async function claimNotice(userId: string, dareId: string, kind: "vote_request" | "result" | "opened" | "joined" | "nudge" | "deadline" | "ruling" | "backstop_warning" | "backstop_result" | "entered_from", seq: number, causedBy: string): Promise<string | null> {
   const [row] = await db.insert(schema.notificationLog).values({ userId, dareId, kind, seq, causedBy }).onConflictDoNothing().returning({ id: schema.notificationLog.id });
   return row?.id ?? null;
 }
@@ -170,6 +170,28 @@ export async function sendNudge(dareId: string, nudgerId: string, now: Date, onl
     }),
   );
   return { waitingOn: targets.length, told, reached };
+}
+
+/**
+ * The PIN was locked by wrong tries on someone's phone (3.45; docs/decisions.md 2026-09-28): the owner hears
+ * once per lockout, on their own account, by push else email. Caused by the host, on whose phone it happened.
+ */
+export async function notifyPinLocked(ownerId: string, hostId: string, lockout: number): Promise<void> {
+  const [row] = await db.insert(schema.notificationLog).values({ userId: ownerId, kind: "pin_locked", seq: lockout, causedBy: hostId }).onConflictDoNothing().returning({ id: schema.notificationLog.id });
+  if (!row) return;
+  await deliver(ownerId, row.id, pinLockedNotice({ hostName: firstName(await nameOf(hostId)), appUrl: APP_URL() }), "push-else-email");
+}
+
+/**
+ * Someone got into a question from a friend's phone (3.45, frame 7): one notice on their own account, the
+ * question as its title and whose phone, by push else email. Caused by the host, whose phone it was.
+ */
+export async function notifyEnteredFrom(ownerId: string, hostId: string, dareId: string): Promise<void> {
+  const d = await marketById(dareId);
+  if (!d) return;
+  const id = await claimNotice(ownerId, dareId, "entered_from", 0, hostId);
+  if (!id) return;
+  await deliver(ownerId, id, enteredFromNotice({ hostName: firstName(await nameOf(hostId)), title: d.title, marketId: d.id, appUrl: APP_URL() }), "push-else-email");
 }
 
 /** The scheduler's one notice: the asker hears that the time they set has come. Caused by their own act of setting it. */

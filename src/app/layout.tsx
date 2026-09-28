@@ -4,6 +4,7 @@ import "./globals.css";
 import { Providers } from "@/components/providers";
 import { PLACEHOLDER_NAME } from "@/lib/auth/login";
 import { currentUser } from "@/lib/auth/session";
+import { passThePhoneStatus } from "@/lib/ledger/pass-the-phone";
 
 const hanken = Hanken_Grotesk({
   variable: "--font-hanken",
@@ -43,13 +44,15 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   // their way entirely: no round trip and no "signing you in" on every page load.
   const me = await currentUser();
   const settled = me !== null && me.displayName !== PLACEHOLDER_NAME;
+  // Whether the server may sign for this person where the device cannot (3.45): read once per load, so a second device knows without asking.
+  const passThePhone = me ? (await passThePhoneStatus(me.id)).on : false;
   return (
     <html lang="en" className={`${hanken.variable} ${youngSerif.variable} dark h-full antialiased`}>
       {/* An installed app draws under the status bar and the home indicator (viewport-fit=cover, translucent status
           bar). The top and side insets are paid once, here, so no screen can forget them; anything fixed or sticky
           pays its own (docs/decisions.md 2026-09-20). Sized from the parent's height, never from 100vh. */}
       <body className="flex min-h-full flex-col pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)]">
-        <Providers settled={settled} me={me ? { dynamicUserId: me.dynamicUserId, ledgerWallet: me.ledgerWallet, governanceWallet: me.governanceWallet } : null}>
+        <Providers settled={settled} me={me ? { dynamicUserId: me.dynamicUserId, ledgerWallet: me.ledgerWallet, governanceWallet: me.governanceWallet, passThePhone } : null}>
           {children}
         </Providers>
       </body>

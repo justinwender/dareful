@@ -26,7 +26,7 @@
  * the material and marks the row. Events are idempotent by id and ordered by Dynamic's own timestamp.
  */
 import { constants as cryptoConstants, createCipheriv, createDecipheriv, createHmac, privateDecrypt, randomBytes, timingSafeEqual } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { hashTypedData, recoverTypedDataAddress, type Hex, type TypedDataDefinition } from "viem";
 import { z } from "zod";
 import { db, schema } from "@/db";
@@ -350,6 +350,16 @@ const delegatedClient: SignerLoad = async () => {
   }
   return { mod, client: clientCache };
 };
+
+/**
+ * Turning pass the phone off (docs/design.md 3.45; docs/decisions.md 2026-09-28): the stored material is wiped
+ * here and now, and the row kept as the record, exactly as Dynamic's own revocation event does when it lands
+ * after. Nothing waits on the webhook for a person's own off switch.
+ */
+export async function wipeDelegation(userId: string, now: Date = new Date()): Promise<void> {
+  const D = schema.delegations;
+  await db.update(D).set({ encryptedShare: Buffer.alloc(0), encryptedApiKey: Buffer.alloc(0), revokedAt: now }).where(and(eq(D.userId, userId), sql`${D.revokedAt} is null`));
+}
 
 /** Whether this person's ledger wallet has a usable delegation, for the screens that decide whether to prompt. Reads nothing secret. */
 export async function hasDelegation(userId: string): Promise<boolean> {

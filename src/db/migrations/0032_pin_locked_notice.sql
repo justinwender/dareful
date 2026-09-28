@@ -1,0 +1,2 @@
+ALTER TABLE "notification_log" DROP CONSTRAINT "notification_log_about_one";--> statement-breakpoint
+ALTER TABLE "notification_log" ADD CONSTRAINT "notification_log_about_one" CHECK (("notification_log"."kind" in ('netted', 'pin_locked') and "notification_log"."dare_id" is null and "notification_log"."obligation_id" is null) or ("notification_log"."kind" not in ('netted', 'pin_locked') and ("notification_log"."dare_id" is null) <> ("notification_log"."obligation_id" is null)));

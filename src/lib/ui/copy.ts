@@ -122,6 +122,18 @@ export function setCaption(input: { size: number; lastAskedAt: Date | null; isMo
   return `${size}, back in ${input.lastAskedAt.toLocaleDateString("en-US", { timeZone: input.timeZone, month: "long" })}`;
 }
 
+/**
+ * When something ended, after the fact (docs/design.md 3.15, 3.37): "at 6:52pm" on the day, "Sun at 6:52pm" within
+ * the week, "Sep 12 at 6:52pm" after. In the viewer's zone, and never how long ago; a moment in the past is never
+ * "soon", which is what `closesLabel` says of one.
+ */
+export function endedLabel(at: Date, now: Date, timeZone: string): string {
+  const days = dayNumber(now, timeZone) - dayNumber(at, timeZone);
+  if (days <= 0) return `at ${clockOf(at, timeZone)}`;
+  if (days < 7) return `${at.toLocaleDateString("en-US", { timeZone, weekday: "short" })} at ${clockOf(at, timeZone)}`;
+  return `${at.toLocaleDateString("en-US", { timeZone, month: "short", day: "numeric" })} at ${clockOf(at, timeZone)}`;
+}
+
 /** "Locked at 11pm" on the day, "Locked Sat, Sep 12" after it. In the viewer's zone, and never how long ago. */
 export function lockedLabel(at: Date, now: Date, timeZone: string): string {
   if (dayNumber(now, timeZone) === dayNumber(at, timeZone)) return `Locked at ${clockOf(at, timeZone)}`;

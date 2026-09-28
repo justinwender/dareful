@@ -872,6 +872,25 @@ export const chainWrites = pgTable(
  * 2026-09-27): delegation removes the prompt, never the person, so each one traces to an authenticated request
  * from that user for that action in that moment. Holds the digest signed and nothing secret.
  */
+/**
+ * Pass the phone (docs/design.md 3.45; docs/decisions.md 2026-09-28): the PIN a person set on their own phone,
+ * with a slow hash and a salt of its own, never the PIN; how many wrong tries in a row, and until when it is
+ * locked after too many. One row per person, kept while the PIN is set; cleared when pass the phone is turned
+ * off. Pass the phone is on when this row exists beside a usable delegation of the ledger wallet.
+ */
+export const passThePhone = pgTable("pass_the_phone", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id),
+  pinHash: bytea("pin_hash").notNull(),
+  pinSalt: bytea("pin_salt").notNull(),
+  setAt: ts("set_at").notNull().defaultNow(),
+  failedTries: integer("failed_tries").notNull().default(0),
+  lockedUntil: ts("locked_until"),
+  /** How many lockouts so far, which makes each lockout's notice its own. */
+  lockouts: integer("lockouts").notNull().default(0),
+}).enableRLS();
+
 export const delegatedSignatures = pgTable(
   "delegated_signatures",
   {
@@ -1158,7 +1177,7 @@ export const notificationLog = pgTable(
     /** What it is about: a question, or an obligation (settled, forgiven), or neither for a netting between two people. */
     dareId: uuid("dare_id").references(() => dares.id),
     obligationId: uuid("obligation_id").references(() => obligations.id),
-    kind: text("kind", { enum: ["vote_request", "result", "opened", "joined", "nudge", "deadline", "ruling", "settled", "forgiven", "netted", "backstop_warning", "backstop_result"] }).notNull(),
+    kind: text("kind", { enum: ["vote_request", "result", "opened", "joined", "nudge", "deadline", "ruling", "settled", "forgiven", "netted", "backstop_warning", "backstop_result", "pin_locked", "entered_from"] }).notNull(),
     /**
      * What makes "the same thing" the same, per kind: how many had voted (vote_request), how many were in
      * (joined), a six-hour window (nudge), 0 otherwise.
@@ -1177,7 +1196,8 @@ export const notificationLog = pgTable(
     uniqueIndex("notification_log_once_obligation").on(t.userId, t.obligationId, t.kind, t.seq).where(sql`${t.obligationId} is not null`),
     // A netting is between two people and about no one row: once per pair per window, keyed by who did it.
     uniqueIndex("notification_log_once_pair").on(t.userId, t.causedBy, t.kind, t.seq).where(sql`${t.kind} = 'netted'`),
-    check("notification_log_about_one", sql`(${t.kind} = 'netted' and ${t.dareId} is null and ${t.obligationId} is null) or (${t.kind} <> 'netted' and (${t.dareId} is null) <> (${t.obligationId} is null))`),
+    // About a question or an obligation, one of the two; or about neither: a netting between two people, or a PIN locked on someone's phone (3.45).
+    check("notification_log_about_one", sql`(${t.kind} in ('netted', 'pin_locked') and ${t.dareId} is null and ${t.obligationId} is null) or (${t.kind} not in ('netted', 'pin_locked') and (${t.dareId} is null) <> (${t.obligationId} is null))`),
   ],
 ).enableRLS();
 

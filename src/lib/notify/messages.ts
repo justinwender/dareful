@@ -76,6 +76,19 @@ export function nudgeNotice(input: { nudgerName: string; title: string; stage: "
   };
 }
 
+/**
+ * The PIN for a friend's phone was locked by wrong tries (3.45; docs/decisions.md 2026-09-28): someone acting
+ * on a named phone, so a notice may exist. Names whose phone, never the PIN or how close the tries came.
+ */
+export function pinLockedNotice(input: { hostName: string; appUrl: string }): Notice {
+  return { title: "Your PIN is locked for an hour", body: `Five wrong tries on ${input.hostName}’s phone. Nothing got in. If that wasn’t you, turn pass the phone off and on again with a new PIN.`, url: `${input.appUrl}/you` };
+}
+
+/** Someone entered a question from a friend's phone (3.45, frame 7): the question as the title, and whose phone. */
+export function enteredFromNotice(input: { hostName: string; title: string; marketId: string; appUrl: string }): Notice {
+  return { title: input.title, body: `You entered this from ${input.hostName}’s phone.`, url: `${input.appUrl}/m/${input.marketId}` };
+}
+
 export const NUDGE_WINDOW_MS = 6 * 3_600_000;
 
 /**

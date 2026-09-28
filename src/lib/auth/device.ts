@@ -3,7 +3,7 @@
  * version of this decision was one line inside a click handler, it called every state "still setting up", and
  * two of four real accounts were stuck behind it.
  */
-export type Me = { dynamicUserId: string; ledgerWallet: string; governanceWallet: string };
+export type Me = { dynamicUserId: string; ledgerWallet: string; governanceWallet: string; /** Pass the phone is on (3.45): the server holds a share of the ledger wallet, so a device without the login can still act. */ passThePhone?: boolean };
 
 export type DeviceState =
   /** The SDK has not said anything yet. Say nothing; never a refusal. */
@@ -34,4 +34,13 @@ export function platformOf(userAgent: string | null): "ios" | "android" | "deskt
   if (/Android/.test(ua)) return "android";
   if (/Macintosh|Windows NT|X11|CrOS/.test(ua)) return "desktop";
   return "other";
+}
+
+/**
+ * Whether the server should be asked to sign instead of the device (docs/design.md 3.45; 3.41 amended
+ * 2026-09-28): only on a device without the login (never the phone that holds it), only with pass the phone on,
+ * only for a named routine action, and only for the ledger wallet. Pure, so the rule has a test.
+ */
+export function serverMaySign(input: { via: boolean; state: DeviceState; me: Me | null; address: string }): boolean {
+  return input.via && input.state === "signed-out" && input.me?.passThePhone === true && input.address.toLowerCase() === input.me.ledgerWallet.toLowerCase();
 }

@@ -72,6 +72,7 @@ export function CloseObligation({ obligationId, card, children, sentence, what, 
         payload.ledgerWallet,
         { domain, types: ledgerTypes, primaryType: "Close", message: { id: BigInt(m.id), qty: BigInt(m.qty), reason: reason === "forgiven" ? 1 : 0, obligationId: m.obligationId, nonce: BigInt(m.nonce) } },
         `close ${reason}`,
+        { action: "close", obligationId, reason },
       );
       setPhase("sending");
       const result = await closeObligationAction(obligationId, reason, signature);

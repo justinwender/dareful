@@ -177,6 +177,7 @@ async function removeEverything(): Promise<void> {
       await tx.delete(schema.deviceStates).where(inArray(schema.deviceStates.userId, u));
       await tx.delete(schema.pushSubscriptions).where(inArray(schema.pushSubscriptions.userId, u));
       await tx.delete(schema.notificationLog).where(or(inArray(schema.notificationLog.userId, u), inArray(schema.notificationLog.causedBy, u)));
+      await tx.delete(schema.passThePhone).where(inArray(schema.passThePhone.userId, u));
     }
     if (u.length) {
       // A settlement photo hangs off an obligation and the obligation points back at it: unhook, then remove both.

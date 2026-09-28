@@ -263,6 +263,7 @@ export function MarketStage(props: {
             },
           },
           "approve terms",
+          { action: "create", dareId },
         );
       }
       const enterSignature = await sign(
@@ -281,6 +282,7 @@ export function MarketStage(props: {
           },
         },
         "approve number",
+        { action: "enter", dareId, stake: String(stakeUnits), value: signedValue.toString() },
       );
       setStep("sending");
       const r = createSignature

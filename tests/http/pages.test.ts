@@ -1450,6 +1450,10 @@ test("the You page: identity with one caption, how your calls land under the flo
   assert.ok(you.html.includes("data-you-asked=") && /(\d+ of the \d+ questions|The one question) you asked (ended cleanly|was voided)/.test(you.text) && !/\d+% of the questions/.test(you.text), "questions you asked, in counts and never a percentage");
   for (const row of ["units", "marks", "number", "signout"]) assert.ok(you.html.includes(`data-account-row="${row}"`), `the ${row} row`);
   assert.ok(you.text.includes("Used to sign in. Nobody else sees it.") && you.text.includes("Sign out") && !you.text.includes("One tap"), "the captions, and no One tap row (Round B)");
+  // Pass the phone (3.45; 3.41 amended): the row with the switch, off, between the number and sign out; never "Skip this step next time?" anywhere.
+  assert.ok(you.html.includes('data-account-row="pass"') && /role="switch"[^>]*aria-checked="false"/.test(you.html) && you.text.includes("Pass the phone") && you.text.includes("Voting always asks.") === false || you.html.includes('data-pass-switch="off"'), "the pass the phone row, off");
+  assert.ok(you.html.indexOf('data-account-row="number"') < you.html.indexOf('data-account-row="pass"') && you.html.indexOf('data-account-row="pass"') < you.html.indexOf('data-account-row="signout"'), "in One tap's place, before Sign out");
+  assert.ok(!you.text.includes("Skip this step next time"), "the ask is never shown (3.41, amended)");
   assert.ok(!/\brank\b|\bgrade\b|\bscore\b/i.test(you.text), "no score, grade or rank");
   // A fresh account: joined today, nothing resolved yet, and no empty chart.
   const fresh = await tempUser("Fresh Check");
@@ -1482,7 +1486,7 @@ test("a removed market reads as called off on its own screen, with nobody else g
   await removeMarket(d.id, asker.user.id);
   const r = await get(`/m/${d.id}`, cAsker);
   assert.equal(r.status, 200);
-  assert.ok(r.html.includes('data-band-state="voided"') && r.text.includes("Called off ") && r.text.includes("Called off.") && r.text.includes("Nobody else got in."), "the voided mark with when, the outcome line and its caption (3.15)");
+  assert.ok(r.html.includes('data-band-state="voided"') && /Called off at \d/.test(r.text) && !r.text.includes("Called off soon") && r.text.includes("Called off.") && r.text.includes("Nobody else got in."), "the voided mark with when it was, never soon, the outcome line and its caption (3.15)");
   assert.ok(!r.html.includes('data-whos-in=""') && !r.html.includes('data-share=""'), "nothing to send: no row");
   const friend = await get(`/m/${d.id}`, cFriend);
   assert.ok(friend.status === 200 && friend.text.includes("Called off."), "anyone the link reached sees the same");

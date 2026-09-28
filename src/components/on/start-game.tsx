@@ -132,7 +132,7 @@ export function StartGame({ game, menu, sets, people, chrome, signing, mode, clo
         for (const q of r.toOpen) {
           setSigningStep(q.title);
           const c = q.create;
-          const signature = await sign(signing.ledgerWallet, { domain: signing.domain, types: daresTypes, primaryType: "Create", message: { dareId: c.dareId, groupId: c.groupId, kind: c.kind, pace: c.pace, termsHash: c.termsHash, denomId: c.denomId, range: BigInt(c.range), options: c.options, stalemate: c.stalemate, resolvesBy: BigInt(c.resolvesBy) } }, "approve terms");
+          const signature = await sign(signing.ledgerWallet, { domain: signing.domain, types: daresTypes, primaryType: "Create", message: { dareId: c.dareId, groupId: c.groupId, kind: c.kind, pace: c.pace, termsHash: c.termsHash, denomId: c.denomId, range: BigInt(c.range), options: c.options, stalemate: c.stalemate, resolvesBy: BigInt(c.resolvesBy) } }, "approve terms", { action: "create", dareId: q.id });
           signed.push({ id: q.id, signature });
         }
       } catch (err) {

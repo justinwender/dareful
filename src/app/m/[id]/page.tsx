@@ -101,6 +101,7 @@ import {
   dateLabel,
   dayLabel,
   daysBetween,
+  endedLabel,
   firstName,
   fromThatNight,
   lockedLabel,
@@ -728,7 +729,7 @@ export default async function MarketPage({
         : state === "locked" && d.resolvesBy
           ? `Voting ends ${closesLabel(d.resolvesBy, now, clock.zone)}`
           : state === "voided" && d.resolvedBy === "removed" && d.resolvedAt
-            ? `Called off ${closesLabel(d.resolvedAt, now, clock.zone)}`
+            ? `Called off ${endedLabel(d.resolvedAt, now, clock.zone)}`
             : null;
   const bandLive =
     d.resolvesBy !== null &&

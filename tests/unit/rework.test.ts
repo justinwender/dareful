@@ -11,7 +11,7 @@ import { filterByContext, sharedContexts, type TimelineEvent } from "@/lib/ledge
 import { CODE_ALPHABET, readCode, readPastedLink } from "@/lib/ledger/room-code";
 import { joinedNotice, nudgeNotice, nudgeSeq, nudgeTargets, NUDGE_WINDOW_MS, openedNotice, recipientsAfterVote, relayText, resultNotice, voteRequest } from "@/lib/notify/messages";
 import { platformOf } from "@/lib/auth/device";
-import { closesLabel, lockedLabel, setCaption } from "@/lib/ui/copy";
+import { closesLabel, endedLabel, lockedLabel, setCaption } from "@/lib/ui/copy";
 
 test("the code alphabet has no O, I, Z, zero or one, and nothing twice", () => {
   assert.equal(CODE_ALPHABET.length, 31);
@@ -141,6 +141,12 @@ test("no needs-you line ever says how long anything has waited", () => {
   const n = needFromMarket(old, "viewer", false, t0, () => closesLabel(new Date(t0.getTime() - 60 * day), t0, "UTC"));
   assert.equal(/\d+\s*(day|week|month|hour)|ago|overdue|late/i.test(`${n?.context} ${n?.verb}`), false);
   assert.equal(closesLabel(new Date(t0.getTime() - 60 * day), t0, "UTC"), "soon");
+  // A moment in the past is said as when it was, never as "soon" (3.15: "Called off Sun at 6:52pm").
+  const ended = new Date("2026-09-27T18:52:00Z");
+  assert.equal(endedLabel(ended, new Date("2026-09-27T23:00:00Z"), "UTC"), "at 6:52pm", "on the day");
+  assert.equal(endedLabel(ended, new Date("2026-09-30T23:00:00Z"), "UTC"), "Sun at 6:52pm", "within the week");
+  assert.equal(endedLabel(ended, new Date("2026-10-20T23:00:00Z"), "UTC"), "Sep 27 at 6:52pm", "after");
+  assert.ok(!endedLabel(ended, new Date("2026-09-30T23:00:00Z"), "UTC").includes("soon"));
 });
 
 test("closes reads as tonight, tomorrow, then a weekday, in the viewer's zone", () => {

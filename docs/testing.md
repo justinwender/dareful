@@ -818,6 +818,28 @@ The band with the probe closed (61), the album on two phones (71), "Got a code?"
 
 The red square (81), a game swiping as one row (82), the count while alone (83), the nudge and the relay with a real notice arriving (84), a sticker from a real Copy Subject (85), You in each state on the installed app (86).
 
+## Session 24: Round B, part 2, in the real localhost session
+
+**When:** September 28, 2026, after part 0 was committed. **Who:** the localhost test account, whose Dynamic login this browser holds (the device state `ready`); nobody on a phone; the pane hidden, so taps were dispatched from the page's own script onto the real controls. **Checked first:** the owner's brief for part 2 and the amended 3.41 and 3.45; migrations 0031 and 0032 applied before anything was built on them.
+
+### Exercised
+
+- **The row on You:** "Pass the phone" between "Your number" and "Sign out", `body` 600 over "Get into a market from a friend's phone, with your PIN. Voting always asks.", the switch off and enabled on the phone that holds the login; no "One tap" anywhere and no "Skip this step next time?".
+- **Turning it on, end to end:** the switch opened the sheet: "Pass the phone", "It allows" with "Getting into a market from a friend's phone, with your PIN.", "It never allows" with "Saying what happened, voting, settling, or calling it even.", "Turn it off any time, here.", "Your PIN" and "Again"; "Turn it on" stayed disabled until both PINs were typed; the tap ran the SDK's own delegation of the ledger wallet with no screen of Dynamic's, set the PIN, waited for the webhook, and the switch read on within nine seconds with the caption "On. Get into a market from a friend's phone, with your PIN. Voting always asks." The database then held one active delegation with a fresh event id and one `pass_the_phone` row with no failed tries.
+- **Turning it off:** one tap on the switch; the switch read off at once, the sheet stayed closed; the database then held the delegation row with its material wiped and `revoked_at` set, and no `pass_the_phone` row.
+- **A second device signing from the server** could not be exercised here: this browser holds the login, so the device signs, which is the rule. The database suite holds the server's path (the typed data rebuilt from the ids, the signature passing the action's own check, the refusals), and item 88 is the phone's.
+- **The PIN's lockout and its notice** are held by the database suite (five wrong tries, the notice logged once naming the host); the phone check is item 89.
+
+### What broke
+
+- The `notification_log` check constraint refused a notice about neither a question nor an obligation except a netting; migration 0032 admits the PIN lockout too.
+- The design audit (part 1) found a called-off market's band reading "Called off soon", since the closes label says "soon" of any past moment; fixed with a past-tense label ("Called off at 6:52pm", "Called off Sun at 6:52pm"), tested.
+- The see-through sticker sheet from part 0 carried a drop shadow, which 1.5 admits nowhere; removed.
+
+### What needs a phone
+
+Pass the phone on and off (87), a second device signing from the server (88), wrong PINs locking with the owner told (89).
+
 ## The final test: one checklist
 
 Everything from sessions 11 through 15 that needs a phone, a second person or a real game, in one place, grouped by what it needs, so the final pass on real phones is one document to walk through. Each item says exactly what to check; the session it came from has the detail. Tick them in order within a group; the two-phone items want both phones signed in to two accounts that share a set.
@@ -921,3 +943,6 @@ Everything from sessions 11 through 15 that needs a phone, a second person or a 
 84. **The nudge and the relay** (23): on a question with someone asked and not in, expect "Waiting on Maya." with "Nudge Maya" under the who's-in row; tap it and expect "Told them." and her phone's notice "Claude is waiting on you"; tap the stack and expect her under "Not in yet" with "Nudge Maya" beside her, "Told in the last few hours" after; on an account with no device that takes messages, expect "Say it yourself" opening your own composer with "We're waiting on you: <the question>" and the link. Once locked with someone not voted, the same under "Still to call it", and the notice opening on the ballot.
 85. **A sticker from a photo, end to end** (23): open a question's photo full screen; expect the three icons with their words, "Make a sticker", "Save", and "Remove" on your own; tap "Make a sticker" and expect the sheet with "Hold what you want, then tap Copy" and "Then paste it here" over the photo, still holdable; hold the photo, tap Copy Subject, tap "Paste" (iOS shows its own Paste prompt); expect the sticker on the field with "In your stickers", "Ask something with it" opening the question step with the sticker as the mark, and "Done" back to the photo; expect the sticker in the picker's "Your stickers" row afterward. A plain photo pasted should say "That's a photo, not a cutout."
 86. **You, in each state** (23): on a fresh account expect "Joined today" and "Nothing has resolved yet." with no chart; on an account with a few resolved calls expect "In N markets since <when>", the frame with the diagonal alone, "Your picture draws at 10 resolved calls. N so far." and the calls as rows; on an account past ten expect the plot with dots and whiskers and the headline in counts ("When you say about 70%, it happened 7 of the 10 times."); "Questions you asked" in counts with a mark per question and the void named; the Account rows, "Your units" and "Your marks" opening their sheets, "Your number" with its caption and nothing to open, and "Sign out" asking once.
+87. **Pass the phone, on and off** (24): on your own phone, on You, tap the switch; expect the sheet with "It allows" and "It never allows", the PIN twice, "Turn it on" delegating without any screen of Dynamic's and the switch reading on within a few seconds; on a second phone signed in to the same account without the code step, expect the switch on and the caption saying to turn it on from the phone you signed in on; tap it off on your own phone and expect the switch off at once, `delegations` wiped with `revoked_at` set, and `pass_the_phone` empty.
+88. **A second device signing from the server** (24): with pass the phone on, on a phone that holds the Dareful session but not the Dynamic login (the installed app after the browser's storage was cleared, or a second phone that never typed a code), get into a question; expect no code step, the entry landing, and one row in `delegated_signatures` naming the action and `signFromThisDeviceAction`; then vote and expect the code step or the vote's own sheet, never a server signature.
+89. **Wrong PINs locking** (24): on a friend's phone (part 3), type a wrong PIN five times; expect the third to end the handoff, the fifth to lock the PIN for an hour, and the owner's phone to get "Your PIN is locked for an hour" naming the friend's phone.

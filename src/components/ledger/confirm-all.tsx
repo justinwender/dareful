@@ -65,11 +65,11 @@ export function ConfirmAll({ payload, entries = [] }: { payload: ConfirmAllPaylo
     try {
       setState("signing");
       let batchSignature: Hex | null = null;
-      if (payload) batchSignature = await sign(payload.ledgerWallet, { domain: payload.domain, types: ledgerTypes, primaryType: "ConfirmMany", message: { ...payload.message, qtys: payload.message.qtys.map((q) => BigInt(q)) } }, "confirmmany");
+      if (payload) batchSignature = await sign(payload.ledgerWallet, { domain: payload.domain, types: ledgerTypes, primaryType: "ConfirmMany", message: { ...payload.message, qtys: payload.message.qtys.map((q) => BigInt(q)) } }, "confirmmany", { action: "confirm_many", proposalIds: payload.proposalIds });
       const entrySignatures: Array<{ entry: LinkEntryRow; signature: Hex }> = [];
       for (const e of entries) {
         if (!kept.has(e.dareId)) continue;
-        const signature = await sign(e.ledgerWallet, { domain: e.domain, types: daresTypes, primaryType: "Enter", message: { dareId: e.dareOnchainId, stake: BigInt(e.stake), value: BigInt(e.value), confidenceBps: e.confidenceBps, stalemate: e.stalemate } }, "approve number");
+        const signature = await sign(e.ledgerWallet, { domain: e.domain, types: daresTypes, primaryType: "Enter", message: { dareId: e.dareOnchainId, stake: BigInt(e.stake), value: BigInt(e.value), confidenceBps: e.confidenceBps, stalemate: e.stalemate } }, "approve number", { action: "enter", dareId: e.dareId, stake: e.stake, value: e.value });
         entrySignatures.push({ entry: e, signature });
       }
       setState("sending");

@@ -44,7 +44,7 @@ export function Sheet({ open, onClose, labelledBy, children, closeLabel, tall = 
         aria-modal={clear ? undefined : "true"}
         aria-labelledby={labelledBy}
         style={dy > 0 ? { transform: `translateY(${dy}px)` } : undefined}
-        className={`relative mx-auto flex w-full max-w-[430px] flex-col gap-5 overflow-y-auto overscroll-contain rounded-t-card border border-b-0 border-line bg-surface px-4 pt-2 pb-[max(1.5rem,env(safe-area-inset-bottom))] motion-safe:animate-[sheet-up_200ms_ease-out] ${tall ? "h-[min(560px,85%)]" : "max-h-[85%]"} ${clear ? "pointer-events-auto shadow-[0_-8px_24px_rgba(0,0,0,0.35)]" : ""}`}
+        className={`relative mx-auto flex w-full max-w-[430px] flex-col gap-5 overflow-y-auto overscroll-contain rounded-t-card border border-b-0 border-line bg-surface px-4 pt-2 pb-[max(1.5rem,env(safe-area-inset-bottom))] motion-safe:animate-[sheet-up_200ms_ease-out] ${tall ? "h-[min(560px,85%)]" : "max-h-[85%]"} ${clear ? "pointer-events-auto" : ""}`}
       >
         <div
           className="relative -mb-2 flex h-10 shrink-0 touch-none select-none items-center justify-center"
