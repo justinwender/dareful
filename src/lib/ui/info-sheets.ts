@@ -30,8 +30,8 @@ function marketOpen(kind: "binary" | "numeric" | "categorical"): InfoSheet {
         e("Your entry", "Yours to change until the close, from Change on your entry line.", { qualifier: "once you’re in" }),
         e("Where everyone landed", "Shows once you’re in, never before."),
         e("Your answer", "Final once you’re in, and then you see everyone’s.", { qualifier: "in a blind market" }),
-        e("The close", "The time in the band: after it nobody gets in or changes, and people say what happened."),
-        e("Photos", "Add them any time from the slot at the bottom; everyone in it sees them.", { qualifier: "once you’re in" }),
+        e("The close", "The time above the question: after it nobody gets in or changes; people say what happened."),
+        e("Photos", "Add them any time from the bottom of the screen; everyone in it sees them.", { qualifier: "once you’re in" }),
         e("How it settles", "You settle only with people who land closer than you, and only by the gap between you."),
       ],
       "Everything else": [
@@ -44,7 +44,7 @@ function marketOpen(kind: "binary" | "numeric" | "categorical"): InfoSheet {
 
 /** A market once it has closed: saying what happened, and calling it. */
 function marketVoting(kind: "binary" | "numeric" | "categorical"): InfoSheet {
-  const say = kind === "numeric" ? e("The number field", "In the sheet: type what it was, and a number that differs from the read is a vote for it.") : kind === "categorical" ? e("The answers, as wells", "Tap the one that happened; the sheet raises to say it, with a photo or a screenshot.") : e("The two wells", "Tap what happened; the sheet raises to say it, with a photo or a screenshot.");
+  const say = kind === "numeric" ? e("The number field", "In the sheet: type what it was, and a number that differs from the read is a vote for it.") : kind === "categorical" ? e("The answers", "Tap the one that happened; the sheet raises to say it, with a photo or a screenshot.") : e("The two answers", "Tap what happened; the sheet raises to say it, with a photo or a screenshot.");
   return {
     name: "A market, while it’s called",
     groups: {
@@ -52,8 +52,8 @@ function marketVoting(kind: "binary" | "numeric" | "categorical"): InfoSheet {
       Icons: [e("More", "The rest of the details, how it gets decided, and what anyone attached.", { glyph: "more" }), e("Share", "Sends the market’s link to a chat.", { glyph: "share" }), e("Copy the link", "Copies it; the icon turns to a check for a moment.", { glyph: "copy" })],
       "Rules and timing": [
         e("Closed", "Nobody gets in or changes now; whoever saw it says what happened first."),
-        e("Calling it", "Your vote is signed from your own phone, and a majority of the set settles it."),
-        e("The read", "The app leans one way from what was said; the count line under it says how many agree."),
+        e("Calling it", "Your vote only ever comes from your own phone, and a majority settles it."),
+        e("The read", "The app leans one way from what was said; the line under it says how many agree."),
         e("The tiebreaker", "After the deadline, hears both sides and calls it, as everyone agreed on entering.", { qualifier: "if the terms name one" }),
         e("Photos", "Everyone in it sees them; a clip on the claim stays on the claim."),
       ],
@@ -78,7 +78,7 @@ export const INFO_SHEETS: Record<string, InfoSheet> = {
       ],
       Icons: [e("Ask something", "Opens the question step, rising over Now; the tab bar is just covered.", { glyph: "plus" }), e("Back, on other screens", "Lands on the tab you came from, never further back.", { glyph: "back" })],
       "Rules and timing": [
-        e("Needs you", "Only what you can finish now, time-bound first; the citron dot marks the soonest."),
+        e("Needs you", "Only what you can finish now, time-bound first; the yellow dot marks the soonest."),
         e("Running", "Your questions in flight, with your number until the close and the clock alone after."),
         e("Just happened", "What the group did, newest first; a tap opens the question or the person."),
       ],
@@ -106,11 +106,11 @@ export const INFO_SHEETS: Record<string, InfoSheet> = {
     name: "What’s on",
     groups: {
       "Rules and timing": [
-        e("Most asked", "Shows once ten sets of people are on a game; below that, the schedule alone."),
+        e("Most asked", "Shows once ten groups of friends are on a game; below that, the schedule alone."),
         e("What a row says", "How much a game is used, and your own use; never what anyone thinks."),
         e("New games", "Arrive on their own a few days ahead; nothing here badges the tab."),
       ],
-      "Everything else": [e("A game row", "Opens the game page for your set, or the start with your friends.")],
+      "Everything else": [e("A game row", "Opens the game with your friends’ questions on it, or the start of one with them.")],
     },
   },
   people: {
@@ -118,7 +118,7 @@ export const INFO_SHEETS: Record<string, InfoSheet> = {
     groups: {
       "Rules and timing": [
         e("Who gets a row", "Anyone with something open with you; everyone square shares one line."),
-        e("Not here yet", "Someone you logged things for before they signed in, in stone with a dashed ring."),
+        e("Not here yet", "Someone you logged things for before they signed in, in grey with a dashed ring."),
       ],
       "Everything else": [e("The square row", "Opens to list everyone who’s square with you, each opening their page."), e("A person", "Opens what’s between you two, and the move to log a cover.")],
     },
@@ -143,8 +143,8 @@ export const INFO_SHEETS: Record<string, InfoSheet> = {
     name: "A question, not sent yet",
     groups: {
       Icons: [e("More", "The details as they’ll read, and the colour behind the mark to pick.", { glyph: "more" })],
-      "Rules and timing": [e("Not sent yet", "Nobody sees it until you send it; the dashed band says so.")],
-      "Everything else": [e("I’m in, in the sheet", "Puts your number on it and sends it to the set at once.")],
+      "Rules and timing": [e("Not sent yet", "Nobody sees it until you send it; the dashed line around the question says so.")],
+      "Everything else": [e("I’m in, at the bottom", "Gets you in and sends it to everyone you picked, at once.")],
     },
   },
   "market-open": marketOpen("binary"),
@@ -160,12 +160,12 @@ export const INFO_SHEETS: Record<string, InfoSheet> = {
       Icons: [e("More", "The details, how it got decided, and what anyone attached.", { glyph: "more" }), e("Share", "Sends how it ended to a chat, with the result as its picture.", { glyph: "share", qualifier: "if it settled" })],
       "Rules and timing": [
         e("Closest first", "Everyone ranked by how close they were; ties share a rank."),
-        e("Who’s got who", "What changed hands, in the owner’s colour; nobody won or lost by name."),
+        e("Who’s got who", "What changed hands, each outlined in its person’s colour; nobody won or lost by name."),
         e("Void or never settled", "Nothing changes hands, and it counts against nobody."),
       ],
       "Everything else": [
-        e("The add tile", "Or the slot while there are none: adds a photo from the night, weeks later included.", { qualifier: "if you were in" }),
-        e("Settled, on your row", "The photo moment for what someone’s got you; Call it even beside it closes it too."),
+        e("The plus after the photos", "Adds a photo from the night, weeks later included; with none, Add the first photo.", { qualifier: "if you were in" }),
+        e("Settled, on your row", "Closes what someone’s got you and asks for a photo of it; Call it even closes it too."),
       ],
     },
   },
@@ -174,8 +174,8 @@ export const INFO_SHEETS: Record<string, InfoSheet> = {
     groups: {
       Gestures: [e("Tap a photo", "Opens it full screen, with the rest to swipe through.")],
       Icons: [e("More", "The details, how it got decided, and what anyone attached.", { glyph: "more" }), e("Share", "Sends how it ended to a chat.", { glyph: "share", qualifier: "if it settled" })],
-      "Rules and timing": [e("The date in the band", "From the second day on, this is the memory it left, photos first."), e("The rest of that night", "Other things within six hours with the same people, oldest first.")],
-      "Everything else": [e("The add tile", "Or the slot while there are none: adds a photo from that night, any time.", { qualifier: "if you were in" })],
+      "Rules and timing": [e("The date above the question", "From the second day on, this is the memory it left, photos first."), e("The rest of that night", "Other things within six hours with the same people, oldest first.")],
+      "Everything else": [e("The plus after the photos", "Adds a photo from that night, any time; with none, Add the first photo.", { qualifier: "if you were in" })],
     },
   },
   "market-link": {
@@ -196,13 +196,13 @@ export const INFO_SHEETS: Record<string, InfoSheet> = {
       "Rules and timing": [
         e("The header", "What’s open each way, the same unit netted; never a zero."),
         e("Coming up", "What’s still ahead between you two; the past folds past twelve behind Show earlier."),
-        e("The rally", "The last twelve pick-ups nobody expects to settle, as a sequence, never a count."),
+        e("Who picked up last", "The last twelve pick-ups nobody expects to settle, in order, never a count."),
       ],
       "Everything else": [
         e("I got this one", "In the sheet: logs a cover for this person, what, how many, and a note only you see."),
         e("Cancel out, under the header", "The same unit both ways cancels by the smaller side, from either of you."),
-        e("A cover of yours", "Opens Settled, the photo moment, and Call it even beside it."),
-        e("The context chips", "Filter what’s between you to one set of people."),
+        e("A cover of yours", "Opens Settled, which asks for a photo of it, and Call it even beside it."),
+        e("Where you two turn up", "Tap a name to see only what came out of those people; Clear shows it all again."),
       ],
     },
   },
@@ -223,17 +223,17 @@ export const INFO_SHEETS: Record<string, InfoSheet> = {
       Icons: [e("More", "Every question’s terms, as they’ll be read.", { glyph: "more" })],
       "Rules and timing": [
         e("Kickoff", "Every question closes when the game starts."),
-        e("No number until you’re in", "A card shows where a question stands only once you’ve put your number on it."),
+        e("No number until you’re in", "A card shows where a question stands only once you’re in it."),
         e("The final score", "Settles a question nobody votes on, a day after the game."),
       ],
-      "Everything else": [e("The context chips", "Switch between your sets of people on this game."), e("Add another", "One more question from the menu, until kickoff."), e("A question card", "Opens that question’s own screen.")],
+      "Everything else": [e("The names under the game", "Switch between the groups of friends you’ve asked about this game."), e("Add another", "One more question from the menu, until kickoff."), e("A question card", "Opens that question’s own screen.")],
     },
   },
   "game-link": {
     name: "A game, from a link",
     groups: {
       "Rules and timing": [e("No account needed", "Each question opens its own screen, where a name is enough to get in.")],
-      "Everything else": [e("Open, on a question", "Opens that question with your number to put on it.")],
+      "Everything else": [e("Open, on a question", "Opens that question’s own screen, where you get in.")],
     },
   },
   "game-night": {
@@ -241,7 +241,7 @@ export const INFO_SHEETS: Record<string, InfoSheet> = {
     groups: {
       Gestures: [e("Tap a photo", "Opens it full screen, with the rest to swipe through.")],
       "Rules and timing": [e("The final score", "Titles the night; who’s got who sums up every question across it.")],
-      "Everything else": [e("The add tile", "Adds a photo from the night.", { qualifier: "if you were in" })],
+      "Everything else": [e("The plus after the photos", "Adds a photo from the night.", { qualifier: "if you were in" })],
     },
   },
   "game-start": {
@@ -258,7 +258,7 @@ export const INFO_SHEETS: Record<string, InfoSheet> = {
         e("Covers logged against you", "Start unpressed: you confirm each one with a deliberate yep."),
         e("Entries from a link", "Start pressed, since you made them; unpressed, they stay under the typed name."),
       ],
-      "Everything else": [e("The checks", "Pick what’s right; the chalk counts the picked rows and confirms them together.")],
+      "Everything else": [e("The checks", "Pick what’s right; the Yep at the bottom counts what you picked and confirms it together.")],
     },
   },
   code: {
@@ -309,12 +309,12 @@ export const INFO_SHEETS: Record<string, InfoSheet> = {
     name: "Who’s in",
     groups: {
       Icons: [e("Back", "Returns to the question, with everything kept.", { glyph: "back" })],
-      "Rules and timing": [e("The last set", "Preselected, since it’s usually the same people; everyone picked gets the link.")],
+      "Rules and timing": [e("The people you asked last", "Preselected, since it’s usually the same people; everyone picked gets the link.")],
       "Everything else": [
-        e("Whoever I send it to", "A set of one that grows as people join by link or code."),
+        e("Whoever I send it to", "Starts as just you, and grows as people join by link or code."),
         e("Someone else", "Pick people you already share something with, one by one."),
-        e("Name this set", "Offered under a set on its second question; Not now never blocks."),
-        e("Edit, on the band", "Back to the question."),
+        e("Want to call them something?", "Asked under the same people’s second question; Not now never blocks."),
+        e("Edit, beside your question", "Back to the question."),
       ],
     },
   },
@@ -345,7 +345,7 @@ export const INFO_SHEETS: Record<string, InfoSheet> = {
   photo: {
     name: "A photo",
     groups: {
-      Gestures: [e("Swipe sideways", "Moves through the market’s photos in the frame’s order."), e("Hold a photo", "The phone’s own Copy Subject, for a sticker to paste here.")],
+      Gestures: [e("Swipe sideways", "Moves through the market’s photos in the order the market shows them."), e("Hold a photo", "The phone’s own Copy Subject, for a sticker to paste here.")],
       Icons: [e("Close", "Returns to the market.", { glyph: "close" })],
       "Everything else": [
         e("Make a sticker", "Cuts what you tap, right here, and keeps it with your marks."),

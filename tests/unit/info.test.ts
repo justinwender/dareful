@@ -39,6 +39,11 @@ test("every sheet holds to 10.6: the groups in order, terms of five words, one s
   assert.ok(open.groups.Gestures?.some((e) => e.term === "Drag along the odds line"));
   assert.ok((INFO_SHEETS["market-open-number"] as InfoSheet).groups.Gestures?.some((e) => e.term === "Tap the number"));
   assert.ok((INFO_SHEETS["market-open-pick"] as InfoSheet).groups.Gestures?.some((e) => e.term === "Tap an answer"));
+  // The logo round: a vote is said without signing's vocabulary, and the three entries that said the cut phrase say what happens instead.
+  assert.ok((INFO_SHEETS["market-voting"] as InfoSheet).groups["Rules and timing"]?.some((e) => e.description === "Your vote only ever comes from your own phone, and a majority settles it."));
+  assert.ok((INFO_SHEETS["market-draft"] as InfoSheet).groups["Everything else"]?.some((e) => e.term === "I’m in, at the bottom" && e.description === "Gets you in and sends it to everyone you picked, at once."));
+  assert.ok((INFO_SHEETS["game"] as InfoSheet).groups["Rules and timing"]?.some((e) => e.description === "A card shows where a question stands only once you’re in it."));
+  assert.ok((INFO_SHEETS["game-link"] as InfoSheet).groups["Everything else"]?.some((e) => e.description === "Opens that question’s own screen, where you get in."));
   // The shared gestures are on Now's sheet and nowhere else (10.6).
   assert.ok(INFO_SHEETS["now"]?.groups.Gestures?.some((e) => /Swipe down from the top/.test(e.term)));
   for (const key of keys) if (key !== "now" && key !== "now-first-run") assert.ok(!Object.values((INFO_SHEETS[key] as InfoSheet).groups).flat().some((e) => /from the top/.test(e.term)), `${key} repeats a shared gesture`);
@@ -61,6 +66,16 @@ test("the lint over the sheets refuses each rule broken (10.6)", () => {
   assert.ok(sheetProblems(two).some((p) => /more than one sentence/.test(p)));
   const bang: InfoSheet = { name: "A", groups: { "Everything else": [{ term: "Thing", description: "Wow!" }] } };
   assert.ok(sheetProblems(bang).some((p) => /exclamation/.test(p) || /not one sentence/.test(p)));
+  // A thing is named as the screen names it (10.6): the design's own word for it is refused, in a term, a description or a qualifier.
+  const chalk: InfoSheet = { name: "A", groups: { "Everything else": [{ term: "The checks", description: "Pick what’s right; the chalk counts the picked rows and confirms them together." }] } };
+  assert.ok(sheetProblems(chalk).some((p) => /says "the chalk", the design's word/.test(p)));
+  const band: InfoSheet = { name: "A", groups: { "Rules and timing": [{ term: "The date in the band", description: "Fine." }] } };
+  assert.ok(sheetProblems(band).some((p) => /says "the band"/.test(p)));
+  const set: InfoSheet = { name: "A", groups: { "Everything else": [{ term: "Thing", description: "Fine.", qualifier: "in the set" }] } };
+  assert.ok(sheetProblems(set).some((p) => /says "the set"/.test(p)));
+  // A phrase cut everywhere is cut here.
+  const cut: InfoSheet = { name: "A", groups: { "Everything else": [{ term: "I’m in", description: "Puts your number on it and sends it." }] } };
+  assert.ok(sheetProblems(cut).some((p) => /says "Put your number on it", which is cut everywhere/.test(p)));
   const fine: InfoSheet = { name: "A market, while it’s open", groups: { Gestures: [{ term: "Tap the avatars", description: "Opens who’s in." }] } };
   assert.deepEqual(sheetProblems(fine), []);
 });

@@ -67,7 +67,7 @@ export async function GamePage({ id, g, add, start }: { id: string; g: string | 
     const asked = g && /^[0-9a-f-]{36}$/i.test(g) ? (await gameMarkets(game.id, g)).filter((r) => r.dare.creatorSignature) : [];
     return (
       <Screen>
-        <TopBar title="dareful" info="game-link" />
+        <TopBar wordmark info="game-link" />
         <div className="flex flex-col gap-6 py-6">
           <GameHeader game={header} caption="Everything closes at kickoff." />
           {asked.length > 0 ? (

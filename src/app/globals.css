@@ -485,6 +485,17 @@ html.back .page-arrive > :not(header):not([data-offline]):not(style):not(script)
 /* While a shell is up the tab bar and the Start button are covered: they leave the tree, so the transition fades them out over quick (9.7). */
 html[data-shell] [data-layer="tab-bar"] > *, html[data-shell] [data-layer="start"] > * { display: none; }
 
+/* Now's shell and what arrives into it (11.5). The shell goes out before Now has been read, so what an empty Now
+   never shows (the +, "Got a code?", the live screen's sheet) answers to what the content says, and until the
+   content has said, to what the phone remembers. The content fades in over base, in place, only where a shell
+   stood waiting for it (9.4): a root drawn from what the router holds appears at once (9.6). */
+html:has([data-now="empty"]) :is([data-start], [data-now-full]),
+html:has([data-now="out"]) :is([data-start], [data-now-full], [data-now-empty], [data-tab-bar]),
+html:has([data-now-hint="empty"]):not(:has([data-now])) :is([data-start], [data-now-full]) { display: none; }
+html:has([data-now="full"]) [data-now-empty],
+html:has([data-now-hint="full"]):not(:has([data-now])) [data-now-empty] { display: none; }
+html[data-arriving] [data-now] { animation: fade-in var(--motion-base) var(--ease-fade) both; }
+
 /*
  * 9.3, 9.7, 9.8 View transitions. The fixed layers each carry a name so no transition drags them along inside
  * the page's snapshot; the market's ink and mark travel between a row's stamp and the band; the ask band holds

@@ -1,16 +1,12 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { Hanken_Grotesk, Young_Serif } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import { LayersRoot } from "@/components/ui/layers";
 import { Presses } from "@/components/ui/press";
-import { PLACEHOLDER_NAME } from "@/lib/auth/login";
-import { currentUser } from "@/lib/auth/session";
-import { passThePhoneStatus } from "@/lib/ledger/pass-the-phone";
-import { GROUND_DARK, GROUND_LIGHT, launchImageLinks, OPENING_HANDOFF_SCRIPT, OPENING_STYLE } from "@/lib/ui/opening";
+import { sessionFacts } from "@/lib/auth/session-facts";
+import { GROUND_DARK, GROUND_LIGHT, launchImageLinks, OPENING_ELEMENT, OPENING_HANDOFF_SCRIPT, OPENING_STYLE, TALLY_SWITCH_SCRIPT } from "@/lib/ui/opening";
 import { THEME_SCRIPT } from "@/lib/ui/theme";
 
 const hanken = Hanken_Grotesk({
@@ -33,11 +29,20 @@ export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "https://dareful.app"),
   title: "Dareful",
   description: "A social ledger for friend groups, built around the friendly dare.",
-  openGraph: { siteName: "Dareful", type: "website" },
-  // What an iPhone puts on the home screen, rendered from the logo's source by scripts/opening.mjs (11.3).
-  icons: { apple: "/icons/180.png", icon: "/favicon.ico" },
-  // The launch images (11.3): one per iPhone size in a dark and a light set, or iOS shows white. Installing is what
-  // makes Web Push possible there at all.
+  // The link preview for the app itself (LOGO.md): the lockup on the dark ground. A market, a cover and a game carry their own tile.
+  openGraph: { siteName: "Dareful", type: "website", images: [{ url: "/og-image.png", width: 1200, height: 630, alt: "dareful" }] },
+  // The logo's own files, placed by scripts/opening.mjs (LOGO.md, "In the head"): the .ico holds the favicon drawn
+  // to the pixel grid at 32 and 16, the .svg follows the browser's scheme, and the third is what an iPhone puts on
+  // the home screen.
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "48x48" },
+      { url: "/favicon.svg", type: "image/svg+xml" },
+    ],
+    apple: "/apple-touch-icon.png",
+  },
+  // The launch images (11.3): one per iPhone size in a dark and a light set, each the bare ground, or iOS shows
+  // white. Installing is what makes Web Push possible there at all.
   appleWebApp: { capable: true, title: "Dareful", statusBarStyle: "black-translucent", startupImage: launchImageLinks() },
 };
 
@@ -50,42 +55,41 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  // Both schemes are the app's own (section 8), so the browser never paints its white before the first frame.
+  colorScheme: "dark light",
 };
 
-/** The logo's two colourways, inlined as the app's first frame (11.4), so it paints with nothing to fetch. */
-const LOGO = { dark: logoMarkup("on-dark"), light: logoMarkup("on-light") };
-function logoMarkup(name: "on-dark" | "on-light"): string {
-  const svg = readFileSync(join(process.cwd(), "assets", "logo", `${name}.svg`), "utf8");
-  return svg.replace(/<!--[\s\S]*?-->/g, "").replace(/<svg\b/, `<svg class="${name}" aria-hidden="true"`);
-}
-
-export default async function RootLayout({ children, ask }: { children: ReactNode; /** The ask layer (9.5): `/m/new` reached from inside the app rises over the place it was tapped from, which stays mounted under it. */ ask: ReactNode }) {
-  // Someone who already has a session and a name has nothing to set up, so the login bootstrap stays out of
-  // their way entirely: no round trip and no "signing you in" on every page load.
-  const me = await currentUser();
-  const settled = me !== null && me.displayName !== PLACEHOLDER_NAME;
-  // Whether the server may sign for this person where the device cannot (3.45): read once per load, so a second device knows without asking.
-  const passThePhone = me ? (await passThePhoneStatus(me.id)).on : false;
+export default function RootLayout({ children, ask }: { children: ReactNode; /** The ask layer (9.5): `/m/new` reached from inside the app rises over the place it was tapped from, which stays mounted under it. */ ask: ReactNode }) {
+  // Started here and never waited for (11.5): the first screen's shell goes out before the account's row is read,
+  // and whatever needs the session's facts waits where it is used.
+  const facts = sessionFacts();
   return (
-    <html lang="en" className={`${hanken.variable} ${youngSerif.variable} dark h-full antialiased`}>
+    // The scripts in the head and the handoff set attributes on `html` before the app is running (the appearance, the instrument's switch, dressed, arriving); they are theirs, and hydration leaves them be.
+    <html lang="en" className={`${hanken.variable} ${youngSerif.variable} dark h-full antialiased`} suppressHydrationWarning>
+      <head>
+        {/* The opening (11.4): the first frame's style, in the head before anything else, so it paints with nothing to fetch. */}
+        <style dangerouslySetInnerHTML={{ __html: OPENING_STYLE }} />
+        {/* The instrument's switch (docs/testing.md, the logo round): a cold start without the count, to time against one with it. */}
+        <script dangerouslySetInnerHTML={{ __html: TALLY_SWITCH_SCRIPT }} />
+        {/* Appearance (8.1): the stored choice onto `html` before anything paints. */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      </head>
       {/* An installed app draws under the status bar and the home indicator (viewport-fit=cover, translucent status
           bar). The top and side insets are paid once, here, so no screen can forget them; anything fixed or sticky
           pays its own (docs/decisions.md 2026-09-20). Sized from the parent's height, never from 100vh. */}
       <body className="flex min-h-full flex-col pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)]">
-        {/* Appearance (8.1): the stored choice onto `html` before anything paints. */}
-        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
-        {/* The opening (11): the first frame is the launch image again, drawn in the phone's own scheme, outside the app root, and it only fades. */}
-        <style dangerouslySetInnerHTML={{ __html: OPENING_STYLE }} />
-        <div id="opening" aria-hidden="true" dangerouslySetInnerHTML={{ __html: LOGO.dark + LOGO.light }} />
+        {/* The opening (11): the launch image again, the bare ground in the phone's own scheme, and then the tally counted a stroke at a time until the first screen's shell has painted. The first thing in the body, outside the app root, and it only fades. The handoff removes `#opening` from the page, often before the app is running, so the app holds a box around it that stays: what is inside is the opening's own, and the app never looks for it. */}
+        <div data-opening-host="" className="contents" suppressHydrationWarning dangerouslySetInnerHTML={{ __html: OPENING_ELEMENT }} />
         {/* The app root (9.3): the page, then the host every fixed layer portals into. Nothing that moves is ever set on it. */}
         <div id="app" data-layer="app" className="flex min-h-full flex-1 flex-col">
-          <Providers settled={settled} me={me ? { dynamicUserId: me.dynamicUserId, ledgerWallet: me.ledgerWallet, governanceWallet: me.governanceWallet, passThePhone } : null}>
+          <Providers facts={facts}>
             {children}
             {ask}
             <Presses />
             <LayersRoot />
           </Providers>
         </div>
+        {/* The one handoff (11.5), in the same piece of the page as the first screen's shell, so it runs the moment that shell is on the page and never waits for what streams in after. */}
         <script dangerouslySetInnerHTML={{ __html: OPENING_HANDOFF_SCRIPT }} />
       </body>
     </html>

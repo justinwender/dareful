@@ -21,6 +21,7 @@
  *   npm run lint:type            the rule
  *   npm run lint:type -- --explain   every reference on every screen, with its size, weight and element
  */
+import { CUT_PHRASES } from "../src/lib/ui/copy-rules";
 import {
   existsSync,
   readFileSync,
@@ -282,6 +283,8 @@ for (const file of walk(SRC)) {
     for (const m of text.matchAll(MOTION_LITERAL)) problems.push(`${r}: motion "${m[1] ?? m[2]}" typed outside the set (9.1: read MOTION or the custom properties)`);
   }
   if (!COLOUR_ALLOW.has(r)) for (const m of text.matchAll(COLOUR)) problems.push(`${r}: colour "${m[0]}" typed outside the tokens (1.1, 8.8)`);
+  // 5. Copy (4.9): a phrase cut from every screen stays cut, wherever it is typed. The list itself is the one file that writes them.
+  if (r !== "src/lib/ui/copy-rules.ts") for (const c of CUT_PHRASES) if (c.phrase.test(text)) problems.push(`${r}: "${c.said}" is ${c.why}`);
 }
 // The stylesheet: a colour, a duration or a curve lives only in a custom property's definition.
 const GLOBALS = join(SRC, "app", "globals.css");
@@ -371,5 +374,5 @@ if (problems.length) {
   process.exit(1);
 }
 console.log(
-  `\nstyle budget: no legacy token, no literal size, no motion or colour outside the set; ${screens.length} screens, ${over} over the budget and held to a baseline`,
+  `\nstyle budget: no legacy token, no literal size, no motion or colour outside the set, no cut phrase; ${screens.length} screens, ${over} over the budget and held to a baseline`,
 );

@@ -1,69 +1,66 @@
+import { Suspense } from "react";
+import { cookies } from "next/headers";
 import { ButtonLink } from "@/components/ui/button";
 import { RootHeader, Screen } from "@/components/ledger/screen";
 import { OfflineBar } from "@/components/ui/offline-bar";
-import { FirstRun } from "@/components/home/first-run";
-import { JustHappened } from "@/components/home/just-happened";
-import { NeedsYou } from "@/components/home/needs-you";
-import { Running } from "@/components/home/running";
+import { InfoIcon } from "@/components/ui/info";
+import { NowContent } from "@/components/home/now-content";
+import { NowWaiting } from "@/components/home/now-arriving";
 import { SignedOut } from "@/components/home/signed-out";
-import { nowFor } from "@/lib/ledger/home";
-import { closesLabel, todayLabel } from "@/lib/ui/copy";
+import { todayLabel } from "@/lib/ui/copy";
+import { NOW_COOKIE, nowHintOf } from "@/lib/ui/now-shell";
 import { TabBar } from "@/components/ui/tab-bar";
-import { ViewportProbe } from "@/components/ui/viewport-probe";
-import { currentUser } from "@/lib/auth/session";
+import { sessionUserId } from "@/lib/auth/session";
 import { viewerClock } from "@/lib/ui/zone";
-import { starterGames } from "@/lib/sports";
-import { rowData } from "@/components/on/game-row";
-import { hueFor } from "@/lib/ui/hue";
 
 export const dynamic = "force-dynamic";
 
 /**
  * Now, the root (docs/design.md 4.7, 6.1): what is live and what needs this person. It routes rather than does:
- * creating things lives behind Start, people on their own tab, the account behind You. Three sections in a fixed
- * order and nothing above or between them, each gone when it is empty, and nothing here counts, badges or ages. A
- * claim to accept and a cover to confirm are Needs you rows, never sections of their own.
+ * creating things lives behind Start, people on their own tab, the account behind You.
+ *
+ * It is the screen the installed app opens on, so its shell goes out first (11.5): the header row, the tab bar
+ * and the + for someone signed in, decided from the cookie alone, with no query in front of it; the content
+ * (`NowContent`) reads the account and Now and arrives into it, fading in. This is the one screen that answers in
+ * pieces. It never answers 404 and never redirects, which is what every other screen keeps its one answer for
+ * (5.3; docs/decisions.md 2026-09-29).
  */
 export default async function Now({ searchParams }: { searchParams: Promise<{ all?: string }> }) {
   const clock = await viewerClock();
-  const user = await currentUser();
-  if (!user) return <SignedOut />;
+  if (!(await sessionUserId())) return <SignedOut />;
   const sp = await searchParams;
-  const now = new Date(clock.now);
-
-  const home = await nowFor(user, { now, closes: (at) => closesLabel(at, now, clock.zone), zone: clock.zone });
-  const empty = !home.hasAnything;
-  // "Got a code?" at the top right, placed as the question step places it (docs/design.md 6.1, amended 2026-09-27): joining by code is one tap from home.
-  const today = (
-    <RootHeader
-      info="now"
-      right={
-        <ButtonLink href="/join" variant="tertiary" data-got-a-code="">
-          Got a code?
-        </ButtonLink>
-      }
-    >
-      <h2 className="text-label text-ink-3">{todayLabel(now, clock.zone)}</h2>
-    </RootHeader>
-  );
-
-  if (empty) return <FirstRun today={todayLabel(now, clock.zone)} games={(await starterGames(now)).map((g) => rowData(g, clock.zone, null, null))} viewerHue={hueFor(user.id)} />;
-
+  const hint = nowHintOf((await cookies()).get(NOW_COOKIE)?.value);
   return (
     <Screen root>
-      {today}
+      <span hidden data-now-hint={hint} />
+      {/* "Got a code?" at the top right, placed as the question step places it (docs/design.md 6.1, amended 2026-09-27): joining by code is one tap from home. Before anything it is the six boxes on the screen, so it and the sheet's own words follow what Now turns out to be. */}
+      <RootHeader
+        info="now"
+        icon={
+          <>
+            <span data-now-full="" className="contents">
+              <InfoIcon sheet="now" />
+            </span>
+            <span data-now-empty="" className="contents">
+              <InfoIcon sheet="now-first-run" />
+            </span>
+          </>
+        }
+        right={
+          <span data-now-full="" className="contents">
+            <ButtonLink href="/join" variant="tertiary" data-got-a-code="">
+              Got a code?
+            </ButtonLink>
+          </span>
+        }
+      >
+        <h2 className="text-label text-ink-3">{todayLabel(new Date(clock.now), clock.zone)}</h2>
+      </RootHeader>
       <OfflineBar />
-      <div className="flex flex-col gap-7 py-4">
-        <NeedsYou rows={home.needs} viewer={user} showAll={sp.all === "1"} allHref="/?all=1" />
-
-        <Running rows={home.running} viewerId={user.id} />
-
-        <JustHappened rows={home.happened} viewerId={user.id} clock={clock} />
-        {/* An instrument for the installed app's tab bar (docs/testing.md session 21), here as well as on You so a page with the band can be read beside one without; it leaves with the cause. */}
-        <ViewportProbe />
-      </div>
+      <Suspense fallback={<NowWaiting />}>
+        <NowContent clock={clock} showAll={sp.all === "1"} />
+      </Suspense>
       <TabBar active="/" start />
     </Screen>
   );
 }
-

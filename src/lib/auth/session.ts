@@ -43,20 +43,30 @@ export async function clearSessionCookie(): Promise<void> {
 export type SessionUser = typeof schema.users.$inferSelect;
 
 /**
+ * Whose session the cookie carries, from the cookie alone: the token's own signature is checked here, in the
+ * process, with no query and no round trip. It is what Now's shell is decided on at a cold start (docs/design.md
+ * 11.5): the shell must never wait on the database, and whether someone is signed in is already in their cookie.
+ * Never throws on a bad cookie; a bad cookie is just signed out. It is not proof the account still exists, which
+ * only `currentUser()` knows.
+ */
+export const sessionUserId = cache(async function sessionUserId(): Promise<string | null> {
+  const jar = await cookies();
+  const token = jar.get(SESSION_COOKIE)?.value;
+  if (!token) return null;
+  try {
+    const { payload } = await jwtVerify(token, secret(), { algorithms: ["HS256"] });
+    return payload.sub ?? null;
+  } catch {
+    return null;
+  }
+});
+
+/**
  * The signed-in user, or null. Never throws on a bad cookie; a bad cookie is just signed out. Cached for the
  * request, so the layout and the page asking the same question cost one query, not two.
  */
 export const currentUser = cache(async function currentUser(): Promise<SessionUser | null> {
-  const jar = await cookies();
-  const token = jar.get(SESSION_COOKIE)?.value;
-  if (!token) return null;
-  let userId: string | undefined;
-  try {
-    const { payload } = await jwtVerify(token, secret(), { algorithms: ["HS256"] });
-    userId = payload.sub;
-  } catch {
-    return null;
-  }
+  const userId = await sessionUserId();
   if (!userId) return null;
   const [user] = await db.select().from(schema.users).where(eq(schema.users.id, userId)).limit(1);
   return user ?? null;

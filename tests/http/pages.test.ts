@@ -3,6 +3,7 @@
  * shares this database. Sessions are forged with SESSION_SECRET for temporary users, which is what a real
  * session cookie is. Asserts on what a visitor, or a link-preview bot, actually receives.
  */
+import { chromeIsHere, watchOpening } from "../../scripts/dev/opening-check";
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -30,7 +31,7 @@ import { FEED_RULING } from "@/lib/sports";
 
 const BASE = process.env.TEST_BASE_URL ?? "http://localhost:3000";
 
-type Got = { status: number; type: string | null; loc: string | null; setCookie: string | null; html: string; text: string; bytes: Buffer };
+type Got = { status: number; type: string | null; loc: string | null; setCookie: string | null; html: string; /** The markup alone, without the scripts: Now answers in pieces (11.5), and what the framework carries for the browser repeats the page's words ahead of the markup that draws them. */ dom: string; text: string; bytes: Buffer };
 async function get(path: string, cookie?: string): Promise<Got> {
   const r = await fetch(BASE + path, { headers: cookie ? { cookie: `dareful_session=${cookie}` } : {}, redirect: "manual" });
   const bytes = Buffer.from(await r.arrayBuffer());
@@ -46,7 +47,7 @@ async function get(path: string, cookie?: string): Promise<Got> {
     .replace(/&quot;/g, '"')
     .replace(/&amp;/g, "&")
     .replace(/\s+/g, " ");
-  return { status: r.status, type: r.headers.get("content-type"), loc: r.headers.get("location"), setCookie: r.headers.get("set-cookie"), html, text, bytes };
+  return { status: r.status, type: r.headers.get("content-type"), loc: r.headers.get("location"), setCookie: r.headers.get("set-cookie"), html, dom: html.replace(/<script[\s\S]*?<\/script>/g, ""), text, bytes };
 }
 const meta = (html: string, property: string) => new RegExp(`<meta property="${property}" content="([^"]*)"`).exec(html)?.[1] ?? null;
 async function cookieFor(userId: string): Promise<string> {
@@ -401,7 +402,7 @@ test("the claim preview names the sender by first name only", async () => {
   const r = await get(`/c/${linkToken}`);
   assert.equal(meta(r.html, "og:title"), "Alex got this one");
   // The image metas carry a build hash in their query string, which can spell any digits: the words are checked in the text metas alone.
-  const head = r.html.slice(0, r.html.indexOf("</head>")).replace(/<meta [^>]*(?:og:image|twitter:image)[^>]*>/g, "");
+  const head = r.dom.slice(0, r.dom.indexOf("</head>")).replace(/<meta [^>]*(?:og:image|twitter:image)[^>]*>/g, "");
   for (const s of ["Rivera", "Sal", "47", "Cab", "Gabe"]) assert.ok(!new RegExp(`content="[^"]*${s}`).test(head), `the preview leaks "${s}"`);
 });
 
@@ -516,8 +517,8 @@ test("a cover started from a person's page is for that person, with nothing to p
   assert.ok(page.html.includes('data-cover-open=""') && page.text.includes("I got this one") && !page.html.includes("/new?for="), "the chalk at the foot of the person view, raising into the cover");
   assert.ok(page.html.includes('data-cover-sheet=""') && page.text.includes("Who picks up next") && page.text.includes("Nobody’s paying it back"), "the raised sheet: what, how many, who picks up next");
   // The memo and the private cost (Principle 4; the owner's ruling of 2026-09-27): optional, below the choices, no example text in the field (4.9).
-  const notes = page.html.split('data-cover-notes=""')[1]?.split('data-cover-submit=""')[0] ?? "";
-  assert.ok(page.html.indexOf('data-cover-notes=""') > page.html.indexOf("Who picks up next") && notes.includes('data-cover-memo=""') && notes.includes("What was it"), "what it was, under who picks up next and above the primary");
+  const notes = page.dom.split('data-cover-notes=""')[1]?.split('data-cover-submit=""')[0] ?? "";
+  assert.ok(page.dom.indexOf('data-cover-notes=""') > page.dom.indexOf("Who picks up next") && notes.includes('data-cover-memo=""') && notes.includes("What was it"), "what it was, under who picks up next and above the primary");
   assert.ok(!/placeholder=/.test(notes), "no example text in the fields");
   const ghostPage = await get(`/p/c/${gabe}`, cA);
   assert.ok(ghostPage.html.includes('data-cover-open=""') && !ghostPage.html.includes("/new?for="), "a ghost's page too");
@@ -687,8 +688,8 @@ test("every screen paints a band behind the status bar, and on a market screen i
   assert.ok(/<nav aria-label="Main"[^>]*bottom-0/.test(now.html), "the tab bar is pinned at the viewport's bottom edge, with no adjustment");
   const m = await get(`/m/${marketId}`, cFriend);
   assert.equal(m.status, 200);
-  const ink = m.html.indexOf("--ground:");
-  const band = m.html.indexOf('data-status-band=""');
+  const ink = m.dom.indexOf("--ground:");
+  const band = m.dom.indexOf('data-status-band=""');
   assert.ok(ink >= 0 && band > ink, `the band is inside the inked root, so it reads the market's ground: ink at ${ink}, band at ${band}`);
 });
 
@@ -715,8 +716,8 @@ test("a closed obligation sits in Just happened at the moment it closed, with th
   const happened = r.text.indexOf("Just happened");
   assert.ok(happened >= 0 && r.text.indexOf("Cab home") > happened, "the settled cover is under Just happened");
   // A row (3.15): the subject, then the meta line with the mark; so the mark follows the memo in the markup.
-  const at = r.html.indexOf("Cab home");
-  const card = r.html.slice(Math.max(0, at - 600), at + 1200);
+  const at = r.dom.indexOf("Cab home");
+  const card = r.dom.slice(Math.max(0, at - 600), at + 1200);
   assert.match(card, /aria-label="Settled"/, "its state mark reads settled (3.23), derived from the chain, never stored");
   assert.ok(!card.includes("<article"), "a row, never a story card (4.7)");
 });
@@ -828,11 +829,22 @@ test("the bar is on the four roots and nowhere else, every other screen has a ba
     if (r.status === 200) assert.ok((path === "/m/new" ? /aria-label="Close"/.test(r.html) : /aria-label="Back"/.test(r.html)) && !/<nav aria-label="Main"/.test(r.html) && !/aria-label="Ask something"/.test(r.html) && !/min-h-\[calc\(100lvh/.test(r.html), `${path} is a task screen`);
   }
   const out = await get(`/m/${marketId}`);
-  assert.ok(!/aria-label="Back"/.test(out.html) && !/<nav aria-label="Main"/.test(out.html) && out.text.includes("dareful"), "someone signed out has nowhere in the app to go back to");
+  assert.ok(!/aria-label="Back"/.test(out.html) && !/<nav aria-label="Main"/.test(out.html) && /<header[^>]*data-top-bar=""[^>]*>(?:(?!<\/header>)[\s\S])*<svg[^>]*aria-label="dareful"[^>]*data-wordmark=""/.test(out.html), "someone signed out has nowhere in the app to go back to: the wordmark, the logo's own outlines, where back would be");
+  // The claimant screen (3.38): the wordmark alone and no back, because nothing is behind it.
+  const claimant = await get("/welcome", cU);
+  if (claimant.status === 200) assert.ok(!/aria-label="Back"/.test(claimant.html) && /data-wordmark=""/.test(claimant.html) && /data-info-icon="claimant"/.test(claimant.html), "the claimant screen's header is the wordmark alone");
+  const signedOut = await get("/");
+  assert.ok(/data-wordmark=""/.test(signedOut.html) && signedOut.text.includes("Who’s got the next one?") && !/<nav aria-label="Main"/.test(signedOut.html), "signed out on Now: the wordmark and the way in");
   // An empty Now (3.14): "Ask something" is the one chalk control, so Start stays hidden, and the bar is still there.
   const empty = await get("/", cA);
   assert.ok(empty.text.includes("Nothing happens here until somebody else is in it.") && empty.text.includes("Ask something"), "the first-run state");
-  assert.ok(/<nav aria-label="Main"/.test(empty.html) && !/aria-label="Ask something"/.test(empty.html), "Start is hidden where Ask something already is the chalk");
+  // The shell goes out before Now has been read (11.5), so the + is in it; what arrives says Now is empty, and the stylesheet hides the + and "Got a code?" on that word.
+  assert.ok(/<nav aria-label="Main"/.test(empty.html) && /data-now="empty"/.test(empty.html) && !/data-now="full"/.test(empty.html), "Start is hidden where Ask something already is the chalk: the content says Now is empty");
+  const sheet = /<link rel="stylesheet" href="([^"]+)"/.exec(empty.html)?.[1];
+  assert.ok(sheet, "the stylesheet");
+  const css = await (await fetch(BASE + sheet)).text();
+  assert.ok(/html:has\(\[data-now="?empty"?\]\) :is\(\[data-start\], ?\[data-now-full\]\)/.test(css) && /\[data-now-hint="?empty"?\]/.test(css), "and the stylesheet hides the + and Got a code? on an empty Now, by what the content says and by what the phone remembers");
+  assert.ok(/data-now-full=""[^>]*>(?:(?!<\/span>)[\s\S])*data-got-a-code=""/.test(empty.html) && /data-now-empty=""[^>]*>(?:(?!<\/span>)[\s\S])*data-info-icon="now-first-run"/.test(empty.html), "Got a code? and the live screen's sheet answer to the same word; first run's sheet is there for it");
   assert.ok(empty.html.includes('data-code-join="compact"') && !empty.html.includes("K7QMD3") && !empty.text.includes("Ask your group chat"), "six boxes with no example in them, and no line explaining the screen (3.14, 3.16, 4.9)");
 });
 
@@ -970,7 +982,7 @@ test("an answered number question says the answer as a sentence, stands the rule
   assert.ok(r.text.includes("14 shirts") && r.text.includes("12") && !r.text.includes("Said no"), "the ruler's ends, never No and Yes");
   // The story on a timeline (the person view lists every question both are in) carries the answer as its sentence and the ruler, never a side.
   const story = await get(`/p/${asker.user.id}`, cFriend);
-  const card = (story.html.split("<article").find((a) => a.includes("How many shirts did Gabe wear?")) ?? "").replace(/<[^>]+>/g, " ");
+  const card = (story.dom.split("<article").find((a) => a.includes("How many shirts did Gabe wear?")) ?? "").replace(/<[^>]+>/g, " ");
   assert.ok(card.includes("14 shirts.") && card.includes("12") && !card.includes("Said no") && !card.includes("Yes."), "the story carries the answer and the ruler, never a side");
 });
 
@@ -1092,12 +1104,12 @@ test("the person view: what is still ahead under Coming up, the past after it wi
   const r = await get(`/p/${friend.user.id}`, cAsker);
   assert.equal(r.status, 200);
   assert.ok(r.text.includes("Coming up"), "the kettle question, still open between the two, is ahead");
-  const comingUp = r.html.indexOf("Coming up");
-  const past = r.html.indexOf('data-past-starts=""');
+  const comingUp = r.dom.indexOf("Coming up");
+  const past = r.dom.indexOf('data-past-starts=""');
   assert.ok(comingUp >= 0 && past > comingUp, "the past starts after what is ahead");
   assert.ok(!r.html.includes('data-show-earlier=""'), "a short history has nothing earlier to show");
   // A void was still a night (3.4): its story carries the frame, drawn without controls, like a resolved one.
-  const voidedStory = r.html.slice(r.html.indexOf(`href="/m/${voidedId}"`));
+  const voidedStory = r.dom.slice(r.dom.indexOf(`href="/m/${voidedId}"`));
   assert.ok(voidedStory.includes("data-media-frame") && voidedStory.indexOf("data-media-frame") < voidedStory.indexOf("</article>"), "the voided story's frame");
   assert.ok(!/<a[^>]*data-show-earlier/.test(r.html) || r.html.includes("earlier=1"), "Show earlier, when it shows, is the same screen asked for earlier");
 });
@@ -1191,22 +1203,80 @@ test("every root and task screen keeps its fixed layers free of a captured ances
 
 test("the opening (11) and the theme (8.1): the first frame is inline, in the phone's own scheme, with a launch image per iPhone in both sets, and the stored appearance goes onto html before paint", async () => {
   const r = await get("/", cAsker);
-  assert.ok(r.html.includes('id="opening"') && r.html.includes("#opening{position:fixed;inset:0") && r.html.includes("html:not([data-dressed]){background:#121110;color-scheme:dark}") && r.html.includes("html:not([data-dressed]){background:#F5EFE4;color-scheme:light}"), "the first frame, never white");
-  assert.ok(r.html.includes('class="on-dark"') && r.html.includes('class="on-light"'), "the logo in both colourways, inline");
-  assert.ok(r.html.includes('classList.add("handoff")'), "the handoff after the first paint");
+  const head = /<head>([\s\S]*?)<\/head>/.exec(r.html)?.[1] ?? "";
+  assert.ok(head.includes("--tally-beat: 200ms;") && head.includes("#opening { position: fixed; inset: 0; z-index: 100; background: #121110; }"), "the first frame's style is in the head, the count's four values with it");
+  assert.ok(head.includes("html:not([data-dressed]), html:not([data-dressed]) body { margin: 0; background: #121110; color-scheme: dark; }") && head.includes("html:not([data-dressed]), html:not([data-dressed]) body, #opening { background: #F5EFE4; }") && !/[;}\s]html, body \{/.test(head), "the ground in the phone's own scheme, never white, and the tokens' once dressed");
+  const opening = /<div id="opening" aria-hidden="true">([\s\S]*?)<div id="app"/.exec(r.html)?.[1] ?? "";
+  assert.equal((opening.match(/<div class="s s\d">/g) ?? []).length, 5, "the tally's five strokes, inline, outside the app root");
+  assert.ok(/<body[^>]*>(?:<div hidden="">(?:(?!<\/div>)[\s\S])*<\/div>)?<div data-opening-host="" class="contents"><div id="opening"/.test(r.html), "the opening is the first thing the body draws, in the box the app keeps");
+  const scripts = (r.html.match(/<script>[\s\S]*?<\/script>/g) ?? []).filter((x) => !x.includes("__next_f"));
+  assert.equal(scripts.filter((x) => x.includes("afterFirstPaint(function(){")).length, 1, "one handoff");
+  assert.ok(scripts.some((x) => x.includes("el.classList.add('handoff')") && x.includes('setAttribute("data-dressed","")') && x.includes("requestAnimationFrame(() => requestAnimationFrame(fn))")), "the design's, after the first paint, marking the document dressed");
   const links = r.html.match(/<link [^>]*rel="apple-touch-startup-image"[^>]*>/g) ?? [];
   assert.equal(links.length, 26, "a launch image per iPhone size, in a dark and a light set");
   assert.ok(links[0]?.includes("prefers-color-scheme: dark") && links[0]?.includes("/launch/") && links[0]?.includes("-dark.png"), "dark first");
   assert.ok(/<meta name="theme-color" content="#121110" media="\(prefers-color-scheme: dark\)"/.test(r.html) && /<meta name="theme-color" content="#F5EFE4" media="\(prefers-color-scheme: light\)"/.test(r.html), "one theme colour per scheme");
   assert.ok(r.html.includes('localStorage.getItem("dareful.theme")') && r.html.includes('setAttribute("data-theme",t)'), "the appearance script in the head");
   assert.ok(r.html.includes('content="width=device-width, initial-scale=1, viewport-fit=cover"'), "viewport-fit=cover");
-  for (const path of ["/launch/1179x2556-dark.png", "/launch/1179x2556-light.png", "/icons/180.png", "/icons/192.png", "/favicon.ico"]) {
+  for (const path of ["/launch/launch-1179x2556-dark.png", "/launch/launch-1179x2556-light.png", "/apple-touch-icon.png", "/icon-192.png", "/icon-512.png", "/icon-maskable-512.png", "/badge-96.png", "/og-image.png", "/favicon.ico", "/favicon.svg"]) {
     const f = await fetch(BASE + path);
     assert.equal(f.status, 200, path);
-    assert.ok((f.headers.get("content-type") ?? "").includes(path.endsWith(".ico") ? "icon" : "image/png"), `${path} is an image`);
+    assert.ok((f.headers.get("content-type") ?? "").includes(path.endsWith(".ico") ? "icon" : path.endsWith(".svg") ? "svg" : "image/png"), `${path} is an image`);
   }
+  // The head names the logo's files as LOGO.md places them, and the manifest the three icons, one of them safe for Android's cropping.
+  assert.ok(/<link rel="icon" href="\/favicon\.ico" sizes="48x48"/.test(r.html) && /<link rel="icon" href="\/favicon\.svg" type="image\/svg\+xml"/.test(r.html) && /<link rel="apple-touch-icon" href="\/apple-touch-icon\.png"/.test(r.html), "the favicon drawn to the grid, the one that follows the scheme, and the home-screen icon");
+  assert.ok((meta(r.html, "og:image") ?? "").endsWith("/og-image.png"), "the app's own link preview");
+  const manifest = (await (await fetch(BASE + "/manifest.webmanifest")).json()) as { icons: Array<{ src: string; purpose: string }> };
+  assert.deepEqual(manifest.icons.map((i) => [i.src, i.purpose]), [["/icon-192.png", "any"], ["/icon-512.png", "any"], ["/icon-maskable-512.png", "maskable"]]);
   const you = await get("/you", cAsker);
   assert.ok(you.html.includes('data-account-row="appearance"') && you.text.includes("Appearance") && you.text.includes("Match your phone"), "the Appearance row on You (8.1)");
+});
+
+test("Now answers in pieces (11.5): the shell's piece has the header row, the tab bar, the + and the handoff, and it is on its way before the account or Now has been read", async () => {
+  const r = await fetch(BASE + "/", { headers: { cookie: `dareful_session=${cAsker}` }, redirect: "manual" });
+  assert.equal(r.status, 200);
+  assert.ok(r.body, "a body to read");
+  const reader = r.body.getReader();
+  const decoder = new TextDecoder();
+  let html = "";
+  let shell: string | null = null;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    html += decoder.decode(value, { stream: true });
+    // The shell's piece is whole once the handoff has arrived: what the page held at that moment is what painted first.
+    if (shell === null && html.includes("handOffOpening();});})();")) shell = html;
+  }
+  assert.ok(shell !== null, "the handoff arrived");
+  assert.ok(/data-root-header=""/.test(shell) && /<nav aria-label="Main"/.test(shell) && /aria-label="Ask something"/.test(shell) && /data-got-a-code=""/.test(shell) && /id="opening"/.test(shell), "the header row, the tab bar, the + and the opening are in the first piece");
+  assert.ok(/data-now-waiting=/.test(shell) && /data-now-hint="(full|empty)"/.test(shell), "with nothing standing in for the content, and what the phone remembers of it");
+  assert.ok(!/data-now="(full|empty|out)"/.test(shell) && !/data-server=/.test(shell), "and nothing of Now itself: the shell never waited on the account or on Now");
+  assert.ok(/data-now="full"/.test(html) && /data-server="session:\d+,now:\d+"/.test(html) && html.includes("Needs you"), "the content arrives after, into it");
+  // Every other screen still answers once, so a missing one is a 404 and not a page that says so (5.3).
+  assert.equal((await get(`/m/${draftId}`, cFriend)).status, 404, "someone else's draft");
+  const people = await fetch(BASE + "/people", { headers: { cookie: `dareful_session=${cAsker}` } });
+  const whole = await people.text();
+  assert.ok(!/<template id="B:\d+"|\$RC\(/.test(whole), "People answers in one piece");
+});
+
+test("the opening goes and stays gone when the app starts after the handoff has taken it away, signed out and signed in, and nothing on the page breaks", { skip: chromeIsHere() ? false : "no Chrome on this machine to watch the page in" }, async (t) => {
+  // The reading (docs/testing.md, the logo round): on this machine's own network, when the signed-in shell painted and when Now's content arrived into it, with the count and without.
+  for (const still of [false, true]) {
+    const runs = await watchOpening({ base: BASE, path: "/", session: cAsker, runs: 3, still });
+    t.diagnostic(`signed in, ${still ? "without the count" : "with the count"}: ${JSON.stringify(runs.map((r) => ({ firstByte: r.firstByte, firstPaint: r.firstPaint, shell: r.shell, content: r.content, gone: r.removed, app: r.live })))}`);
+    for (const r of runs) assert.ok(r.shell !== null && !r.opening && r.errors.filter((e) => /Hydration failed|React error #418|NotFoundError/.test(e)).length === 0, "the shell painted and the opening left");
+  }
+  // A phone's network: the scripts arrive long after the first screen's shell has painted and the opening has left the page.
+  for (const [who, session] of [["signed out", undefined], ["signed in", cAsker]] as const) {
+    const [run] = await watchOpening({ base: BASE, path: "/", latency: 250, mbps: 40, wait: 9000, runs: 1, ...(session ? { session } : {}) });
+    assert.ok(run, who);
+    const broke = run.errors.filter((e) => /Hydration failed|React error #418|NotFoundError|insertBefore|removeChild|didn't match/.test(e));
+    assert.deepEqual(broke, [], `${who}: the app started without finding the page changed under it`);
+    assert.ok(run.shell !== null && run.removed !== null && run.live !== null && run.live > run.removed, `${who}: the app started after the opening had gone (shell ${run.shell}, gone ${run.removed}, app ${run.live})`);
+    assert.ok(!run.opening && run.dressed, `${who}: the opening never comes back, and the document stays dressed`);
+    if (session) assert.ok(run.tabBar && run.now === "full", "signed in: the tab bar and Now's content are on the page");
+    else assert.ok(run.wordmark && !run.tabBar, "signed out: the wordmark and no bar");
+  }
 });
 
 test("a row on Now carries its shell (9.4): the market's ink, mark, state, clock and question on the link, and the band it opens into is named for the transition (9.7)", async () => {
@@ -1238,8 +1308,9 @@ test("the roots' header rows and the information icon (10.1, 10.3): the icon at 
   for (const [path, cookie, key] of [["/", cAsker, "now"], ["/on", cAsker, "whats-on"], ["/people", cAsker, "people"], ["/you", cAsker, "you"], [`/m/${marketId}`, cFriend, "market-open"], [`/p/${friend.user.id}`, cAsker, "person"], ["/join", cAsker, "code"], ["/welcome", cU, "claimant"], ["/m/new", cAsker, "ask-question"]] as const) {
     const r = await get(path, cookie);
     assert.equal(r.status, 200, path);
-    const icons = r.html.match(/data-info-icon="[^"]+"/g) ?? [];
-    assert.deepEqual(icons, [`data-info-icon="${key}"`], `${path} carries one icon, for its own sheet`);
+    const icons = r.dom.match(/data-info-icon="[^"]+"/g) ?? [];
+    // Now's shell goes out before Now has been read (11.5), so it carries the live screen's icon and first run's, and the stylesheet shows the one the content calls for.
+    assert.deepEqual(icons, path === "/" ? ['data-info-icon="now"', 'data-info-icon="now-first-run"'] : [`data-info-icon="${key}"`], `${path} carries one icon, for its own sheet`);
     assert.ok(r.html.includes('aria-label="What you can do here"') && r.html.includes('aria-haspopup="dialog"'), `${path}: named, and it opens a dialog`);
   }
   const now = await get("/", cAsker);
@@ -1338,7 +1409,7 @@ test("a settled pick-one question says the answer and who called it, shows every
   assert.ok(r.text.includes("You called it. Nobody else did."), "who called it: everyone who picked the answer that happened");
   assert.ok(r.text.includes("Everyone’s pick") && r.html.includes("data-pick-one-rows"), "the rows replace closest first");
   assert.ok(!r.text.includes("Closest first"), "nothing to rank: everyone who called it scores the same");
-  const rows = r.html.split("data-pick-one-rows")[1] ?? "";
+  const rows = r.dom.split("data-pick-one-rows")[1] ?? "";
   assert.ok(rows.includes("bg-market-wash") && rows.includes("bg-chalk"), "the answer that happened takes the wash and the cream cap");
   assert.ok(r.text.includes("Who’s got who"), "then who's got who");
   const outsider = await get(`/m/${pickSettledId}`, cNia);
@@ -1369,7 +1440,7 @@ test("while a question is open, everyone the door admits sees the same slot and 
   assert.ok(mine.html.includes('capture="environment"'), "it opens the camera itself, not the library");
   assert.ok(!mine.text.includes("Everyone sees these once it’s over.") && !mine.text.includes("Yours from tonight"), "no caption and no heading: the album is open the whole time (3.37, 3.39, amended 2026-09-27)");
   assert.ok(mine.html.includes(`/api/media/${windowPhotoId}`), "the photo taken, in the frame");
-  assert.ok(mine.html.indexOf('data-open-photos=""') > mine.html.indexOf("Counts if"), "last on the screen, under the details");
+  assert.ok(mine.dom.indexOf('data-open-photos=""') > mine.dom.indexOf("Counts if"), "last on the screen, under the details");
   assert.ok(!mine.html.includes("data-take-photo"), "no camera button in a sheet: the slot is where the photos will land");
   const other = await get(`/m/${windowId}`, cFriend);
   assert.equal(other.status, 200);
@@ -1394,7 +1465,7 @@ test("while a question is open, everyone the door admits sees the same slot and 
     const voting = await get(`/m/${evidenceMarketId}`, cAsker);
     assert.equal(voting.status, 200);
     assert.ok(voting.html.includes('data-open-photos=""') && voting.html.includes(`/api/media/${(planted as { id: string }).id}`), "the album through the vote");
-    const album = voting.html.split('data-open-photos=""')[1]?.split("</section>")[0] ?? "";
+    const album = voting.dom.split('data-open-photos=""')[1]?.split("</section>")[0] ?? "";
     assert.ok(album.includes("data-media-frame") && !album.includes(evidenceId), "the clip is not in the album's frame");
   } finally {
     await db.delete(schema.media).where(eq(schema.media.id, (planted as { id: string }).id));
@@ -1624,7 +1695,7 @@ test("the You page: identity with one caption, how your calls land under the flo
   assert.ok(you.text.includes("Used to sign in. Nobody else sees it.") && you.text.includes("Sign out") && !you.text.includes("One tap"), "the captions, and no One tap row (Round B)");
   // Pass the phone (3.45; 3.41 amended): the row with the switch, off, between the number and sign out; never "Skip this step next time?" anywhere.
   assert.ok(you.html.includes('data-account-row="pass"') && /role="switch"[^>]*aria-checked="false"/.test(you.html) && you.text.includes("Pass the phone") && you.text.includes("Voting always asks.") === false || you.html.includes('data-pass-switch="off"'), "the pass the phone row, off");
-  assert.ok(you.html.indexOf('data-account-row="number"') < you.html.indexOf('data-account-row="pass"') && you.html.indexOf('data-account-row="pass"') < you.html.indexOf('data-account-row="signout"'), "in One tap's place, before Sign out");
+  assert.ok(you.dom.indexOf('data-account-row="number"') < you.dom.indexOf('data-account-row="pass"') && you.dom.indexOf('data-account-row="pass"') < you.dom.indexOf('data-account-row="signout"'), "in One tap's place, before Sign out");
   assert.ok(!you.text.includes("Skip this step next time"), "the ask is never shown (3.41, amended)");
   assert.ok(!/\brank\b|\bgrade\b|\bscore\b/i.test(you.text), "no score, grade or rank");
   // A fresh account: joined today, nothing resolved yet, and no empty chart.
@@ -1637,17 +1708,17 @@ test("the You page: identity with one caption, how your calls land under the flo
 test("the swipes on Now: a market you asked that nobody else is in answers Remove, a finished one answers Archive, and a row someone else is in stays put", async () => {
   const a = await get("/", cAsker);
   assert.equal(a.status, 200);
-  const running = a.html.split("Running")[1]?.split("Just happened")[0] ?? "";
+  const running = a.dom.split("Running")[1]?.split("Just happened")[0] ?? "";
   assert.ok(new RegExp(`data-call-off="remove"[^>]*>[\\s\\S]*?/m/${marketId}`).test(running), "the running row for the kettle question, alone in it, wears Remove (3.15)");
   assert.ok(a.html.includes('data-call-off="archive"'), "a finished question in Just happened wears Archive");
   assert.ok(a.html.includes('aria-label="Remove"') && a.html.includes('aria-label="Archive"'), "the squares are named");
   assert.ok(!a.text.includes("Swipe") && !a.text.includes("swipe"), "no hint teaches the swipe");
   const n = await get("/", cNia);
-  const niaRunning = n.html.split("Running")[1]?.split("Just happened")[0] ?? "";
+  const niaRunning = n.dom.split("Running")[1]?.split("Just happened")[0] ?? "";
   assert.ok(niaRunning.includes(`/m/${windowId}`) && !new RegExp(`data-call-off="remove"[^>]*>[\\s\\S]*?/m/${windowId}`).test(niaRunning), "a market other people are in isn't one person's to remove");
   // A game swipes as one row (ruled 2026-09-27): the asker's two open questions on the feed game, alone in both, wear Remove together; nia's finished night game wears Archive.
   assert.ok(new RegExp(`data-call-off="remove"[^>]*data-call-off-game=""[^>]*>[\\s\\S]*?data-game-running=""[\\s\\S]*?/on/${feedGameId}`).test(running), "the game's running row removes its questions as one, since nobody else is in any of them");
-  const niaHappened = n.html.split("Just happened")[1] ?? "";
+  const niaHappened = n.dom.split("Just happened")[1] ?? "";
   assert.ok(new RegExp(`data-call-off="archive"[^>]*data-call-off-game=""[^>]*>[\\s\\S]*?data-game-happened=""[\\s\\S]*?/on/${nightGameId}`).test(niaHappened), "a finished game archives as one row");
 });
 

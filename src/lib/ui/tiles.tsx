@@ -9,6 +9,7 @@
  * Rendered server-side by Satori, which cannot read CSS custom properties: the values here are the tokens
  * written out (src/app/globals.css, src/lib/ui/ink.ts).
  */
+import { WORDMARK, WORDMARK_EM } from "./logo";
 import { ImageResponse } from "next/og";
 import type { Hue } from "./hue";
 import { INKS, type InkName } from "./ink";
@@ -176,19 +177,12 @@ function frame(ink: InkName, rows: React.ReactNode[]) {
         color: CREAM,
       }}
     >
-      <div
-        style={{
-          position: "absolute",
-          left: 64,
-          bottom: 56,
-          display: "flex",
-          fontSize: 34,
-          fontWeight: 600,
-          color: layers.hi,
-        }}
-      >
-        dareful
-      </div>
+      {/* The wordmark (3.38; docs/design/reference/LOGO.md): the logo's own outlines at 32px type, 56px from the left and 44px from the bottom, in the chalk and never the market's ink. */}
+      <svg viewBox={WORDMARK.viewBox} width={Math.round((WORDMARK.width * 32) / WORDMARK_EM)} height={Math.round((WORDMARK.height * 32) / WORDMARK_EM)} style={{ position: "absolute", left: 56, bottom: 44 }}>
+        {WORDMARK.paths.map((p, i) => (
+          <path key={i} d={p.d} transform={p.transform ?? undefined} fill={CREAM} />
+        ))}
+      </svg>
       <div
         style={{
           position: "absolute",

@@ -9,6 +9,7 @@ import { balldontlie } from "@/lib/sports/balldontlie";
 import { reconcileChainWrites } from "@/lib/chain/reconcile";
 import { watchRelayer } from "@/lib/chain/watch";
 import { completions } from "@/lib/ledger/completions";
+import { keepWarm } from "@/lib/ops/warm";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -30,6 +31,8 @@ export async function POST(req: Request): Promise<Response> {
   const ok = Boolean(secret) && secret !== undefined && given.length === secret.length && timingSafeEqual(Buffer.from(given), Buffer.from(secret));
   if (!ok) return new NextResponse(null, { status: 404 });
   const now = new Date();
+  // Now's own door, knocked on beside the jobs and never waited for ahead of them (src/lib/ops/warm.ts).
+  const warming = keepWarm();
   const report = await tick(now, notifyDeadline, { notifyWarning: (id, flavour, actsAt) => notifyBackstopWarning(id, flavour, actsAt, now), check: balldontlie });
   // The tiebreaker's backstop and the void rule's end are backstops acting: the one notice after, in place of the result notice.
   await Promise.all([...report.arbitrated, ...report.expired].map((id) => notifyBackstopResult(id)));
@@ -55,5 +58,5 @@ export async function POST(req: Request): Promise<Response> {
     console.error("tick: the relayer's balance could not be read", err instanceof Error ? err.message : err);
     return null;
   });
-  return NextResponse.json({ locked: report.locked.length, resolved: report.resolved.length, notified: report.notified.length, expired: report.expired.length, arbitrated: report.arbitrated.length, warned: report.warned.length, failed: report.failed.length, feed: { synced: sports.synced, polled: sports.polled.length, drives: sports.drives.length, proposed: sports.proposed.length, settled: sports.settled.length, voided: sports.voided.length, failed: sports.failed.length }, writes: writes ? { mined: writes.mined.length, completed: writes.completed.length, reverted: writes.reverted.length, dropped: writes.dropped.length, rebroadcast: writes.rebroadcast.length } : null, relayer });
+  return NextResponse.json({ locked: report.locked.length, resolved: report.resolved.length, notified: report.notified.length, expired: report.expired.length, arbitrated: report.arbitrated.length, warned: report.warned.length, failed: report.failed.length, feed: { synced: sports.synced, polled: sports.polled.length, drives: sports.drives.length, proposed: sports.proposed.length, settled: sports.settled.length, voided: sports.voided.length, failed: sports.failed.length }, writes: writes ? { mined: writes.mined.length, completed: writes.completed.length, reverted: writes.reverted.length, dropped: writes.dropped.length, rebroadcast: writes.rebroadcast.length } : null, relayer, warmed: await warming });
 }

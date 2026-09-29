@@ -64,3 +64,9 @@ test("a colour typed outside the tokens is refused (1.1, 8.8)", () => {
   assert.match(r.out, /src\/app\/colour\/page\.tsx: colour "#F4B73E" typed outside the tokens/);
   assert.match(r.out, /src\/app\/colour\/page\.tsx: colour "rgba\(1" typed outside the tokens/);
 });
+
+test("a phrase cut from every screen is refused wherever it is typed (4.9)", () => {
+  const r = lint();
+  assert.match(r.out, /src\/app\/copy\/page\.tsx: "Put your number on it" is cut everywhere/);
+  assert.doesNotMatch(r.out, /src\/app\/fine\/page\.tsx: "Put your number on it"/);
+});

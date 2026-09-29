@@ -62,7 +62,7 @@ export default async function ClaimLinkPage({ params }: { params: Promise<{ toke
 
   return (
     <Screen>
-      <TopBar title="Dareful" back={Boolean(me)} info="claim-landing" />
+      <TopBar wordmark back={Boolean(me)} info="claim-landing" />
       <div className="flex flex-col gap-6 py-6">
         <div className="flex items-center gap-4">
           <Avatar name={claim.displayName} hue="stone" size={56} ghost />

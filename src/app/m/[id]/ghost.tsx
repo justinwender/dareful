@@ -131,7 +131,7 @@ export async function GhostMarketPage({ id, clock }: { id: string; clock: Awaite
     <div className="flex flex-1 flex-col">
       <InkRoot ink={ink} />
       <Screen>
-        <TopBar title="dareful" info="market-link" />
+        <TopBar wordmark info="market-link" />
         <div className="flex flex-col gap-7 py-2">
           <section className="-mx-2 flex flex-col gap-3 rounded-card bg-field p-4 pb-[18px]">
             <div className="flex items-center justify-between gap-3">

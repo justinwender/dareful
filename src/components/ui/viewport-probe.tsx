@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { COLD_MARKS, coldStartRows, serverTimes, TALLY_KEY } from "@/lib/ui/cold-start";
 
 type Reading = Array<[string, string]>;
 
@@ -13,10 +14,55 @@ type Reading = Array<[string, string]>;
  * both safe-area insets as the browser resolves them, whether the page is standalone, and where the tab bar's
  * box actually ends. On You and on Now, so a page with the band can be read beside one without; to be removed
  * once the phone confirms the fix (docs/testing.md item 61).
+ *
+ * Since the logo round it also reads the cold start (`src/lib/ui/cold-start.ts`): when the first byte arrived,
+ * when the first screen's shell had painted and the opening began to fade, when Now's content arrived, when the
+ * screen began answering and when the sign-in was ready, with the server's own two figures, all from the moment
+ * the page began to load. "Open without the count" turns the opening's count off on this phone, so the same
+ * cold start can be timed with it and without it; the two should read the same.
  */
 export function ViewportProbe() {
   const [open, setOpen] = useState(false);
   const [reading, setReading] = useState<Reading>([]);
+  const [cold, setCold] = useState<Reading>([]);
+  const [counted, setCounted] = useState(true);
+  useEffect(() => {
+    if (!open) return;
+    const at = (name: string): number | null => performance.getEntriesByName(name)[0]?.startTime ?? null;
+    const nav = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+    let stored = true;
+    try {
+      stored = localStorage.getItem(TALLY_KEY) !== "off";
+    } catch {
+      // Storage blocked: the count is always drawn.
+    }
+    const t = setTimeout(() => {
+      setCounted(stored);
+      setCold(
+        coldStartRows({
+          counted: document.documentElement.getAttribute("data-tally") !== "off",
+          firstByte: nav ? nav.responseStart : null,
+          firstPaint: performance.getEntriesByName("first-contentful-paint")[0]?.startTime ?? null,
+          shell: at(COLD_MARKS.shell),
+          content: at(COLD_MARKS.content),
+          live: at(COLD_MARKS.live),
+          sdk: at(COLD_MARKS.sdk),
+          server: serverTimes(document.querySelector("[data-server]")?.getAttribute("data-server")),
+        }),
+      );
+    }, 0);
+    return () => clearTimeout(t);
+  }, [open]);
+  const toggleCount = () => {
+    const next = !counted;
+    try {
+      if (next) localStorage.removeItem(TALLY_KEY);
+      else localStorage.setItem(TALLY_KEY, "off");
+    } catch {
+      // Storage blocked: nothing to set.
+    }
+    setCounted(next);
+  };
   useEffect(() => {
     if (!open) return;
     const read = () => {
@@ -84,6 +130,21 @@ export function ViewportProbe() {
             </div>
           ))}
         </dl>
+      ) : null}
+      {open ? (
+        <dl data-probe-cold="" className="flex flex-col gap-1 rounded-card border border-line bg-surface px-4 py-3 text-caption text-ink-2">
+          {cold.map(([k, v]) => (
+            <div key={k} className="flex justify-between gap-3">
+              <dt className="text-ink-3">{k}</dt>
+              <dd className="text-right text-ink tabular-nums">{v}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
+      {open ? (
+        <Button variant="tertiary" onClick={toggleCount} data-probe-count="">
+          {counted ? "Open without the count" : "Open with the count"}
+        </Button>
       ) : null}
     </div>
   );

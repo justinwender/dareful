@@ -1,10 +1,11 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, use, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useDynamicContext, useUserWallets } from "@dynamic-labs/sdk-react-core";
 import { Button } from "@/components/ui/button";
 import { AlertGlyph } from "@/components/ledger/problem";
 import { deviceState, type DeviceState, type Me } from "@/lib/auth/device";
+import type { SessionFacts } from "@/lib/auth/session-facts";
 
 /**
  * Two logins have to be true before someone can approve anything: the Dareful session (a cookie, thirty days,
@@ -15,18 +16,29 @@ import { deviceState, type DeviceState, type Me } from "@/lib/auth/device";
  *
  * This is the one place that reads the SDK's in-browser state to decide what a person can do. Everything else
  * asks here. The state is worked out when a screen loads, so nobody finds out in the middle of a vote.
+ *
+ * The session's facts arrive as a promise (docs/design.md 11.5): the root layout starts the read and sends the
+ * first screen's shell without waiting for it, and whatever asks here waits for the answer where it stands. On
+ * every screen but Now that is the screen itself, as before; on Now it is the content behind the shell.
  */
-const MeContext = createContext<Me | null>(null);
+const NO_SESSION: SessionFacts = { settled: false, me: null };
+const FactsContext = createContext<Promise<SessionFacts> | null>(null);
 
-export function MeProvider({ me, children }: { me: Me | null; children: ReactNode }) {
-  return <MeContext.Provider value={me}>{children}</MeContext.Provider>;
+export function MeProvider({ facts, children }: { facts: Promise<SessionFacts>; children: ReactNode }) {
+  return <FactsContext.Provider value={facts}>{children}</FactsContext.Provider>;
+}
+
+/** The session's facts, waited for here. Outside the provider (a misconfigured deployment) there is no session. */
+export function useSessionFacts(): SessionFacts {
+  const facts = useContext(FactsContext);
+  return facts ? use(facts) : NO_SESSION;
 }
 
 /** How long a confirmed login gets to produce its keys before the app says they are not coming. */
 const KEYS_GRACE_MS = 8_000;
 
 export function useDevice(): { state: DeviceState; me: Me | null; signIn: () => Promise<void> } {
-  const me = useContext(MeContext);
+  const { me } = useSessionFacts();
   const { sdkHasLoaded, user, setShowAuthFlow, handleLogOut } = useDynamicContext();
   const wallets = useUserWallets();
   const [graceOver, setGraceOver] = useState(false);

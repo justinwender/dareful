@@ -10,13 +10,15 @@ export default function manifest(): MetadataRoute.Manifest {
     start_url: "/",
     scope: "/",
     display: "standalone",
-    // The manifest cannot follow the theme: the dark ground, which is what the launch image and the first frame draw by default (11.3).
+    // The manifest cannot follow the theme: the dark ground, which is what the launch image and the first frame draw by default (11.3), and the icon's own.
     background_color: GROUND_DARK,
     theme_color: GROUND_DARK,
+    // The logo's own files (docs/design/reference/LOGO.md), placed by scripts/opening.mjs: full-bleed and opaque, and one
+    // drawn with the mark smaller, for Android, which crops an icon to a circle, a squircle or a teardrop.
     icons: [
-      { src: "/icons/192.png", sizes: "192x192", type: "image/png", purpose: "any" },
-      { src: "/icons/512.png", sizes: "512x512", type: "image/png", purpose: "any" },
-      { src: "/icons/512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+      { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+      { src: "/icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
   };
 }

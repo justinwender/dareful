@@ -12,7 +12,7 @@ export const DEAD_LINK = "That link doesn’t open anything. Ask for it again, o
 export function DeadLink({ signedIn }: { signedIn: boolean }) {
   return (
     <Screen>
-      {signedIn ? <TopBar back /> : <TopBar title="dareful" />}
+      {signedIn ? <TopBar back /> : <TopBar wordmark />}
       <div className="flex flex-col gap-7 py-2" data-dead-link="">
         <h1 className="text-serif-l text-ink">Got a code?</h1>
         <CodeJoinFocused initialProblem={DEAD_LINK} />

@@ -1,7 +1,7 @@
 /**
  * Round D, how it feels (docs/design.md 8, 9, 11): the motion set and its stagger, the slow-load stages, the
  * sheet's settling rules, the layers and the properties that capture a fixed layer, presses, the theme's script,
- * the opening's images and first frame, a row's shell, the roots the router still holds, the terms read out of a
+ * a row's shell, the roots the router still holds, the terms read out of a
  * half-written answer, whole dollars and the Mixed token, the call line's words, the annotated row, the stake
  * chips' default, and the two light blocks of the stylesheet. Every rule here is pure, and every test has a
  * mutant in tests/mutation/mutants.ts that breaks it.
@@ -13,7 +13,6 @@ import { MOTION, overscroll, settleDuration, staggerDelay, staggeredTotal, waitS
 import { ancestorsInMarkup, capturesAbove, FIXED_LAYERS, forbiddenClasses, forbiddenOn, parseInlineStyle } from "@/lib/ui/layers";
 import { pressShows, PRESS_CANCEL_PX, ROW_PRESS_DELAY_MS } from "@/components/ui/press";
 import { isThemeChoice, THEME_KEY, THEME_SCRIPT, themeAttribute } from "@/lib/ui/theme";
-import { GROUND_DARK, GROUND_LIGHT, LAUNCH_DEVICES, launchImageLinks, launchImageMedia, launchImagePath, LOGO_PX, OPENING_HANDOFF_SCRIPT, OPENING_STYLE } from "@/lib/ui/opening";
 import { marketIdOf, parseShell, serialiseShell, shellSheet, type MarketShell } from "@/lib/ui/shell";
 import { resetRoots, ROOT_FRESH_MS, rootFresh, rootMounted, whenRootMounts } from "@/lib/ui/roots-store";
 import { partialValues } from "@/lib/ui/write-up-stream";
@@ -126,27 +125,6 @@ test("the two light blocks of the stylesheet carry the same values, so a choice 
   const phone = block(':root:not([data-theme="dark"]) {');
   assert.equal(phone, chosen);
   assert.ok(chosen.includes("--ground: #f5efe4;") && chosen.includes("--chalk: #1b1815;") && chosen.includes("--on-chalk: #f5efe4;"), "8.2: the primary is graphite with paper text on light");
-});
-
-test("the opening (11): a launch image per iPhone in both sets, dark first, at the device's pixel size with the box centred; the first frame never white", () => {
-  const links = launchImageLinks();
-  assert.equal(links.length, LAUNCH_DEVICES.length * 2);
-  assert.ok(links[0]?.media.includes("prefers-color-scheme: dark"), "dark first, so a phone that ignores the scheme takes dark");
-  const d = LAUNCH_DEVICES.find((x) => x.width === 393 && x.height === 852) as (typeof LAUNCH_DEVICES)[number];
-  assert.equal(launchImagePath(d, "dark"), "/launch/1179x2556-dark.png");
-  assert.equal(launchImageMedia(d, "light"), "screen and (device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait) and (prefers-color-scheme: light)");
-  assert.equal(LOGO_PX, 120);
-  assert.ok(OPENING_STYLE.includes(`html:not([data-dressed]){background:${GROUND_DARK};color-scheme:dark}`) && OPENING_STYLE.includes(`html:not([data-dressed]){background:${GROUND_LIGHT};color-scheme:light}`), "html takes the ground in the phone's own scheme until the handoff, and the tokens after");
-  assert.ok(OPENING_HANDOFF_SCRIPT.includes('setAttribute("data-dressed","")'), "the handoff hands html to the stylesheet, override and all (8.1)");
-  assert.ok(OPENING_STYLE.includes("#opening{position:fixed;inset:0") && OPENING_STYLE.includes("width:120px;height:120px;margin:-60px 0 0 -60px"), "the box centred on the full screen");
-  assert.ok(OPENING_STYLE.includes("opacity:0;transition:opacity 200ms cubic-bezier(0,0,0.58,1)") && OPENING_STYLE.includes("opacity:0;transition:opacity 120ms cubic-bezier(0,0,0.58,1)"), "the ground over base and the logo over quick, on the fade curve");
-  assert.ok(OPENING_HANDOFF_SCRIPT.includes("requestAnimationFrame") && OPENING_HANDOFF_SCRIPT.includes('classList.add("handoff")') && OPENING_HANDOFF_SCRIPT.includes("o.remove()"), "the handoff after the first paint, then the element goes");
-  // The generator's list is the same list (11.3): one device list, in two languages.
-  const script = readFileSync("scripts/opening.mjs", "utf8");
-  const m = /const DEVICES = \[([\s\S]*?)\];/.exec(script);
-  assert.ok(m);
-  const inScript = [...(m[1] as string).matchAll(/\[(\d+), (\d+), (\d)\]/g)].map((x) => `${x[1]}x${x[2]}@${x[3]}`);
-  assert.deepEqual(inScript, LAUNCH_DEVICES.map((x) => `${x.width}x${x.height}@${x.ratio}`));
 });
 
 test("a row's shell (9.4): what the row knew, serialised on its link, read back exactly, and refused when it is not a shell's", () => {

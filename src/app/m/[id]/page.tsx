@@ -247,7 +247,7 @@ export default async function MarketPage({
     ];
     return (
       <Screen>
-        <TopBar back title="dareful" />
+        <TopBar back />
         <div className="py-2">
           <InvitePreview
             viewerName={firstName(me.displayName)}

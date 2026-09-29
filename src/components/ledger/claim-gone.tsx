@@ -9,7 +9,7 @@ import { Screen, TopBar } from "@/components/ledger/screen";
 export function ClaimGone(props: { state: "expired"; signedIn: boolean } | { state: "used"; signedIn: boolean; creatorName: string } | { state: "own"; signedIn: true; name: string; claimId: string }) {
   return (
     <Screen>
-      <TopBar title="Dareful" back={props.signedIn} />
+      <TopBar wordmark back={props.signedIn} />
       <div className="flex flex-1 flex-col justify-center gap-6 py-10">
         {props.state === "expired" ? (
           <>

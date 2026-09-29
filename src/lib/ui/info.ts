@@ -3,6 +3,8 @@
  * person can look around carries a 22px circled-i at its top right, opening a sheet that lists everything they
  * can do there. One switch removes it and returns every corner to its place (10.3).
  */
+import { cutPhrasesIn, designWordsIn } from "./copy-rules";
+
 export const INFO_ICON_ON = true;
 
 /** A sheet's entry (10.6): a term of five words at most, one sentence of at most 90 characters, and an optional qualifier. */
@@ -46,6 +48,10 @@ export function sheetProblems(sheet: InfoSheet): string[] {
       if (g === "Gestures" && !GESTURE_WORDS.some((w) => e.term.startsWith(w))) out.push(`a gesture starts with Tap, Hold, Drag, Swipe or Pinch: "${e.term}"`);
       if (/\b(press|long-press|click|scroll|button|simply)\b/i.test(`${e.term} ${e.description}`)) out.push(`banned word in "${e.term}"`);
       if (g === "Icons" && !e.glyph) out.push(`an icon's entry names its glyph: "${e.term}"`);
+      // A thing is named as the screen names it, or by what a person sees, never by the design's word for it; and a phrase cut everywhere is cut here.
+      const words = `${e.term} ${e.description} ${e.qualifier ?? ""}`;
+      for (const w of designWordsIn(words)) out.push(`says "${w}", the design's word, which no screen shows: "${e.term}"`);
+      for (const c of cutPhrasesIn(words)) out.push(`says "${c}", which is cut everywhere: "${e.term}"`);
     }
   }
   if (total > INFO_ENTRIES_MAX) out.push(`${total} entries; a sheet holds at most ${INFO_ENTRIES_MAX}`);

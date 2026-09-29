@@ -84,7 +84,7 @@ export default async function WelcomePage() {
 
   return (
     <Screen>
-      <TopBar back title="Dareful" info="claimant" />
+      <TopBar wordmark info="claimant" />
       <div className="flex flex-col gap-7 py-4">
         <div className="flex flex-col gap-3">
           <h1 className="text-serif-xl text-ink">{alreadyInLine(total)}</h1>

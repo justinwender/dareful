@@ -47,6 +47,14 @@ Round D), following the phone's setting, with an Appearance row on You.
 
 ### What changed in this revision
 
+(Amended 2026-09-29, the logo round: the logo arrived, with its own note, `docs/design/reference/LOGO.md`,
+which wins on anything visual about the logo. The placeholder of 11.2 is the mark, a tally of four
+strokes and a fifth crossing them; the launch images are the bare ground and the first frame counts
+the tally a stroke at a time (11.3 to 11.5); the wordmark is the logo's own outlines in one colour
+(3.38); Now answers in pieces so its shell paints first (5.3, 9.4, 11.5); and the sheets name a thing
+as the screen names it, with the design's own words and the cut phrase held out by the lint (4.9,
+10.6). Each is dated where it stands, and the decisions are in docs/decisions.md, "The logo round".)
+
 (Merged 2026-09-28, Round D: the twelfth and thirteenth sessions worked from the copy that
 preceded Round A, and their combined file was merged three ways onto the repository's copy, which
 carries every dated amendment since; the seams and how each was resolved are in
@@ -2519,7 +2527,8 @@ gets the form-level block: "There's no market link on your clipboard." Join is i
 when things were logged under their name before they had an account.
 
 - The header: the wordmark alone and no back, because nothing is behind it, the one exception to
-  6.4's back control besides a signed-out link.
+  6.4's back control besides a signed-out link. (Built 2026-09-29, the logo round, with the
+  information icon at the right for the hackathon, 10.3.)
 - Prints: photos from the waiting stories, 150px wide on a `--chalk` mount with 8px sides and a
   10px bottom, a 118px photo, the date in 13px 600 `--on-chalk`, radius 6, rotated −6°, 3° and
   8°, overlapping in a 200px band with the 1.5 shadow. At most three, the most recent on top;
@@ -2636,6 +2645,14 @@ in ink-hi.
 in a 48px slot with 12px sides, and it stands where back would only when nothing is behind the
 screen (a signed-out link, the claimant screen). On tiles it is 32px in ink-hi, 56px from the
 left and 44px from the bottom. It is a logo, outside the type budget.
+
+(Amended 2026-09-29, the logo round: the wordmark is the logo's own outlines (`Wordmark`, drawn
+from `assets/logo/svg` by `scripts/opening.mjs`), never type set by the app, at the same 20px in the
+same slot, 75px wide and so over the 64px LOGO.md keeps it above. LOGO.md gives the logo one colour
+at a time, the chalk on dark and the ink on light, and never a market's ink, so in a header it is
+`--ink` rather than `--ink-2`, and on the tiles it is the chalk rather than ink-hi, at 32px in the
+place this paragraph gives. It never stands beside a back control: a screen with back shows back
+alone. The share card's brand row is the lockup, the mark and the word together, 40px tall.)
 
 **The full-screen photo.** Opened from a frame or a strip square: black, the photo fitted, a
 13px 600 counter ("2 / 5") at the top left and the 48px close at the top right (for the
@@ -3544,7 +3561,9 @@ Cut:
 - A paragraph standing in for structure: the draft's (3.25), the heads-up's (4.10), and every
   caption under a control that says what the control plainly does (3.26, 3.29, 3.33, 3.38).
 - "Put your number on it", anywhere. The sheet's heading already says what to fill in, and a
-  pick-one market has no number.
+  pick-one market has no number. (Held by the lint since 2026-09-29, the logo round: the phrase
+  typed anywhere under `src` fails the build, and a sheet or a page that says it fails its suite;
+  `src/lib/ui/copy-rules.ts`.)
 
 Everything the product needs to say about how it works, beyond the lines above, belongs in the
 details sheet on the market, where someone can go looking for it.
@@ -3705,6 +3724,13 @@ Skeletons are allowed in exactly one case: content loading into a screen that is
 display, such as pagination, older events on a person view, or media opening inside a story.
 Bars at 8px and 12px, hatched blocks for media, no shimmer, minimum 200ms so they cannot
 flash. Navigations never get one, and route handlers keep returning real status codes.
+
+(Amended 2026-09-29, the logo round: Now is the one screen that answers in pieces, because it
+is the screen the installed app opens on and 11.5 asks for its shell before its data. Its shell,
+the header row, the tab bar and the +, goes out before the account or Now has been read, nothing
+stands in for the content, and the content fades in when it arrives, with 9.4's slow stages if it
+is slow. Now never answers 404 and never redirects, so nothing this paragraph protects is given
+up; every other screen still answers once, with its real status.)
 
 ### 5.4 What none of this is allowed to become
 
@@ -4243,7 +4269,8 @@ the last thing drawn. At 10 seconds, the 5.1 block with "Try again". Back works 
 returns the person to exactly where they were, scroll and all. A market that turns out not to
 exist replaces its shell with the not-found state in place (3.17). The shell is drawn by the
 client from what it holds, never by a route-level streamed loading state, so route handlers keep
-answering with real status codes (5.3).
+answering with real status codes (5.3). (Amended 2026-09-29: at a cold start there is no client
+yet, so Now's shell is the one the server sends first, 5.3 and 11.5.)
 
 ### 9.5 Starting to ask
 
@@ -4722,6 +4749,15 @@ marks, no wallet, transaction, gas, signature, chain or token, no sportsbook wor
 "click" or "simply", no marketing, and no number except the rule's own. The app's words for
 things are the sheet's words for them.
 
+(Amended 2026-09-29, the logo round: this document's own words for things are not the app's. No
+screen shows "the chalk", "the band", "the wells", "the photo moment", "the rally", "the set",
+"the slot", "the add tile", "the owner's colour", "the count line", "citron", "the context
+chips", "stone" or "the frame", so no sheet says them: a thing is named by its label where it has
+one ("Add the first photo", "Where you two turn up") and by what a person sees where it has none
+("the time above the question", "the plus after the photos", "the yellow dot"). Since "button" is
+out by the paragraph above, the chalk is named by its own label, "the Yep at the bottom". The
+sheet lint refuses each of these words, `DESIGN_WORDS` in `src/lib/ui/copy-rules.ts`.)
+
 **Checking a sheet.** Every control and gesture the screen's code wires up has an entry, or is a
 label that says everything it does. Every entry is under its length. The shared lint (4.8) runs
 over the sheets for the banned words.
@@ -4826,6 +4862,11 @@ one colourway for each ground: on the dark ground `#121110` and on the light gro
 On the boards the placeholder is a 1.5px dashed `--line-strong` square labelled "Logo, 120 ×
 120".
 
+(Amended 2026-09-29, the logo round: the logo arrived. It is the mark, a tally of four strokes
+and a fifth crossing them, in the same 120 by 120 box, the chalk `#F2EDE3` on the dark ground and
+the ink `#1B1815` on the light one; `docs/design/reference/LOGO.md` is its note and wins on
+anything visual about it.)
+
 ### 11.3 The launch image
 
 One PNG per iPhone screen size the app supports, portrait, at the device's full pixel size (1179
@@ -4839,6 +4880,14 @@ the pixel ratio, centred. Two sets, dark and light, each with `(prefers-color-sc
 Check on a real iPhone, in both appearances, that iOS picks the set by scheme. If it doesn't, it
 takes the first image that matches the size, so list only the dark set: dark is the default, the
 first frame draws dark to match (11.4), and a light phone's handoff fades from dark into light.
+
+(Amended 2026-09-29, the logo round: the launch image is the bare ground, with no logo on it,
+because the first frame now has no stroke drawn yet and the two must be the same picture (11.4).
+`node scripts/opening.mjs` writes it for thirteen iPhone sizes in both sets, the eleven LOGO.md
+lists through the iPhone 17 line and iPhone Air and the two older sizes Round D already covered,
+named and linked as the design's own files are, dark before light at each size. iOS keeps a
+home-screen app's icon and launch images from the moment it was added, so the new ones are seen
+only by removing the app from the home screen and adding it again.)
 
 ### 11.4 The first frame
 
@@ -4859,6 +4908,18 @@ Now, and when the two differ the handoff's fade carries the change.
 
 `#opening` is a child of the body, never inside the app root, and it is never transformed (9.3):
 it only fades.
+
+(Amended 2026-09-29, the logo round: the first frame is the bare ground, and the tally is then
+counted on it, one stroke at a time: 200ms of bare ground, a stroke starting every 275ms and each
+drawn over 200ms on the move curve, the four uprights top to bottom and the crossing stroke left to
+right from 1300ms, complete at 1.5 seconds and held. The style, the element and the handoff are the
+design's own code, carried into `src/lib/ui/opening.ts` as delivered; the four values `--tally-beat`,
+`--tally-stroke`, `--tally-pace` and `--tally-curve` sit together at the top of the inline style and
+are the one place the count is tuned. With Reduce Motion nothing is drawn: the whole mark fades in
+over base and holds. `#opening` sits in a box the app keeps (`data-opening-host`), because the
+handoff takes `#opening` off the page, often before the app is running, and an app that finds one of
+its own elements gone rebuilds the page with the opening in it; what is inside the box is the
+opening's alone.)
 
 (Built 2026-09-28, Round D: the first frame's inline style holds `html`'s ground only until the
 handoff marks the document (`data-dressed`); from that frame the stylesheet's tokens, and the
@@ -4882,6 +4943,16 @@ holds the logo for show: if the app is ready in 300ms, the opening lasts 300ms a
 it is slow, the first frame simply stays; nothing is added to it.
 
 With Reduce Motion the handoff is unchanged, since it is two fades (9.11).
+
+(Amended 2026-09-29, the logo round: at the handoff every stroke stops where it is, mid-stroke
+included, and the two fades begin on that frame, so the count never adds to the wait; there is one
+handoff, the design's, and it marks the document dressed as Round D's did. Now's shell is in the
+first piece of the page with the first frame, ahead of the account and of Now's data, so on a start
+that is not slow the opening is two frames and its fades and no stroke is ever drawn: the count is
+seen only when the first frame is on the screen and the shell is not yet, which in this build is a
+slow network and little else. What comes before the page's first byte, the phone starting the app
+and the server waking, is the launch image's to cover. The scheduler asks for Now's address once a
+minute, as nobody, so the server that answers for Now stays awake.)
 
 The opening runs on a cold start only. Coming back to the app from the background shows it as it
 was, and 5.5's re-read keeps it current.

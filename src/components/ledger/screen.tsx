@@ -4,6 +4,7 @@ import { InfoIcon } from "@/components/ui/info";
 import { OfflineBar } from "@/components/ui/offline-bar";
 import { Arrived } from "@/components/ui/arrived";
 import { PinnedSheet } from "@/components/ui/pinned-sheet";
+import { Wordmark } from "@/components/ui/wordmark";
 import { INFO_ICON_ON } from "@/lib/ui/info";
 import { cn } from "@/lib/utils";
 
@@ -31,16 +32,27 @@ export function Screen({ children, className, root = false, layer, arrive }: { c
 /**
  * The top of a screen. Every non-root screen carries the 48px back control at its top left, which lands on the
  * root it came from (docs/design.md 6.4); a screen that rose from below (the question step, 9.5) carries Close, a
- * down chevron; a screen reached from outside the app while signed out shows the wordmark instead, because there
- * is nowhere in the app to go back to. For the hackathon the information icon owns the top-right corner (10.3):
+ * down chevron; a screen with nothing behind it (reached from outside the app while signed out, signed out on Now,
+ * the claimant screen) shows the wordmark instead, the logo's own outlines at 20px in its 48px slot with 12px
+ * sides (3.38; docs/design/reference/LOGO.md), because there is nowhere in the app to go back to. For the hackathon the information icon owns the top-right corner (10.3):
  * a screen's own control from that corner (`right`: More, "Got a code?") sits directly left of it.
  */
-export function TopBar({ back, onBack, close, onClose, closeHref, title, right, info }: { back?: boolean; /** Back within a flow (a step of asking, 9.8) rather than to the root. */ onBack?: () => void; /** Close in place of back, where the screen rose from below (9.5). */ close?: boolean; onClose?: () => void; closeHref?: string; title?: string; right?: ReactNode; /** The screen's information sheet (10), by key; none for a screen 10.1 leaves out. */ info?: string }) {
+export function TopBar({ back, onBack, close, onClose, closeHref, wordmark, title, right, info }: { back?: boolean; /** Back within a flow (a step of asking, 9.8) rather than to the root. */ onBack?: () => void; /** Close in place of back, where the screen rose from below (9.5). */ close?: boolean; onClose?: () => void; closeHref?: string; /** The wordmark where back would be, on a screen with nothing behind it. Beside a back control it is left out: the wordmark never shares the slot. */ wordmark?: boolean; title?: string; right?: ReactNode; /** The screen's information sheet (10), by key; none for a screen 10.1 leaves out. */ info?: string }) {
   return (
     <>
       <header className="flex h-14 items-center justify-between" data-top-bar="">
         <div className="flex min-w-0 items-center gap-2">
-          {close ? <CloseControl onClose={onClose} href={closeHref} /> : onBack ? <BackControl onBack={onBack} /> : back ? <BackControl /> : null}
+          {close ? (
+            <CloseControl onClose={onClose} href={closeHref} />
+          ) : onBack ? (
+            <BackControl onBack={onBack} />
+          ) : back ? (
+            <BackControl />
+          ) : wordmark ? (
+            <span className="-ml-3 flex h-12 items-center px-3 text-ink">
+              <Wordmark />
+            </span>
+          ) : null}
           {title ? <span className="truncate text-body-strong text-ink">{title}</span> : null}
         </div>
         <div className="flex items-center gap-1">
@@ -59,7 +71,7 @@ export function TopBar({ back, onBack, close, onClose, closeHref, title, right, 
  * the left, a root's own control (Now's "Got a code?") and the information icon on the right. Once the icon goes,
  * the row goes with it and the label returns to the top of the screen.
  */
-export function RootHeader({ children, right, info }: { children: ReactNode; right?: ReactNode; info: string }) {
+export function RootHeader({ children, right, info, icon }: { children: ReactNode; right?: ReactNode; info: string; /** In place of the one icon, where a root's sheet depends on what arrives (Now, 11.5). */ icon?: ReactNode }) {
   if (!INFO_ICON_ON)
     return (
       <div className="flex items-center justify-between pt-5">
@@ -72,7 +84,7 @@ export function RootHeader({ children, right, info }: { children: ReactNode; rig
       <div className="flex min-w-0 items-center">{children}</div>
       <div className="flex items-center gap-1">
         {right}
-        <InfoIcon sheet={info} />
+        {icon ?? <InfoIcon sheet={info} />}
       </div>
     </header>
   );
