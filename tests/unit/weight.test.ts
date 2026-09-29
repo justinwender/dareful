@@ -4,7 +4,7 @@
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { weightCaption, bucketOf, buckets, groupsNumberBps, overHalf, showsMarker, sparkEligible, percentOf, type Entry } from "@/lib/ledger/weight";
+import { weightCaption, numberCaption, bucketOf, buckets, groupsNumberBps, overHalf, showsMarker, sparkEligible, percentOf, type Entry } from "@/lib/ledger/weight";
 
 const e = (id: string, tenth: number, dollars: number): Entry => ({ id, stake: BigInt(dollars * 100), valueBps: BigInt(tenth * 1000) });
 const fence = [e("you", 7, 10), e("priya", 7, 5), e("gabe", 7, 5), e("maya", 5, 10), e("theo", 9, 15), e("john", 2, 50)];
@@ -68,14 +68,22 @@ test("a line over time needs more than a day open and at least four in: a slow t
 });
 
 const say = (entries: Entry[], viewerId = "you") => weightCaption({ entries, viewerId, nameOf: (id) => id[0]?.toUpperCase() + id.slice(1), stakeWords: (s) => `$${Number(s) / 100}` });
-test("the caption says in words what the picture says in shapes, and names the one stake that outweighs the rest", () => {
-  assert.equal(say(fence), "Height is how much is riding on each number, not how many people picked it. John has $50 on 20%, more than half of what’s riding, which is why the group’s number sits at 45%.");
-  assert.match(say(fence, "john"), /You have \$50 on 2/);
-  assert.match(say(fence.slice(0, 1)), /^You’re first in\./);
-  assert.match(say(fence.slice(0, 3)), /^Everyone on one number\./);
+test("the caption speaks only when one stake outweighs the rest, and then names it; every other state is the picture alone", () => {
+  assert.equal(say(fence), "John has $50 on 20%, more than half of what’s riding, which is why the group’s number sits at 45%.");
+  assert.match(say(fence, "john") ?? "", /^You have \$50 on 2/);
+  assert.equal(say(fence.slice(0, 1)), null, "the first entry: nothing restates a lone column (4.9)");
+  assert.equal(say(fence.slice(0, 3)), null, "everyone on one number: the picture says it");
+  assert.equal(say([3, 5].map((t, i) => ({ id: String(i), stake: 0n, valueBps: BigInt(t * 1000) }))), null, "nothing riding: dots, and no sentence about them");
+  // The same rule on a number question, with the number in the unit's words.
+  const unit = (v: bigint) => `${v} ${v === 1n ? "shirt" : "shirts"}`;
+  const num = (entries: Array<{ id: string; stake: bigint; value: bigint }>, viewerId = "you") => numberCaption({ entries, viewerId, nameOf: (id) => id[0]?.toUpperCase() + id.slice(1), stakeWords: (s) => `$${Number(s) / 100}`, valueWords: unit });
+  assert.equal(num([{ id: "theo", stake: 3000n, value: 14n }, { id: "you", stake: 500n, value: 9n }, { id: "gabe", stake: 1000n, value: 20n }]), "Theo has $30 on 14 shirts, more than half of what’s riding.");
+  assert.equal(num([{ id: "theo", stake: 3000n, value: 14n }, { id: "you", stake: 500n, value: 9n }], "theo"), "You have $30 on 14 shirts, more than half of what’s riding.");
+  assert.equal(num([{ id: "theo", stake: 1000n, value: 14n }, { id: "you", stake: 1000n, value: 9n }]), null, "exactly half is not over half");
+  assert.equal(num([{ id: "theo", stake: 3000n, value: 14n }]), null, "one entry is not half of anything");
 });
 
 test("nothing said about the group's number borrows a word from finance", () => {
-  const all = [say(fence), say(fence.slice(0, 1)), say(fence.slice(0, 3)), say(fence.slice(0, 5)), say([3, 5].map((t, i) => ({ id: String(i), stake: 0n, valueBps: BigInt(t * 1000) })))].join(" ");
+  const all = [say(fence), say(fence.slice(0, 1)), say(fence.slice(0, 3)), say(fence.slice(0, 5)), say([3, 5].map((t, i) => ({ id: String(i), stake: 0n, valueBps: BigInt(t * 1000) })))].filter(Boolean).join(" ");
   assert.equal(/\b(odds|price|pot|house|buy|sell|shares|liquidity|market says|position size)\b/i.test(all), false, all);
 });

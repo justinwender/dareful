@@ -100,7 +100,7 @@ export function GhostActions({ claimId, name, mergeOptions }: { claimId: string;
 
       {panel === "dismiss" ? (
         <div className="flex flex-col gap-2">
-          <p className="text-body-sm text-ink-2">Anything waiting on {name} closes, and their link stops working. Nothing that already happened changes.</p>
+          <p className="text-body-sm text-ink-2">Anything still open for {name} closes, and their link stops working. Nothing that already happened changes.</p>
           <div>
             <Button variant="secondary" onClick={dismiss} loading={pending}>
               Yes, let {name} go

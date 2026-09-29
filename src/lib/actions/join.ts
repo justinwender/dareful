@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth/session";
-import { dismissNamePrompt, nameGroup, redeemInvite } from "@/lib/ledger/groups";
+import { dismissNamePrompt, nameGroup } from "@/lib/ledger/groups";
 import { MarketError } from "@/lib/ledger/markets";
 import { readPastedLink } from "@/lib/ledger/room-code";
 import { joinByCode, joinByMarketLink, roomCodeFor } from "@/lib/ledger/rooms";
@@ -33,7 +33,7 @@ export async function joinByCodeAction(raw: string): Promise<Refusal> {
   redirect(`/m/${marketId}`);
 }
 
-/** A link pasted into the joining screen: a question's link or a group's. Only this app's own paths are read. */
+/** A link pasted into the joining screen: a question's link. Only this app's own path is read. */
 export async function joinByLinkAction(raw: string): Promise<Refusal> {
   const user = await requireUser();
   const typed = z.string().max(400).safeParse(raw);
@@ -41,12 +41,7 @@ export async function joinByLinkAction(raw: string): Promise<Refusal> {
   if (!link) return { error: "That isn't a Dareful link. It starts with dareful.app.", at: "field" };
   let to: string;
   try {
-    if ("marketId" in link) to = `/m/${(await joinByMarketLink(link.marketId, user.id)).marketId}`;
-    else {
-      const group = await redeemInvite(link.inviteToken, user.id);
-      if (!group) return { error: "That link has been turned off or has run out. Ask for a new one.", at: "form" };
-      to = "/";
-    }
+    to = `/m/${(await joinByMarketLink(link.marketId, user.id)).marketId}`;
   } catch (err) {
     if (err instanceof MarketError) return { error: err.message, at: "form" };
     console.error("join by link failed", err);

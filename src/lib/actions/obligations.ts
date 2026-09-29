@@ -27,7 +27,7 @@ export async function closePayloadAction(obligationId: string): Promise<{ ok: tr
   const user = await requireUser();
   if (!Uuid.safeParse(obligationId).success) return { error: PLAIN };
   const [o] = await db.select({ toUser: schema.obligations.toUser }).from(schema.obligations).where(eq(schema.obligations.id, obligationId)).limit(1);
-  if (!o || o.toUser !== user.id) return { error: "Only the person who is owed this can close it." };
+  if (!o || o.toUser !== user.id) return { error: "Only the person who’s got this one can close it." };
   try {
     const state = await closeState(obligationId);
     if (state.remaining === 0n) return { error: "Nothing is open on this one any more." };

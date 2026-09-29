@@ -73,7 +73,7 @@ export async function proposeForArgument(dareId: string): Promise<void> {
 export async function stateCase(dareId: string, userId: string, text: string): Promise<void> {
   const d = await marketById(dareId);
   if (!d) throw new MarketError("That one doesn't exist.", "not_found");
-  if (stateOf(d) !== "locked") throw new MarketError("It isn't waiting on an answer.", "wrong_state");
+  if (stateOf(d) !== "locked") throw new MarketError("There’s nothing to call on this one right now.", "wrong_state");
   if (d.stalemate !== "arbitrate") throw new MarketError("This one was set to go unsettled if nobody agrees, so there's no case to make.", "wrong_state");
   const positions = await positionsOf(d.id);
   // "Every participant may state their case": someone who is in it, not everyone who can see it.
@@ -160,7 +160,8 @@ export async function arbitrateMarket(dareId: string, byUserId: string | null, n
   } catch (err) {
     if (err instanceof SendPending) throw err;
     if (await reconcileFromIndexer(d.id)) throw new MarketError("It was decided while you were asking.", "wrong_state");
-    throw new MarketError(`The ruling is written, but recording it didn't go through. Nothing changed. (${err instanceof Error ? (err.message.split("\n")[0] ?? "") : "unknown"})`, "chain");
+    console.error("arbitrate failed", { dareId: d.id, err: err instanceof Error ? err.message : err });
+    throw new MarketError("The ruling is written, but recording it didn’t go through. Nothing changed.", "chain");
   }
   await mirrorSettlement(d, settlementFromReceipt(result, outcome), { by: "arbitration", rulingText: ruling.ruling, rulingHash: hash });
   return { outcome: voided ? "void" : heard.word, number: voided || (heard.word !== "number" && heard.word !== "answer") ? undefined : outcome, txHash: result.hash };

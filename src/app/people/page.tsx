@@ -7,9 +7,8 @@ import { LinkPending } from "@/components/ui/link-pending";
 import { TabBar } from "@/components/ui/tab-bar";
 import { currentUser } from "@/lib/auth/session";
 import { ghostsForCreator } from "@/lib/ledger/claims";
-import { liveFor, peopleFor, squareSentence } from "@/lib/ledger/home";
+import { peopleFor, squareSentence } from "@/lib/ledger/home";
 import { hueFor } from "@/lib/ui/hue";
-import { viewerClock } from "@/lib/ui/zone";
 
 export const dynamic = "force-dynamic";
 
@@ -22,8 +21,7 @@ export const dynamic = "force-dynamic";
 export default async function PeoplePage() {
   const me = await currentUser();
   if (!me) redirect("/");
-  const clock = await viewerClock();
-  const [people, ghosts, live] = await Promise.all([peopleFor(me), ghostsForCreator(me.id), liveFor(me, new Date(clock.now))]);
+  const [people, ghosts] = await Promise.all([peopleFor(me), ghostsForCreator(me.id)]);
   const nobody = people.people.length === 0 && people.square.length === 0 && ghosts.length === 0;
 
   return (
@@ -90,7 +88,7 @@ export default async function PeoplePage() {
           </ul>
         )}
       </div>
-      <TabBar active="/people" live={live} start />
+      <TabBar active="/people" start />
     </Screen>
   );
 }

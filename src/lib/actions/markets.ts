@@ -312,7 +312,7 @@ const GhostWho = z.object({ name: z.string().trim().max(40).default(""), phone: 
  * number. Someone who is signed in enters as themselves; this door is shut to them.
  */
 export async function enterAsGhostAction(rawId: string, rawPosition: z.infer<typeof Position>, rawWho: z.infer<typeof GhostWho>): Promise<{ ok: true; name: string } | { error: string; /** The field the refusal is about (5.1): the number, for a picked name. */ at?: "phone" }> {
-  if (await currentUser()) return { error: "You’re signed in, so put your number on it as yourself." };
+  if (await currentUser()) return { error: "You’re signed in, so get in as yourself." };
   const id = uuid.safeParse(rawId);
   const position = Position.safeParse(rawPosition);
   const who = GhostWho.safeParse(rawWho);
@@ -367,7 +367,7 @@ export async function lockMarketAction(rawId: string): Promise<{ ok: true; /** S
       revalidatePath(`/m/${id.data}`);
       return { ok: true, pending: true };
     }
-    return { error: say(err, "Locking it didn't go through. Nothing changed.") };
+    return { error: say(err, "Closing it didn’t go through. Nothing changed.") };
   }
   revalidatePath(`/m/${id.data}`);
   return { ok: true };

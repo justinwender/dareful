@@ -113,15 +113,18 @@ test("an argument's default sides are all the way, so whoever is wrong is out th
 });
 
 test("the criterion and the tiebreaker are on the card before anyone is in", () => {
-  assert.equal(shareTermsLine({ criterion: "by elite success rate", stalemate: "arbitrate", argument: true }), "Decided by elite success rate. Take the other side. If nobody can agree, the app hears both sides and calls it.");
+  assert.equal(shareTermsLine({ criterion: "by elite success rate", stalemate: "arbitrate", argument: true }), "Decided by elite success rate. Take the other side. If nobody can agree, a tiebreaker hears both sides and calls it.");
   // The question stands alone in a chat (docs/decisions.md 2026-09-27): the preview's line no longer says to put a number on it.
   assert.equal(shareTermsLine({ criterion: null, stalemate: "void", argument: false }), "If nobody can agree, it goes unsettled.");
 });
 
 test("the deadline notice and the ruling notice say who acted and carry nothing it could cost", () => {
   const d = deadlineNotice({ title: "Does Riley finish?", marketId: "m1", appUrl: "https://dareful.app" });
-  const r = rulingNotice({ askerName: "Sam", title: "Does Riley finish?", outcome: "yes", marketId: "m1", appUrl: "https://dareful.app" });
+  const r = rulingNotice({ title: "Does Riley finish?", outcome: "yes", marketId: "m1", appUrl: "https://dareful.app" });
   assert.equal(d.url, "https://dareful.app/m/m1#ballot");
-  assert.match(r.body, /^Yes\. Sam asked the app to hear it, the way everyone agreed going in\./);
-  for (const n of [d, r]) assert.equal(/\$|%|owe|debt|overdue|late|\d+ (day|hour)/i.test(`${n.title} ${n.body}`), false);
+  // The ruling is credited to the agreement, never to the app (4.6, 4.10).
+  assert.match(r.body, /^Yes\. Decided by the tiebreaker everyone agreed to\./);
+  const v = rulingNotice({ title: "Does Riley finish?", outcome: "void", marketId: "m1", appUrl: "https://dareful.app" });
+  assert.match(v.body, /^Void\. The tiebreaker everyone agreed to found the terms don’t decide it, so nothing changes hands\./);
+  for (const n of [d, r, v]) assert.equal(/\$|%|owe|debt|overdue|late|\d+ (day|hour)|the app/i.test(`${n.title} ${n.body}`), false, n.body);
 });

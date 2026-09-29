@@ -15,6 +15,7 @@ import { EmptySlot } from "@/components/markets/empty-slot";
 import { PhotoAdding } from "@/components/markets/photo-adding";
 import { mediaOnMarket } from "@/lib/media";
 import { storageConfigured } from "@/lib/media/storage";
+import { ClipView } from "@/components/markets/clip-view";
 import { nightHeading, restOfThatNight } from "@/lib/ledger/night";
 import { markRefOf } from "@/lib/ui/mark";
 import { outcomeLine, outcomeWordsOf, saidWord } from "@/lib/ui/outcome-words";
@@ -74,12 +75,13 @@ import {
   showsMarker,
   sparkEligible,
   weightCaption,
+  numberCaption,
 } from "@/lib/ledger/weight";
 import { currentUser } from "@/lib/auth/session";
 import { contracts } from "@/lib/chain/contracts";
 import { daresDomain, Stalemate } from "@/lib/chain/typed-data";
 import { denominationById } from "@/lib/ledger/denominations";
-import { isMember, setLabel } from "@/lib/ledger/groups";
+import { askerLine, isMember, setLabel } from "@/lib/ledger/groups";
 import { dareOnchainId } from "@/lib/ledger/ids";
 import { numbersVisible } from "@/lib/ledger/market-view";
 import {
@@ -265,7 +267,7 @@ export default async function MarketPage({
               stalemateLine:
                 d.stalemate === "void"
                   ? "If nobody can agree how it came out, it goes unsettled."
-                  : "If nobody can agree how it came out, the app hears both sides and calls it. Being in means you’re fine with that.",
+                  : "If nobody can agree how it came out, the tiebreaker everyone agreed to hears both sides and calls it. Being in means you’re fine with that.",
               argument: d.pace === "argument",
               finished: state !== "open",
             }}
@@ -344,7 +346,6 @@ export default async function MarketPage({
   const answerNumber = numberUnit && d.resolvedOutcome !== null && d.resolvedOutcome !== VOID_OUTCOME && state === "resolved" ? d.resolvedOutcome : null;
   const rulerData = numberUnit && show ? rulerFor({ unit: numberUnit, answer: answerNumber === null ? null : answerNumber.toString(), people: positions.map((p) => ({ id: pidOf(p), name: person.get(pidOf(p))?.displayName ?? "Someone", ghost: person.get(pidOf(p))?.ghost === true, percent: null, number: p.value.toString(), pick: null })) }) : null;
   /** "14 shirts · $5", "70% · $5", "John · $5": a person's number, or their pick, and what they put on it. */
-  const numberWords = (v: bigint) => (pickAnswers ? (pickAnswers.find((a) => a.index === Number(v))?.text ?? "?") : numberUnit ? unitPhrase(v, numberUnit) : whoWins && teams ? leanPill(Number(v) / 100, teams.away.name, teams.home.name) : `${Number(v) / 100}%`);
   // The pick-one picture (3.25, 3.31): who picked each answer, and each answer's share of everything riding.
   const pickers = pickAnswers ? pickAnswers.map((a) => positions.filter((p) => Number(p.value) === a.index).map((p) => ({ name: person.get(pidOf(p))?.displayName ?? "Someone", hue: hueFor(pidOf(p)), ghost: person.get(pidOf(p))?.ghost === true }))) : [];
   const pickShares = pickAnswers ? answerShares(pickAnswers.map((a) => positions.filter((p) => Number(p.value) === a.index).reduce((sum, p) => sum + p.stake, 0n))) : [];
@@ -405,7 +406,7 @@ export default async function MarketPage({
       ? { kind: "picks", bars: pickBars, entries: positions.length, caption: pickOneCaption({ entries: positions.map((p) => ({ id: pidOf(p), stake: p.stake, pick: Number(p.value) })), answers: pickAnswers.map((a) => a.text), viewerId: me.id, nameOf: (id) => firstName(person.get(id)?.displayName ?? "Someone"), stakeWords }) }
     : show && numberUnit
       ? axis
-        ? { kind: "numbers", axis: serialiseAxis(axis), caption: positions.length <= 1 ? "You’re first in. Height is how much is riding on each number, not how many people picked it." : axis.offHigh || axis.offLow ? "Height is how much is riding on each number, not how many people picked it. One number sits past the end so the rest can be read." : "Height is how much is riding on each number, not how many people picked it." }
+        ? { kind: "numbers", axis: serialiseAxis(axis), caption: [numberCaption({ entries: positions.map((p) => ({ id: pidOf(p), stake: p.stake, value: p.value })), viewerId: me.id, nameOf: (id) => firstName(person.get(id)?.displayName ?? "Someone"), stakeWords, valueWords: (v) => unitPhrase(v, numberUnit) }), axis.offHigh || axis.offLow ? "One number sits past the end so the rest can be read." : null].filter(Boolean).join(" ") || null }
         : null
       : show
       ? {
@@ -743,8 +744,8 @@ export default async function MarketPage({
     ((state === "open" && !mine) || (state === "locked" && myVote === null));
   // This person's last tap here is sent and still going through (5.2): the lock while open, the resolution the vote decided while locked.
   const onWayHere = state === "open" || state === "locked" ? await onWayFor(me.id, now).then((w) => w.locks.has(d.id) || w.resolves.has(d.id)) : false;
-  // A draft's set, named by its people when it has no name (4.7): the seats beside the asker.
-  const seatNames = state === "draft" && seats.some((x) => x.userId !== me.id) ? (await db.select({ displayName: schema.users.displayName }).from(schema.users).where(inArray(schema.users.id, seats.map((x) => x.userId).filter((x): x is string => x !== null)))).map((u) => u.displayName) : [];
+  // A set with no name is named by its people (4.7, 3.38): the seats beside the asker, on a draft and a live market alike.
+  const seatNames = !group?.name && seats.some((x) => x.userId !== me.id) ? (await db.select({ displayName: schema.users.displayName }).from(schema.users).where(inArray(schema.users.id, seats.map((x) => x.userId).filter((x): x is string => x !== null)))).map((u) => u.displayName) : [];
   const setName = group?.name ?? (seatNames.length > 1 ? setLabel({ name: null, isDyad: group?.isDyad ?? false, memberNames: seatNames, viewerName: me.displayName }) : null);
   // A draft (3.25): the band's edge is dashed, the clock reads "Not sent yet" after the dotted ring, and the asker line is the people glyph and who it is for.
   const band = (
@@ -781,7 +782,7 @@ export default async function MarketPage({
               size={22}
             />
             <span>
-              {first(d.creatorId)} asked{setName ? ` ${setName}` : ""}
+              {askerLine(first(d.creatorId), setName, group?.isDyad ?? false)}
             </span>
           </>
         )}
@@ -846,11 +847,8 @@ export default async function MarketPage({
     claimant && claimWord ? (
       <section className="flex items-start gap-3 rounded-card border border-line bg-surface p-3">
         {clip ? (
-          <a href={`/api/media/${clip.id}`} target="_blank" rel="noreferrer" className="relative shrink-0" aria-label={`What ${first(claimant.userId)} attached, full size`}>
-            {/* eslint-disable-next-line @next/next/no-img-element -- behind the door, a signed URL that expires */}
-            <img src={`/api/media/${clip.id}?size=thumb`} alt="" width={72} height={72} data-evidence={clip.id} className="h-[72px] w-[72px] rounded-button bg-surface-2 object-cover" />
-            {claimClips.length > 1 ? <span className="absolute right-1 bottom-1 rounded-pill bg-scrim px-1.5 text-caption text-ink">+{claimClips.length - 1}</span> : null}
-          </a>
+          // Opens full screen in the viewer (3.37, 3.38), never a new tab; the claimant's other attachments follow it.
+          <ClipView items={claimClips.map((c, i) => ({ id: c.id, alt: `What ${first(claimant.userId)} attached, ${i + 1} of ${claimClips.length}`, removable: false }))} thumb={`/api/media/${clip.id}?size=thumb`} label={`What ${first(claimant.userId)} attached, full size`} more={claimClips.length - 1} stickers={storageConfigured()} />
         ) : null}
         <div className="flex min-w-0 flex-col gap-1">
           <p className="flex items-center gap-2 text-body-strong text-ink">
@@ -1213,50 +1211,22 @@ export default async function MarketPage({
           {state === "locked" ? (
             <>
               {claim ?? sourceCard}
-              {mine ? stage : null}
+              {/* Where everyone landed (3.38, Voting): the picture, for someone in it through the stage and for anyone else in the group as the line, ruler or rows. No sentence names the state (3.23), and no list repeats each person's number: the picture is where they landed. */}
+              {mine ? (
+                stage
+              ) : (
+                <section className="flex flex-col gap-3" data-everyone-landed="">
+                  <SectionLabel>Where everyone landed</SectionLabel>
+                  {pickAnswers ? (
+                    <PickOneRows answers={pickAnswers} pickers={pickers} shares={pickShares} outcome={null} />
+                  ) : numberUnit ? (
+                    rulerData ? <Ruler ruler={rulerData} size="screen" surface="var(--ground)" /> : null
+                  ) : (
+                    <CallLine pins={pins} state="in" size="screen" surface="var(--ground)" ends={teams} />
+                  )}
+                </section>
+              )}
               {sparkline}
-              <section className="flex flex-col gap-3">
-                <SectionLabel>
-                  {d.pace === "argument"
-                    ? "Where each of you stands"
-                    : "Everyone’s in, and numbers are locked"}
-                </SectionLabel>
-                {mine ? null : pickAnswers ? (
-                  <PickOneRows answers={pickAnswers} pickers={pickers} shares={pickShares} outcome={null} />
-                ) : numberUnit ? (
-                  rulerData ? <Ruler ruler={rulerData} size="screen" surface="var(--ground)" /> : null
-                ) : (
-                  <CallLine
-                    pins={pins}
-                    state="in"
-                    size="screen"
-                    surface="var(--ground)"
-                    ends={teams}
-                  />
-                )}
-                <ul className="flex flex-col">
-                  {positions.map((p) => (
-                    <li
-                      key={p.userId}
-                      className="flex items-center justify-between gap-3 border-b border-line py-2 last:border-b-0"
-                    >
-                      <span className="flex items-center gap-2 text-body-sm text-ink">
-                        <Avatar
-                          name={
-                            person.get(pidOf(p))?.displayName ?? "?"
-                          }
-                          hue={hueFor(pidOf(p))}
-                          size={24}
-                        />
-                        {nameOf(pidOf(p))}
-                      </span>
-                      <span className="text-body-sm text-ink-2">
-                        {numberWords(p.value)} · {stakeWords(p.stake)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </section>
               {mine ? whosIn : null}
               {/* Once locked, the same nudge reaches whoever in the quorum has not called it (restored in Round B). */}
               {mine ? <Nudge dareId={d.id} names={waitingNames} url={`${appUrl}/m/${d.id}`} relay={relayWords} /> : null}
@@ -1268,15 +1238,12 @@ export default async function MarketPage({
           {mine || state !== "open" ? more : null}
           {openPhotos}
 
-          {d.rulingText && (state === "resolved" || state === "voided") ? (
+          {/* The tiebreaker's ruling, word for word (3.38); a final score's ending is the one caption line under the outcome (3.35), never a card. */}
+          {d.rulingText && d.resolvedBy !== "feed" && (state === "resolved" || state === "voided") ? (
             <section className="flex flex-col gap-2 rounded-card border border-line bg-surface px-4 py-[14px]" data-ruling={d.resolvedBy ?? ""}>
-              <h2 className="text-body-strong text-ink">
-                {d.resolvedBy === "feed" ? (firstDrive ? "Decided by the play-by-play, as the terms said" : "Decided by the final score, as the terms said") : "Settled by the tiebreaker everyone agreed to"}
-              </h2>
+              <h2 className="text-body-strong text-ink">Settled by the tiebreaker everyone agreed to</h2>
               <p className="text-body-sm text-ink-2">{d.rulingText}</p>
-              <p className="text-caption text-ink-3">
-                {d.resolvedBy === "feed" ? `Nobody called it in time, so the ${firstDrive ? "play-by-play" : "final score"} did, the way everyone agreed at entry. On the permanent record, word for word.` : "On the permanent record, word for word."}
-              </p>
+              <p className="text-caption text-ink-3">On the permanent record, word for word.</p>
             </section>
           ) : null}
 

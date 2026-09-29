@@ -2,7 +2,6 @@
 
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { Avatar } from "@/components/ledger/avatar";
 import { Button } from "@/components/ui/button";
 import { enterFromHostAction } from "@/lib/actions/hand-over";
 import type { MarkRef } from "@/lib/ui/mark";

@@ -27,15 +27,16 @@ const Body = z.object({
  */
 export async function POST(req: Request): Promise<Response> {
   const parsed = Body.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ error: "bad request" }, { status: 400 });
+  // What a person could see is a sentence (5.4); the reason a token was refused goes to the log.
+  if (!parsed.success) return NextResponse.json({ error: "Your sign-in didn’t come through. Try again." }, { status: 400 });
   const { token, displayName } = parsed.data;
 
   let claims;
   try {
     claims = await verifyDynamicToken(token);
   } catch (err) {
-    const reason = err instanceof InvalidLoginToken ? err.message : "invalid login token";
-    return NextResponse.json({ error: reason }, { status: 401 });
+    console.error("login token refused", { reason: err instanceof InvalidLoginToken ? err.message : err instanceof Error ? err.message : err });
+    return NextResponse.json({ error: "Your sign-in didn’t come through. Try again." }, { status: 401 });
   }
 
   const phone = phoneOf(claims);
@@ -44,7 +45,10 @@ export async function POST(req: Request): Promise<Response> {
 
   const [existing] = await db.select().from(schema.users).where(eq(schema.users.dynamicUserId, claims.sub)).limit(1);
   const decision = decideLogin({ existing: existing ?? null, vouched, displayName });
-  if (decision.kind === "refuse") return NextResponse.json({ error: decision.reason }, { status: 409 });
+  if (decision.kind === "refuse") {
+    console.error("login refused", { sub: claims.sub, reason: decision.reason });
+    return NextResponse.json({ error: "This sign-in doesn’t match the account it was made with. Sign in the way you did the first time." }, { status: 409 });
+  }
   if (decision.kind === "need-wallets") return NextResponse.json({ need: "wallets", have: decision.have });
   if (decision.kind === "need-name") return NextResponse.json({ need: "name", suggested: suggestedNameOf(claims) ?? "" });
 
@@ -73,7 +77,7 @@ export async function POST(req: Request): Promise<Response> {
       }
     }
   }
-  if (!user) return NextResponse.json({ error: "could not create user" }, { status: 500 });
+  if (!user) return NextResponse.json({ error: "Setting up your account didn’t finish. Try signing in again." }, { status: 500 });
 
   // Binding, in order of authority (PLANNING.md section 4). Phone: every ghost carrying this login's hash,
   // across every creator who picked them. Token: the ghosts someone said "that's me" to in this browser.

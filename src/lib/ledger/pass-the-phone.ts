@@ -183,7 +183,7 @@ export async function typedDataFor(userId: string, via: Via) {
     }
     case "close": {
       const [o] = await db.select({ toUser: schema.obligations.toUser }).from(schema.obligations).where(eq(schema.obligations.id, via.obligationId));
-      if (!o || o.toUser !== userId) throw new PassThePhoneError("Only the person who is owed this can close it.", "not_yours");
+      if (!o || o.toUser !== userId) throw new PassThePhoneError("Only the person who’s got this one can close it.", "not_yours");
       const state = await closeState(via.obligationId);
       if (state.remaining === 0n) throw new PassThePhoneError("Nothing is open on this one any more.", "wrong_state");
       return { typedData: closeTypedData({ obligationId: via.obligationId, tokenId: state.tokenId, qty: state.remaining, reason: via.reason, nonce: state.nonce }), subject: via.obligationId, address: ledger };

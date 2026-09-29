@@ -308,7 +308,7 @@ export function feedRulingText(final: FinalScore | null, home: string, away: str
  * play-by-play could not say voids the same way, with the ruling saying which, and the ending kept on the row.
  */
 export async function settleByFeed(d: DareRow, template: TemplateRow, game: GameRow, decision: { outcome: bigint | null; ending: FeedEnding }, now: Date): Promise<{ txHash: Hex; voided: boolean }> {
-  if (stateOf(d) !== "locked") throw new MarketError("It isn't waiting on the feed.", "wrong_state");
+  if (stateOf(d) !== "locked") throw new MarketError("There’s nothing here for the feed to settle.", "wrong_state");
   if (d.stalemate !== "arbitrate") throw new MarketError("The feed can only settle a question whose tiebreaker it is.", "wrong_state");
   const final = finalOfRow(game);
   const voided = decision.outcome === null || decision.outcome === VOID_OUTCOME;
@@ -323,7 +323,7 @@ export async function settleByFeed(d: DareRow, template: TemplateRow, game: Game
     await db.update(schema.dares).set({ feedEnding: decision.ending }).where(eq(schema.dares.id, d.id));
     return { txHash: "0x" as Hex, voided };
   }
-  if (!d.onchainId) throw new MarketError("It isn't waiting on the feed.", "wrong_state");
+  if (!d.onchainId) throw new MarketError("There’s nothing here for the feed to settle.", "wrong_state");
   const { dares } = contracts();
   let result;
   try {
@@ -339,7 +339,8 @@ export async function settleByFeed(d: DareRow, template: TemplateRow, game: Game
   } catch (err) {
     if (err instanceof SendPending) throw err;
     if (await reconcileFromIndexer(d.id)) throw new MarketError("It was decided meanwhile.", "wrong_state");
-    throw new MarketError(`The feed's answer is in, but recording it didn't go through. Nothing changed. (${err instanceof Error ? (err.message.split("\n")[0] ?? "") : "unknown"})`, "chain");
+    console.error("feed settlement failed", { dareId: d.id, err: err instanceof Error ? err.message : err });
+    throw new MarketError("The feed’s answer is in, but recording it didn’t go through. Nothing changed.", "chain");
   }
   await mirrorSettlement(d, settlementFromReceipt(result, outcome), { by: "feed", rulingText: text, rulingHash: hash });
   await db.update(schema.dares).set({ feedEnding: decision.ending }).where(eq(schema.dares.id, d.id));

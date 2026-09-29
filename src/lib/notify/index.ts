@@ -213,11 +213,10 @@ export async function notifyRuling(dareId: string, askedBy: string | null): Prom
     if (!d || !d.resolvedAt || d.resolvedBy !== "arbitration") return;
     const positions = await positionsOf(dareId);
     const outcome = d.resolvedOutcome === VOID_OUTCOME ? "void" : d.kind === "numeric" ? "number" : d.kind === "categorical" ? "answer" : d.resolvedOutcome === 1n ? "yes" : "no";
-    const askerName = askedBy ? await nameOf(askedBy) : null;
     await Promise.all(
       positions.map((p) => p.userId).filter((x): x is string => x !== null && x !== askedBy).map(async (userId) => {
         const id = await claimNotice(userId, dareId, "ruling", 0, askedBy ?? d.creatorId);
-        if (id) await deliver(userId, id, rulingNotice({ askerName, title: d.title, outcome, marketId: d.id, appUrl: APP_URL() }));
+        if (id) await deliver(userId, id, rulingNotice({ title: d.title, outcome, marketId: d.id, appUrl: APP_URL() }));
       }),
     );
   } catch (err) {

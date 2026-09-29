@@ -369,7 +369,8 @@ export function closesAbsolute(at: Date, zone: string | null): string {
     month: "short",
     day: "numeric",
   });
-  return `Closes ${day}, ${clockOf(at, timeZone)}${zone ? "" : " UTC"}`;
+  // "Closes Fri Sep 25, 10:40pm" (3.27): the weekday's own comma goes, so the line has one.
+  return `Closes ${day.replace(",", "")}, ${clockOf(at, timeZone)}${zone ? "" : " UTC"}`;
 }
 
 /** What someone is told, before they are in, about how it gets decided. Pure, so the card's promise has a test. */
@@ -384,6 +385,6 @@ export function shareTermsLine(input: {
   const tiebreak =
     input.stalemate === "void"
       ? "If nobody can agree, it goes unsettled."
-      : "If nobody can agree, the app hears both sides and calls it.";
+      : "If nobody can agree, a tiebreaker hears both sides and calls it.";
   return `${decided}${input.argument ? "Take the other side. " : ""}${tiebreak}`;
 }

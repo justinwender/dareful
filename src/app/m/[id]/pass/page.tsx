@@ -44,7 +44,7 @@ export default async function HandOverPage({ params }: { params: Promise<{ id: s
   const clock = await viewerClock();
   const now = new Date(clock.now);
   const ink = inkOf(d);
-  const [positions, group, denomination, fromTemplate, candidates] = await Promise.all([positionsOf(d.id), db.select({ name: schema.groups.name }).from(schema.groups).where(eq(schema.groups.id, d.groupId)).limit(1).then((r) => r[0] ?? null), denominationById(d.denomId), templateOfMarket(d), handOverCandidates(d.id)]);
+  const [positions, group, denomination, fromTemplate, candidates] = await Promise.all([positionsOf(d.id), db.select({ name: schema.groups.name }).from(schema.groups).where(eq(schema.groups.id, d.groupId)).limit(1).then((r) => r[0] ?? null), denominationById(d.denomId), templateOfMarket(d), handOverCandidates(d.id, me.id)]);
   if (!denomination) notFound();
   const answers = answersOf(d);
   const person = await participantsOf([d.creatorId, ...(answers?.flatMap((a) => (a.userId ? [a.userId] : [])) ?? [])]);

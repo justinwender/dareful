@@ -136,7 +136,8 @@ test("the templates: who wins, the margin, the total, and the first drive by cov
   assert.equal(wins.kind, "binary");
   assert.ok(wins.terms.includes("Yes if the Giants win") && wins.terms.includes("If it ends in a tie, it's void"), "the home side is yes, and an NFL tie is void until the redeploy");
   assert.equal(wins.rows.tie, TIE_VOID);
-  assert.deepEqual(wins.outcomeWords, ["The Giants won", "The Titans won", "The Giants won.", "The Titans won."]);
+  // The wells keep "The" (the chalk reads "That's right, the Giants won", 3.35); the settled lines say the team alone ("Giants won.", 3.33, 3.40).
+  assert.deepEqual(wins.outcomeWords, ["The Giants won", "The Titans won", "Giants won.", "Titans won."]);
   assert.deepEqual([wins.name, margin.name, total.name, first.name], ["Who wins", "By how much", "Total points", "The first drive"]);
   assert.equal(margin.kind, "numeric");
   assert.deepEqual([margin.range, margin.shift, margin.outcomeLabels], [SCALES.nfl.margin, marginShift("nfl"), ["point", "points"]]);
@@ -339,8 +340,12 @@ test("the game page's cards say where each question stands, with no number until
   assert.equal(yourEntry({ key: "first_drive", mine: 1n, teams: null, unit: null, answers: [...DRIVE_ANSWERS] }), "You’re in: Field goal");
   assert.deepEqual(cardMeta({ ...base, state: "locked" }), { mark: "locked", text: "Waiting on the final score" });
   assert.deepEqual(cardMeta({ ...base, key: "first_drive", state: "locked" }), { mark: "locked", text: "Waiting on the play-by-play" });
-  assert.deepEqual(cardMeta({ ...base, state: "locked", votesCast: 2, votingEnds: "Mon 7:45pm" }), { mark: "voting", text: "2 of 6 have called it · voting ends Mon 7:45pm" });
-  assert.deepEqual(cardMeta({ ...base, state: "resolved", outcomeWords: "The Bills won", closest: { name: "You", off: null } }), { mark: "resolved", text: "The Bills won · you were closest" });
+  // In voting the meta line is the clock alone (3.33), never a count beside it; a void's reason is three words or fewer.
+  assert.deepEqual(cardMeta({ ...base, state: "locked", votesCast: 2, votingEnds: "Mon 7:45pm" }), { mark: "voting", text: "Voting ends Mon 7:45pm" });
+  assert.deepEqual(cardMeta({ ...base, state: "locked", votesCast: 0, proposed: true, votingEnds: null }), { mark: "voting", text: "The final score is in" });
+  assert.deepEqual(cardMeta({ ...base, state: "voided", resolvedBy: "arbitration" }), { mark: "voided", text: "Void · unclear terms" });
+  for (const s of [cardMeta({ ...base, state: "voided", feedEnding: "conflict" }).text, cardMeta({ ...base, state: "voided", feedEnding: "drive_unknown" }).text, cardMeta({ ...base, state: "voided", resolvedBy: "arbitration" }).text]) assert.ok(s.replace(/^Void · /, "").split(" ").length <= 3, s);
+  assert.deepEqual(cardMeta({ ...base, state: "resolved", outcomeWords: "Bills won", closest: { name: "You", off: null } }), { mark: "resolved", text: "Bills won · you were closest" });
   assert.deepEqual(cardMeta({ ...base, key: "margin", state: "resolved", outcomeWords: "Bills by 7", closest: { name: "Theo", off: "2" } }), { mark: "resolved", text: "Bills by 7 · Theo was off by 2" });
   assert.deepEqual(cardMeta({ ...base, key: "first_drive", state: "resolved", outcomeWords: "Field goal", closest: { name: "You", off: null } }), { mark: "resolved", text: "Field goal · you called it" });
   assert.deepEqual(cardMeta({ ...base, state: "voided", feedEnding: "conflict" }), { mark: "voided", text: "Void · results disagreed" });

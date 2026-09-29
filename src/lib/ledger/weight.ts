@@ -87,21 +87,29 @@ const COUNT_WORDS = ["none", "one", "two", "three", "four", "five", "six", "seve
 export const countWord = (n: number) => COUNT_WORDS[n] ?? String(n);
 
 /**
- * The picture, said in words, for whoever never saw it move and for anyone who cannot see it at all. It stays
- * inside the vocabulary boundary (docs/design.md 4.6): the group's number, where the stake sits, what's riding.
- * Never odds, price, pot, or "the market says". It is six friends guessing.
+ * The caption under the picture, only when one stake is more than half of everything riding (docs/design.md
+ * 4.9, 3.22): the picture alone then reads as agreement, and the words say whose weight it is. Every other state
+ * has no caption (Round C: a caption that restates the picture above it is cut). It stays inside the vocabulary
+ * boundary (4.6): the group's number, where the stake sits, what's riding. Never odds, price, pot, or "the
+ * market says". It is six friends guessing.
  */
-export function weightCaption(input: { entries: Entry[]; viewerId: string; nameOf: (id: string) => string; stakeWords: (stake: bigint) => string }): string {
+export function weightCaption(input: { entries: Entry[]; viewerId: string; nameOf: (id: string) => string; stakeWords: (stake: bigint) => string }): string | null {
   const { entries } = input;
-  const base = "Height is how much is riding on each number, not how many people picked it.";
-  if (entries.length <= 1) return `You’re first in. ${base}`;
-  if (entries.every((e) => e.stake <= 0n)) return "Nobody has anything riding on it, so every number counts the same. A dot is a person.";
   const heavy = overHalf(entries);
   const number = groupsNumberBps(entries);
   if (heavy && number !== null) {
     const who = heavy.id === input.viewerId ? "You have" : `${input.nameOf(heavy.id)} has`;
-    return `${base} ${who} ${input.stakeWords(heavy.stake)} on ${percentOf(heavy.valueBps)}%, more than half of what’s riding, which is why the group’s number sits at ${percentOf(number)}%.`;
+    return `${who} ${input.stakeWords(heavy.stake)} on ${percentOf(heavy.valueBps)}%, more than half of what’s riding, which is why the group’s number sits at ${percentOf(number)}%.`;
   }
-  if (new Set(entries.map((e) => bucketOf(e.valueBps))).size === 1) return `Everyone on one number. ${base}`;
-  return base;
+  return null;
+}
+
+/** The same rule on a number question: whose stake is more than half, and on what number; nothing otherwise. */
+export function numberCaption(input: { entries: Array<{ id: string; stake: bigint; value: bigint }>; viewerId: string; nameOf: (id: string) => string; stakeWords: (stake: bigint) => string; valueWords: (value: bigint) => string }): string | null {
+  const heavy = overHalf(input.entries.map((e) => ({ id: e.id, stake: e.stake, valueBps: 0n })));
+  if (!heavy) return null;
+  const mine = input.entries.find((e) => e.id === heavy.id);
+  if (!mine) return null;
+  const who = heavy.id === input.viewerId ? "You have" : `${input.nameOf(heavy.id)} has`;
+  return `${who} ${input.stakeWords(heavy.stake)} on ${input.valueWords(mine.value)}, more than half of what’s riding.`;
 }

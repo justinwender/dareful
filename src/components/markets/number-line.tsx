@@ -16,7 +16,7 @@ import { hueVar, type Hue } from "@/lib/ui/hue";
  * range everyone else picked. This component is not rendered for one; the stage shows the entry line, the lock
  * chip and the count instead.
  */
-export function NumberLine({ axis, me, heading, caption, rise = false }: { axis: NumberLineAxis; me: { name: string; hue: Hue; value: string; stake: string } | null; heading: string; caption: string; rise?: boolean }) {
+export function NumberLine({ axis, me, heading, caption, rise = false }: { axis: NumberLineAxis; me: { name: string; hue: Hue; value: string; stake: string } | null; heading: string; /** Only when one stake is more than half of everything riding, or a number sits past the end (4.9). */ caption: string | null; rise?: boolean }) {
   const [risen, setRisen] = useState(!rise);
   useEffect(() => {
     if (!rise) return;
@@ -62,7 +62,7 @@ export function NumberLine({ axis, me, heading, caption, rise = false }: { axis:
   return (
     <figure className="flex flex-col gap-3" aria-label={heading}>
       <figcaption className="text-label text-ink-2">{heading}</figcaption>
-      <div role="img" aria-label={caption} className="flex items-end gap-[3px] pt-[50px]">
+      <div role="img" aria-label={caption ?? heading} className="flex items-end gap-[3px] pt-[50px]">
         {axis.offLow ? <div className="mr-[3px] flex min-w-0 flex-1">{column(axis.offLow, -1, mineOff === "low", "off-low", axis.marker?.at === "offLow")}</div> : null}
         {/* The marker is the median, one of the entries: it stands in the row of on-axis columns, or over the off-axis column whose entry it is. */}
         <div className="relative grid min-w-0 gap-[3px]" style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))`, flex: n }}>
@@ -71,7 +71,7 @@ export function NumberLine({ axis, me, heading, caption, rise = false }: { axis:
         </div>
         {axis.offHigh ? <div className="ml-[3px] flex min-w-0 flex-1">{column(axis.offHigh, n, mineOff === "high", "off-high", axis.marker?.at === "offHigh")}</div> : null}
       </div>
-      <p className="text-caption text-ink-3">{caption}</p>
+      {caption ? <p className="text-caption text-ink-3">{caption}</p> : null}
     </figure>
   );
 }

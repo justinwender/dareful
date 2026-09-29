@@ -8,7 +8,6 @@ import { AskedSection } from "@/components/you/asked";
 import { CallsSection, NothingYet } from "@/components/you/calls";
 import { NumbersSection } from "@/components/you/numbers";
 import { currentUser } from "@/lib/auth/session";
-import { liveFor } from "@/lib/ledger/home";
 import { headerCaption, youFor } from "@/lib/ledger/you";
 import { passThePhoneStatus } from "@/lib/ledger/pass-the-phone";
 import { hueFor } from "@/lib/ui/hue";
@@ -28,7 +27,7 @@ export default async function YouPage() {
   if (!me) redirect("/");
   const clock = await viewerClock();
   const now = new Date(clock.now);
-  const [live, you, passThePhone] = await Promise.all([liveFor(me, now), youFor(me), passThePhoneStatus(me.id)]);
+  const [you, passThePhone] = await Promise.all([youFor(me), passThePhoneStatus(me.id)]);
   const hue = hueFor(me.id);
   const nothing = you.calibration.binary.resolved === 0 && you.calibration.numeric.resolved === 0 && you.calibration.pickOne.resolved === 0 && you.asked.counted.length === 0;
   const unitsCaption = you.units.length === 0 ? "Beers, coffees, a next time, dollars: whatever a cover or a question runs on" : you.units.map((u) => (u.monetary ? "dollars" : glyphKeyOf(u) ? u.pluralLabel : quotedUnit(u.label))).join(", ").replace(/^./, (c) => c.toUpperCase());
@@ -59,7 +58,7 @@ export default async function YouPage() {
         {/* An instrument for the installed app's tab bar (docs/testing.md item 61), to be removed with the cause. */}
         <ViewportProbe />
       </div>
-      <TabBar active="/you" live={live} start />
+      <TabBar active="/you" start />
     </Screen>
   );
 }

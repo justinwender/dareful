@@ -448,8 +448,8 @@ export async function enterMarket(input: { dareId: string; userId: string; stake
 export async function lockMarket(dareId: string, byUserId: string | null): Promise<{ txHash: Hex; threshold: number; quorum: Address[] }> {
   const d = await marketById(dareId);
   if (!d) throw new MarketError("That one doesn't exist.", "not_found");
-  if (byUserId !== null && d.creatorId !== byUserId) throw new MarketError("Only the person who asked it can lock it.", "not_yours");
-  if (stateOf(d) !== "open" || !d.creatorSignature) throw new MarketError("It can't be locked right now.", "wrong_state");
+  if (byUserId !== null && d.creatorId !== byUserId) throw new MarketError("Only the person who asked it can close it.", "not_yours");
+  if (stateOf(d) !== "open" || !d.creatorSignature) throw new MarketError("It can’t be closed right now.", "wrong_state");
   const positions = await positionsOf(d.id);
   if (positions.length < 2) throw new MarketError("It takes two to close it.", "wrong_state");
   // Nothing goes onchain for a position nobody signed (PLANNING.md section 4): a ghost's number, or one bound to
@@ -516,7 +516,11 @@ export async function lockMarket(dareId: string, byUserId: string | null): Promi
     if (err instanceof SendPending) throw err;
     // A retry after a lock whose mirror never got written finds the market already there. That is a lock.
     const already = /DareExists/.test(err instanceof Error ? err.message : "");
-    if (!already) throw new MarketError(`Locking it didn't go through. Nothing changed. (${err instanceof Error ? (err.message.split("\n")[0] ?? "") : "unknown"})`, "chain");
+    // The raw failure goes to the log, never to the person (5.4): what reaches the screen is what happened and what to do.
+    if (!already) {
+      console.error("lock failed", { dareId: d.id, err: err instanceof Error ? err.message : err });
+      throw new MarketError("Closing it didn’t go through. Nothing changed.", "chain");
+    }
     txHash = "0x" as Hex;
   }
   const onchain = await completeLock(d, minedIn);
@@ -561,7 +565,7 @@ export async function quorumOf(d: DareRow): Promise<Address[]> {
 export async function sayWhatHappened(dareId: string, userId: string, statement: string): Promise<void> {
   const d = await marketById(dareId);
   if (!d) throw new MarketError("That one doesn't exist.", "not_found");
-  if (stateOf(d) !== "locked") throw new MarketError("It isn't waiting on an answer.", "wrong_state");
+  if (stateOf(d) !== "locked") throw new MarketError("There’s nothing to call on this one right now.", "wrong_state");
   if (!(await isMember(d.groupId, userId))) throw new MarketError("This one is for the people in its group.", "not_member");
   const text = statement.trim().slice(0, 280);
   if (text.length < 2) throw new MarketError("Say what happened in a line.", "bad_input");
@@ -645,7 +649,8 @@ async function resolveMarket(d: DareRow, outcome: bigint, agreeing: VoteRow[], b
     if (err instanceof SendPending) throw err;
     // Two last votes can arrive together; the second finds the market already resolved. That is not a failure.
     if (await reconcileFromIndexer(d.id)) return "0x" as Hex;
-    throw new MarketError(`The votes are in, but recording it didn't go through. Tap again to retry. (${err instanceof Error ? (err.message.split("\n")[0] ?? "") : "unknown"})`, "chain");
+    console.error("resolve failed", { dareId: d.id, err: err instanceof Error ? err.message : err });
+    throw new MarketError("The votes are in, but recording it didn’t go through. Tap again to retry.", "chain");
   }
 
   await mirrorSettlement(d, settlementFromReceipt(result, outcome), { by: "quorum" });

@@ -13,8 +13,8 @@ import { stickerSrc } from "@/lib/ui/mark";
  * so the photo can still be held; two named steps say what to do; the chalk "Paste" runs the same paste path as
  * the picker; a paste anywhere while the sheet is up is the cutout arriving. The result stands where the photo
  * was: the sticker on the market's field, "In your stickers", the chalk to ask something with it (the question
- * step opens with it as the mark) and a tertiary "Done" back to the photo. Cutting inside the app (frame 5) is a
- * later round; this path stays as its fallback.
+ * step opens with it as the mark) and a tertiary "Done" back to the photo. Cutting inside the app (frame 5,
+ * `CutSheet`, Round C) comes first wherever the model loads; this path stands in wherever it cannot.
  */
 export function StickerSheet({ open, pasting, problem, onPaste, onClose }: { open: boolean; pasting: boolean; problem: string | null; onPaste: () => void; onClose: () => void }) {
   const titleId = useId();
@@ -42,6 +42,40 @@ export function StickerSheet({ open, pasting, problem, onPaste, onClose }: { ope
       <Button variant="primary" onClick={onPaste} loading={pasting} data-paste-cutout="">
         Paste
       </Button>
+    </Sheet>
+  );
+}
+
+/**
+ * Cutting inside the app (docs/design.md 3.28, frame 5; Round C, pre-approved): the see-through sheet reads "Tap
+ * what to keep"; a tap on the photo asks the model, the subject takes a dashed cream outline (drawn by the
+ * viewer), and the chalk "Keep it" sends the cutout down the same path a pasted one takes, with "Start over"
+ * clearing the tap. The chalk carries the wait (5.2) while the model loads or a cut runs; nothing else says so.
+ * One line reads the model's timings, an instrument for the phone check (docs/testing.md item 94), which leaves
+ * once the phone has answered.
+ */
+export function CutSheet({ open, busy, cut, problem, timing, onKeep, onStartOver, onClose }: { open: boolean; /** The model loading, or a cut or the upload running: the chalk wears the runner. */ busy: boolean; /** Whether a subject has been cut and outlined. */ cut: boolean; problem: string | null; timing: { loadMs: number | null; cutMs: number | null }; onKeep: () => void; onStartOver: () => void; onClose: () => void }) {
+  const titleId = useId();
+  const seconds = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
+  return (
+    <Sheet open={open} clear onClose={onClose} labelledBy={titleId}>
+      <h2 id={titleId} className="text-body-strong text-ink">
+        Tap what to keep
+      </h2>
+      {timing.loadMs !== null || timing.cutMs !== null ? (
+        <p className="text-caption text-ink-3" data-cut-timing={`${timing.loadMs ?? ""}/${timing.cutMs ?? ""}`}>
+          {[timing.loadMs !== null ? `Model loaded in ${seconds(timing.loadMs)}` : null, timing.cutMs !== null ? `cut in ${seconds(timing.cutMs)}` : null].filter(Boolean).join(" · ")}
+        </p>
+      ) : null}
+      <ProblemSummary messages={[problem]} />
+      <div className="flex flex-col gap-1">
+        <Button variant="primary" onClick={onKeep} loading={busy} disabled={!cut} data-keep-cut="">
+          Keep it
+        </Button>
+        <Button variant="tertiary" onClick={onStartOver} disabled={!cut || busy} data-start-over="">
+          Start over
+        </Button>
+      </div>
     </Sheet>
   );
 }

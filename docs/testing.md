@@ -861,6 +861,28 @@ Pass the phone on and off (87), a second device signing from the server (88), wr
 
 Handing over on two phones (90), the friend's own phone (91), wrong PINs (92), the link page's steps (93).
 
+## Session 26: Round C, in the real localhost session
+
+**When:** September 28, 2026, after Round B's part 3 was committed. **Who:** the localhost test account; nobody on a phone; the pane hidden, so taps were dispatched from the page's own script onto the real controls. **Checked first:** the fourth group of the audit, sorted by direction (docs/decisions.md 2026-09-28, "Round C").
+
+### Exercised
+
+- **Now:** the three sections and nothing above or between them; one citron dot on the page, on the soonest needs-you row (the asker's two time's-up rows, the first dotted), none on the tab bar; the asker's verb "Close" beside "Time's up on this one"; the Running row reading "You’re in at 60% · just you so far" with no clock.
+- **The ask flow:** the kind chips as a `radiogroup` with no caption under them; no example inside any field; "Optional" once; the picker opening on Food with its first cell reading "None" and no sticker caption.
+- **Nothing to see:** an address the app has no screen for, and the old cover form's address, both answered the code screen with "That link doesn’t open anything. Ask for it again, or type the code they read you." and the boxes.
+- **Cutting a sticker inside the app:** on a finished question's photo, "Make a sticker" opened the see-through sheet reading "Tap what to keep"; a tap at the photo's middle drew the dashed cream outline around the subject and armed "Keep it", with the instrument line reading "Model loaded in 0.1s · cut in 0.2s" (the runtime and the model were already in this browser's cache; the cut is on a 1080 by 810 photo, on the development machine); "Keep it" sent the cutout through the real sticker action, and the viewer became "In your stickers" with "Ask something with it" and "Done". The cold load, on a phone over its own network, is item 94's number to report.
+- **Held by the suites, not the eyes:** the voting screen with the claim card under the band and no entry line, the asker line's words, the feed's ending as one line, the tile's comma, the who's-joining fallback (the database suite), the not-found and error pages' shapes (the http suite), the focus outlines (the classes; a focused window is a phone's or a laptop's to see).
+
+### What broke
+
+- The legacy interactive segmenter in `@mediapipe/tasks-vision` 1.0.1 refused the model given as bytes ("ExternalFile must specify at least one of file_content…") and fell back to the lift at once; the cached bytes now go in as a blob URL, and the model loads.
+- The viewer reset the cut in an effect, which the hooks lint refuses; the cut is now read by the photo it belongs to and cleared in the handlers.
+- The first check of "no dot on the tab" matched the whole document after the nav; it reads the nav element alone now.
+
+### What needs a phone
+
+Cutting a sticker on the phone with its timings (94), the lift as the fallback (95), the one dot and the Running row's words (96), a claim to accept as a row (97), the code screen for a dead address in the installed app (98), the focus outlines on a keyboard (99), the who's-joining fallback (100), the voting screen without the entry line (101).
+
 ## The final test: one checklist
 
 Everything from sessions 11 through 15 that needs a phone, a second person or a real game, in one place, grouped by what it needs, so the final pass on real phones is one document to walk through. Each item says exactly what to check; the session it came from has the detail. Tick them in order within a group; the two-phone items want both phones signed in to two accounts that share a set.
@@ -971,3 +993,14 @@ Everything from sessions 11 through 15 that needs a phone, a second person or a 
 91. **On the friend's phone** (25): expect the notice with the question as its title and "You entered this from Sam's phone." (push, or email with push off); the entry line "$10 · from Sam's phone · yours to change until 10:40pm"; change it and expect the change; on a blind question expect "· final" with "Withdraw it", the ask, the entry gone, and no way back in from either phone.
 92. **Wrong PINs on the friend's phone** (25): type a wrong PIN; expect the dots to clear and "That's not it."; three wrong and expect the host's own screen back with nothing said; five wrong in an hour across handoffs and expect the owner's "Your PIN is locked for an hour".
 93. **The link page's steps on a phone** (25): open a question's link with no session; slide, "I'm in at 70%, $10" raises "Who's joining?" with the summary on the right, the two fields, "Join" disabled until a name is typed, and "Have an account? Sign in" under it; two facts only; signed in on the same link expect "Joining as Sam · Not you?" under the primary and "Not you?" asking before it signs out; open a dead link and expect the code boxes with "That link doesn't open anything. Ask for it again, or type the code they read you."
+
+### Round C
+
+94. **Cutting a sticker on the phone** (26): open a question's photo full screen and tap "Make a sticker"; expect "Tap what to keep" over the photo, still holdable; wait, and report how long the line "Model loaded in …" says the first time (the runtime is 11MB and the model 6MB, on your own network) and the second time on the same phone; tap the subject and expect the dashed cream outline around it within a second or two, and the line's "cut in …" number; tap "Keep it" and expect "In your stickers" with the cutout on the field; "Start over" clears the outline; a tap on the background expects "Nothing there to keep. Tap the thing itself." Then the same on an Android phone or a laptop, where there is no lift. The instrument line leaves once these numbers are in.
+95. **The lift as the fallback** (26): with the phone offline after the app has opened (airplane mode), open a photo and tap "Make a sticker"; expect the sheet to become "Hold what you want, then tap Copy" and "Then paste it here" with "Paste", and the lift to work as before.
+96. **The one dot, and the Running row's words** (26): with two questions needing you that both have a clock, expect the citron dot on the sooner one alone, none on the other, none on the tab bar on any root; under Running expect "You’re in at 70% · three of you", "just you so far" on one nobody else is in, and once locked "Resolving tonight" or "Voting ends tonight" and nothing else.
+97. **A claim to accept as a row** (26): on an account whose first name matches a ghost a friend added in a set you share, expect under Needs you "Is that you?" over "Gabe has things with a Sam" with "That’s me" as the verb, and no section of its own; tap it and expect the claimant screen.
+98. **A dead address in the installed app** (26): open a mistyped address; expect the code boxes with "That link doesn’t open anything…" and the back control, never a framework page.
+99. **Focus outlines on a keyboard** (26): on a laptop, tab through the question step; expect the 2px cream outline 2px outside the question, each answer field, the number entry and the margin's field, and around Start on a root, never flush with the edge and never a colour change of the border.
+100. **Who's joining, when nobody was named** (26): ask a question of nobody (a set of one) and get in; hand the phone over to a friend who has pass the phone on and shares any set with you; expect them listed under "Pick yourself" and their PIN to get them in.
+101. **The voting screen** (26): once a question you are in closes, expect the claim card (or the source card) directly under the band, no entry line, "Where everyone landed" over the picture, and no list of each person's number.

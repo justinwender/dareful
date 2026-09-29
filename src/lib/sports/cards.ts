@@ -53,11 +53,11 @@ export function cardMeta(input: CardInput): CardMeta {
   if (input.state === "open") return input.viewerIn ? { mark: "in", text: `${yourEntry(input)} · ${count}` } : { mark: "open", text: `Closes at kickoff · ${count}` };
   if (input.state === "locked") {
     if (input.votesCast === 0 && !input.proposed) return { mark: "locked", text: input.key === "first_drive" ? "Waiting on the play-by-play" : "Waiting on the final score" };
-    const called = input.votesCast === 0 ? (input.key === "first_drive" ? "The play-by-play is in" : "The final score is in") : `${input.votesCast} of ${input.groupSize} have called it`;
-    return { mark: "voting", text: input.votingEnds ? `${called} · voting ends ${input.votingEnds}` : called };
+    // In voting: the mark and the clock (3.33), never a count beside it.
+    return { mark: "voting", text: input.votingEnds ? `Voting ends ${input.votingEnds}` : input.key === "first_drive" ? "The play-by-play is in" : "The final score is in" };
   }
   if (input.state === "voided") {
-    const why = input.feedEnding === "conflict" ? "results disagreed" : input.feedEnding === "tie" ? "a tie" : input.feedEnding === "drive_unknown" ? "no play-by-play" : input.resolvedBy === "arbitration" ? "the terms didn’t decide it" : "nobody could tell";
+    const why = input.feedEnding === "conflict" ? "results disagreed" : input.feedEnding === "tie" ? "a tie" : input.feedEnding === "drive_unknown" ? "no play-by-play" : input.resolvedBy === "arbitration" ? "unclear terms" : "nobody could tell";
     return { mark: "voided", text: `Void · ${why}` };
   }
   if (input.state === "expired") return { mark: "expired", text: "Never settled" };

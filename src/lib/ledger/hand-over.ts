@@ -14,6 +14,7 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 import type { Hex } from "viem";
 import { db, schema } from "@/db";
 import type { SignerLoad } from "@/lib/chain/delegated-signer";
+import { peopleForUser } from "./groups";
 import { enterMarket, marketById, MarketError, positionsOf, stateOf, type PositionRow } from "./markets";
 import { checkPin, delegatedSignatureFor, whoHasPassThePhone, type PinCheck } from "./pass-the-phone";
 
@@ -28,9 +29,12 @@ export async function canHandOver(dareId: string, hostId: string): Promise<boole
 
 /**
  * "Who's joining?" (3.45, frame 4): the people the market was sent to who aren't in yet, with whether each can be
- * picked. Names only; nothing of anyone's answer.
+ * picked. When nobody was named, or everyone named is already in, the list falls back to the host's own people who
+ * have pass the phone on (Round C, pre-approved): the PIN is the proof of identity either way, so limiting it to
+ * the named people added no protection, and a question asked of "whoever I send it to" still has friends at the
+ * table. Names only; nothing of anyone's answer.
  */
-export async function handOverCandidates(dareId: string): Promise<Candidate[]> {
+export async function handOverCandidates(dareId: string, hostId: string): Promise<Candidate[]> {
   const d = await marketById(dareId);
   if (!d) return [];
   const [seats, positions] = await Promise.all([
@@ -38,10 +42,16 @@ export async function handOverCandidates(dareId: string): Promise<Candidate[]> {
     positionsOf(d.id),
   ]);
   const inIds = new Set(positions.map((p) => p.userId).filter((x): x is string => x !== null));
-  const outIds = seats.map((s) => s.userId).filter((x): x is string => x !== null && !inIds.has(x));
-  if (outIds.length === 0) return [];
-  const [users, ready] = await Promise.all([db.select({ id: schema.users.id, displayName: schema.users.displayName }).from(schema.users).where(inArray(schema.users.id, outIds)), whoHasPassThePhone(outIds)]);
-  return users.map((u) => ({ id: u.id, name: u.displayName, ready: ready.has(u.id) })).sort((a, b) => Number(b.ready) - Number(a.ready) || a.name.localeCompare(b.name));
+  const named = seats.map((s) => s.userId).filter((x): x is string => x !== null && !inIds.has(x) && x !== hostId);
+  if (named.length > 0) {
+    const [users, ready] = await Promise.all([db.select({ id: schema.users.id, displayName: schema.users.displayName }).from(schema.users).where(inArray(schema.users.id, named)), whoHasPassThePhone(named)]);
+    return users.map((u) => ({ id: u.id, name: u.displayName, ready: ready.has(u.id) })).sort((a, b) => Number(b.ready) - Number(a.ready) || a.name.localeCompare(b.name));
+  }
+  // The fallback: the host's own people, ready only, since nobody here was named and a dimmed row would name nobody's absence.
+  const mine = (await peopleForUser(hostId)).map((p) => p.user).filter((u) => !inIds.has(u.id));
+  if (mine.length === 0) return [];
+  const ready = await whoHasPassThePhone(mine.map((u) => u.id));
+  return mine.filter((u) => ready.has(u.id)).map((u) => ({ id: u.id, name: u.displayName, ready: true })).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export type HostedEntry = { ok: true; position: PositionRow } | { ok: false; pin: PinCheck & { ok: false } } | { ok: false; refused: string };
@@ -55,7 +65,7 @@ export type HostedEntry = { ok: true; position: PositionRow } | { ok: false; pin
 export async function enterFromHost(input: { dareId: string; hostId: string; friendId: string; stake: bigint; value: bigint; pin: string; request: string; deps?: { load?: SignerLoad } }): Promise<HostedEntry> {
   if (input.hostId === input.friendId) return { ok: false, refused: "That's you. Use your own entry." };
   if (!(await canHandOver(input.dareId, input.hostId))) return { ok: false, refused: "The phone can be handed over on a question you're in, while it's open." };
-  const candidate = (await handOverCandidates(input.dareId)).find((c) => c.id === input.friendId);
+  const candidate = (await handOverCandidates(input.dareId, input.hostId)).find((c) => c.id === input.friendId);
   if (!candidate) return { ok: false, refused: "They're in already, or this wasn't sent to them." };
   if (!candidate.ready) return { ok: false, refused: "They haven't set up pass the phone on their own phone yet." };
   const pin = await checkPin(input.friendId, input.pin, { hostUserId: input.hostId });

@@ -11,6 +11,15 @@ import { useDenyGovernanceDelegation } from "@/components/auth/governance-denied
 type Answer = { user: { id: string; governanceWallet: string }; bound: number; created?: boolean } | { need: "wallets"; have: number } | { need: "name"; suggested: string } | { error: string };
 type Phase = { at: "idle" } | { at: "working"; line: string } | { at: "name"; suggested: string; ready: boolean } | { at: "done" } | { at: "error"; message: string };
 
+/** A sentence written for the person. Anything else that fails here (the SDK, the network) is logged and said in one plain line, never quoted (5.4). */
+class Said extends Error {}
+const GENERIC = "Could not finish setting up your account. Try again.";
+const sayOf = (err: unknown): string => {
+  if (err instanceof Said) return err.message;
+  console.error("sign-in failed", err instanceof Error ? err.message : err);
+  return GENERIC;
+};
+
 /**
  * After a Dynamic login: get a session, and for a new person, make their two embedded wallets and ask what
  * their friends call them. The user sees an email or phone step, then one question, and nothing else.
@@ -71,7 +80,7 @@ export function WalletBootstrap({ settled, sessionDynamicUserId }: { settled: bo
   /** Makes however many wallets the server said were missing, one at a time, then refreshes the token. */
   const makeWallets = useCallback(
     async (have: number) => {
-      if (!dynamicWaasIsEnabled) throw new Error("Sign-in isn't fully set up here yet. Try again in a minute.");
+      if (!dynamicWaasIsEnabled) throw new Said("Sign-in isn’t fully set up here yet. Try again in a minute.");
       for (let i = have; i < 2; i += 1) {
         const done = mark(`session: create wallet ${i + 1} of 2`);
         await createWalletAccount([ChainEnum.Evm], undefined, undefined, { skipCloseAuthFlow: true });
@@ -104,11 +113,11 @@ export function WalletBootstrap({ settled, sessionDynamicUserId }: { settled: bo
         setPhase({ at: "name", suggested: a.suggested, ready: true });
         return;
       }
-      if ("need" in a) throw new Error("Setting up your account didn't finish. Try signing in again.");
-      if ("error" in a) throw new Error(a.error);
+      if ("need" in a) throw new Said("Setting up your account didn’t finish. Try signing in again.");
+      if ("error" in a) throw new Said(a.error);
       await finish(a);
     };
-    run().catch((err: unknown) => setPhase({ at: "error", message: err instanceof Error ? err.message : "Could not finish setting up your account." }));
+    run().catch((err: unknown) => setPhase({ at: "error", message: sayOf(err) }));
   }, [skip, sdkHasLoaded, isLoggedIn, ask, makeWallets, finish]);
 
   async function submitName() {
@@ -120,9 +129,9 @@ export function WalletBootstrap({ settled, sessionDynamicUserId }: { settled: bo
       await walletsReady.current;
       const a = await ask(displayName);
       if ("user" in a) return finish(a);
-      throw new Error("error" in a ? a.error : "Setting up your account didn't finish. Try signing in again.");
+      throw new Said("error" in a ? a.error : "Setting up your account didn’t finish. Try signing in again.");
     } catch (err) {
-      setPhase({ at: "error", message: err instanceof Error ? err.message : "Could not finish setting up your account." });
+      setPhase({ at: "error", message: sayOf(err) });
     }
   }
 
@@ -165,8 +174,7 @@ export function WalletBootstrap({ settled, sessionDynamicUserId }: { settled: bo
               maxLength={40}
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="First name"
-              className="h-14 rounded-button border border-line bg-surface px-4 text-body text-ink placeholder:text-ink-3 focus:border-line-strong"
+              className="h-14 rounded-button border border-line bg-surface px-4 text-body text-ink"
             />
             <p className="text-body-sm text-ink-2">It goes on anything you send a friend. A first name is plenty.</p>
             <Button type="submit" variant="primary" disabled={!name.trim()}>

@@ -31,10 +31,10 @@ export type StagePicture =
       kind: "weights";
       buckets: WeightBucket[];
       group: { percent: number } | null;
-      caption: string;
+      caption: string | null;
     }
   /** A number market's axis, from what people entered (3.22). */
-  | { kind: "numbers"; axis: NumberLineAxis; caption: string }
+  | { kind: "numbers"; axis: NumberLineAxis; caption: string | null }
   /** A pick-one market's bars (3.31): what is riding on each answer, and the caption only when one stake is more than half. */
   | { kind: "picks"; bars: PickOneBar[]; entries: number; caption: string | null };
 
@@ -427,7 +427,7 @@ export function MarketStage(props: {
               axis={numbers ? numbers.axis : serialiseAxis(ownAxis as NonNullable<typeof ownAxis>)}
               me={shown.number !== undefined ? { name: me.name, hue: me.hue, value: shown.number, stake: shown.stake } : null}
               heading={state === "locked" ? "Where everyone landed" : "Where the stake sits"}
-              caption={numbers ? numbers.caption : "You’re first in. Height is how much is riding on each number, not how many people picked it."}
+              caption={numbers ? numbers.caption : null}
               rise={justIn !== null && mine === null}
             />
           ) : null
@@ -447,11 +447,7 @@ export function MarketStage(props: {
               ? "Where everyone landed"
               : "Where the stake sits"
           }
-          caption={
-            weights
-              ? weights.caption
-              : "You’re first in. Height is how much is riding on each number, not how many people picked it."
-          }
+          caption={weights ? weights.caption : null}
           rise={justIn !== null && mine === null}
           ends={teams ? { away: teams.away.name, home: teams.home.name } : null}
         />
@@ -796,7 +792,6 @@ export function MarketStage(props: {
                   inputMode={unit.monetary ? "decimal" : "numeric"}
                   value={custom}
                   onChange={(e) => setCustom(e.target.value)}
-                  placeholder={unit.monetary ? "$" : "How many"}
                   aria-label="Another amount"
                   className="h-11 w-full rounded-button border border-line bg-ground px-4 text-body text-ink placeholder:text-ink-3"
                 />

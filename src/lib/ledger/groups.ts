@@ -315,6 +315,22 @@ export async function nameGroup(groupId: string, userId: string, rawName: string
  * anywhere says unnamed or untitled, because most sets will never be named. (This replaces the 2B rule that an
  * unnamed group was called by its latest question; docs/decisions.md 2026-09-20.)
  */
+/**
+ * The asker line on a market (docs/design.md 3.38): a named set as "Priya asked the Friday crew"; a name that can't
+ * take "the", such as a possessive or one that already starts with it, as "Theo asked · Papa's birthday"; an
+ * unnamed set by its people, as `setLabel` writes them ("Priya asked Gabe, John and you"), with "and 3 others"
+ * past three; two people as "Priya asked you"; and nothing after "asked" while nobody has been named.
+ */
+export function askerLine(first: string, setName: string | null, isDyad: boolean): string {
+  if (!setName) return `${first} asked`;
+  if (isDyad || setName === "Just you two") return `${first} asked you`;
+  if (setName === "Just you") return `${first} asked`;
+  const people = / and you$/.test(setName) || / and \d+ more$/.test(setName);
+  if (people) return `${first} asked ${setName.replace(/ and (\d+) more$/, " and $1 others")}`;
+  if (/[’']s\b/.test(setName) || /^the\b/i.test(setName)) return `${first} asked · ${setName}`;
+  return `${first} asked the ${setName}`;
+}
+
 export function setLabel(input: { name: string | null; isDyad: boolean; memberNames: string[]; viewerName: string }): string {
   if (input.name) return input.name;
   if (input.isDyad) return "Just you two";

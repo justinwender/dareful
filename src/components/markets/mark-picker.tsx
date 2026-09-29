@@ -42,7 +42,8 @@ export function MarkPicker({ open, onClose, value, onPick, hue, preview = true, 
   const titleId = useId();
   const [rows, setRows] = useState<Row[] | null>(null);
   const [query, setQuery] = useState("");
-  const [group, setGroup] = useState(0);
+  // Opens on Food (3.29): Smileys and People are hueless, and a first grid that never sets a colour teaches nothing.
+  const [group, setGroup] = useState(4);
   const [recent, setRecent] = useState<string[]>([]);
   const [tones, setTones] = useState<Record<string, number>>({});
   const [toneFor, setToneFor] = useState<Row | null>(null);
@@ -217,21 +218,15 @@ export function MarkPicker({ open, onClose, value, onPick, hue, preview = true, 
               );
             })}
           </div>
-          {pasteProblem ? (
-            <p className="text-caption text-ink-2">{pasteProblem}</p>
-          ) : canPaste && mine.length === 0 ? (
-            <p className="text-caption text-ink-3">Lift a subject out of a photo, copy it, and paste it here.</p>
-          ) : null}
+          {pasteProblem ? <p className="text-caption text-ink-2">{pasteProblem}</p> : null}
         </div>
       ) : null}
       {!query.trim() ? (
         <div className="flex flex-col gap-2">
           <p className="text-label text-ink-3">Recent</p>
           <div className="grid grid-cols-8 gap-[2px]">
-            <button type="button" aria-label="No mark" aria-pressed={value === null} onClick={() => pick(null)} className={cn("flex aspect-square h-11 w-full items-center justify-center rounded-stamp-28 border-[1.5px] border-dashed border-line-strong text-ink-3", value === null && "bg-field")} style={ring(value === null)}>
-              <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                <path d="M6 6l12 12M18 6L6 18" />
-              </svg>
+            <button type="button" aria-label="No mark" aria-pressed={value === null} onClick={() => pick(null)} className={cn("flex aspect-square h-11 w-full items-center justify-center rounded-stamp-28 border-[1.5px] border-dashed border-line-strong text-label text-ink-3", value === null && "bg-field")} style={ring(value === null)} data-no-mark="">
+              None
             </button>
             {recent.map((g) => {
               const row = byGlyph.get(normaliseMark(g)) ?? byGlyph.get(g);

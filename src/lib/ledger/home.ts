@@ -15,6 +15,8 @@ import { obligationsById, openTouching } from "./envio";
 import { membersOfGroups, peopleForUser, setLabel } from "./groups";
 import { marketCards, type MarketCardData } from "./market-view";
 import { pendingForDebtor, type ProposalRow } from "./proposals";
+import { suggestedGhostsFor } from "./claims";
+import { unitPhrase } from "./number-axis";
 import { againRowsFor, onWayFor } from "./again";
 import { archivedFor } from "./now-swipes";
 import { gamesOfMarkets } from "@/lib/sports";
@@ -34,6 +36,8 @@ export type NeedRow =
   | ({ kind: "finish"; key: string; href: string; verb: string; context: string; subject: string; question: true; deadline: null; since: Date; groupId: string; failed?: true } & QuestionLook)
   | { kind: "yep"; key: string; href: string; verb: string; context: string; subject: string; question: false; deadline: null; since: Date; groupId: string; proposal: ProposalRow; creditor: Person; denomination: DenominationRow; /** The last tap on it was told it was on its way and never landed (5.2): the didn't-go-through mark, and "Try again". */ failed?: true }
   | { kind: "game"; key: string; href: string; verb: string; context: string; subject: string; question: false; deadline: Date | null; since: Date; groupId: string; game: GameLook; /** The pressing question's kind, which decides where the row sorts. */ pressing: "vote" | "enter" | "lock" | "finish"; failed?: true }
+  /** A claim to accept (4.7, PLANNING.md section 4): a friend added someone under this person's name in a set they share. Offered, never assumed; the verb is the one tap that takes it. */
+  | { kind: "claim"; key: string; href: string; verb: string; context: string; subject: string; question: false; deadline: null; since: Date; groupId: string; claimId: string; failed?: true }
   /** A send this person was told was on its way and that never landed (src/lib/ledger/again.ts): still theirs to do. */
   | ({ kind: "again"; key: string; href: string; verb: string; context: string; subject: string; question: true; deadline: null; since: Date; groupId: string; failed: true } & QuestionLook)
   | { kind: "again"; key: string; href: string; verb: string; context: string; subject: string; question: false; deadline: null; since: Date; groupId: string; failed: true };
@@ -46,7 +50,7 @@ export const ON_WAY = "On its way";
 const lookOf = (d: { id: string; ink?: string | null; markKind?: string | null; markValue?: string | null }, state: QuestionLook["state"]): QuestionLook => ({ mark: markRefOf(d), ink: inkOf({ id: d.id, ink: d.ink ?? null }), state });
 
 /** Fastest to finish first, when nothing else separates two rows: a yep is one tap, a draft is a screen. */
-const EFFORT: Record<NeedRow["kind"], number> = { yep: 0, vote: 1, enter: 2, lock: 3, finish: 4, game: 2, again: 1 };
+const EFFORT: Record<NeedRow["kind"], number> = { yep: 0, vote: 1, enter: 2, lock: 3, finish: 4, game: 2, again: 1, claim: 0 };
 
 /**
  * Time-bound before open-ended, as priority and never as pressure. A question in voting has a quorum waiting on
@@ -55,7 +59,7 @@ const EFFORT: Record<NeedRow["kind"], number> = { yep: 0, vote: 1, enter: 2, loc
  * then fastest to finish. The order is the whole signal: no countdown, no day count, no ageing, and a deadline
  * that has passed still only sorts (docs/design.md 3.15; docs/decisions.md 2026-09-21).
  */
-const TIER: Record<NeedRow["kind"], number> = { vote: 0, lock: 1, enter: 1, yep: 2, finish: 2, game: 1, again: 2 };
+const TIER: Record<NeedRow["kind"], number> = { vote: 0, lock: 1, enter: 1, yep: 2, finish: 2, game: 1, again: 2, claim: 2 };
 /** A game row sorts as its most pressing question would (4.7). */
 const tierOf = (r: { kind: NeedRow["kind"]; pressing?: "vote" | "enter" | "lock" | "finish" }): number => (r.kind === "game" && r.pressing ? TIER[r.pressing] : TIER[r.kind]);
 export function orderNeeds<T extends Pick<NeedRow, "deadline" | "since" | "kind"> & { pressing?: "vote" | "enter" | "lock" | "finish" }>(rows: T[]): T[] {
@@ -84,7 +88,7 @@ export function needFromMarket(m: Pick<MarketCardData, "dare" | "state" | "peopl
   if (m.state === "open") {
     const everyone = m.people.length >= m.groupSize && m.groupSize > 1;
     const timesUp = d.resolvesBy !== null && d.resolvesBy.getTime() <= now.getTime();
-    if (d.creatorId === viewerId && iAmIn && (everyone || timesUp)) return { ...base, kind: "lock", href: `/m/${d.id}`, verb: "Lock", context: everyone ? "Everyone's in" : "Time's up on this one", deadline: d.resolvesBy, since: d.createdAt };
+    if (d.creatorId === viewerId && iAmIn && (everyone || timesUp)) return { ...base, kind: "lock", href: `/m/${d.id}`, verb: "Close", context: everyone ? "Everyone's in" : "Time's up on this one", deadline: d.resolvesBy, since: d.createdAt };
     if (!iAmIn) return { ...base, kind: "enter", href: `/m/${d.id}`, verb: "Enter", context: `${d.resolvesBy ? `Closes ${closes(d.resolvesBy)} · ` : ""}${m.people.length} of ${m.groupSize} in`, deadline: d.resolvesBy, since: d.createdAt };
     return null;
   }
@@ -121,21 +125,20 @@ export function squareSentence(names: string[]): string {
   return `${firsts.slice(0, 2).join(", ")} and ${firsts.length - 2} others are square with you`;
 }
 
-/** The line under a running question: where it stands, never how long it has stood there. */
-export function runningCaption(m: Pick<MarketCardData, "dare" | "state" | "people" | "groupSize" | "votesCast">, closes: (at: Date) => string): string {
-  const d = m.dare;
-  // The state mark beside it says in, locked or voting (3.23); the words say where it stands and the clock.
-  if (m.state === "locked") return m.votesCast === 0 ? (d.resolvesBy ? `Resolving ${closes(d.resolvesBy)}` : "Waiting on how it came out") : `${m.votesCast} of ${m.groupSize} have called it`;
-  if (d.pace === "argument") return "Waiting on the other side";
-  return `${m.people.length} of ${m.groupSize} in${d.resolvesBy ? ` · closes ${closes(d.resolvesBy)}` : ""}`;
-}
-
 /**
- * The dot on the Now tab (docs/design.md 6.4): something with a clock is waiting on this person. Waiting alone is
- * not enough; a cover to confirm can sit for a week and never lights it.
+ * The line under a running question (docs/design.md 3.15): while open, your entry and how many are in ("You're in
+ * at 17 · six of you", "You're in at 70% · just you so far"); once it locks, the clock alone beside the mark
+ * ("Resolving tonight", "Voting ends tonight"). Where it stands, never how long it has stood there, and never a
+ * state in words: the mark says in, locked or voting (3.23).
  */
-export function timeBound(rows: Array<Pick<NeedRow, "deadline">>): boolean {
-  return rows.some((r) => r.deadline !== null);
+export function runningCaption(m: Pick<MarketCardData, "dare" | "state" | "people" | "groupSize" | "votesCast" | "unit" | "pickOne">, closes: (at: Date) => string, viewerId: string): string {
+  const d = m.dare;
+  if (m.state === "locked") return d.resolvesBy ? `${m.votesCast === 0 ? "Resolving" : "Voting ends"} ${closes(d.resolvesBy)}` : "";
+  const mine = m.people.find((p) => p.id === viewerId) ?? null;
+  const entry = !mine ? null : m.pickOne && mine.pick !== null ? `You’re in: ${m.pickOne.answers.find((a) => a.index === mine.pick)?.text ?? "?"}` : m.unit && mine.number !== null ? `You’re in at ${unitPhrase(BigInt(mine.number), m.unit)}` : mine.percent !== null ? `You’re in at ${mine.percent}%` : "You’re in";
+  const n = m.people.length;
+  const count = n <= 1 ? "just you so far" : `${word(n).toLowerCase()} of you`;
+  return entry ? `${entry} · ${count}` : count;
 }
 
 export type NowData = Pick<HomeData, "needs" | "running" | "happened" | "hasAnything">;
@@ -230,7 +233,7 @@ async function questionsFor(me: { id: string }, opts: { now: Date; closes: (at: 
     const n = needFromMarket(m, me.id, voted.has(m.dare.id), opts.now, opts.closes);
     if (n) needs.push({ ...n, groupId: m.dare.groupId } as NeedRow);
     else if (m.state === "open" || m.state === "locked") {
-      running.push({ id: m.dare.id, title: m.dare.title, mark: markRefOf(m.dare), ink: m.ink, state: m.state === "locked" ? (m.votesCast > 0 ? "voting" : "locked") : "in", caption: runningCaption(m, opts.closes), groupId: m.dare.groupId, ...(m.state === "open" && m.dare.creatorId === me.id && m.people.length === 1 && m.viewerIn ? { removable: true as const } : {}) });
+      running.push({ id: m.dare.id, title: m.dare.title, mark: markRefOf(m.dare), ink: m.ink, state: m.state === "locked" ? (m.votesCast > 0 ? "voting" : "locked") : "in", caption: runningCaption(m, opts.closes, me.id), groupId: m.dare.groupId, ...(m.state === "open" && m.dare.creatorId === me.id && m.people.length === 1 && m.viewerIn ? { removable: true as const } : {}) });
     } else over.push(m);
   }
   // A game with more than one question in the same set is one row (4.7).
@@ -242,14 +245,9 @@ async function questionsFor(me: { id: string }, opts: { now: Date; closes: (at: 
   return { needs: c.needs as NeedRow[], running: c.running, over: c.over, gamesOver: c.happened };
 }
 
-/** Whether the dot shows on Now. Worked out the same way on every root, from the questions alone. */
-export async function liveFor(me: { id: string }, now: Date): Promise<boolean> {
-  return timeBound((await questionsFor(me, { now, closes: () => "" })).needs);
-}
-
 /** Now: what needs this person, what is running, and what just happened are all in the database; the one indexer read is for how the closed ones closed, and only when there are any. */
 export async function nowFor(me: { id: string; displayName: string }, opts: { now: Date; closes: (at: Date) => string }): Promise<NowData> {
-  const [{ needs: needsAll, running, over, gamesOver }, pendingAll, drafts, covers, closed, again, onWay] = await Promise.all([
+  const [{ needs: needsAll, running, over, gamesOver }, pendingAll, drafts, covers, closed, again, onWay, suggested] = await Promise.all([
     questionsFor(me, opts),
     pendingForDebtor(me.id),
     db.select().from(schema.dares).where(and(eq(schema.dares.creatorId, me.id), isNull(schema.dares.creatorSignature))).orderBy(desc(schema.dares.createdAt)).limit(6),
@@ -268,6 +266,7 @@ export async function nowFor(me: { id: string; displayName: string }, opts: { no
       .limit(8),
     againRowsFor(me.id, opts.now),
     onWayFor(me.id, opts.now),
+    suggestedGhostsFor(me.id, me.displayName),
   ]);
   // A tap still going through (5.2) has left Needs you: the asker's lock runs with the mark, and a yep is in Just happened.
   const needs = needsAll.filter((n) => !(n.kind === "lock" && onWay.locks.has(n.key)));
@@ -307,6 +306,8 @@ export async function nowFor(me: { id: string; displayName: string }, opts: { no
     needs.push({ kind: "yep", key: p.id, href: `/o/${p.id}`, verb: failed ? "Try again" : "Yep", context: failed ? AGAIN_CONTEXT : p.memo ? `${creditor.displayName} got ${p.memo}` : `${creditor.displayName} got this one`, subject: `${creditor.displayName}'s got you`, question: false, deadline: null, since: p.createdAt, groupId: p.groupId, proposal: p, creditor, denomination, ...(failed ? { failed: true as const } : {}) });
   }
   for (const d of drafts) needs.push({ kind: "finish", key: d.id, href: `/m/${d.id}`, verb: "Finish", context: "You never sent this one", subject: d.title, question: true, deadline: null, since: d.createdAt, groupId: d.groupId, ...lookOf(d, "draft") });
+  // A claim to accept is a Needs you row (4.7), never a section of its own: a friend added someone under this name in a set they share.
+  for (const g of suggested) needs.push({ kind: "claim", key: g.claimId, href: "/welcome", verb: "That’s me", context: `${g.creatorName} has things with a ${g.displayName}`, subject: "Is that you?", question: false, deadline: null, since: opts.now, groupId: "", claimId: g.claimId });
 
   const happened: HomeData["happened"] = [...gamesOver];
   // What this person just did that is still going through (5.2): the yep, the settlement, the cancelling out, marked on its way.

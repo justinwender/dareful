@@ -151,7 +151,8 @@ export async function confirmProposal(proposalId: string, debtorUserId: string, 
     txHash = result.hash;
   } catch (err) {
     if (err instanceof SendPending) throw err;
-    throw new ConfirmError(err instanceof Error ? err.message : "the chain write failed", "chain");
+    console.error("confirm failed", { proposalId: proposal.id, err: err instanceof Error ? err.message : err });
+    throw new ConfirmError("That didn’t go through. Try again.", "chain");
   }
   await completeConfirm([proposal.id], txHash);
   return { obligationId: proposal.id, txHash };
@@ -288,7 +289,8 @@ export async function confirmManyProposals(proposalIds: string[], debtorUserId: 
     txHash = result.hash;
   } catch (err) {
     if (err instanceof SendPending) throw err;
-    throw new ConfirmError(err instanceof Error ? err.message : "the chain write failed", "chain");
+    console.error("confirmMany failed", { proposalIds, err: err instanceof Error ? err.message : err });
+    throw new ConfirmError("That didn’t go through. Try again.", "chain");
   }
   await completeConfirm(proposalIds, txHash);
   return { obligationIds: proposals.map((p) => p.id), txHash };

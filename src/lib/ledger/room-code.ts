@@ -24,10 +24,9 @@ export function readCode(raw: string): { code: string } | { problem: string } {
   return { code };
 }
 
-/** A market link someone pasted instead: the market's id, or nothing. Only this app's own paths are read. */
-export function readPastedLink(raw: string): { marketId: string } | { inviteToken: string } | null {
-  const m = raw.trim().match(/(?:^|\/)(m|join)\/([A-Za-z0-9_-]{8,64})(?:[/?#]|$)/);
-  if (!m || !m[2]) return null;
-  if (m[1] === "join") return { inviteToken: m[2] };
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(m[2]) ? { marketId: m[2].toLowerCase() } : null;
+/** A market link someone pasted instead: the market's id, or nothing. Only this app's own path is read (a group is a set of people, never a place with a link of its own: Round C). */
+export function readPastedLink(raw: string): { marketId: string } | null {
+  const m = raw.trim().match(/(?:^|\/)m\/([A-Za-z0-9_-]{8,64})(?:[/?#]|$)/);
+  if (!m || !m[1]) return null;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(m[1]) ? { marketId: m[1].toLowerCase() } : null;
 }

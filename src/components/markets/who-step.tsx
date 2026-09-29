@@ -40,13 +40,13 @@ export function WhoStep({ sets, people, who, onWho, argument = false }: { sets: 
         <h1 className="text-body-strong text-ink">{argument ? "Who’s on the other side?" : "Who’s in?"}</h1>
         <p className="text-body-sm text-ink-2">{argument ? "An argument is between two of you. Anyone else in the set can watch, and helps call it." : "Everyone you pick gets the link. Nobody needs an account to look."}</p>
       </div>
-      <div role="group" aria-label="Who's in" className="flex flex-col gap-2">
+      <div role="radiogroup" aria-label="Who's in" className="flex flex-col gap-2">
         {sets.map((s) => {
           const on = who.kind === "set" && who.groupId === s.groupId;
           const label = named[s.groupId] ?? s.label;
           return (
             <div key={s.groupId} className="flex flex-col gap-2">
-              <button type="button" aria-pressed={on} onClick={() => (onWho({ kind: "set", groupId: s.groupId }), setPicking(false))} className={cn("grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-card border border-line px-[14px] py-3 text-left", on && "bg-surface shadow-[inset_0_0_0_1px_rgba(185,165,243,0.5)]")}>
+              <button type="button" role="radio" aria-checked={on} onClick={() => (onWho({ kind: "set", groupId: s.groupId }), setPicking(false))} className={cn("grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-card border border-line px-[14px] py-3 text-left", on && "bg-surface shadow-[inset_0_0_0_1px_rgba(185,165,243,0.5)]")}>
                 <span className="flex">
                   {s.avatars.slice(0, 3).map((a, i) => (
                     <span key={i} style={{ marginLeft: i === 0 ? 0 : -10 }}>
@@ -103,7 +103,7 @@ export function WhoStep({ sets, people, who, onWho, argument = false }: { sets: 
 
         {people.length > 0 ? (
           <div className="flex flex-col gap-2">
-            <button type="button" aria-expanded={picking} onClick={() => (setPicking(true), onWho({ kind: "people", userIds: who.kind === "people" ? who.userIds : [] }))} className={cn("grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-card border border-dashed border-line-strong px-[14px] py-3 text-left", who.kind === "people" && "bg-surface")}>
+            <button type="button" role="radio" aria-checked={who.kind === "people"} onClick={() => (setPicking(true), onWho({ kind: "people", userIds: who.kind === "people" ? who.userIds : [] }))} className={cn("grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-card border border-dashed border-line-strong px-[14px] py-3 text-left", who.kind === "people" && "bg-surface")}>
               <span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-pill border border-dashed border-line-strong text-ink-2">
                 +
               </span>
@@ -132,7 +132,7 @@ export function WhoStep({ sets, people, who, onWho, argument = false }: { sets: 
           </div>
         ) : null}
 
-        <button type="button" aria-pressed={who.kind === "link"} onClick={() => (onWho({ kind: "link" }), setPicking(false))} className={cn("grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-card border border-dashed border-line-strong px-[14px] py-3 text-left", who.kind === "link" && "bg-surface")}>
+        <button type="button" role="radio" aria-checked={who.kind === "link"} onClick={() => (onWho({ kind: "link" }), setPicking(false))} className={cn("grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-card border border-dashed border-line-strong px-[14px] py-3 text-left", who.kind === "link" && "bg-surface")}>
           <span className="flex min-w-0 flex-col">
             <span className="text-body-strong text-ink">Whoever I send it to</span>
             <span className="text-caption text-ink-3">You get a link and a code. Whoever joins is in.</span>

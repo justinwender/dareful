@@ -222,7 +222,8 @@ test("a question this person has acted on is running, and once it is over it jus
   const h = await home(ana);
   assert.deepEqual([h.running.some((r) => r.id === d.id), h.needs.some((n) => n.key === d.id), h.happened.some((e) => e.kind === "market" && e.market.dare.id === d.id)], [true, false, false], "in: running, and nowhere else");
   const running = h.running.find((r) => r.id === d.id);
-  assert.deepEqual([running?.state, running?.caption.startsWith("1 of 1 in")], ["in", true], "the mark says in; the words say where it stands");
+  // The words say your entry and how many are in (3.15), never a state: alone, "just you so far".
+  assert.deepEqual([running?.state, running?.caption], ["in", "You’re in at 70% · just you so far"], "the mark says in; the words say your entry and how many are in");
   await db.update(schema.dares).set({ lockedAt: new Date(), resolvedAt: new Date(), resolvedOutcome: 1n, resolvedBy: "quorum" }).where(eq(schema.dares.id, d.id));
   const over = await home(ana);
   assert.deepEqual([over.running.some((r) => r.id === d.id), over.happened.some((e) => e.kind === "market" && e.market.dare.id === d.id)], [false, true], "over: just happened, and no longer running");

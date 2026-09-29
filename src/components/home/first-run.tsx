@@ -59,7 +59,7 @@ export function FirstRun({ today, games = [], viewerHue = "stone" }: { today: st
           </section>
         )}
       </div>
-      <TabBar active="/" live={false} start={false} />
+      <TabBar active="/" start={false} />
     </Screen>
   );
 }

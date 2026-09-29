@@ -128,7 +128,8 @@ export function templatesFor(game: { sport: Sport; home: Pick<FeedGame["home"], 
       shift: null,
       decidedByScore: true,
       decidedByFeed: true,
-      outcomeWords: [`The ${home} won`, `The ${away} won`, `The ${home} won.`, `The ${away} won.`],
+      // The wells with "The" (the chalk reads "That's right, the Bills won", 3.35); the settled lines say the team alone ("Bills won.", 3.33, 3.40).
+      outcomeWords: [`The ${home} won`, `The ${away} won`, `${home} won.`, `${away} won.`],
       sort: 0,
     },
     {

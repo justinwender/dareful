@@ -172,7 +172,7 @@ export function TeamLine({ mode, value, onChange, away, home, hue, disabled = fa
                 value={typed}
                 aria-label={`${typedSide === "away" ? away.name : home.name} by how many ${unit?.plural ?? "points"}`}
                 onChange={(e) => setTyped(e.target.value.replace(/[^\d]/g, "").replace(/^0+(?=\d)/, "").slice(0, 9))}
-                className="h-12 min-w-0 flex-1 rounded-button border border-line bg-ground px-4 font-serif text-[28px] text-ink tabular-nums outline-none"
+                className="h-12 min-w-0 flex-1 rounded-button border border-line bg-ground px-4 font-serif text-[28px] text-ink tabular-nums"
               />
               <button
                 type="button"

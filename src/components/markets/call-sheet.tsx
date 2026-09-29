@@ -376,16 +376,14 @@ export function CallSheet(props: CallSheetProps) {
   if (myVote === null && claim === null && feed?.waiting && !sayingItMyself) {
     return (
       <PinnedSheet
-        label={feed.source === "plays" ? "Waiting on the play-by-play" : "Waiting on the score"}
+        label="Closed"
         header={<p className="text-body-strong text-ink">{feed.source === "plays" ? "The play-by-play will propose what happened." : "The final score will propose what happened."}</p>}
         low={
           feed.canSayYourself ? (
             <Button variant="tertiary" className="self-start" onClick={() => setSayingItMyself(true)}>
               Say it yourself
             </Button>
-          ) : (
-            <p className="text-caption text-ink-3">{feed.source === "plays" ? "Once the game has its play-by-play, the first drive goes on the ballot and everyone confirms it in a tap." : "Once the game is over, the score goes on the ballot and everyone confirms it in a tap."}</p>
-          )
+          ) : null
         }
       />
     );
@@ -765,7 +763,6 @@ function CaseForm({ dareId, mine }: { dareId: string; mine: string | null }) {
           value={text}
           onChange={(e) => (setText(e.target.value), setSaved(false))}
           maxLength={280}
-          placeholder="The sign said 8,558 feet"
           aria-invalid={field ? true : undefined}
           aria-describedby={field ? "my-case-problem" : undefined}
           className={cn(

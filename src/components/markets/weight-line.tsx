@@ -18,7 +18,8 @@ export type WeightLineProps = {
   group: { percent: number } | null;
   /** Blind until lock: outlined columns with no heights, no group's number, and a count of who is in. */
   heading: string;
-  caption: string;
+  /** Only when one stake is more than half of everything riding (4.9); otherwise the picture speaks alone. */
+  caption: string | null;
   /** The entering moment (3.13): columns grow from segments, your share fills, your avatar rises, the marker draws last. */
   rise?: boolean;
   /** Between two teams (3.40): the columns labelled with the two names and "Even", and the marker chip naming the team the group leans to ("Bills 62%"). */
@@ -73,7 +74,7 @@ export function WeightLine({
       ? 0
       : Number((myStake * 1000n) / tallest) / 10;
   const myBucket = to;
-  const said = caption;
+  const said = caption ?? heading;
 
   return (
     <figure className="flex flex-col gap-3" aria-label={heading}>
@@ -164,9 +165,7 @@ export function WeightLine({
         <span>{ends ? "Even" : "50%"}</span>
         <span>{ends ? ends.home : "100%"}</span>
       </p>
-      <p className="text-caption text-ink-3">
-        {caption}
-      </p>
+      {caption ? <p className="text-caption text-ink-3">{caption}</p> : null}
     </figure>
   );
 }

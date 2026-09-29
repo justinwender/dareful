@@ -18,11 +18,11 @@ import { denominationById } from "@/lib/ledger/denominations";
 import { ghostPositionFor } from "@/lib/ledger/ghost-entry";
 import { answersOf, marketById, positionsOf, stateOf, unitOf } from "@/lib/ledger/markets";
 import { numbersVisible } from "@/lib/ledger/market-view";
-import { numberAxis, serialiseAxis } from "@/lib/ledger/number-axis";
+import { numberAxis, serialiseAxis, unitPhrase } from "@/lib/ledger/number-axis";
 import { participantsOf, pidOf } from "@/lib/ledger/participants";
 import { pickOneCaption } from "@/lib/ledger/pick-one";
 import { farOffThreshold } from "@/lib/ledger/scale";
-import { buckets, groupsNumberBps, percentOf, showsMarker, weightCaption } from "@/lib/ledger/weight";
+import { buckets, groupsNumberBps, numberCaption, percentOf, showsMarker, weightCaption } from "@/lib/ledger/weight";
 import { templateOfMarket } from "@/lib/sports";
 import { CONSENT, DRIVE_CONSENT, SLIDER_REACH } from "@/lib/sports/templates";
 import type { Sport } from "@/lib/sports/types";
@@ -86,7 +86,7 @@ export async function GhostMarketPage({ id, clock }: { id: string; clock: Awaite
       ? { kind: "picks", bars: pickBars, entries: positions.length, caption: pickOneCaption({ entries: positions.map((p) => ({ id: pidOf(p), stake: p.stake, pick: Number(p.value) })), answers: pickAnswers.map((a) => a.text), viewerId, nameOf: first, stakeWords }) }
       : show && numberUnit
         ? axis
-          ? { kind: "numbers", axis: serialiseAxis(axis), caption: positions.length <= 1 ? "You’re first in. Height is how much is riding on each number, not how many people picked it." : "Height is how much is riding on each number, not how many people picked it." }
+          ? { kind: "numbers", axis: serialiseAxis(axis), caption: numberCaption({ entries: positions.map((p) => ({ id: pidOf(p), stake: p.stake, value: p.value })), viewerId, nameOf: first, stakeWords, valueWords: (v) => unitPhrase(v, numberUnit) }) }
           : null
         : show
           ? { kind: "weights", buckets: buckets(entries).map((b) => ({ n: b.n, stake: b.stake.toString(), noStake: b.noStake })), group: showsMarker(entries) && number !== null ? { percent: percentOf(number) } : null, caption: weightCaption({ entries, viewerId, nameOf: first, stakeWords }) }

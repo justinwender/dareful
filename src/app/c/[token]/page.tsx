@@ -96,7 +96,7 @@ export default async function ClaimLinkPage({ params }: { params: Promise<{ toke
             <p className="px-4 py-3 text-caption text-ink-3">Nothing counts until you say so.</p>
           </div>
         ) : (
-          <p className="text-body text-ink-2">Nothing is waiting on you. They just wanted you in.</p>
+          <p className="text-body text-ink-2">Nothing needs a yes from you. They just wanted you in.</p>
         )}
         <ClaimChoice token={token} name={claim.displayName} signedIn={Boolean(me)} held={held} />
         {me ? <p className="text-caption text-ink-3">Not you? Just close this. Nothing happens unless you tap.</p> : null}

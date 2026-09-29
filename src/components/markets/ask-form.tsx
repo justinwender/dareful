@@ -261,7 +261,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
             <label htmlFor="ask-line" className="text-label text-ink-2">
               {pace === "argument" ? "What you disagree about" : "Your question"}
             </label>
-            <textarea id="ask-line" rows={3} value={line} onChange={(e) => setLine(e.target.value)} maxLength={280} aria-invalid={fieldProblem ? true : undefined} aria-describedby={fieldProblem ? "ask-line-problem" : undefined} className={cn("field-sizing-content resize-none bg-transparent text-serif-l text-ink placeholder:text-ink-3 outline-none", fieldProblem && "rounded-button px-2 " + FIELD_PROBLEM_CLASS)} />
+            <textarea id="ask-line" rows={3} value={line} onChange={(e) => setLine(e.target.value)} maxLength={280} aria-invalid={fieldProblem ? true : undefined} aria-describedby={fieldProblem ? "ask-line-problem" : undefined} className={cn("field-sizing-content resize-none rounded-button bg-transparent text-serif-l text-ink", fieldProblem && "px-2 " + FIELD_PROBLEM_CLASS)} />
             <Problem id="ask-line-problem" message={fieldProblem} />
           </div>
         </section>
@@ -288,24 +288,23 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
         </div>
         {pace === "dare" ? (
           <div className="flex flex-col gap-2">
-            <div role="group" aria-label="What the answer is" className="flex flex-wrap gap-2">
-              <button type="button" aria-pressed={kind === "binary"} onClick={() => setKind("binary")} className="rounded-pill">
+            <div role="radiogroup" aria-label="How people answer" className="flex flex-wrap gap-2">
+              <button type="button" role="radio" aria-checked={kind === "binary"} onClick={() => setKind("binary")} className="rounded-pill">
                 <Chip size={36} selected={kind === "binary"}>
                   Yes or no
                 </Chip>
               </button>
-              <button type="button" aria-pressed={kind === "numeric"} onClick={() => setKind("numeric")} className="rounded-pill">
+              <button type="button" role="radio" aria-checked={kind === "numeric"} onClick={() => setKind("numeric")} className="rounded-pill">
                 <Chip size={36} selected={kind === "numeric"}>
                   A number
                 </Chip>
               </button>
-              <button type="button" aria-pressed={kind === "categorical"} onClick={() => setKind("categorical")} className="rounded-pill">
+              <button type="button" role="radio" aria-checked={kind === "categorical"} onClick={() => setKind("categorical")} className="rounded-pill">
                 <Chip size={36} selected={kind === "categorical"}>
                   Pick one
                 </Chip>
               </button>
             </div>
-            <p className="text-caption text-ink-3">{kind === "numeric" ? "Everyone names a number, and closest wins." : kind === "categorical" ? "Everyone picks one answer, and whoever's right is paid by whoever isn't." : "Everyone puts their odds on it."}</p>
           </div>
         ) : null}
         {pickOne ? (
@@ -325,7 +324,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
                     maxLength={MAX_ANSWER_LENGTH}
                     aria-label={`Answer ${i + 1}`}
                     onChange={(e) => setChoices((cs) => cs.map((x, k) => (k === i ? { text: e.target.value, userId: null } : x)))}
-                    className="h-full min-w-0 flex-1 bg-transparent text-body-strong text-ink placeholder:text-ink-3 outline-none"
+                    className="h-full min-w-0 flex-1 rounded-button bg-transparent text-body-strong text-ink"
                   />
                   <button type="button" aria-label={`Remove answer ${i + 1}`} disabled={choices.length <= MIN_ANSWERS} onClick={() => setChoices((cs) => cs.filter((_, k) => k !== i))} className="flex h-11 w-11 shrink-0 items-center justify-center text-ink-2 disabled:text-ink-3">
                     <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -503,24 +502,21 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
         setQuestions(q.questions);
         setStep("careful");
       });
+    // The named subject (3.44, frame 2): one question in the step's own card, "Nova is" over three rows; the tap answers, and nothing explains the step.
     return wrap(
       <div className="flex flex-col gap-6">
-        <div className="flex flex-col gap-2">
-          <h1 className="text-body-strong text-ink">One quick one first</h1>
-          <p className="text-body-sm text-ink-2">Only you see this. The three questions depend on it.</p>
-        </div>
         <div className="flex flex-col gap-2 rounded-card border border-line bg-surface px-4 py-3" data-subject-ask="">
-          <p id="subject-ask" className="text-body-sm text-ink">
-            Who’s {name}?
+          <p id="subject-ask" className="text-body-strong text-ink">
+            {name} is
           </p>
-          <div role="group" aria-labelledby="subject-ask" className="flex flex-wrap gap-2">
+          <div role="group" aria-labelledby="subject-ask" className="flex flex-col">
             {([
-              ["person", "A person"],
-              ["pet", "A pet"],
-              ["thing", "Something else"],
+              ["person", "a person"],
+              ["pet", "a pet"],
+              ["thing", "something else"],
             ] as const).map(([kind, label]) => (
-              <button key={kind} type="button" disabled={thinking} onClick={() => answer(kind)} className="rounded-pill">
-                <Chip size={36}>{label}</Chip>
+              <button key={kind} type="button" disabled={thinking} onClick={() => answer(kind)} className="flex h-12 items-center border-t border-line text-left text-body text-ink first:border-t-0 disabled:text-ink-3">
+                {label}
               </button>
             ))}
           </div>
@@ -578,7 +574,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
                 setStep("who");
               }}
             >
-              Who’s in?
+              Next: who’s in
             </Button>
           }
         />
@@ -761,8 +757,8 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
           <div className="flex flex-col gap-2">
             <h2 className="text-label text-ink-3">What the number counts</h2>
             <div className="grid grid-cols-2 gap-2">
-              <input id="ask-unit-one" value={unitWords.singular} onChange={(e) => setUnitWords((u) => ({ ...u, singular: e.target.value }))} maxLength={24} placeholder="shirt" aria-label="One of them" className="h-12 min-w-0 rounded-button border border-line bg-surface px-4 text-body text-ink placeholder:text-ink-3" />
-              <input id="ask-unit-many" value={unitWords.plural} onChange={(e) => setUnitWords((u) => ({ ...u, plural: e.target.value }))} maxLength={24} placeholder="shirts" aria-label="More than one" className="h-12 min-w-0 rounded-button border border-line bg-surface px-4 text-body text-ink placeholder:text-ink-3" />
+              <input id="ask-unit-one" value={unitWords.singular} onChange={(e) => setUnitWords((u) => ({ ...u, singular: e.target.value }))} maxLength={24} aria-label="One of them" className="h-12 min-w-0 rounded-button border border-line bg-surface px-4 text-body text-ink placeholder:text-ink-3" />
+              <input id="ask-unit-many" value={unitWords.plural} onChange={(e) => setUnitWords((u) => ({ ...u, plural: e.target.value }))} maxLength={24} aria-label="More than one" className="h-12 min-w-0 rounded-button border border-line bg-surface px-4 text-body text-ink placeholder:text-ink-3" />
             </div>
             <p className="text-caption text-ink-3">One shirt, two shirts. Whole numbers only: a question that needs halves asks in a smaller unit.</p>
           </div>
@@ -771,7 +767,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
               Scored on
             </label>
             <div className="flex items-center gap-3">
-              <input id="ask-scale" inputMode="numeric" pattern="[0-9]*" value={scale} onChange={(e) => setScale(e.target.value)} maxLength={11} placeholder={scope.number?.model?.range ? "Set for you" : "20"} aria-describedby="ask-scale-help" className="h-12 w-32 rounded-button border border-line bg-surface px-4 text-body text-ink placeholder:text-ink-3" />
+              <input id="ask-scale" inputMode="numeric" pattern="[0-9]*" value={scale} onChange={(e) => setScale(e.target.value)} maxLength={11} aria-describedby="ask-scale-help" className="h-12 w-32 rounded-button border border-line bg-surface px-4 text-body text-ink placeholder:text-ink-3" />
               <span className="text-body text-ink-2">{unitWords.plural.trim() || unitWords.singular.trim() || "of them"} off scores nothing</span>
             </div>
             <p id="ask-scale-help" className="text-caption text-ink-3">{scope.number?.model?.range ? "How far off scores nothing. Leave it blank and it’s set for you; type one and everyone sees it in the details." : "How far off scores nothing. Everyone sees it in the details."}</p>
@@ -837,7 +833,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
         <div role="group" aria-label="If you can't agree" className="flex flex-wrap gap-2">
           <button type="button" aria-pressed={stalemate === "arbitrate"} onClick={() => setStalemate("arbitrate")} className="rounded-pill">
             <Chip size={36} selected={stalemate === "arbitrate"}>
-              The app hears both sides and calls it
+              A tiebreaker hears both sides and calls it
             </Chip>
           </button>
           <button type="button" aria-pressed={stalemate === "void"} onClick={() => setStalemate("void")} className="rounded-pill">

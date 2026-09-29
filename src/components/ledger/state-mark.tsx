@@ -79,6 +79,6 @@ export function StateMark({ state, hue, ink, size = 16, className }: { state: Ma
 }
 
 /** The citron dot (3.23, 6.4): this one is waiting on you and has a clock. Never a number. */
-export function LiveDot({ className }: { className?: string }) {
-  return <span aria-hidden="true" className={`inline-block h-1.5 w-1.5 shrink-0 rounded-pill bg-live ${className ?? ""}`} />;
+export function LiveDot({ className, ...rest }: { className?: string } & Record<`data-${string}`, string>) {
+  return <span aria-hidden="true" className={`inline-block h-1.5 w-1.5 shrink-0 rounded-pill bg-live ${className ?? ""}`} {...rest} />;
 }

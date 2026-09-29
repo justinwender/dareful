@@ -293,7 +293,7 @@ test("a notice about a number question carries no number: the answer waits on th
   const r = resultNotice({ deciderName: "Maya", title: "How many shirts can Gabe wear at once?", outcome: "number", marketId: "m1", appUrl: "https://dareful.app" });
   assert.match(r.body, /^Decided\. Maya's call settled it/);
   assert.doesNotMatch(`${r.title} ${r.body}`, /\d/);
-  const ruled = rulingNotice({ askerName: "Sam", title: "How many shirts can Gabe wear at once?", outcome: "number", marketId: "m1", appUrl: "https://dareful.app" });
+  const ruled = rulingNotice({ title: "How many shirts can Gabe wear at once?", outcome: "number", marketId: "m1", appUrl: "https://dareful.app" });
   assert.doesNotMatch(`${ruled.title} ${ruled.body}`, /\d/);
 });
 

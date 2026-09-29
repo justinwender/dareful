@@ -72,7 +72,7 @@ export function closeTypedData(input: { obligationId: string; tokenId: bigint; q
 export async function closeObligation(input: { obligationId: string; creditorUserId: string; reason: ReasonWord; signature: Hex }): Promise<{ txHash: Hex; qty: bigint }> {
   const [o] = await db.select().from(schema.obligations).where(eq(schema.obligations.id, input.obligationId)).limit(1);
   if (!o) throw new CloseError("That one doesn't exist.", "not_found");
-  if (o.toUser !== input.creditorUserId) throw new CloseError("Only the person who is owed this can close it.", "not_creditor");
+  if (o.toUser !== input.creditorUserId) throw new CloseError("Only the person who’s got this one can close it.", "not_creditor");
   const [creditor] = await db.select({ ledgerWallet: schema.users.ledgerWallet }).from(schema.users).where(eq(schema.users.id, input.creditorUserId)).limit(1);
   if (!creditor) throw new CloseError("That one doesn't exist.", "not_found");
   const state = await closeState(o.id);
@@ -95,7 +95,8 @@ export async function closeObligation(input: { obligationId: string; creditorUse
     txHash = result.hash;
   } catch (err) {
     if (err instanceof SendPending) throw err;
-    throw new CloseError(err instanceof Error ? err.message : "the chain write failed", "chain");
+    console.error("close failed", { obligationId: o.id, err: err instanceof Error ? err.message : err });
+    throw new CloseError("That didn’t go through. Try again.", "chain");
   }
   await completeClose(o.id);
   return { txHash, qty: state.remaining };
@@ -190,6 +191,7 @@ export async function netBetween(input: { signerUserId: string; otherUserId: str
     return { txHash: result.hash };
   } catch (err) {
     if (err instanceof SendPending) throw err;
-    throw new CloseError(err instanceof Error ? err.message : "the chain write failed", "chain");
+    console.error("net failed", { groupId: input.groupId, denomId: input.denomId, err: err instanceof Error ? err.message : err });
+    throw new CloseError("That didn’t go through. Try again.", "chain");
   }
 }

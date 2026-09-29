@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ProblemSummary } from "@/components/ledger/problem";
 import { Button } from "@/components/ui/button";
 import { Sheet } from "@/components/ui/sheet";
 import { addStickerAction, removeMarketPhotoAction } from "@/lib/actions/media";
 import { imageFromClipboard, imageFromPaste, NotACutoutHere, prepareCutout } from "@/lib/ui/cutout-clipboard";
-import { StickerMade, StickerSheet } from "./sticker-from-photo";
+import { cutAt, drawOutline, loadSegmenter, type Cut, type Segmenter } from "@/lib/ui/cut-subject";
+import { CutSheet, StickerMade, StickerSheet } from "./sticker-from-photo";
 
 /**
  * A photo full screen (docs/design.md 3.8, 3.38, 3.39): the frame's derivative on the ground, a 13px counter at
@@ -16,7 +17,11 @@ import { StickerMade, StickerSheet } from "./sticker-from-photo";
  * taken by the camera inside a web app on an iPhone is not in the phone's own photos; where there is no share
  * sheet the browser saves the file) and, for whoever added a memory, "Remove", which is destructive (3.12) and
  * asks once in a sheet. The bytes come through the app's own door, which checks who is asking. Long-press on the
- * photo is left to the phone: the sticker path depends on it (the phone's own Copy Subject).
+ * photo is left to the phone: the lift path depends on it (the phone's own Copy Subject).
+ *
+ * Making a sticker (3.28): the cut path first (frame 5, Round C), where a tap on the photo asks the model in the
+ * browser for the subject and the chalk keeps it; the lift path (frames 2 and 3) wherever the runtime or the model
+ * cannot load. Both end in the same upload and the same result screen.
  */
 export type AlbumItem = { id: string; alt: string; removable: boolean };
 
@@ -31,9 +36,17 @@ export function PhotoView({ items, index = 0, onClose, stickers = false }: { ite
   const [asking, setAsking] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  // Making a sticker (3.28, frames 2 and 3): the guided sheet over the photo, then the result in the viewer's place.
+  // Making a sticker (3.28): the guided sheet over the photo, then the result in the viewer's place.
   const [making, setMaking] = useState(false);
   const [pasting, setPasting] = useState(false);
+  // The cut path (frame 5): the model, loaded once per page; the cut for the photo on screen; the timings for the phone check.
+  const [mode, setMode] = useState<"cut" | "lift">("cut");
+  const [segmenter, setSegmenter] = useState<Segmenter | null>(null);
+  const [cutting, setCutting] = useState(false);
+  const [cutState, setCutState] = useState<{ photoId: string; cut: Cut | null; cutMs: number | null } | null>(null);
+  const bitmaps = useRef(new Map<string, Promise<ImageBitmap>>());
+  const outline = useRef<HTMLCanvasElement>(null);
+  const pendingTap = useRef<{ nx: number; ny: number } | null>(null);
   const [made, setMade] = useState<{ id: string } | null>(null);
   const [stickerProblem, setStickerProblem] = useState<string | null>(null);
   const [current, setCurrent] = useState(Math.min(Math.max(index, 0), Math.max(items.length - 1, 0)));
@@ -58,6 +71,74 @@ export function PhotoView({ items, index = 0, onClose, stickers = false }: { ite
     } finally {
       setPasting(false);
     }
+  }
+  /** The photo's pixels, through the door, decoded once per photo. */
+  const bitmapOf = useCallback((photoId: string): Promise<ImageBitmap> => {
+    const had = bitmaps.current.get(photoId);
+    if (had) return had;
+    const made = fetch(`/api/media/${photoId}`)
+      .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(`door ${r.status}`))))
+      .then((b) => createImageBitmap(b));
+    bitmaps.current.set(photoId, made);
+    made.catch(() => bitmaps.current.delete(photoId));
+    return made;
+  }, []);
+  const runCut = useCallback(
+    async (seg: Segmenter, photoId: string, nx: number, ny: number) => {
+      setCutting(true);
+      setStickerProblem(null);
+      try {
+        const c = await cutAt(seg, await bitmapOf(photoId), nx, ny);
+        setCutState({ photoId, cut: c, cutMs: c ? c.cutMs : null });
+        if (!c) setStickerProblem("Nothing there to keep. Tap the thing itself.");
+      } catch (err) {
+        console.warn("cut failed", err instanceof Error ? err.message : err);
+        setStickerProblem("That tap didn’t cut anything. Try another spot.");
+      } finally {
+        setCutting(false);
+      }
+    },
+    [bitmapOf],
+  );
+  // Opening the sheet loads the model once per page; where it cannot load, the sheet becomes the lift path.
+  useEffect(() => {
+    if (!making || mode !== "cut" || segmenter) return;
+    let gone = false;
+    loadSegmenter()
+      .then((s) => {
+        if (gone) return;
+        setSegmenter(s);
+        const tap = pendingTap.current;
+        pendingTap.current = null;
+        if (tap) void runCut(s, id, tap.nx, tap.ny);
+      })
+      .catch((err: unknown) => {
+        if (gone) return;
+        console.warn("cut model unavailable; the lift path stands in", err instanceof Error ? err.message : err);
+        setMode("lift");
+      });
+    return () => {
+      gone = true;
+    };
+  }, [making, mode, segmenter, id, runCut]);
+  // The cut belongs to the photo it was made on: another photo in view reads as no cut, and closing the sheet drops it.
+  const cut = cutState && cutState.photoId === id && making ? cutState.cut : null;
+  const cutMs = cutState && cutState.photoId === id && making ? cutState.cutMs : null;
+  // The outline follows the cut, and clears with it.
+  useEffect(() => {
+    const canvas = outline.current;
+    if (!canvas) return;
+    if (cut) drawOutline(canvas, cut);
+    else canvas.getContext("2d")?.clearRect(0, 0, canvas.width, canvas.height);
+  }, [cut]);
+  function tapPhoto(e: React.MouseEvent<HTMLElement>) {
+    if (!making || mode !== "cut" || cutting || pasting) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
+    const nx = (e.clientX - rect.left) / rect.width;
+    const ny = (e.clientY - rect.top) / rect.height;
+    if (segmenter) void runCut(segmenter, id, nx, ny);
+    else pendingTap.current = { nx, ny };
   }
   // A paste anywhere while the sticker sheet is up is the cutout arriving (3.28): the phone's own Copy did the lift.
   useEffect(() => {
@@ -164,9 +245,13 @@ export function PhotoView({ items, index = 0, onClose, stickers = false }: { ite
       <div ref={rowRef} onScroll={onScroll} className="flex min-h-0 flex-1 snap-x snap-mandatory overflow-x-auto overflow-y-hidden [scrollbar-width:none]" data-album="" aria-roledescription="album">
         {items.map((item, i) => (
           <div key={item.id} className="flex h-full w-full shrink-0 snap-center items-center justify-center px-2" aria-hidden={i !== current}>
-            {/* A signed URL that expires; next/image would need a loader for one. The phone's long-press stays on: the sticker path is the phone's own Copy Subject (3.28). */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={`/api/media/${item.id}`} alt={item.alt} loading={Math.abs(i - current) <= 1 ? "eager" : "lazy"} className="max-h-full max-w-full object-contain" data-photo-image="" />
+            {/* The wrapper shrinks to the drawn image, so a tap's place on it is a place on the photo and the outline canvas lies over it exactly. The phone's long-press stays on: the lift path is the phone's own Copy Subject (3.28). */}
+            <span className="relative inline-flex max-h-full max-w-full" onClick={i === current ? tapPhoto : undefined} data-photo-tap={i === current && making && mode === "cut" ? "" : undefined}>
+              {/* A signed URL that expires; next/image would need a loader for one. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={`/api/media/${item.id}`} alt={item.alt} loading={Math.abs(i - current) <= 1 ? "eager" : "lazy"} className="max-h-full max-w-full object-contain" data-photo-image="" />
+              {i === current && making && mode === "cut" ? <canvas ref={outline} aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full" data-cut-outline={cut ? "" : undefined} /> : null}
+            </span>
           </div>
         ))}
       </div>
@@ -174,7 +259,7 @@ export function PhotoView({ items, index = 0, onClose, stickers = false }: { ite
         <ProblemSummary messages={[problem]} />
         <div className="flex items-start justify-center gap-6" data-photo-actions="">
           {stickers ? (
-            <IconAction label="Make a sticker" onClick={() => setMaking(true)} disabled={saving} data-make-sticker="">
+            <IconAction label="Make a sticker" onClick={() => (setCutState(null), setStickerProblem(null), setMaking(true))} disabled={saving} data-make-sticker="">
               <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M6 4h9l5 5v11a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z" />
                 <path d="M15 4v5h5" />
@@ -197,7 +282,23 @@ export function PhotoView({ items, index = 0, onClose, stickers = false }: { ite
           ) : null}
         </div>
       </div>
-      <StickerSheet open={making} pasting={pasting} problem={stickerProblem} onPaste={() => void askClipboard()} onClose={() => (pasting ? undefined : setMaking(false))} />
+      {mode === "cut" ? (
+        <CutSheet
+          open={making}
+          busy={pasting || cutting || (making && !segmenter)}
+          cut={cut !== null}
+          problem={stickerProblem}
+          timing={{ loadMs: segmenter?.loadMs ?? null, cutMs }}
+          onKeep={() => (cut ? void takeCutout(cut.blob) : undefined)}
+          onStartOver={() => {
+            setCutState(null);
+            setStickerProblem(null);
+          }}
+          onClose={() => (pasting || cutting ? undefined : setMaking(false))}
+        />
+      ) : (
+        <StickerSheet open={making} pasting={pasting} problem={stickerProblem} onPaste={() => void askClipboard()} onClose={() => (pasting ? undefined : setMaking(false))} />
+      )}
       <Sheet open={asking} labelledBy="remove-photo-title" onClose={() => (removing ? undefined : setAsking(false))}>
         <h2 id="remove-photo-title" className="text-serif-l text-ink">
           Remove this photo?

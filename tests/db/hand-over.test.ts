@@ -21,15 +21,15 @@ import { LOCK_AFTER, setPin } from "@/lib/ledger/pass-the-phone";
 import { notifyEnteredFrom } from "@/lib/notify";
 import { cleanup, codeOf, tempSigner, track, type Signer } from "./fixture";
 
-let sam: Signer, maya: Signer, theo: Signer;
+let sam: Signer, maya: Signer, theo: Signer, nia: Signer;
 let storeKeyWas: string | undefined;
 before(async () => {
-  [sam, maya, theo] = await Promise.all(["Sam", "Maya", "Theo"].map((n) => tempSigner(n)));
+  [sam, maya, theo, nia] = await Promise.all(["Sam", "Maya", "Theo", "Nia"].map((n) => tempSigner(n)));
   storeKeyWas = process.env.DELEGATION_STORE_KEY;
   if (!/^[0-9a-fA-F]{64}$/.test(storeKeyWas ?? "")) process.env.DELEGATION_STORE_KEY = randomBytes(32).toString("hex");
 });
 after(async () => {
-  for (const s of [sam, maya, theo]) {
+  for (const s of [sam, maya, theo, nia]) {
     await db.delete(schema.delegatedSignatures).where(eq(schema.delegatedSignatures.userId, s.user.id));
     await db.delete(schema.delegations).where(eq(schema.delegations.userId, s.user.id));
   }
@@ -58,7 +58,7 @@ async function question(title: string, revealMode: "open" | "blind" = "open") {
 }
 const hosted = (d: string, friend: Signer, pin: string, host: Signer = sam) => enterFromHost({ dareId: d, hostId: host.user.id, friendId: friend.user.id, stake: 500n, value: 6000n, pin, request: "tests/db/hand-over.test.ts", deps: { load: signingWith(friend.ledger) } });
 
-test("who's joining: the people the market was sent to who aren't in yet, ready when pass the phone is on; the host must be in and the market open", async () => {
+test("who's joining: the people the market was sent to who aren't in yet, ready when pass the phone is on, and the host's own ready people once nobody named is left; the host must be in and the market open", async () => {
   const { d, enter } = await question("Does the handed phone get Maya in?");
   assert.equal(await canHandOver(d.id, sam.user.id), false, "not in yet: nothing to hand over");
   await enter(sam, 7000n);
@@ -66,9 +66,19 @@ test("who's joining: the people the market was sent to who aren't in yet, ready 
   assert.equal(await canHandOver(d.id, maya.user.id), false, "only someone in");
   await storeDelegation(maya);
   await setPin(maya.user.id, "4242");
-  assert.deepEqual((await handOverCandidates(d.id)).map((c) => [c.name, c.ready]), [["Maya", true], ["Theo", false]], "the ready first; Theo has not set it up");
+  assert.deepEqual((await handOverCandidates(d.id, sam.user.id)).map((c) => [c.name, c.ready]), [["Maya", true], ["Theo", false]], "the ready first; Theo has not set it up");
   await enter(maya, 3000n);
-  assert.deepEqual((await handOverCandidates(d.id)).map((c) => c.name), ["Theo"], "in already: not a candidate");
+  assert.deepEqual((await handOverCandidates(d.id, sam.user.id)).map((c) => c.name), ["Theo"], "in already: not a candidate");
+  // Everyone named is in: the list falls back to the host's own people with pass the phone on (Round C). Nia shares a set with Sam and was not named here.
+  await enter(theo, 5000n);
+  const side = await createGroup({ name: "hand over fallback (temporary)", createdBy: sam.user.id });
+  track.group(side.id);
+  await db.insert(schema.groupMembers).values([{ groupId: side.id, userId: nia.user.id }]);
+  assert.deepEqual(await handOverCandidates(d.id, sam.user.id), [], "Nia has not set it up: the fallback lists the ready alone, and names nobody's absence");
+  await storeDelegation(nia);
+  await setPin(nia.user.id, "1357");
+  assert.deepEqual((await handOverCandidates(d.id, sam.user.id)).map((c) => [c.name, c.ready]), [["Nia", true]], "the host's own people, ready, once nobody named is left");
+  assert.deepEqual(await handOverCandidates(d.id, maya.user.id), [], "the fallback is the host's people, not the market's: Maya shares nothing with Nia");
   await db.update(schema.dares).set({ lockedAt: new Date() }).where(eq(schema.dares.id, d.id));
   assert.equal(await canHandOver(d.id, sam.user.id), false, "closed: nothing to hand over");
 });

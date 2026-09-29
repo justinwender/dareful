@@ -628,7 +628,7 @@ States:
 - **Single unit**: one glyph.
 - **Two or three units**: repeated glyphs, 2px gap.
 - **Four or more**: `4 ×` numeral plus one glyph.
-- **Fraction**: `½ ×` plus one glyph. Fractions come only from split rulings and only in
+- **Fraction** (cut 2026-09-28: no ruling is ever split, 3.38): `½ ×` plus one glyph. Fractions come only from split rulings and only in
   halves.
 - **Mixed**: glyphs, then quoted words, then the rule, then dollars. If the pill would exceed
   the row width, drop to two stacked tokens on the owner's side rather than shrinking type.
@@ -677,7 +677,7 @@ Kinds and states:
 - **Covered, off the tab** (nobody is paying it back): no consequence row, the line "Nobody's
   paying it back," and it feeds the rally instead.
 - **Argument, clean**: question, ruling sentence, one consequence.
-- **Argument, split**: question, the 60/40 bar, the ruling sentence, and either a consequence or
+- **Argument, split** (cut 2026-09-28: no ruling is ever split, 3.38): question, the 60/40 bar, the ruling sentence, and either a consequence or
   "Nothing changes hands. It goes on the rally."
 - **Market, resolved**: the story is one link and its consequences sit under it, outside it,
   because a control inside a link is not a control. The link: the kicker, the question, the
@@ -1242,8 +1242,11 @@ one tap in total.
 
 States: **preselected top row**; **named set**; **unnamed set**; **a set that has now asked
 twice** (the naming prompt, below); **someone else** (a dashed row with a plus in a dashed
-circle and a chevron, opening the people picker); **first ever market** (no rows at all: the
-picker is replaced by the people picker itself, with a line about sending the link).
+circle and a chevron, opening the people picker); **whoever I send it to** (amended 2026-09-28,
+Round C, from the joining decision of 2026-09-27: a dashed row last, "Whoever I send it to" over
+"You get a link and a code. Whoever joins is in.", a set of one that grows as people join by link
+or code); **first ever market** (no rows at all: the picker is replaced by the people picker
+itself, with a line about sending the link).
 
 **The naming prompt.** When the selected set is asking its second question, a dashed block
 (radius 10, 1px dashed `--line-strong`) appears directly under that row: one `body` sentence
@@ -1304,7 +1307,8 @@ on a blind market not after entry.
 States: **one entry** (your column alone at full height, no marker; the marker appears from the
 third entry); **one stake over half the total** (the caption says so in words, because the
 picture alone reads as agreement); **everyone on one number** (one full column, marker on it,
-caption "Everyone on one number."); **blind** (nothing before you're in, as on any market; once
+and no caption: amended 2026-09-28, Round C, since 4.9 keeps the weight-line caption only when
+one stake is more than half, and "Everyone on one number." restated the picture); **blind** (nothing before you're in, as on any market; once
 you're in, everything that is in so far, heights, marker and all, and your entry is final: no
 Change, and the caption reads "2 beers · final". The entry sheet says so before anyone commits,
 above the primary: "You see everyone's once you're in. Yours is final then.", after the 16px
@@ -1776,6 +1780,15 @@ Either way the photo's credit chip and counter stay, and the sticker belongs to 
 scrim and lets touches through around its panel, since the photo itself is what the person
 holds; it closes by its close or its handle. "Done" returns to the photo. Frame 5 is a later
 round, with this path as its fallback.)
+
+(Amended 2026-09-28, Round C, built: frame 5 comes first. "Make a sticker" opens the see-through
+sheet reading "Tap what to keep"; MediaPipe's interactive segmenter, loaded in the browser only
+then and kept by the browser after, returns a confidence mask for the point tapped, thresholded
+at 0.5 and feathered a pixel; the subject takes the dashed cream outline; "Keep it" sends the
+cutout down the paste path and "Start over" clears the tap. The chalk carries the wait while
+the model loads. Where the runtime or the model cannot load, the sheet is frames 2 and 3, the
+lift. One caption on the sheet reads the model's timings, an instrument for the phone check that
+leaves once answered. "Waiting, as ruled" above is superseded.)
 
 **Storage.** A sticker belongs to the person who made it and can mark any question they ask, so
 it is not a `media` row on one event. It is a row in `picture_marks` holding both keys (the
@@ -2385,8 +2398,9 @@ and treat the boards as pictures of it.
    to the claimant, then memories, then the add tile for someone who was in (3.8). With nothing
    added yet, the empty slot for someone who was in, and nothing for anyone else.
 5. The call line at screen size (3.5), 32px pins, 14px under the frame or the strip.
-6. The who's-in row (3.42), 10px under the call line: the stack, "5 of you in", and share, copy
-   and the code, for anyone who can see the market. Share sends the result tile.
+6. The who's-in row (3.42), 10px under the call line: the stack, "5 of you in", and share and
+   copy, for anyone who can see the market (the code is dead at lock, 3.42 amended 2026-09-28).
+   Share sends the result tile.
 7. "Closest first" (3.7), with at most one annotated row.
 8. "Who's got who", grouped by owner: the owner's 28px avatar and "John's got" in `body` 600,
    then the people they owe as tokens under it. Then one `caption` naming who called it even
@@ -2490,8 +2504,10 @@ where a board is older than the text.
 **Now** (`Now`, 4.7). The header is today's date in `label` `--ink-3`, the weekday spelled out
 ("Thursday, Sep 24"), 20px from the top, with nothing on the right. Needs you starts 16px under
 it, then Running, then Just happened, each headed in `label` and each gone when empty. Only the
-soonest row with a clock carries the citron dot, and the Now tab's dot hides while Now is on
-screen, so one citron element is in view (4.5). The board draws three dots; the text wins.
+soonest row with a clock carries the citron dot, and the tab bar carries none anywhere (6.4,
+amended 2026-09-28), so one citron element is in view (4.5). The board draws three dots; the
+text wins. Nothing sits above Needs you or between the three sections: a claim to accept is a
+Needs you row with "That's me" as its verb, and a cover to confirm is its yep row (4.7).
 
 **First run** (`FirstRun`): as 3.14 gives it, top to bottom, with Start hidden.
 
@@ -2586,6 +2602,13 @@ voting row, whose chalk repeats the claim in the voter's voice.
 caption: the sheet's heading already asks, and the wells are the answer. The band's clock after
 close says when it will be decided, in the Decided term's words ("Decided when the movie ends"),
 and "Settled Sat at 12:14am" once settled.
+
+(Cut 2026-09-28, Round C. The tiebreaker rules yes, no, or that the terms don't decide it; a
+ruling's confidence is a lean the screen shows ("The app leans yes, 82 to 18.", 3.24), never a
+split outcome, and the contract scores a yes-or-no question against 0 or 1. So no argument is
+ever ruled split, and the screen below is not built: with it go 3.2's fraction state, 1.2's
+uppercase exception for "THE CALL" and "WHAT IT MOVES", 3.4's split argument card, and 3.40's
+line that a split ruling settles between the ends. The text stays for the record.)
 
 **An argument, ruled split** (`Split`). An argument's band has no mark: the kicker is the 16px
 argument icon and "Argument" in `label`, with the state mark and "Ruled just now" on the right,
@@ -2911,7 +2934,10 @@ the lock glyph and no icons: sharing belongs to people who are in. Once you're i
 under the picture (the weight line, the stakes, the claim card), in every state you're in: open,
 locked and voting. Settled, it sits under the call line (or the ruler, or "Everyone's pick"),
 with its icons, for anyone who can see the market. Voided, expired and removed markets have
-nothing to send, so the row is not drawn there.
+nothing to send, so the row is not drawn there. (Amended 2026-09-28, Round C: the code icon is
+there only while the market is open, since a room code is one live code per question and dead
+at lock (docs/decisions.md, the joining rules); once locked, the row has share and copy. Pass the
+phone is open-only for the same reason.)
 
 **Share** opens the phone's share sheet (`navigator.share`, with the market's link and its
 question as the title); where there is none, it copies instead and says so as copy does. While
@@ -3052,6 +3078,10 @@ The card style is the careful step's own. The board draws those cards on the mar
 with the question in `body` 600 and two 48px choices, because the careful step as built is not
 on the canvas; where the build's card differs, the build's card wins.
 
+(Amended 2026-09-28, Round C, built as drawn: "Nova is" over the three rows "a person", "a pet",
+"something else", the tap answering; the collapsed line with Change; and the sheet "Next: who's
+in" on the careful step. The step's heading and its explaining line are gone.)
+
 ### 3.45 Pass the phone (scheduled: the round after this one, before submission)
 
 Drawn ready. The owner scheduled it on 2026-09-27 for the round after this one, before
@@ -3081,7 +3111,10 @@ name and a number on the link page, a pick and a PIN here.
    market was sent to who aren't in yet. Only people with an account who have set up One tap and
    a PIN on their own phone can be picked; the rest show at 0.45 opacity with "Not set up for
    this yet". A tertiary, "No account? Scan the code with your own phone", opens the code to
-   scan (3.42), which takes them to the link page on their own phone.
+   scan (3.42), which takes them to the link page on their own phone. (Amended 2026-09-28, Round
+   C, pre-approved: when nobody was named, or everyone named is already in, the list is the
+   host's own people who have pass the phone on, ready ones only, since the PIN is the proof of
+   identity either way and limiting it to the named people added no protection.)
 4. **Their PIN** (frame 5). The friend's 56px avatar and name, "Your PIN", four 14px dots and a
    keypad of 56px keys on the field colour. The PIN was set on their own phone, on You, in a row
    under One tap ("Your PIN for a friend's phone"). The fourth digit sends the entry. Three
@@ -3814,8 +3847,9 @@ it. Groups are not a destination for the reasons in 4.7.
   removing, archiving, who's in, One tap) closes with a 48px close at its top right and by
   dragging its handle down; the drag is read from the handle row only, so the sheet's content
   still scrolls. A sheet never opens another sheet.
-- The citron dot appears on the Now tab when something time-bound is waiting on this person. No
-  number, ever. It clears when the last of those is handled.
+- (Amended 2026-09-28, Round C, the owner's ruling.) Nothing on the tab bar: no dot, no badge,
+  no count, ever. The one citron dot lives on Now's soonest needs-you row (3.15, 4.5). The line
+  this replaces put a dot on the Now tab when something time-bound was waiting.
 - Nothing tapped more than once a session sits above the midpoint of the screen.
 
 ---

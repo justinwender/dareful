@@ -134,10 +134,10 @@ export function endedLabel(at: Date, now: Date, timeZone: string): string {
   return `${at.toLocaleDateString("en-US", { timeZone, month: "short", day: "numeric" })} at ${clockOf(at, timeZone)}`;
 }
 
-/** "Locked at 11pm" on the day, "Locked Sat, Sep 12" after it. In the viewer's zone, and never how long ago. */
+/** "locked at 11pm" on the day, "locked Sat, Sep 12" after it, for the entry line's caption (3.22: "2 beers · locked at 10:40pm"). In the viewer's zone, and never how long ago. */
 export function lockedLabel(at: Date, now: Date, timeZone: string): string {
-  if (dayNumber(now, timeZone) === dayNumber(at, timeZone)) return `Locked at ${clockOf(at, timeZone)}`;
-  return `Locked ${at.toLocaleDateString("en-US", { timeZone, weekday: "short", month: "short", day: "numeric" })}`;
+  if (dayNumber(now, timeZone) === dayNumber(at, timeZone)) return `locked at ${clockOf(at, timeZone)}`;
+  return `locked ${at.toLocaleDateString("en-US", { timeZone, weekday: "short", month: "short", day: "numeric" })}`;
 }
 
 /**

@@ -121,7 +121,7 @@ export function NumberEntry({ value, onChange, unit, hue, disabled = false, head
                 setText(t);
                 onChange(t === "" ? null : BigInt(t));
               }}
-              className="absolute inset-0 w-full bg-transparent font-serif tabular-nums text-transparent caret-ink outline-none"
+              className="absolute inset-0 w-full rounded-button bg-transparent font-serif tabular-nums text-transparent caret-ink"
               style={{ fontSize: px, lineHeight: 1, caretColor: "var(--ink)" }}
             />
           </div>

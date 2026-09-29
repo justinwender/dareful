@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { setLabel } from "@/lib/ledger/groups";
-import { needFromMarket, orderNeeds, runningCaption, squareSentence, timeBound } from "@/lib/ledger/home";
+import { needFromMarket, orderNeeds, runningCaption, squareSentence } from "@/lib/ledger/home";
 import { rootFor } from "@/lib/ui/root";
 import { filterByContext, sharedContexts, type TimelineEvent } from "@/lib/ledger/person";
 import { CODE_ALPHABET, readCode, readPastedLink } from "@/lib/ledger/room-code";
@@ -33,9 +33,10 @@ test("a character no code contains is named, not just refused", () => {
   assert.ok("problem" in r && /no zero in any code/.test(r.problem));
 });
 
-test("only this app's own market and group links are read from a paste", () => {
+test("only this app's own market links are read from a paste", () => {
   assert.deepEqual(readPastedLink("https://dareful.app/m/F3B9E7C5-5252-45c4-8fd8-189dbc7570ea"), { marketId: "f3b9e7c5-5252-45c4-8fd8-189dbc7570ea" });
-  assert.deepEqual(readPastedLink("dareful.app/join/abcDEF123_-xyz?x=1"), { inviteToken: "abcDEF123_-xyz" });
+  assert.equal(readPastedLink("dareful.app/join/abcDEF123_-xyz?x=1"), null, "a group is a set of people, never a place with a link of its own");
+  assert.equal(readPastedLink("dareful.app/join/f3b9e7c5-5252-45c4-8fd8-189dbc7570ea"), null, "even a well-formed id after /join/ is nothing");
   assert.equal(readPastedLink("https://dareful.app/m/not-a-uuid-at-all"), null);
   assert.equal(readPastedLink("https://example.com/o/123"), null);
 });
@@ -68,11 +69,12 @@ test("everyone square is one sentence that names them, never a column of nothing
   assert.equal(squareSentence(["A", "B", "C", "D", "E"]), "A, B and 3 others are square with you");
 });
 
-test("locked reads as a time on the day and a date after, never as how long ago", () => {
+test("locked reads as a time on the day and a date after, never as how long ago, and never with a capital mid-caption", () => {
   const now = new Date("2026-09-20T23:30:00Z");
-  assert.equal(lockedLabel(new Date("2026-09-20T23:00:00Z"), now, "UTC"), "Locked at 11pm");
-  assert.equal(lockedLabel(new Date("2026-09-20T21:20:00Z"), now, "UTC"), "Locked at 9:20pm");
-  assert.equal(lockedLabel(new Date("2026-09-12T23:00:00Z"), now, "UTC"), "Locked Sat, Sep 12");
+  // "2 beers · locked at 10:40pm" (3.22): the word sits inside a caption, so it takes no capital.
+  assert.equal(lockedLabel(new Date("2026-09-20T23:00:00Z"), now, "UTC"), "locked at 11pm");
+  assert.equal(lockedLabel(new Date("2026-09-20T21:20:00Z"), now, "UTC"), "locked at 9:20pm");
+  assert.equal(lockedLabel(new Date("2026-09-12T23:00:00Z"), now, "UTC"), "locked Sat, Sep 12");
 });
 
 const ev = (groupId: string): TimelineEvent => ({ kind: "proposal", at: new Date(), proposal: { groupId } as never, denomination: {} as never, groupName: null });
@@ -107,7 +109,7 @@ test("needs you: a question in voting first, then what else has a deadline, then
 });
 
 const dare = { id: "d1", title: "Does John fall asleep?", creatorId: "creator", resolvesBy: new Date(t0.getTime() + day), createdAt: t0, lockedAt: null as Date | null };
-const market = (over: Record<string, unknown>) => ({ state: "open", people: [{ id: "creator", name: "C", percent: null }], groupSize: 4, votesCast: 0, saidBy: null, ...over, dare: { ...dare, ...((over.dare as object) ?? {}) } }) as never;
+const market = (over: Record<string, unknown>) => ({ state: "open", people: [{ id: "creator", name: "C", percent: null, number: null, pick: null }], groupSize: 4, votesCast: 0, saidBy: null, unit: null, pickOne: null, ...over, dare: { ...dare, ...((over.dare as object) ?? {}) } }) as never;
 const closes = () => "tonight";
 
 test("an open question someone is not in needs their number, with who is in and when it closes", () => {
@@ -123,6 +125,8 @@ test("a question someone is already in needs nothing more from them", () => {
 test("the creator is asked to lock when time is up, and not before, and nobody else is", () => {
   const past = { dare: { resolvesBy: new Date(t0.getTime() - 1000) } };
   assert.equal(needFromMarket(market(past), "creator", false, t0, closes)?.kind, "lock");
+  // The verb is the word of the close (4.6: "Lock it in" is a sportsbook phrase; the asker closes it).
+  assert.equal(needFromMarket(market(past), "creator", false, t0, closes)?.verb, "Close");
   assert.equal(needFromMarket(market({}), "creator", false, t0, closes), null);
   assert.equal(needFromMarket(market({ ...past, people: [{ id: "creator", name: "C", percent: null }, { id: "viewer", name: "V", percent: null }] }), "viewer", false, t0, closes), null);
 });
@@ -232,12 +236,6 @@ test("a user agent is kept as one of four words and nothing finer", () => {
 
 // ------------------------------------------------------------------------------------- the shell (design 6)
 
-test("the dot on Now means something with a clock is waiting, not merely something waiting", () => {
-  assert.equal(timeBound([{ deadline: null }, { deadline: null }]), false, "a cover to confirm and a draft can sit");
-  assert.equal(timeBound([{ deadline: null }, { deadline: t0 }]), true);
-  assert.equal(timeBound([]), false);
-});
-
 test("back lands on the root it came from, and on Now when what is remembered is not a root", () => {
   assert.equal(rootFor("/people"), "/people");
   assert.equal(rootFor("/you"), "/you");
@@ -247,12 +245,20 @@ test("back lands on the root it came from, and on Now when what is remembered is
   for (const stored of ["/m/abc", "/people/", "https://evil.example/", "javascript:alert(1)", ""]) assert.equal(rootFor(stored), "/", stored);
 });
 
-test("a running row says where a question stands and never how long it has run", () => {
-  const open = market({ people: [{ id: "viewer", name: "V", percent: null }, { id: "creator", name: "C", percent: null }] });
-  // The state mark beside the row says in, locked or voting (3.23); the words say where it stands and the clock.
-  assert.equal(runningCaption(open, closes), "2 of 4 in · closes tonight");
-  assert.equal(runningCaption(market({ state: "locked", votesCast: 2 }), closes), "2 of 4 have called it");
-  assert.equal(runningCaption(market({ state: "locked" }), closes), "Resolving tonight");
-  assert.equal(runningCaption(market({ dare: { pace: "argument" } }), closes), "Waiting on the other side");
-  for (const m of [open, market({ state: "locked" }), market({ dare: { pace: "argument" } })]) assert.equal(/\d+\s*(day|week|month|hour)|ago|overdue|late/i.test(runningCaption(m, closes)), false);
+test("a running row says your entry and how many are in, then the clock once it locks, and never how long it has run or a state in words", () => {
+  const two = [{ id: "viewer", name: "V", percent: 70, number: null, pick: null }, { id: "creator", name: "C", percent: 30, number: null, pick: null }];
+  const open = market({ people: two });
+  // The state mark beside the row says in, locked or voting (3.23); the words say your entry and how many are in (3.15).
+  assert.equal(runningCaption(open, closes, "viewer"), "You’re in at 70% · two of you");
+  assert.equal(runningCaption(market({ people: [two[0]] }), closes, "viewer"), "You’re in at 70% · just you so far");
+  assert.equal(runningCaption(market({ people: [{ id: "viewer", name: "V", percent: null, number: "14", pick: null }, ...two.slice(1)], unit: { singular: "shirt", plural: "shirts" } }), closes, "viewer"), "You’re in at 14 shirts · two of you");
+  assert.equal(runningCaption(market({ people: [{ id: "viewer", name: "V", percent: null, number: null, pick: 0 }, ...two.slice(1)], pickOne: { answers: [{ index: 0, text: "John" }], outcome: null, shares: [], callers: [] } }), closes, "viewer"), "You’re in: John · two of you");
+  // Once it locks, the clock alone: resolving while nobody has called it, voting once someone has.
+  assert.equal(runningCaption(market({ state: "locked", votesCast: 2, people: two }), closes, "viewer"), "Voting ends tonight");
+  assert.equal(runningCaption(market({ state: "locked", people: two }), closes, "viewer"), "Resolving tonight");
+  for (const m of [open, market({ state: "locked", people: two }), market({ dare: { pace: "argument" }, people: [two[0]] })]) {
+    const s = runningCaption(m, closes, "viewer");
+    assert.equal(/\d+\s*(day|week|month|hour)|ago|overdue|late/i.test(s), false, s);
+    assert.equal(/waiting on|closes /i.test(s), false, `a state in words, or the open clock, on a running row: ${s}`);
+  }
 });

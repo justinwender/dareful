@@ -19,7 +19,7 @@ const T = { ground: "#121110", surface: "#1C1A17", lineStrong: "#4A453F", ink: "
 
 export type ShareCard = { kicker: string; headline: string; footer: string };
 
-export const plainCard: ShareCard = { kicker: "Dareful", headline: "Who’s got the next one?", footer: "The bets, the rounds, and the “I got this one” between friends." };
+export const plainCard: ShareCard = { kicker: "Dareful", headline: "Who’s got the next one?", footer: "The dares, the rounds, and the “I got this one” between friends." };
 
 /** Keeps a long group or first name from pushing the headline off the card. */
 export function clip(s: string, max: number): string {

@@ -31,6 +31,7 @@
     "@dynamic-labs-wallet/node-evm": "^1.1.21",
     "@dynamic-labs/ethereum": "^5.9.0",
     "@dynamic-labs/sdk-react-core": "^5.9.0",
+    "@mediapipe/tasks-vision": "^1.0.1",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.3.0",
     "drizzle-orm": "^0.45.2",

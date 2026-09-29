@@ -14,7 +14,8 @@ import { cn } from "@/lib/utils";
  * What's on is the second tab (3.32): the one destination holding things nothing in the app has pointed you to.
  * Its icon is a ticket stub at the same 1.8px stroke on the 24px grid; no badge, dot or count on it, ever.
  *
- * The citron dot on Now means one thing: something with a clock is waiting on this person. No number, ever.
+ * No badge, dot or count on any tab, ever (Round C, the owner's ruling amending 6.4): the one citron dot lives on
+ * the soonest needs-you row (3.15), and the tab bar says nothing about what is waiting.
  *
  * Start, the button (6.1): a 56px chalk circle 16px above the bar, on the four roots, hidden on an empty Now. It
  * asks and does nothing else: a tap opens the question step, where an argument is a chip and "Got a code?" sits
@@ -28,7 +29,7 @@ const TABS: Array<{ href: RootPath; label: string }> = [
   { href: "/you", label: "You" },
 ];
 
-export function TabBar({ active, live, start }: { active: RootPath; live: boolean; start: boolean }) {
+export function TabBar({ active, start }: { active: RootPath; start: boolean }) {
   const path = usePathname();
   useEffect(() => {
     try {
@@ -47,16 +48,13 @@ export function TabBar({ active, live, start }: { active: RootPath; live: boolea
         <div className="mx-auto grid w-full max-w-[430px] grid-cols-4" style={{ height: TAB_BAR_HEIGHT }}>
           {TABS.map((t) => {
             const on = t.href === active;
-            const dot = t.href === "/" && live;
             return (
               <Link key={t.href} prefetch={false} href={t.href} aria-current={on ? "page" : undefined} className={cn("relative flex flex-col items-center justify-center gap-1 tab-text", on ? "font-semibold text-ink" : "font-medium text-ink-3")}>
                 <LinkPending />
                 <span className="relative">
                   <TabGlyph tab={t.href} />
-                  {dot ? <span aria-hidden="true" className="absolute -top-px -right-[5px] h-1.5 w-1.5 rounded-pill bg-live" /> : null}
                 </span>
                 <span>{t.label}</span>
-                {dot ? <span className="sr-only">, something with a clock is waiting on you</span> : null}
               </Link>
             );
           })}
@@ -73,7 +71,7 @@ export function StartButton() {
         prefetch={false}
         href="/m/new"
         aria-label="Ask something"
-        className="pointer-events-auto absolute right-5 bottom-[calc(80px+env(safe-area-inset-bottom))] flex h-14 w-14 items-center justify-center overflow-hidden rounded-pill bg-primary text-primary-foreground transition-opacity duration-[120ms] ease-out active:opacity-[0.88] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink"
+        className="pointer-events-auto absolute right-5 bottom-[calc(80px+env(safe-area-inset-bottom))] flex h-14 w-14 items-center justify-center overflow-hidden rounded-pill bg-primary text-primary-foreground transition-opacity duration-[120ms] ease-out active:opacity-[0.88]"
       >
         <LinkPending />
         <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">

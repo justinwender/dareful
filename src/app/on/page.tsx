@@ -4,7 +4,6 @@ import { FeedFailed } from "@/components/on/try-again";
 import { Screen, SectionLabel } from "@/components/ledger/screen";
 import { TabBar } from "@/components/ui/tab-bar";
 import { currentUser } from "@/lib/auth/session";
-import { liveFor } from "@/lib/ledger/home";
 import { whatsOn } from "@/lib/sports";
 import { clockOf } from "@/lib/ui/copy";
 import { hueFor } from "@/lib/ui/hue";
@@ -24,7 +23,7 @@ export default async function WhatsOnPage() {
   if (!me) redirect("/");
   const clock = await viewerClock();
   const now = new Date(clock.now);
-  const [on, live] = await Promise.all([whatsOn(me, now, clock.zone), liveFor(me, now)]);
+  const on = await whatsOn(me, now, clock.zone);
   const hue = hueFor(me.id);
   const row = (g: (typeof on.days)[number]["games"][number]) => rowData(g.game, clock.zone, g.asked, g.yours[0] ? { label: g.yours[0].label, groupId: g.yours[0].groupId } : null);
   const nothing = on.days.length === 0;
@@ -59,7 +58,7 @@ export default async function WhatsOnPage() {
           </section>
         ))}
       </div>
-      <TabBar active="/on" live={live} start />
+      <TabBar active="/on" start />
     </Screen>
   );
 }
