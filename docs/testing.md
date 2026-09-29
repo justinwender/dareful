@@ -883,6 +883,26 @@ Handing over on two phones (90), the friend's own phone (91), wrong PINs (92), t
 
 Cutting a sticker on the phone with its timings (94), the lift as the fallback (95), the one dot and the Running row's words (96), a claim to accept as a row (97), the code screen for a dead address in the installed app (98), the focus outlines on a keyboard (99), the who's-joining fallback (100), the voting screen without the entry line (101).
 
+## Session 27: Round C, part 2, in the real localhost session
+
+**When:** September 28, 2026, after Round C was committed. **Who:** the localhost test account; nobody on a phone; the pane hidden, so taps were dispatched from the page's own script onto the real controls. **Checked first:** the owner's rulings on the additions (docs/decisions.md 2026-09-28, "Round C, part 2").
+
+### Exercised
+
+- **The ask flow:** "How people answer" in `label` over the three kind chips, once.
+- **The person view:** with an account that shares nothing still open, no "Coming up" and no "Show earlier" under eleven cards; the split and the fold are held by the unit suite, and the http suite reads "Coming up" over the kettle question between the asker and the friend, the past starting after it, and a voided story keeping its frame.
+- **A market from Friday** opens as the memory view with its date in the band, as before; the band's clock after the end ("Settled …", "Voided …") is held by the http suite on markets ended today, and the words by the unit suite.
+- **Held by the suites, not the eyes:** the stake step's one fact in the sheet before you are in and nowhere once in; the ballot's "Nobody has said yet. Two of you and it settles." on the score's question; "What was it?" over the number field; the claimant screen's headline, line, groups, check rows and the chalk counting the pressed rows; the who's-got-who fold; the offline bar's words and its absence online; "Try again" inside the block for a failure a retry could put right and never for a refusal; the wait's stages; the cut sheet's first-load words with the lift in the meantime on an iPhone.
+
+### What broke
+
+- The band-clock test named the wrong weekdays for its dates (Sep 20, 2026 is a Sunday); the fixture now reads from Monday the 28th.
+- The fold's caption used a curly apostrophe where the heading above it uses the straight one from `possessive`; the caption follows the heading.
+
+### What needs a phone
+
+The stake fact on a phone (102), the ballot before anyone has said (103), the number vote's heading (104), the band after the end (105), the claimant screen (106), Coming up and Show earlier (107), the offline bar (108), Try again and the ten-second step (109), the cutter's first load with the lift meanwhile (110), a voided story's frame (111).
+
 ## The final test: one checklist
 
 Everything from sessions 11 through 15 that needs a phone, a second person or a real game, in one place, grouped by what it needs, so the final pass on real phones is one document to walk through. Each item says exactly what to check; the session it came from has the detail. Tick them in order within a group; the two-phone items want both phones signed in to two accounts that share a set.
@@ -1004,3 +1024,16 @@ Everything from sessions 11 through 15 that needs a phone, a second person or a 
 99. **Focus outlines on a keyboard** (26): on a laptop, tab through the question step; expect the 2px cream outline 2px outside the question, each answer field, the number entry and the margin's field, and around Start on a root, never flush with the edge and never a colour change of the border.
 100. **Who's joining, when nobody was named** (26): ask a question of nobody (a set of one) and get in; hand the phone over to a friend who has pass the phone on and shares any set with you; expect them listed under "Pick yourself" and their PIN to get them in.
 101. **The voting screen** (26): once a question you are in closes, expect the claim card (or the source card) directly under the band, no entry line, "Where everyone landed" over the picture, and no list of each person's number.
+
+### Round C, part 2
+
+102. **The stake fact** (27): open a question you are not in and slide; in the raised sheet under the stake chips expect "The most you can be out is what you put on it." once; once in, expect it nowhere.
+103. **The ballot before anyone has said** (27): on a What's on question the score has answered and nobody has confirmed, expect the sheet's header "Nobody has said yet. Two of you and it settles." (the count in words for your set), the source card above it, and "That's right, the Giants won" as the chalk.
+104. **What was it?** (27): on a number question in voting, tap "Not how I saw it"; expect "What was it?" over the number field, then "What happened?" and the line.
+105. **The band after the end** (27): on a question that settled today expect "Settled at 10:14pm" in the band; on one voided today "Voided at …"; on one called off "Called off at …"; on one that closed for good "Closed for good at …"; from the next day the date alone, as before; while closed and not yet called, "Resolving tonight".
+106. **The claimant screen** (27): sign up on a number a friend logged three covers against; expect "You were already in 3 stories." over "A few days with your friends, kept under your name, Sam.", one group per friend with the count, each row with "Covered · Sep 5", the memo, the token and a chalk check; unpress one and expect the chalk to read "Yep, these 2 are right" and, after the tap, the unpressed cover still pending under the typed name.
+107. **Coming up and Show earlier** (27): on a person view with an open question between you, expect "Coming up" over it and the past under; with more than twelve past events expect "Show earlier" as a tertiary opening the rest on the same screen.
+108. **The offline bar** (27): with the installed app open, turn on airplane mode; expect the 28px bar "Offline. You can still look around." under the header on every screen, and gone the moment the connection is back.
+109. **Try again, and the ten-second step** (27): with the network slow, get into a question; expect the runner, "Still going." at three seconds, and at ten the block "That didn't come back." with "Try again" under the chalk, the chalk tappable again; when a send fails outright, expect "Try again" inside the block under "That didn't go through".
+110. **The cutter's first load on a phone** (27, with item 94): on an iPhone with the runtime and model not yet cached, tap "Make a sticker"; expect "Getting the cutter ready. It's about 17 MB the first time, and your phone keeps it after." with "Or, in the meantime: hold what you want, tap Copy Subject, then paste it here." and "Paste"; paste a lifted subject meanwhile and expect the sticker; or wait, and expect the line and the lift offer to go once the cutter is ready. On Android expect the loading line alone.
+111. **A voided story's frame** (27): on a person view with a voided question that has a photo between you, expect its story to carry the frame at 180, drawn without controls.

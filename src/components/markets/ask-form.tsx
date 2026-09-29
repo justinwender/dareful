@@ -288,6 +288,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
         </div>
         {pace === "dare" ? (
           <div className="flex flex-col gap-2">
+            <h2 className="text-label text-ink-3">How people answer</h2>
             <div role="radiogroup" aria-label="How people answer" className="flex flex-wrap gap-2">
               <button type="button" role="radio" aria-checked={kind === "binary"} onClick={() => setKind("binary")} className="rounded-pill">
                 <Chip size={36} selected={kind === "binary"}>

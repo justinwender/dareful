@@ -25,6 +25,7 @@ import { PickOneBars, type PickOneAnswer, type PickOneBar } from "./pick-one-bar
 import { PickOneEntry } from "./pick-one-entry";
 import { numberAxis, serialiseAxis, unitPhrase, withSeparators, type NumberLineAxis } from "@/lib/ledger/number-axis";
 import type { Signing, StakeUnit } from "./market-actions";
+import { StakeChips } from "./stake-chips";
 
 export type StagePicture =
   | {
@@ -38,8 +39,6 @@ export type StagePicture =
   /** A pick-one market's bars (3.31): what is riding on each answer, and the caption only when one stake is more than half. */
   | { kind: "picks"; bars: PickOneBar[]; entries: number; caption: string | null };
 
-const STAKES_MONEY = [500, 1000, 2000];
-const STAKES_COUNT = [1, 2, 3];
 /** How long the entering moment runs before the sheet becomes the next state's (3.13): the columns grow, then the move changes. */
 const ENTERING_MS = 1800;
 
@@ -462,7 +461,7 @@ export function MarketStage(props: {
   const pickedAnswer: PickOneAnswer | null = pickOne && pick !== null ? (pickOne.answers.find((a) => a.index === pick) ?? null) : null;
   const foot = (
         <>
-          <ProblemSummary messages={[problem]} />
+          <ProblemSummary messages={[problem]} retry={() => void submit()} />
           {props.blind && !changing ? (
             // A blind market (3.31): what is about to happen, said once before anyone commits, after the 16px lock glyph.
             <p className="flex items-center gap-2 text-body-sm text-ink" data-blind-line="">
@@ -762,54 +761,7 @@ export function MarketStage(props: {
           ) : null}
           {unsigned ? <p className="text-body-sm text-ink-2">This was you before you signed in. Keep it, or change it.</p> : null}
           {whoStep ? null : <h2 className="text-label text-ink-3">What’s riding on it</h2>}
-          {whoStep ? null : unit.quantifiable ? (
-            <>
-              <div
-                role="group"
-                aria-label="What's riding on it"
-                className="grid grid-cols-3 gap-2"
-              >
-                {(unit.monetary ? STAKES_MONEY : STAKES_COUNT).map((o) => (
-                  <button
-                    key={o}
-                    type="button"
-                    aria-pressed={!other && stake === String(o)}
-                    onClick={() => (setStake(String(o)), setOther(false))}
-                    className="rounded-pill"
-                  >
-                    <Chip
-                      size={44}
-                      selected={!other && stake === String(o)}
-                      className="w-full"
-                    >
-                      {stakeWords(String(o))}
-                    </Chip>
-                  </button>
-                ))}
-              </div>
-              {other ? (
-                <input
-                  inputMode={unit.monetary ? "decimal" : "numeric"}
-                  value={custom}
-                  onChange={(e) => setCustom(e.target.value)}
-                  aria-label="Another amount"
-                  className="h-11 w-full rounded-button border border-line bg-ground px-4 text-body text-ink placeholder:text-ink-3"
-                />
-              ) : (
-                <Button
-                  variant="tertiary"
-                  className="self-start"
-                  onClick={() => setOther(true)}
-                >
-                  Something else
-                </Button>
-              )}
-            </>
-          ) : (
-            <p className="text-caption text-ink-3">
-              One {unit.singular}, the same for everyone.
-            </p>
-          )}
+          {whoStep ? null : <StakeChips unit={unit} stake={stake} other={other} custom={custom} stakeWords={(u) => stakeWords(u)} onStake={setStake} onOther={setOther} onCustom={setCustom} />}
           {pickOne ? foot : null}
         </div>
       }

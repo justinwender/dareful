@@ -86,7 +86,7 @@ export function MarketCard(p: MarketCardProps) {
           {p.groupName ? <Chip>{p.groupName}</Chip> : null}
         </div>
         <h3 className="text-serif-l text-ink">{p.title}</h3>
-        {p.state === "resolved" && p.media && p.media.length > 0 ? <MediaFrame items={p.media.map((m) => ({ id: m.id, author: { name: m.author.displayName, hue: hueFor(m.author.id) } }))} height={180} interactive={false} className="-mx-4" /> : null}
+        {(p.state === "resolved" || p.state === "voided" || p.state === "expired") && p.media && p.media.length > 0 ? <MediaFrame items={p.media.map((m) => ({ id: m.id, author: { name: m.author.displayName, hue: hueFor(m.author.id) } }))} height={180} interactive={false} className="-mx-4" /> : null}
 
         {p.state === "open" ? (
           <div className="flex items-center gap-3">

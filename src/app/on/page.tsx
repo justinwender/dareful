@@ -8,6 +8,7 @@ import { whatsOn } from "@/lib/sports";
 import { clockOf } from "@/lib/ui/copy";
 import { hueFor } from "@/lib/ui/hue";
 import { viewerClock } from "@/lib/ui/zone";
+import { OfflineBar } from "@/components/ui/offline-bar";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,7 @@ export default async function WhatsOnPage() {
   return (
     <Screen root>
       <h1 className="pt-5 text-label text-ink-3">What’s on</h1>
+      <OfflineBar />
       <div className="flex flex-col gap-7 py-4">
         {on.feed.failing ? <FeedFailed lastOk={on.feed.lastOkAt ? clockOf(on.feed.lastOkAt, clock.zone) : null} nothingSaved={nothing} /> : null}
         {nothing && !on.feed.failing ? (

@@ -199,6 +199,8 @@ before(async () => {
   await markets.enterMarket({ dareId: voided.id, userId: friend.user.id, stake: 600n, value: 3000n, signature: await friend.ledger.signTypedData(markets.enterTypedData(voided, 600n, 3000n)) });
   await db.update(schema.dares).set({ lockedAt: new Date(Date.now() - 7_200_000), resolvedAt: new Date(Date.now() - 60_000), resolvedOutcome: -1n, resolvedBy: "quorum" }).where(eq(schema.dares.id, voided.id));
   voidedId = voided.id;
+  // A void was still a night (3.4, 3.37): a memory on it, so its story carries the frame on a timeline.
+  await db.insert(schema.media).values({ dareId: voided.id, kind: "photo", role: "memory", storageKey: "frames/check.jpg", width: 800, height: 500, authorId: asker.user.id });
   // The memory it leaves (3.37): the same screen from the second calendar day, here three days on, with one photo.
   const recallDraft = await askEnded("Did the kettle survive the week?");
   const recall = await markets.openMarket(recallDraft.id, asker.user.id, await asker.ledger.signTypedData(markets.createTypedData(recallDraft)));
@@ -526,10 +528,14 @@ test("a cover started from a person's page is for that person, with nothing to p
 test("the first screen groups what was waiting by who it is with, and offers one yes for all", async () => {
   const r = await get("/welcome", cU);
   assert.equal(r.status, 200);
-  assert.ok(r.text.includes("Your friends kept track."));
-  assert.ok(r.text.includes("With Alex Rivera") && r.text.includes("With Cy"));
-  assert.equal((r.text.match(/With /g) ?? []).length, 2);
-  for (const s of ["Concert tickets", "Brunch", "Parking", "Yep, all 3 are right"]) assert.ok(r.text.includes(s), s);
+  assert.ok(r.text.includes("Alex Rivera") && r.text.includes("Cy"), "one group per person, named");
+  // The claimant screen as drawn (3.38, Round C part 2): the headline counts the stories, one group per person with its count, claim rows with a check pressed by default and labelled "Confirm: Priya's got you", the chalk counting the pressed rows.
+  assert.ok(r.text.includes("You were already in 3 stories.") && /kept under your name, /.test(r.text), "the headline and the line");
+  assert.equal((r.html.match(/data-claim-group="/g) ?? []).length, 2, "one group per person");
+  assert.equal((r.html.match(/data-claim-row="/g) ?? []).length, 3, "a row per cover");
+  assert.equal((r.html.match(/role="checkbox" aria-checked="true" aria-label="Confirm: [^"]+ got you"/g) ?? []).length, 3, "every row's check, pressed by default, named for the tap");
+  for (const s of ["Concert tickets", "Brunch", "Parking", "Yep, all 3 are right", "Covered · "]) assert.ok(r.text.includes(s), s);
+  assert.ok(!r.text.includes("Here’s what was waiting") && !r.text.includes("With "), "the old lines are gone");
 });
 
 test("home carries what arrived by binding as yep rows and no strip, and someone with nothing waiting is sent home instead of an empty inbox", async () => {
@@ -876,6 +882,7 @@ test("the market screen keeps its one move in the pinned sheet: the odds line be
   assert.ok(before.html.includes('aria-valuetext="not picked yet"'), "nothing starts picked: a thumb parked at 50% anchors everyone on a coin flip");
   const after = await get(`/m/${marketId}`, cAsker);
   assert.ok(!/<section aria-label="Your number"/.test(after.html) && !/<section aria-label="Get people in"/.test(after.html), "once in, nothing is your move: no sheet (3.24)");
+  assert.ok(!after.html.includes("data-stake-fact"), "the fact is the stake step's alone: nowhere once in");
   assert.ok(after.html.includes('data-holdouts="1"') && after.html.includes('data-holdout=""') && after.html.includes('data-whos-in-list=""'), "the friend, asked and not in, follows the stack as a dashed avatar, and the stack opens who's in (3.42)");
   assert.ok(!after.html.includes("data-ghost-entries"), "no list of ghosts: who is in is behind the stack");
   assert.ok(after.html.includes('data-nudge=""') && after.text.includes(`Waiting on ${friend.user.displayName.split(" ")[0]}.`) && after.text.includes("Nudge "), "the nudge is back (Round B): the only way someone in reaches the people not in");
@@ -985,7 +992,7 @@ test("a market in voting can be watched: its pulse is Postgres only, answers the
 
 test("asking offers a number beside yes or no, and the question step carries the mark row with Optional said once", async () => {
   const r = await get("/m/new", cAsker);
-  for (const t of ["Yes or no", "A number", "Add a mark", "Optional", "Your question", "Next: who’s in", "Got a code?"]) assert.ok(r.text.includes(t), t);
+  for (const t of ["Yes or no", "A number", "Add a mark", "Optional", "Your question", "Next: who’s in", "Got a code?", "How people answer"]) assert.ok(r.text.includes(t), t);
   assert.ok(!r.text.includes("It picks this market") && !r.html.includes("John falls asleep during the movie"), "the retint shows what a mark does, and no example sits in the question (4.9)");
   assert.equal((r.text.match(/Optional/g) ?? []).length, 1, "Optional is said once, on the row, and never again (3.29)");
   assert.ok(!r.text.includes("Everyone puts their odds on it") && !r.text.includes("closest wins") && !r.text.includes("whoever's right is paid"), "no caption under the kind chips (3.29, 4.9, Round C)");
@@ -1046,10 +1053,13 @@ test("once it is called, the claimant's clip leads the frame on the settled scre
   assert.ok(r.html.includes(`/api/media/${calledClipId}"`) && r.html.includes("Photo 1 of 1, added by Priya"), "the resolving clip leads the frame, credited to the claimant (3.8, 4.3)");
   assert.ok(r.text.includes("It boiled dry."), "the outcome in the market's own words (3.25)");
   assert.ok(r.text.includes("Closest first"));
+  const band = (html: string) => /<section[^>]*data-band-state="[^"]*"[^>]*>[\s\S]*?<\/section>/.exec(html)?.[0] ?? "";
+  assert.ok(/Settled (at |\w{3} at )/.test(band(r.html)), "the band's clock after the end: Settled and when (3.37, Round C part 2)");
   const voided = await get(`/m/${voidedId}`, cAsker);
   assert.equal(voided.status, 200);
+  assert.ok(/Voided (at |\w{3} at )/.test(band(voided.html)), "Voided and when, in the band");
   assert.ok(voided.text.includes("Nobody could tell.") && voided.text.includes("Nothing changes hands."), "the voided screen (3.37)");
-  assert.ok(voided.html.includes("data-empty-slot") && voided.html.includes("Add the first photo from"), "a void was still a night: the slot");
+  assert.ok(voided.html.includes("data-media-frame") && voided.html.includes("data-add-tile") && !voided.html.includes("data-empty-slot"), "a void was still a night: its photo in the frame, and the add tile for someone who was in");
   assert.ok(!voided.html.includes('data-share=""') && !voided.html.includes('data-whos-in=""'), "no tile tells a void, so no row and nothing to send (3.42)");
   assert.ok(!voided.text.includes("Closest first"));
 });
@@ -1073,6 +1083,20 @@ test("the day after it ended, the same market opens as the memory: the photos fi
   assert.ok(r.text.includes("Nothing changed hands.") || r.text.includes("got"), "what it left");
   assert.ok(r.html.includes('data-add-tile="') || r.html.includes('data-empty-slot=""'), "adding stays one tap away, weeks later included (3.24)");
   assert.ok(r.html.includes('data-share=""'), "and the row with its icons (3.37)");
+});
+
+test("the person view: what is still ahead under Coming up, the past after it with no Show earlier while it is short, and a voided story keeps its frame (3.4, 3.38)", async () => {
+  const r = await get(`/p/${friend.user.id}`, cAsker);
+  assert.equal(r.status, 200);
+  assert.ok(r.text.includes("Coming up"), "the kettle question, still open between the two, is ahead");
+  const comingUp = r.html.indexOf("Coming up");
+  const past = r.html.indexOf('data-past-starts=""');
+  assert.ok(comingUp >= 0 && past > comingUp, "the past starts after what is ahead");
+  assert.ok(!r.html.includes('data-show-earlier=""'), "a short history has nothing earlier to show");
+  // A void was still a night (3.4): its story carries the frame, drawn without controls, like a resolved one.
+  const voidedStory = r.html.slice(r.html.indexOf(`href="/m/${voidedId}"`));
+  assert.ok(voidedStory.includes("data-media-frame") && voidedStory.indexOf("data-media-frame") < voidedStory.indexOf("</article>"), "the voided story's frame");
+  assert.ok(!/<a[^>]*data-show-earlier/.test(r.html) || r.html.includes("earlier=1"), "Show earlier, when it shows, is the same screen asked for earlier");
 });
 
 test("a market's photo is served to its participants and reads as nothing to anyone else; the story on a person view carries the frame", async () => {
@@ -1336,7 +1360,8 @@ test("the ballot when a final score answers it: the source card where the claim 
   assert.ok(r.html.includes("data-source-card") && r.text.includes("From the final score") && r.text.includes("The terms said the final score decides."), "the source card (3.35)");
   assert.ok(new RegExp(`${feedHome}\\s*24`).test(r.text) && new RegExp(`${feedAway}\\s*17`).test(r.text), "the two rows, team and number");
   assert.ok(!r.html.includes("says"), "no avatar and no says: the score is speaking, not a person");
-  assert.ok(r.text.includes(`From the final score: ${feedHome} 24, ${feedAway} 17.`), "the sheet's header names the score the terms named");
+  assert.ok(r.text.includes("Nobody has said yet. Two of you and it settles."), "the count line's empty state as the sheet's header (3.35, Round C part 2)");
+  assert.ok(!r.text.includes(`From the final score: ${feedHome} 24, ${feedAway} 17.`), "the score speaks on the source card, not in the header");
   assert.ok(r.text.includes(`That’s right, the ${feedHome} won`), "the chalk names the outcome in the voter's voice and names the team (3.35)");
   assert.ok(r.html.includes(`data-team-stamp="${feedHomeAbbr}"`), "each row of the source card wears its team's stamp");
   assert.ok(!r.text.includes("Can’t agree?") && !r.text.includes("Let the tiebreaker call it"), "the final score is the tiebreaker: the model is never offered");
@@ -1564,7 +1589,7 @@ test("at sign-in, an entry made from a link is a row on the claimant screen, pre
   assert.ok(r.text.includes("You’re in at 40% · $5") && r.text.includes("Does the pizza come before the second act?"), "its line is the entry, the question in the caption");
   assert.ok(r.html.includes('role="checkbox" aria-checked="true"'), "pressed by default");
   assert.ok(r.text.includes("Yep, that’s right") && r.html.includes('data-confirm-all=""'), "the one chalk in the sheet");
-  assert.ok(r.text.includes("Your entries were waiting."), "the heading, with nothing else waiting");
+  assert.ok(r.text.includes("You were already in one story.") && r.text.includes("kept under your name"), "the heading counts the one entry as a story (3.38, Round C part 2)");
   // Left out: it goes back to a fresh ghost in stone, and the screen empties.
   await claims.leaveEntry(windowId, newcomer.user.id);
   assert.equal((await get("/welcome", cNewcomer)).loc, "/", "nothing waiting: home");

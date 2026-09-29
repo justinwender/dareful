@@ -2600,8 +2600,9 @@ voting row, whose chalk repeats the claim in the voter's voice.
 **Closed, waiting** (`DockStates`). The wells are 56px on the market's ground with a 1px inset
 `--line-strong` ring, in `body` 600 (pick one: 48px, two across, with 24px avatars), with no
 caption: the sheet's heading already asks, and the wells are the answer. The band's clock after
-close says when it will be decided, in the Decided term's words ("Decided when the movie ends"),
-and "Settled Sat at 12:14am" once settled.
+close is "Resolving tonight", the clock 3.15 and 3.23 name, and "Settled Sat at 12:14am" once
+settled (amended 2026-09-28, Round C part 2, the owner's ruling: this line used to want the
+Decided term's words, "Decided when the movie ends", which contradicted 3.15 and 3.23).
 
 (Cut 2026-09-28, Round C. The tiebreaker rules yes, no, or that the terms don't decide it; a
 ruling's confidence is a lean the screen shows ("The app leans yes, 82 to 18.", 3.24), never a

@@ -104,7 +104,7 @@ import {
   dateLabel,
   dayLabel,
   daysBetween,
-  endedLabel,
+  endedClock,
   firstName,
   fromThatNight,
   lockedLabel,
@@ -736,8 +736,9 @@ export default async function MarketPage({
         ? `Resolving ${closesLabel(d.resolvesBy, now, clock.zone)}`
         : state === "locked" && d.resolvesBy
           ? `Voting ends ${closesLabel(d.resolvesBy, now, clock.zone)}`
-          : state === "voided" && d.resolvedBy === "removed" && d.resolvedAt
-            ? `Called off ${endedLabel(d.resolvedAt, now, clock.zone)}`
+          : (state === "resolved" || state === "voided" || state === "expired") && (d.resolvedAt ?? d.resolvesBy)
+            // After the end the band says when (3.37, 3.38; Round C part 2): settled, voided, called off, or closed for good.
+            ? endedClock(state, d.resolvedBy, (d.resolvedAt ?? d.resolvesBy) as Date, now, clock.zone)
             : null;
   const bandLive =
     d.resolvesBy !== null &&
@@ -901,9 +902,9 @@ export default async function MarketPage({
         }
         proposal={
           decidedByScore && d.feedOutcome !== null && d.feedOutcome !== VOID_OUTCOME && feedFinal && game
-            ? { outcome: word(d.feedOutcome), line: `From the final score: ${scoreLine(feedFinal, game.homeShort, game.awayShort)}.`, rationale: null }
+            ? { outcome: word(d.feedOutcome), line: `From the final score: ${scoreLine(feedFinal, game.homeShort, game.awayShort)}.`, rationale: null, source: "feed" as const }
             : firstDrive && d.feedOutcome !== null && d.feedOutcome !== VOID_OUTCOME && game?.firstDriveResult
-              ? { outcome: word(d.feedOutcome), line: `From the play-by-play: ${game.firstDriveResult}.`, rationale: null }
+              ? { outcome: word(d.feedOutcome), line: `From the play-by-play: ${game.firstDriveResult}.`, rationale: null, source: "feed" as const }
             : d.aiRationale
             ? {
                 outcome: word(d.aiOutcome),
@@ -916,6 +917,7 @@ export default async function MarketPage({
                         ? `The app leans ${SAID(word(d.aiOutcome) ?? "void")}, ${Math.round((d.aiConfidenceBps ?? 0) / 100)} to ${100 - Math.round((d.aiConfidenceBps ?? 0) / 100)}.`
                         : `The app thinks: ${SAID(word(d.aiOutcome) ?? "void")}.`,
                 rationale: d.aiRationale,
+                source: "app" as const,
               }
             : null
         }

@@ -217,7 +217,7 @@ export function CoverSheet({ person, units, recent, viewer }: { person: { id: st
             )}
           </section>
 
-          <ProblemSummary messages={[problem]} />
+          <ProblemSummary messages={[problem]} retry={submit} />
           <Button variant="primary" onClick={submit} loading={pending} disabled={choice.kind === "usd" && (cents === null || cents <= 0n)} data-cover-submit="">
             {label}
           </Button>

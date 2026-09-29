@@ -106,7 +106,7 @@ export function CodeJoinCompact({ label = "Someone read you a code?" }: { label?
         </Button>
       </div>
       <Problem id={`${id}-problem`} message={field} />
-      <ProblemSummary messages={[form]} />
+      <ProblemSummary messages={[form]} retry={submit} />
     </form>
   );
 }
@@ -164,7 +164,7 @@ export function CodeJoinFocused({ initial = "", initialProblem = null }: { initi
         label="Join"
         low={
           <>
-            <ProblemSummary messages={[form]} />
+            <ProblemSummary messages={[form]} retry={submit} />
             <Button type="submit" form={`${id}-form`} variant="primary" disabled={!full} loading={pending}>
               Join
             </Button>

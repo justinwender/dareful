@@ -6,6 +6,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { LinkPending } from "@/components/ui/link-pending";
 import { TabBar } from "@/components/ui/tab-bar";
 import type { Hue } from "@/lib/ui/hue";
+import { OfflineBar } from "@/components/ui/offline-bar";
 
 const STARTERS = ["Does John fall asleep during the movie?", "Does anyone actually show up on time Friday?", "Who gets to the bar first?"];
 
@@ -20,6 +21,7 @@ export function FirstRun({ today, games = [], viewerHue = "stone" }: { today: st
   return (
     <Screen root>
       <h2 className="pt-5 text-label text-ink-3">{today}</h2>
+      <OfflineBar />
       <div className="flex flex-1 flex-col gap-7 py-6">
         <div className="flex flex-col gap-3">
           <h1 className="text-serif-xl text-ink">Nothing happens here until somebody else is in it.</h1>

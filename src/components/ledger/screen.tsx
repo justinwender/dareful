@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { BackControl } from "@/components/ui/back-control";
+import { OfflineBar } from "@/components/ui/offline-bar";
 import { PinnedSheet } from "@/components/ui/pinned-sheet";
 import { cn } from "@/lib/utils";
 
@@ -31,13 +32,17 @@ export function Screen({ children, className, root = false }: { children: ReactN
  */
 export function TopBar({ back, title, right }: { back?: boolean; title?: string; right?: ReactNode }) {
   return (
-    <header className="flex h-14 items-center justify-between">
-      <div className="flex min-w-0 items-center gap-2">
-        {back ? <BackControl /> : null}
-        {title ? <span className="truncate text-body-strong text-ink">{title}</span> : null}
-      </div>
-      <div className="flex items-center gap-1">{right}</div>
-    </header>
+    <>
+      <header className="flex h-14 items-center justify-between">
+        <div className="flex min-w-0 items-center gap-2">
+          {back ? <BackControl /> : null}
+          {title ? <span className="truncate text-body-strong text-ink">{title}</span> : null}
+        </div>
+        <div className="flex items-center gap-1">{right}</div>
+      </header>
+      {/* The offline bar sits under the header (3.14); the roots draw it under their own. */}
+      <OfflineBar />
+    </>
   );
 }
 

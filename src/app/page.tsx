@@ -1,5 +1,6 @@
 import { ButtonLink } from "@/components/ui/button";
 import { Screen } from "@/components/ledger/screen";
+import { OfflineBar } from "@/components/ui/offline-bar";
 import { FirstRun } from "@/components/home/first-run";
 import { JustHappened } from "@/components/home/just-happened";
 import { NeedsYou } from "@/components/home/needs-you";
@@ -47,6 +48,7 @@ export default async function Now({ searchParams }: { searchParams: Promise<{ al
   return (
     <Screen root>
       {today}
+      <OfflineBar />
       <div className="flex flex-col gap-7 py-4">
         <NeedsYou rows={home.needs} viewer={user} showAll={sp.all === "1"} allHref="/?all=1" />
 

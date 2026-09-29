@@ -9,6 +9,7 @@ import { currentUser } from "@/lib/auth/session";
 import { ghostsForCreator } from "@/lib/ledger/claims";
 import { peopleFor, squareSentence } from "@/lib/ledger/home";
 import { hueFor } from "@/lib/ui/hue";
+import { OfflineBar } from "@/components/ui/offline-bar";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,7 @@ export default async function PeoplePage() {
   return (
     <Screen root>
       <h1 className="pt-5 text-label text-ink-3">People</h1>
+      <OfflineBar />
       <div className="flex flex-col gap-7 py-4">
         {nobody ? (
           <p className="text-body text-ink-2">Nobody yet. Ask something and send it around; whoever gets in turns up here.</p>

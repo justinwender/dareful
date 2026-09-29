@@ -135,6 +135,18 @@ export function Transfers({ transfers, people, denomination, viewerId }: { trans
  * hue as everywhere else. Then one caption naming the pairs between whom nothing changed hands ("Called it even:
  * you and Priya, John and Gabe."). A market that moved nothing says so in one line.
  */
+/** At most three rows under one person; the rest are named in one caption (3.38). Pure, so the fold has a test. */
+export const WHO_HAS_WHO_ROWS = 3;
+export function foldOwed<T>(rows: T[]): { shown: T[]; rest: T[] } {
+  return rows.length <= WHO_HAS_WHO_ROWS ? { shown: rows, rest: [] } : { shown: rows.slice(0, WHO_HAS_WHO_ROWS), rest: rows.slice(WHO_HAS_WHO_ROWS) };
+}
+
+/** "Theo’s got Gabe and John too.", "You’ve got Gabe, John and Sam too." */
+export function gotTooLine(ownerFirst: string | "you", names: string[]): string {
+  const list = names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  return `${ownerFirst === "you" ? "You’ve" : `${possessive(ownerFirst)}`} got ${list} too.`;
+}
+
 export function WhoHasWho({ transfers, people, participants, denomination, viewerId }: { transfers: Transfer[]; people: Map<string, { id: string; displayName: string }>; participants: string[]; denomination: DenominationRow; viewerId: string }) {
   if (transfers.length === 0) return <p className="text-body-sm text-ink-2">Nothing changes hands. Everyone was about as close as everyone else.</p>;
   const first = (id: string) => (id === viewerId ? "you" : (people.get(id)?.displayName ?? "Someone").split(/\s+/)[0] ?? "Someone");
@@ -158,17 +170,20 @@ export function WhoHasWho({ transfers, people, participants, denomination, viewe
               {ownerId === viewerId ? "You’ve got" : `${possessive(owner.displayName.split(/\s+/)[0] ?? owner.displayName)} got`}
             </p>
             <ul className="flex flex-wrap gap-2 pl-9">
-              {transfers
-                .filter((t) => t.fromId === ownerId)
-                .map((t) => {
-                  const to = people.get(t.toId);
-                  return to ? (
-                    <li key={t.toId}>
-                      <ObligationToken owner={{ id: owner.id, displayName: owner.displayName, hue: hueFor(owner.id) }} other={to} viewerId={viewerId} denomination={denomination} quantity={t.quantity} />
-                    </li>
-                  ) : null;
-                })}
+              {foldOwed(transfers.filter((t) => t.fromId === ownerId)).shown.map((t) => {
+                const to = people.get(t.toId);
+                return to ? (
+                  <li key={t.toId}>
+                    <ObligationToken owner={{ id: owner.id, displayName: owner.displayName, hue: hueFor(owner.id) }} other={to} viewerId={viewerId} denomination={denomination} quantity={t.quantity} />
+                  </li>
+                ) : null;
+              })}
             </ul>
+            {foldOwed(transfers.filter((t) => t.fromId === ownerId)).rest.length > 0 ? (
+              <p className="pl-9 text-caption text-ink-3" data-got-too="">
+                {gotTooLine(ownerId === viewerId ? "you" : (owner.displayName.split(/\s+/)[0] ?? owner.displayName), foldOwed(transfers.filter((t) => t.fromId === ownerId)).rest.map((t) => first(t.toId)))}
+              </p>
+            ) : null}
           </div>
         );
       })}

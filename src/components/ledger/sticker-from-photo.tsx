@@ -54,7 +54,7 @@ export function StickerSheet({ open, pasting, problem, onPaste, onClose }: { ope
  * One line reads the model's timings, an instrument for the phone check (docs/testing.md item 94), which leaves
  * once the phone has answered.
  */
-export function CutSheet({ open, busy, cut, problem, timing, onKeep, onStartOver, onClose }: { open: boolean; /** The model loading, or a cut or the upload running: the chalk wears the runner. */ busy: boolean; /** Whether a subject has been cut and outlined. */ cut: boolean; problem: string | null; timing: { loadMs: number | null; cutMs: number | null }; onKeep: () => void; onStartOver: () => void; onClose: () => void }) {
+export function CutSheet({ open, busy, cut, problem, timing, onKeep, onStartOver, onClose, loading = false, lift = false, onPaste }: { open: boolean; /** The model loading, or a cut or the upload running: the chalk wears the runner. */ busy: boolean; /** Whether a subject has been cut and outlined. */ cut: boolean; problem: string | null; timing: { loadMs: number | null; cutMs: number | null }; onKeep: () => void; onStartOver: () => void; onClose: () => void; /** The runtime and the model still arriving: the sheet says so (the owner's ruling, Round C part 2). */ loading?: boolean; /** A phone with the lift (an iPhone): while the model loads, the lift path is offered in the meantime. */ lift?: boolean; onPaste?: () => void }) {
   const titleId = useId();
   const seconds = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
   return (
@@ -62,6 +62,20 @@ export function CutSheet({ open, busy, cut, problem, timing, onKeep, onStartOver
       <h2 id={titleId} className="text-body-strong text-ink">
         Tap what to keep
       </h2>
+      {loading ? (
+        <p className="text-body-sm text-ink-2" data-cut-loading="">
+          Getting the cutter ready. It’s about 17 MB the first time, and your phone keeps it after.
+        </p>
+      ) : null}
+      {loading && lift && onPaste ? (
+        // The iPhone's own lift, in the meantime (3.28, frames 2 and 3): hold, Copy Subject, then Paste here.
+        <div className="flex flex-col gap-3" data-lift-meanwhile="">
+          <p className="text-body-sm text-ink-2">Or, in the meantime: hold what you want, tap Copy Subject, then paste it here.</p>
+          <Button variant="secondary" onClick={onPaste} loading={busy && !loading} data-paste-cutout="">
+            Paste
+          </Button>
+        </div>
+      ) : null}
       {timing.loadMs !== null || timing.cutMs !== null ? (
         <p className="text-caption text-ink-3" data-cut-timing={`${timing.loadMs ?? ""}/${timing.cutMs ?? ""}`}>
           {[timing.loadMs !== null ? `Model loaded in ${seconds(timing.loadMs)}` : null, timing.cutMs !== null ? `cut in ${seconds(timing.cutMs)}` : null].filter(Boolean).join(" · ")}

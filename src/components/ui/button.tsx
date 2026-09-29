@@ -5,13 +5,15 @@ import Link from "next/link";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 import { LinkPending } from "./link-pending";
+import { NOTHING_CAME_BACK, ProblemSummary } from "@/components/ledger/problem";
 
 /**
  * docs/design.md 3.12. Six kinds, fixed heights, radius 10, no shadows, no red. Pressed is opacity 0.88 over
  * 120ms; disabled is ink-3 text with a line border and no fill. Pending is 5.2: past 300ms the label stays
  * exactly where it was, the control holds its size at 0.88, and a 2px line runs along its bottom edge; at three
- * seconds a line under it says "Still going." A tap is never silently dropped, and nothing else on the screen
- * locks. Focus is the global 2px ink outline (5.1). At most one chalk-filled control per viewport.
+ * seconds a line under it says "Still going."; at ten it becomes the 5.1 summary block with "Try again", which
+ * fires the same tap again, and the control takes taps again too. A tap is never silently dropped, and nothing
+ * else on the screen locks. Focus is the global 2px ink outline (5.1). At most one chalk-filled control per viewport.
  *
  * Button labels belong to this component and do not count toward a screen's type budget (1.2), which is why
  * their sizes are literal here and nowhere else.
@@ -55,6 +57,18 @@ function sizeFor(variant: Variants["variant"], size: Variants["size"]): Variants
   return "secondary";
 }
 
+/** The wait's stages (5.2), pure: nothing under 300ms, the runner, "Still going." at three seconds, the block at ten. */
+export type WaitStage = "none" | "pending" | "still" | "block";
+export const STILL_GOING_MS = 3_000;
+export const TRY_AGAIN_MS = 10_000;
+export function waitStage(loading: boolean, heldMs: number): WaitStage {
+  if (!loading) return "none";
+  if (heldMs >= TRY_AGAIN_MS) return "block";
+  if (heldMs >= STILL_GOING_MS) return "still";
+  if (heldMs >= 300) return "pending";
+  return "none";
+}
+
 /** True once `on` has been true for `ms`. Under 300ms a wait shows nothing: a spinner that lives 180ms reads as a glitch. */
 function useHeldFor(on: boolean, ms: number): boolean {
   const [held, setHeld] = React.useState(false);
@@ -70,11 +84,32 @@ function useHeldFor(on: boolean, ms: number): boolean {
 }
 
 export function Button({ className, variant = "secondary", size, loading, disabled, children, onClick, type, ...props }: ButtonProps) {
-  const pending = useHeldFor(Boolean(loading), 300);
-  const long = useHeldFor(Boolean(loading), 3_000);
+  const held = useHeldFor(Boolean(loading), 300);
+  const still = useHeldFor(Boolean(loading), STILL_GOING_MS);
+  const block = useHeldFor(Boolean(loading), TRY_AGAIN_MS);
+  const stage: WaitStage = block ? "block" : still ? "still" : held ? "pending" : "none";
+  const pending = stage === "pending" || stage === "still";
+  const long = stage === "still";
+  // Past ten seconds the control takes taps again, and the block under it offers the same tap as "Try again".
+  const busy = Boolean(loading) && stage !== "block";
+  const lastClick = React.useRef<React.MouseEvent<HTMLButtonElement> | null>(null);
   return (
     <>
-      <button className={cn(buttonVariants({ variant, size: sizeFor(variant, size) }), className)} disabled={disabled} aria-busy={loading || undefined} onClick={loading ? undefined : onClick} type={loading && type === "submit" ? "button" : type} {...props}>
+      <button
+        className={cn(buttonVariants({ variant, size: sizeFor(variant, size) }), className)}
+        disabled={disabled}
+        aria-busy={busy || undefined}
+        onClick={
+          busy
+            ? undefined
+            : (e) => {
+                lastClick.current = e;
+                onClick?.(e);
+              }
+        }
+        type={busy && type === "submit" ? "button" : type}
+        {...props}
+      >
         {children}
         {pending ? (
           <span aria-hidden="true" className={cn("pointer-events-none absolute inset-x-0 bottom-0 h-[2px] overflow-hidden", variant === "primary" ? "bg-[rgba(18,17,16,0.25)]" : "bg-surface-2")}>
@@ -83,6 +118,7 @@ export function Button({ className, variant = "secondary", size, loading, disabl
         ) : null}
       </button>
       {long ? <span className="text-center text-caption text-ink-3">Still going.</span> : null}
+      {stage === "block" ? <ProblemSummary messages={[NOTHING_CAME_BACK]} retry={() => (lastClick.current ? onClick?.(lastClick.current) : undefined)} /> : null}
     </>
   );
 }

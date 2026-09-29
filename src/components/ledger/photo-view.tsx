@@ -47,6 +47,9 @@ export function PhotoView({ items, index = 0, onClose, stickers = false }: { ite
   const bitmaps = useRef(new Map<string, Promise<ImageBitmap>>());
   const outline = useRef<HTMLCanvasElement>(null);
   const pendingTap = useRef<{ nx: number; ny: number } | null>(null);
+  // A phone with the lift (an iPhone or iPad): while the model loads, the sheet offers the lift in the meantime.
+  // Read once on the client; the sheet it steers is never open at the first render, so the server's false costs nothing.
+  const [lift] = useState(() => typeof navigator !== "undefined" && (/iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.userAgent))));
   const [made, setMade] = useState<{ id: string } | null>(null);
   const [stickerProblem, setStickerProblem] = useState<string | null>(null);
   const [current, setCurrent] = useState(Math.min(Math.max(index, 0), Math.max(items.length - 1, 0)));
@@ -289,6 +292,9 @@ export function PhotoView({ items, index = 0, onClose, stickers = false }: { ite
           cut={cut !== null}
           problem={stickerProblem}
           timing={{ loadMs: segmenter?.loadMs ?? null, cutMs }}
+          loading={making && !segmenter}
+          lift={lift}
+          onPaste={() => void askClipboard()}
           onKeep={() => (cut ? void takeCutout(cut.blob) : undefined)}
           onStartOver={() => {
             setCutState(null);

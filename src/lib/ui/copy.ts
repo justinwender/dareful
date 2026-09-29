@@ -135,6 +135,42 @@ export function endedLabel(at: Date, now: Date, timeZone: string): string {
 }
 
 /** "locked at 11pm" on the day, "locked Sat, Sep 12" after it, for the entry line's caption (3.22: "2 beers · locked at 10:40pm"). In the viewer's zone, and never how long ago. */
+/**
+ * The band's clock once a market has ended (docs/design.md 3.37, 3.38; Round C part 2): "Settled Sat at 12:14am",
+ * "Voided Sat at 1:05am", "Called off Sun at 6:52pm" for a removal, "Closed for good Sun at 9am" for an expiry.
+ * Null while it runs: the running clocks are the screen's own. In the viewer's zone, never how long ago.
+ */
+export function endedClock(state: "resolved" | "voided" | "expired", resolvedBy: string | null, at: Date, now: Date, timeZone: string): string {
+  const when = endedLabel(at, now, timeZone);
+  if (state === "resolved") return `Settled ${when}`;
+  if (state === "expired") return `Closed for good ${when}`;
+  return `${resolvedBy === "removed" ? "Called off" : "Voided"} ${when}`;
+}
+
+const COUNT_WORDS = ["none", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"];
+
+/** How long a span of dates ran, in words for the claimant's line (3.38): "One night", "A few days", "Two weeks", "Three months". */
+export function spanWords(from: Date, to: Date): string {
+  const days = Math.max(0, Math.round((to.getTime() - from.getTime()) / 86_400_000));
+  if (days < 1) return "One night";
+  if (days < 7) return "A few days";
+  if (days < 14) return "A week";
+  if (days < 28) return `${COUNT_WORDS[Math.round(days / 7)]?.replace(/^./, (c) => c.toUpperCase()) ?? Math.round(days / 7)} weeks`;
+  const months = Math.max(1, Math.round(days / 30));
+  if (months === 1) return "A month";
+  return `${COUNT_WORDS[months]?.replace(/^./, (c) => c.toUpperCase()) ?? months} months`;
+}
+
+/** "You were already in 6 stories." (3.38), or one story. */
+export function alreadyInLine(n: number): string {
+  return n === 1 ? "You were already in one story." : `You were already in ${n} stories.`;
+}
+/** The ballot's count line before anyone has said (3.35): "Nobody has said yet. Two of you and it settles." */
+export function nobodyYetLine(threshold: number): string {
+  const n = COUNT_WORDS[threshold] ?? String(threshold);
+  return `Nobody has said yet. ${n.charAt(0).toUpperCase()}${n.slice(1)} of you and it settles.`;
+}
+
 export function lockedLabel(at: Date, now: Date, timeZone: string): string {
   if (dayNumber(now, timeZone) === dayNumber(at, timeZone)) return `locked at ${clockOf(at, timeZone)}`;
   return `locked ${at.toLocaleDateString("en-US", { timeZone, weekday: "short", month: "short", day: "numeric" })}`;

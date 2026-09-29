@@ -124,6 +124,22 @@ export function filterByContext(timeline: TimelineEvent[], groupId: string | und
   return groupId ? timeline.filter((e) => contextOf(e) === groupId) : timeline;
 }
 
+/** The timeline shows this many at first; a 44px tertiary "Show earlier" opens the rest (3.38). */
+export const TIMELINE_FOLD = 12;
+
+/**
+ * What still lies ahead between the two of you, over the timeline under "Coming up" (3.38; Round C part 2): a
+ * market that is open or locked, or a game not yet over; then the past, newest first, folded past `TIMELINE_FOLD`
+ * unless the person asked for earlier. Pure, so the split has a test.
+ */
+export function splitTimeline(events: TimelineEvent[], showAll: boolean): { upcoming: TimelineEvent[]; shown: TimelineEvent[]; hidden: number } {
+  const ahead = (e: TimelineEvent) => (e.kind === "market" ? e.market.state === "open" || e.market.state === "locked" : e.kind === "game" ? !e.game.over : false);
+  const upcoming = events.filter(ahead);
+  const past = events.filter((e) => !ahead(e));
+  const shown = showAll ? past : past.slice(0, TIMELINE_FOLD);
+  return { upcoming, shown, hidden: past.length - shown.length };
+}
+
 export async function personView(me: UserRow, them: UserRow): Promise<PersonView> {
   const [open, obligations, pending, markets] = await Promise.all([
     openBetween(me.ledgerWallet, them.ledgerWallet),

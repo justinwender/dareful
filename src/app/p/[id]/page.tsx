@@ -8,14 +8,15 @@ import { NetObligations, type NetLine } from "@/components/ledger/net-obligation
 import { PersonHeader } from "@/components/ledger/person-header";
 import { RallyStrip } from "@/components/ledger/rally-strip";
 import { CoverSheet } from "@/components/ledger/cover-sheet";
-import { Screen, TopBar } from "@/components/ledger/screen";
+import { Screen, SectionLabel, TopBar } from "@/components/ledger/screen";
+import { ButtonLink } from "@/components/ui/button";
 import { currentUser } from "@/lib/auth/session";
 import { chainId, ledgerAddress } from "@/lib/chain/contracts";
 import { ledgerDomain } from "@/lib/chain/typed-data";
 import { denominationsForGroup, recentDenominationsForUser } from "@/lib/ledger/denominations";
 import { groupsForUser } from "@/lib/ledger/groups";
 import { againRowsFor, onWayFor } from "@/lib/ledger/again";
-import { filterByContext, personView, rallyRows, userById, type NettableLine } from "@/lib/ledger/person";
+import { filterByContext, personView, rallyRows, splitTimeline, userById, type NettableLine } from "@/lib/ledger/person";
 import { storageConfigured } from "@/lib/media/storage";
 import { SharedContextBand } from "@/components/ledger/shared-context-band";
 import { gotSentence, possessive } from "@/lib/ui/copy";
@@ -50,7 +51,7 @@ function netLines(view: { nettable: NettableLine[] }, meName: string, themName: 
 
 export const dynamic = "force-dynamic";
 
-export default async function PersonPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ c?: string }> }) {
+export default async function PersonPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ c?: string; earlier?: string }> }) {
   const clock = await viewerClock();
   const me = await currentUser();
   if (!me) redirect("/");
@@ -73,27 +74,14 @@ export default async function PersonPage({ params, searchParams }: { params: Pro
   const wanted = (await searchParams).c;
   const chosen = view.contexts.find((c) => c.groupId === wanted);
   const timeline = filterByContext(view.timeline, chosen?.groupId);
+  // Still ahead under "Coming up", then the past newest first, folded past twelve behind "Show earlier" (3.38).
+  const { upcoming, shown, hidden } = splitTimeline(timeline, (await searchParams).earlier === "1");
   const byId = new Map<string, { id: string; displayName: string }>([
     [me.id, me],
     [them.id, them],
   ]);
 
-  return (
-    <Screen>
-      <TopBar back />
-      <div className="flex flex-col gap-6 py-2">
-        <div className="flex items-center gap-4">
-          <Avatar name={them.displayName} hue={hueFor(them.id)} size={56} />
-          <h1 className="text-body-strong text-ink">{them.displayName}</h1>
-        </div>
-        <PersonHeader me={me} them={them} theirs={view.header.theirs} yours={view.header.yours} />
-        {view.nettable.length > 0 ? <NetObligations otherId={them.id} lines={netLines(view, me.displayName, them.displayName)} domain={domain} onWay={view.nettable.filter((n) => onWay.nets.has(`${them.id}:${n.groupId}`)).map((n) => `${n.groupId}:${n.denomId}`)} /> : null}
-        <SharedContextBand personId={them.id} contexts={view.contexts} selectedId={chosen?.groupId ?? null} />
-        {timeline.length === 0 ? (
-          <p className="text-body text-ink-2">Nothing between you two yet.</p>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {timeline.map((e) => {
+  const renderEvent = (e: (typeof timeline)[number]) => {
               if (e.kind === "market") return <MarketCardFrom key={`m-${e.market.dare.id}`} m={e.market} viewerId={me.id} clock={clock} consequenceStates={view.consequenceStates} close={{ domain, photosOn }} />;
               if (e.kind === "game") return <GameCard key={`g-${e.game.id}-${e.game.groupId}`} game={e.game} markets={e.markets} groupName={e.groupName} at={e.at} clock={clock} viewerId={me.id} themId={them.id} themName={them.displayName} consequenceStates={view.consequenceStates} close={{ domain, photosOn }} />;
               if (e.kind === "proposal") {
@@ -146,9 +134,43 @@ export default async function PersonPage({ params, searchParams }: { params: Pro
                 return <CloseObligation key={e.obligation.id} obligationId={e.obligation.id} card={card} sentence={gotSentence(debtor, creditor, me.id)} what={e.obligation.memo ?? words(e.denomination, e.open)} domain={domain} photosOn={photosOn} again={again.closes.get(e.obligation.id) ?? null} />;
               }
               return <CoveredCard key={e.obligation.id} {...card} />;
+  };
+
+  return (
+    <Screen>
+      <TopBar back />
+      <div className="flex flex-col gap-6 py-2">
+        <div className="flex items-center gap-4">
+          <Avatar name={them.displayName} hue={hueFor(them.id)} size={56} />
+          <h1 className="text-body-strong text-ink">{them.displayName}</h1>
+        </div>
+        <PersonHeader me={me} them={them} theirs={view.header.theirs} yours={view.header.yours} />
+        {view.nettable.length > 0 ? <NetObligations otherId={them.id} lines={netLines(view, me.displayName, them.displayName)} domain={domain} onWay={view.nettable.filter((n) => onWay.nets.has(`${them.id}:${n.groupId}`)).map((n) => `${n.groupId}:${n.denomId}`)} /> : null}
+        <SharedContextBand personId={them.id} contexts={view.contexts} selectedId={chosen?.groupId ?? null} />
+        {timeline.length === 0 ? (
+          <p className="text-body text-ink-2">Nothing between you two yet.</p>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {upcoming.length > 0 ? <SectionLabel>Coming up</SectionLabel> : null}
+            {[...upcoming, ...shown].map((e, i) => {
+              const card = renderEvent(e);
+              // The past starts after what is still ahead; nothing labels it, since the dates say so.
+              return i === upcoming.length && upcoming.length > 0 ? (
+                <div key={`past-${i}`} className="flex flex-col gap-3 pt-3" data-past-starts="">
+                  {card}
+                </div>
+              ) : (
+                card
+              );
             })}
+            {hidden > 0 ? (
+              <ButtonLink href={`/p/${them.id}?${new URLSearchParams({ ...(chosen ? { c: chosen.groupId } : {}), earlier: "1" }).toString()}`} variant="tertiary" className="self-start" data-show-earlier="">
+                Show earlier
+              </ButtonLink>
+            ) : null}
           </div>
         )}
+
         {rally ? <RallyStrip rows={rally} people={new Map([[me.id, { name: me.displayName, hue: hueFor(me.id) }], [them.id, { name: them.displayName, hue: hueFor(them.id) }]])} sentence={view.rally.sentence} /> : null}
       </div>
       <CoverSheet person={{ id: them.id, displayName: them.displayName, kind: "user", hue: hueFor(them.id) }} units={dyadUnits.filter((u) => !u.monetary).map(asCoverUnit)} recent={recentUnits.filter((u) => !u.monetary).map(asCoverUnit)} viewer={{ id: me.id, displayName: me.displayName, hue: hueFor(me.id) }} />

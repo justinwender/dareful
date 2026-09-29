@@ -23,6 +23,8 @@ import { attachEvidenceAction } from "@/lib/actions/media";
 import { daresTypes } from "@/lib/chain/typed-data";
 import { shrinkPhoto } from "@/lib/ui/shrink-photo";
 import { countWord } from "@/lib/ledger/weight";
+import { nobodyYetLine } from "@/lib/ui/copy";
+import { NumberDissentHead } from "./number-dissent";
 import { unitPhrase } from "@/lib/ledger/number-axis";
 import { lowerFirst } from "@/lib/ui/outcome-words";
 import { saidAnswer } from "@/lib/ledger/pick-one";
@@ -82,6 +84,8 @@ export type CallSheetProps = {
     outcome: Word | null;
     line: string;
     rationale: string | null;
+    /** Whose read it is: the final score or the play-by-play (3.35, the source card says so), or the app's (kept as the sheet's header while nobody has said, by the owner's ruling). */
+    source: "feed" | "app";
   } | null;
   /** An argument whose read is on its way: the screen re-reads itself for a minute. */
   awaitingProposal: boolean;
@@ -115,7 +119,9 @@ export type CallSheetProps = {
  * then say so, with the second of the person's two keys, the one the app never holds.
  */
 export function CallSheet(props: CallSheetProps) {
-  const { dareId, signing, threshold, quorum, votes, myVote, proposal } = props;
+  const { dareId, signing, quorum, votes, myVote, proposal } = props;
+  // The contract's default when the row carries none: a majority of the quorum.
+  const threshold = props.threshold || Math.floor(quorum / 2) + 1;
   const unit = props.numberUnit ?? null;
   const wells = props.wells ?? null;
   const answers = props.answers ?? null;
@@ -150,8 +156,11 @@ export function CallSheet(props: CallSheetProps) {
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
   // The count line (3.24): "3 of 6 have said yes. Two more and it settles."; on a pick-one question it names the answer ("3 of 6 say Priya."),
   // and when votes split it names the answer nearest to settling ("3 say Priya, 1 says John. Two more for Priya and it settles.").
+  // Before anyone has said, the score's proposal gets the count line's empty state (3.35); the app's read stays the header (the owner's ruling, Round C part 2).
   const countLine = !leading
-    ? null
+    ? proposal?.source === "feed"
+      ? nobodyYetLine(threshold)
+      : null
     : tally.length === 1
       ? `${leading.n} of ${quorum} ${answers ? (leading.n === 1 ? "says" : "say") : leading.n === 1 ? "has said" : "have said"} ${bare(leading.outcome, unit)}.${leading.n < threshold ? ` ${cap(countWord(threshold - leading.n))} more and it settles.` : ""}`
       : answers
@@ -250,7 +259,7 @@ export function CallSheet(props: CallSheetProps) {
             {threshold} of you say the same thing, and you can change yours
             until then. Nobody can say it for you, and the app can’t either.
           </p>
-          <ProblemSummary messages={[problem]} />
+          <ProblemSummary messages={[problem]} retry={() => void cast(choice)} />
           <div className="flex flex-col gap-1">
             <Button
               variant="primary"
@@ -294,15 +303,9 @@ export function CallSheet(props: CallSheetProps) {
         </Button>
       </div>
     ) : unit ? (
-      // Not how I saw it, on a number question: the field, the line, and the number is optional.
+      // Not how I saw it, on a number question (3.24): "What was it?", the field, the line, and the number is optional.
       <div className="flex flex-col gap-3">
-        {numberPanel}
-        <div className="flex flex-col gap-2">
-          <label htmlFor="what-happened-2" className="text-label text-ink-3">
-            What happened?
-          </label>
-          <input id="what-happened-2" value={line} onChange={(e) => setLine(e.target.value)} maxLength={280} className="h-12 rounded-button border border-line bg-ground px-4 text-body text-ink placeholder:text-ink-3" />
-        </div>
+        <NumberDissentHead panel={numberPanel} line={line} onLine={setLine} disabled={busy} />
         <ProblemSummary messages={[choice === null ? problem : null]} />
         <Button variant="primary" onClick={say} loading={busy && choice === null} disabled={typed === null}>
           {typed !== null ? `It was ${typedWords(typed)}` : "Type what it was"}
