@@ -5,9 +5,12 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Dareful design tokens (docs/design.md section 1, the revision of 2026-09-24). Every value is literal and
- * lives here once; the Tailwind theme and the shadcn variables read from these, so no screen can drift from
- * another. Dark is the only shipped theme. The light values are recorded on [data-theme="light"] for later.
+ * Dareful design tokens (docs/design.md section 1, the revision of 2026-09-24; the light theme of section 8 and
+ * the motion set of section 9 added 2026-09-28, Round D). Every value is literal and lives here once; the
+ * Tailwind theme and the shadcn variables read from these, so no screen can drift from another. Dark is the
+ * default; light follows the phone (`prefers-color-scheme`) unless `data-theme` on `html` says otherwise, which
+ * the inline script in the document head sets before first paint (8.1). The two light blocks below carry the
+ * same values, and a test holds them equal.
  */
 :root {
   /* 1.1 Color */
@@ -24,13 +27,20 @@
   --archive: #f4b73e;
   --ink-2: #c4bcae;
   --ink-3: #9a9385;
-  /* Citron: only a 6px dot or a 2px rule, only for "needs you, with a clock". Never a number. */
+  /* Citron: only a 6px dot or a 2px rule, only for "needs you, with a clock". Never a number. Its edge is light only (8.5). */
   --live: #e4e34a;
+  --live-edge: transparent;
   --scrim: rgba(18, 17, 16, 0.78);
   --scrim-play: rgba(18, 17, 16, 0.7);
   --avatar-ink: #121110;
-  /* The true half of a resolved call line, on a neutral surface (1.1, derived alphas). */
+  /* The avatar's 1px inset edge: nothing in dark, graphite at 0.10 in light so a pale avatar keeps its outline on paper (8.7). */
+  --avatar-edge: transparent;
+  /* The true half of a resolved call line, on a neutral surface (1.1, derived alphas; 8.7 in light). */
   --wash: rgba(242, 237, 227, 0.16);
+  /* The 1px inset ring on a team stamp (1.7): cream on the dark ground, graphite on paper. */
+  --stamp-edge: rgba(242, 237, 227, 0.16);
+  /* The pending runner's track on a chalk button (5.2): the on-chalk colour at 0.25. */
+  --runner-track: rgba(18, 17, 16, 0.25);
   /* The question band, and the stamp behind a mark. On a market's own screen it is that market's field (1.8). */
   --field: var(--surface-2);
   /* A market's own ink, set only on its screen: its stake columns, its state mark, its resolved wash. */
@@ -38,7 +48,25 @@
   --market-ink-hi: var(--ink-2);
   --market-wash: var(--wash);
 
-  /* Person hues, assigned per person at account creation, stable across every group. */
+  /* 1.8 The eight inks' fields, for a stamp on a neutral surface (the market's own screen swaps the four structural tokens instead). */
+  --ink-clay-field: #3c281f;
+  --ink-ochre-field: #362d19;
+  --ink-olive-field: #2e301b;
+  --ink-sea-field: #173332;
+  --ink-slate-field: #202f3e;
+  --ink-iris-field: #2d2b3e;
+  --ink-plum-field: #382836;
+  --ink-rose-field: #3d272a;
+  --ink-clay-ink: #c69078;
+  --ink-ochre-ink: #b49b68;
+  --ink-olive-ink: #9fa36d;
+  --ink-sea-ink: #63aeaa;
+  --ink-slate-ink: #79a3cb;
+  --ink-iris-ink: #9c97cb;
+  --ink-plum-ink: #ba8eb5;
+  --ink-rose-ink: #c88b95;
+
+  /* Person hues, assigned per person at account creation, stable across every group. The fill is the same pastel in both themes; a stroke or a wash in a person's hue takes the text-on-light variant in light (8.7). */
   --person-lilac: #b9a5f3;
   --person-aqua: #7dcfd8;
   --person-orchid: #eca6d8;
@@ -51,6 +79,21 @@
   --person-sky-rgb: 141 186 246;
   --person-sand-rgb: 220 196 148;
   --person-stone-rgb: 203 191 174;
+  --person-lilac-stroke: var(--person-lilac);
+  --person-aqua-stroke: var(--person-aqua);
+  --person-orchid-stroke: var(--person-orchid);
+  --person-sky-stroke: var(--person-sky);
+  --person-sand-stroke: var(--person-sand);
+  --person-stone-stroke: var(--person-stone);
+  --person-lilac-stroke-rgb: var(--person-lilac-rgb);
+  --person-aqua-stroke-rgb: var(--person-aqua-rgb);
+  --person-orchid-stroke-rgb: var(--person-orchid-rgb);
+  --person-sky-stroke-rgb: var(--person-sky-rgb);
+  --person-sand-stroke-rgb: var(--person-sand-rgb);
+  --person-stone-stroke-rgb: var(--person-stone-rgb);
+
+  /* 1.1 Grain: a 120px noise tile. Cream specks at 3% on the dark ground; dark specks at 4% on paper (8.6). One image each, the colour and the opacity inside it, and never a CSS filter (1.5). */
+  --grain-tile: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n' x='0' y='0'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.95 0 0 0 0 0.93 0 0 0 0 0.89 0.03 0 0 0 0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
 
   /* 1.4 Radii */
   --radius-stamp-20: 6px;
@@ -61,13 +104,15 @@
   --radius-panel: 16px;
   --radius-pill: 999px;
 
-  /* 1.6 Motion */
-  --motion-tap: 120ms;
-  --motion-sheet: 200ms;
-  --motion-media: 240ms;
-  --motion-sheet-height: 320ms;
-  --motion-grow: 700ms;
-  --ease-sheet: cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* 9.1 Motion: three durations, three curves, the stagger and the loop. Nothing moves on any other timing. */
+  --motion-quick: 120ms;
+  --motion-base: 200ms;
+  --motion-travel: 320ms;
+  --ease-move: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-leave: cubic-bezier(0.4, 0, 1, 1);
+  --ease-fade: cubic-bezier(0, 0, 0.58, 1);
+  --motion-stagger: 40ms;
+  --motion-loop: 1.2s;
 
   /* shadcn mapping (docs/design.md 1.1) */
   --background: var(--ground);
@@ -104,10 +149,13 @@
   --sidebar-ring: var(--ink);
 
   color-scheme: dark;
-
 }
 
-/* Light values (not shipped in v1; recorded so nothing has to be re-derived). */
+/*
+ * 8.3 to 8.7: the light theme. The same custom properties with the Light column of 1.1, the citron's edge, the
+ * stroke variants for people, the avatar's edge, the light grain tile and the light layers of the eight inks.
+ * Once when the person chose light on You, and once when the phone prefers light and nobody chose dark.
+ */
 :root[data-theme="light"] {
   --ground: #f5efe4;
   --surface: #fffbf4;
@@ -121,14 +169,94 @@
   --archive: #e8a623;
   --ink-2: #544a3d;
   --ink-3: #6c6153;
-  --live: #8a7a00;
-  --person-lilac: #6a55b5;
-  --person-aqua: #2f7f88;
-  --person-orchid: #a24f8b;
-  --person-sky: #3a6fb5;
-  --person-sand: #86703f;
-  --person-stone: #75695a;
+  --live: #e4e34a;
+  --live-edge: #1b1815;
+  --avatar-edge: rgba(27, 24, 21, 0.1);
+  --wash: rgba(27, 24, 21, 0.08);
+  --stamp-edge: rgba(27, 24, 21, 0.1);
+  --runner-track: rgba(245, 239, 228, 0.25);
+  --ink-clay-field: #f4d9cd;
+  --ink-ochre-field: #eadec7;
+  --ink-olive-field: #e0e2c9;
+  --ink-sea-field: #c7e7e5;
+  --ink-slate-field: #cfe2f6;
+  --ink-iris-field: #dedDf6;
+  --ink-plum-field: #edd8eb;
+  --ink-rose-field: #f5d7db;
+  --ink-clay-ink: #a26448;
+  --ink-ochre-ink: #8f7131;
+  --ink-olive-ink: #777b38;
+  --ink-sea-ink: #1e8783;
+  --ink-slate-ink: #487aa8;
+  --ink-iris-ink: #746da8;
+  --ink-plum-ink: #94628f;
+  --ink-rose-ink: #a35f6b;
+  --person-lilac-stroke: #6a55b5;
+  --person-aqua-stroke: #2f7f88;
+  --person-orchid-stroke: #a24f8b;
+  --person-sky-stroke: #3a6fb5;
+  --person-sand-stroke: #86703f;
+  --person-stone-stroke: #75695a;
+  --person-lilac-stroke-rgb: 106 85 181;
+  --person-aqua-stroke-rgb: 47 127 136;
+  --person-orchid-stroke-rgb: 162 79 139;
+  --person-sky-stroke-rgb: 58 111 181;
+  --person-sand-stroke-rgb: 134 112 63;
+  --person-stone-stroke-rgb: 117 105 90;
+  --grain-tile: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n' x='0' y='0'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.227 0 0 0 0 0.188 0 0 0 0 0.141 0.04 0 0 0 0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
   color-scheme: light;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --ground: #f5efe4;
+    --surface: #fffbf4;
+    --surface-2: #ede4d4;
+    --line: #dbcfbb;
+    --line-strong: #c7b79c;
+    --ink: #1b1815;
+    --chalk: #1b1815;
+    --on-chalk: #f5efe4;
+    --remove: #d93f37;
+    --archive: #e8a623;
+    --ink-2: #544a3d;
+    --ink-3: #6c6153;
+    --live: #e4e34a;
+    --live-edge: #1b1815;
+    --avatar-edge: rgba(27, 24, 21, 0.1);
+    --wash: rgba(27, 24, 21, 0.08);
+    --stamp-edge: rgba(27, 24, 21, 0.1);
+    --runner-track: rgba(245, 239, 228, 0.25);
+    --ink-clay-field: #f4d9cd;
+    --ink-ochre-field: #eadec7;
+    --ink-olive-field: #e0e2c9;
+    --ink-sea-field: #c7e7e5;
+    --ink-slate-field: #cfe2f6;
+    --ink-iris-field: #dedDf6;
+    --ink-plum-field: #edd8eb;
+    --ink-rose-field: #f5d7db;
+    --ink-clay-ink: #a26448;
+    --ink-ochre-ink: #8f7131;
+    --ink-olive-ink: #777b38;
+    --ink-sea-ink: #1e8783;
+    --ink-slate-ink: #487aa8;
+    --ink-iris-ink: #746da8;
+    --ink-plum-ink: #94628f;
+    --ink-rose-ink: #a35f6b;
+    --person-lilac-stroke: #6a55b5;
+    --person-aqua-stroke: #2f7f88;
+    --person-orchid-stroke: #a24f8b;
+    --person-sky-stroke: #3a6fb5;
+    --person-sand-stroke: #86703f;
+    --person-stone-stroke: #75695a;
+    --person-lilac-stroke-rgb: 106 85 181;
+    --person-aqua-stroke-rgb: 47 127 136;
+    --person-orchid-stroke-rgb: 162 79 139;
+    --person-sky-stroke-rgb: 58 111 181;
+    --person-sand-stroke-rgb: 134 112 63;
+    --person-stone-stroke-rgb: 117 105 90;
+    --grain-tile: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n' x='0' y='0'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.227 0 0 0 0 0.188 0 0 0 0 0.141 0.04 0 0 0 0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+    color-scheme: light;
+  }
 }
 
 @theme inline {
@@ -154,6 +282,7 @@
   --color-market-ink: var(--market-ink);
   --color-market-ink-hi: var(--market-ink-hi);
   --color-market-wash: var(--market-wash);
+  --color-runner-track: var(--runner-track);
   --color-person-lilac: var(--person-lilac);
   --color-person-aqua: var(--person-aqua);
   --color-person-orchid: var(--person-orchid);
@@ -216,6 +345,14 @@
 
   /* 1.3 Spacing: the named steps are Tailwind's own 4px scale (space-1 = 1, space-14 = 14). */
   --spacing-gutter: 20px;
+
+  /* 9.1 Motion as Tailwind classes: duration-quick, duration-base, duration-travel, ease-move, ease-leave, ease-fade */
+  --duration-quick: var(--motion-quick);
+  --duration-base: var(--motion-base);
+  --duration-travel: var(--motion-travel);
+  --ease-move: var(--ease-move);
+  --ease-leave: var(--ease-leave);
+  --ease-fade: var(--ease-fade);
 }
 
 /*
@@ -236,13 +373,17 @@
 @utility text-caption { font-family: var(--font-sans); font-weight: 400; font-size: 0.8125rem; line-height: 18px; }
 
 /*
- * 1.1 Grain: a 120px noise tile at 3% over the ground. The tile is cream speckles whose alpha comes from the
- * noise, so it is one image and no second layer to stack. A market's own screen paints the same tile over its
- * own ground.
+ * 1.1 Grain. `grain` paints the ground with its tile (the status band, and a market's own ground where a screen
+ * paints one); `grain-tile` is the tile alone, for the one fixed layer the shell renders over the ground (1.1,
+ * 9.3), which the market's screen tints by swapping `--ground` on `html`.
  */
 @utility grain {
   background-color: var(--ground);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n' x='0' y='0'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.95 0 0 0 0 0.93 0 0 0 0 0.89 0.03 0 0 0 0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-image: var(--grain-tile);
+  background-size: 120px 120px;
+}
+@utility grain-tile {
+  background-image: var(--grain-tile);
   background-size: 120px 120px;
 }
 
@@ -252,59 +393,207 @@
   }
   html {
     background: var(--ground);
+    /* 9.4: no tap waits to find out whether it is a double tap. */
+    touch-action: manipulation;
   }
   body {
-    @apply grain text-foreground;
+    @apply text-foreground;
     font-family: var(--font-sans);
     font-size: 1.0625rem;
     line-height: 24px;
     -webkit-font-smoothing: antialiased;
+  }
+  /* 8.7: desktop browsers thin dark text on light under antialiasing; phones are unaffected. */
+  :root[data-theme="light"] body { -webkit-font-smoothing: auto; }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) body { -webkit-font-smoothing: auto; }
   }
   /* 5.1 Focus: a 2px ink outline 2px outside the control, so focus never looks like an error, which changes the border. */
   :focus-visible {
     outline: 2px solid var(--ink);
     outline-offset: 2px;
   }
-  /* 1.6: taps 120ms, sheets 200ms; reduced motion drops the transitions and keeps the state changes. */
-  @media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after {
-      transition-duration: 0.01ms !important;
-      animation-duration: 0.01ms !important;
-    }
-  }
 }
 
-/* The ask flow retints to a picked mark's ink over 200ms (docs/design.md 3.29): the layers that read the ink tokens ease. */
+/*
+ * 9.4 Presses, set from `pointerdown` in the same frame (`data-pressed`, src/components/ui/press.ts) and released
+ * over quick on the fade curve: 0.88 on a control with a fill, 0.5 on one drawn only in lines and words, and a
+ * row or card that opens something goes to the ground of its place. `:active` is kept as well for the keyboard.
+ */
+.press-fill, .press-line, .press-row {
+  transition: opacity var(--motion-quick) var(--ease-fade), background-color var(--motion-quick) var(--ease-fade);
+}
+.press-fill[data-pressed], .press-fill:active { opacity: 0.88; transition: none; }
+.press-line[data-pressed], .press-line:active { opacity: 0.5; transition: none; }
+.press-row[data-pressed], .press-row:active { background-color: var(--ground); transition: none; }
+
+/* The ask flow retints to a picked mark's ink over base on the fade curve (docs/design.md 3.29, 9.10): the layers that read the ink tokens ease. */
 .retint,
 .retint :is(main, section, div, textarea, span) {
-  transition: background-color 200ms ease, border-color 200ms ease;
-}
-@media (prefers-reduced-motion: reduce) {
-  .retint,
-  .retint :is(main, section, div, textarea, span) {
-    transition: none;
-  }
+  transition: background-color var(--motion-base) var(--ease-fade), border-color var(--motion-base) var(--ease-fade);
 }
 
-@keyframes sheet-up {
-  from { transform: translateY(24px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
+/*
+ * 9.5, 9.9 Layers that travel on themselves: the ask layer, a sheet arriving or leaving, a modal sheet. A
+ * transform is on an element only while its motion runs; the class is removed at the end (9.3).
+ */
+@keyframes layer-rise {
+  from { transform: translateY(100%); }
+  to { transform: none; }
 }
+@keyframes layer-sink {
+  from { transform: none; }
+  to { transform: translateY(100%); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+/* 9.7, 9.8: a page or a step arriving, its content 24px from the side it comes from; leaving over quick the other way. */
+@keyframes step-in {
+  from { opacity: 0; transform: translateX(24px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes step-in-back {
+  from { opacity: 0; transform: translateX(-24px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes step-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateX(-24px); }
+}
+@keyframes step-out-back {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateX(24px); }
+}
+.motion-rise { animation: layer-rise var(--motion-travel) var(--ease-move) both; }
+.motion-sink { animation: layer-sink var(--motion-base) var(--ease-leave) both; }
+.motion-fade-in { animation: fade-in var(--motion-base) var(--ease-fade) both; }
+.motion-fade-out { animation: fade-out var(--motion-quick) var(--ease-fade) both; }
+.motion-step-in { animation: step-in var(--motion-base) var(--ease-move) both; }
+html.back .motion-step-in { animation-name: step-in-back; }
+/* A market's shell and its page arriving (9.4, 9.7): the page fades in over base while the shell holds under it. */
+.motion-arrive { animation: fade-in var(--motion-base) var(--ease-fade) both; }
+/* Every other push (9.7): the header crossfades over base, and the content moves 24px and crossfades, rightward when going back. */
+.page-arrive > header, .page-arrive > [data-offline] { animation: fade-in var(--motion-base) var(--ease-fade) both; }
+.page-arrive > :not(header):not([data-offline]):not(style):not(script) { animation: step-in var(--motion-base) var(--ease-move) both; }
+html.back .page-arrive > :not(header):not([data-offline]):not(style):not(script) { animation-name: step-in-back; }
+/* While a shell is up the tab bar and the Start button are covered: they leave the tree, so the transition fades them out over quick (9.7). */
+html[data-shell] [data-layer="tab-bar"] > *, html[data-shell] [data-layer="start"] > * { display: none; }
 
-@keyframes button-runner {
+/*
+ * 9.3, 9.7, 9.8 View transitions. The fixed layers each carry a name so no transition drags them along inside
+ * the page's snapshot; the market's ink and mark travel between a row's stamp and the band; the ask band holds
+ * while a step's content moves 24px under it. Styled by name, with `html.back` for direction, never by
+ * view-transition classes or types (Safari 18.0).
+ */
+::view-transition-old(root),
+::view-transition-new(root) {
+  mix-blend-mode: normal;
+  animation-duration: var(--motion-base);
+  animation-timing-function: var(--ease-fade);
+}
+/* The old page holds with no animation of its own; the new fades in over it from quick (9.7). */
+::view-transition-old(root) { animation: none; }
+::view-transition-new(root) { animation: fade-in var(--motion-base) var(--ease-fade) both; animation-delay: var(--motion-quick); }
+::view-transition-group(market-ink),
+::view-transition-group(market-mark),
+::view-transition-group(market-mark-2),
+::view-transition-group(photo) {
+  animation-duration: var(--motion-travel);
+  animation-timing-function: var(--ease-move);
+  overflow: clip;
+}
+/* The ink's snapshots are drawn at full size and clipped, so the colour never stretches and the corners stay round (9.7). */
+::view-transition-old(market-ink),
+::view-transition-new(market-ink) {
+  animation: none;
+  object-fit: none;
+  object-position: top left;
+  height: 100%;
+  width: 100%;
+}
+::view-transition-old(market-mark),
+::view-transition-new(market-mark),
+::view-transition-old(market-mark-2),
+::view-transition-new(market-mark-2) {
+  animation-duration: var(--motion-travel);
+  animation-timing-function: var(--ease-move);
+  object-fit: contain;
+}
+::view-transition-old(market-words) { animation: fade-out var(--motion-quick) var(--ease-fade) both; }
+::view-transition-new(market-words) { animation: fade-in var(--motion-base) var(--ease-fade) both; animation-delay: var(--motion-quick); }
+::view-transition-group(market-words) { animation: none; }
+/* The fixed layers fade rather than travel (9.7): the tab bar and the Start button out over quick, the sheet in over base. */
+::view-transition-group(tab-bar),
+::view-transition-group(start),
+::view-transition-group(sheet),
+::view-transition-group(status-band),
+::view-transition-group(grain) { animation: none; }
+::view-transition-old(tab-bar), ::view-transition-old(start) { animation: fade-out var(--motion-quick) var(--ease-fade) both; }
+::view-transition-new(tab-bar), ::view-transition-new(start) { animation: fade-in var(--motion-base) var(--ease-fade) both; animation-delay: var(--motion-quick); }
+::view-transition-old(sheet) { animation: fade-out var(--motion-quick) var(--ease-fade) both; }
+::view-transition-new(sheet) { animation: fade-in var(--motion-base) var(--ease-fade) both; animation-delay: var(--motion-quick); }
+::view-transition-old(status-band), ::view-transition-new(status-band), ::view-transition-old(grain), ::view-transition-new(grain) { animation: none; }
+/* 9.8 The steps of asking: the band holds and its height changes over base; the content moves 24px and crossfades; the action bar holds. */
+::view-transition-group(ask-band) { animation-duration: var(--motion-base); animation-timing-function: var(--ease-move); overflow: clip; }
+::view-transition-old(ask-band), ::view-transition-new(ask-band) { object-fit: none; object-position: top left; height: 100%; width: 100%; animation-duration: var(--motion-quick); animation-timing-function: var(--ease-fade); }
+::view-transition-group(ask-step) { animation: none; }
+::view-transition-old(ask-step) { animation: step-out var(--motion-quick) var(--ease-leave) both; }
+::view-transition-new(ask-step) { animation: step-in var(--motion-base) var(--ease-move) both; }
+html.back::view-transition-old(ask-step) { animation-name: step-out-back; }
+html.back::view-transition-new(ask-step) { animation-name: step-in-back; }
+::view-transition-group(ask-action) { animation: none; }
+::view-transition-old(ask-action), ::view-transition-new(ask-action) { animation-duration: var(--motion-quick); animation-timing-function: var(--ease-fade); }
+
+@keyframes runner {
   0% { left: -33%; }
   100% { left: 100%; }
 }
 
-/* The on-its-way mark (docs/design.md 3.23): a quarter of the ring turning once every 1.2s; reduced motion rests it. */
+/* The on-its-way mark (docs/design.md 3.23): a quarter of the ring turning once every loop; reduced motion rests it. */
 @keyframes onway-turn {
   to { transform: rotate(360deg); }
 }
 
-/* A tapped link pulses until its page arrives (src/components/ui/link-pending.tsx). */
-@keyframes link-pending {
+/* The writing caret (9.8): shown for half the loop and hidden for half, and steady with Reduce Motion. */
+@keyframes caret-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+/* The empty slot and a media placeholder loading (3.8): an opacity pulse on the loop, never a shimmer. */
+@keyframes placeholder-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.55; }
+}
+
+.motion-loop-runner { animation: runner var(--motion-loop) linear infinite; }
+.motion-loop-turn { animation: onway-turn var(--motion-loop) linear infinite; transform-origin: center; }
+.motion-loop-caret { animation: caret-blink var(--motion-loop) linear infinite; }
+.motion-loop-pulse { animation: placeholder-pulse var(--motion-loop) var(--ease-fade) infinite; }
+
+/*
+ * 9.11 Reduce Motion, in one block: the travelling keyframes swap for the fade, the translate and height
+ * transitions go, and the three durations stay as they are. The three loops rest: the runner holds as a full
+ * line, the ring rests at a quarter, the caret holds still.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .motion-rise, .motion-step-in, .motion-arrive, .page-arrive > * { animation-name: fade-in; animation-duration: var(--motion-base); animation-timing-function: var(--ease-fade); }
+  .motion-sink { animation-name: fade-out; animation-duration: var(--motion-base); animation-timing-function: var(--ease-fade); }
+  .motion-loop-runner { animation: none; left: 0; width: 100%; }
+  .motion-loop-turn { animation: none; }
+  .motion-loop-caret { animation: none; opacity: 1; }
+  .motion-loop-pulse { animation: none; }
+  .retint, .retint :is(main, section, div, textarea, span) { transition: none; }
+  ::view-transition-group(*) { animation-duration: var(--motion-base); }
+  ::view-transition-old(*), ::view-transition-new(*) { animation-name: none; }
+  ::view-transition-new(root), ::view-transition-new(ask-step), ::view-transition-new(market-words) { animation-name: fade-in; animation-duration: var(--motion-base); animation-timing-function: var(--ease-fade); animation-delay: 0s; }
+  ::view-transition-old(ask-step) { animation-name: fade-out; animation-duration: var(--motion-base); }
 }
 
 /*
@@ -317,3 +606,5 @@
 @utility chip-text { font-family: var(--font-sans); font-weight: 500; font-size: 0.8125rem; line-height: 1; }
 @utility chip-context { font-family: var(--font-sans); font-weight: 500; font-size: 0.9375rem; line-height: 20px; }
 @utility tab-text { font-family: var(--font-sans); font-size: 0.8125rem; line-height: 1; }
+/* The stake chips (3.3): 44px, radius 10, 17px 600, and the selected one filled chalk. A control, outside the budget. */
+@utility stake-chip-text { font-family: var(--font-sans); font-weight: 600; font-size: 1.0625rem; line-height: 22px; }

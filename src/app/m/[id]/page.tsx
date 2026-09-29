@@ -9,7 +9,6 @@ import { GhostMarketPage } from "./ghost";
 import { participantsOf, pidOf } from "@/lib/ledger/participants";
 import { Avatar, AvatarStack } from "@/components/ledger/avatar";
 import { Chip } from "@/components/ledger/chip";
-import { MarkRefStamp } from "@/components/ledger/mark-stamp";
 import { MediaFrame } from "@/components/ledger/media-frame";
 import { EmptySlot } from "@/components/markets/empty-slot";
 import { PhotoAdding } from "@/components/markets/photo-adding";
@@ -19,14 +18,12 @@ import { ClipView } from "@/components/markets/clip-view";
 import { nightHeading, restOfThatNight } from "@/lib/ledger/night";
 import { markRefOf } from "@/lib/ui/mark";
 import { outcomeLine, outcomeWordsOf, saidWord } from "@/lib/ui/outcome-words";
-import {
-  LiveDot,
-  StateMark,
-  type MarketMark,
-} from "@/components/ledger/state-mark";
+import type { MarketMark } from "@/components/ledger/state-mark";
 import { InkPicker } from "@/components/markets/ink-picker";
-import { INKS, inkOf, inkVars } from "@/lib/ui/ink";
-import type { CSSProperties } from "react";
+import { inkOf } from "@/lib/ui/ink";
+import { InkRoot } from "@/components/ledger/ink-root";
+import { QuestionBand } from "@/components/markets/question-band";
+import { bandClock } from "@/lib/ui/band";
 import { Screen, SectionLabel, TopBar } from "@/components/ledger/screen";
 import { When } from "@/components/ledger/when";
 import { CallLine, Ruler } from "@/components/markets/call-line";
@@ -104,7 +101,6 @@ import {
   dateLabel,
   dayLabel,
   daysBetween,
-  endedClock,
   firstName,
   fromThatNight,
   lockedLabel,
@@ -129,6 +125,16 @@ export async function generateMetadata({
     robots: { index: false, follow: false },
     openGraph: { title: share.title, description: share.description },
   };
+}
+
+/** The market screen's information sheet (10.1): one per state that changes what a person can do. */
+function infoKeyFor(state: string, memory: boolean, kind: "binary" | "numeric" | "categorical"): string {
+  if (memory) return "market-memory";
+  if (state === "draft") return "market-draft";
+  const swap = kind === "numeric" ? "-number" : kind === "categorical" ? "-pick" : "";
+  if (state === "open") return `market-open${swap}`;
+  if (state === "locked") return `market-voting${swap}`;
+  return "market-ended";
 }
 
 /** An outcome as the sheet's word: yes, no, nobody can tell, "n:" and the number on a number question, or "a:" and the answer's index on a pick-one question. */
@@ -729,17 +735,7 @@ export default async function MarketPage({
               ? "voting"
               : "locked"
           : state;
-  const bandClock =
-    state === "open" && d.resolvesBy
-      ? `Closes ${closesLabel(d.resolvesBy, now, clock.zone)}`
-      : state === "locked" && d.resolvesBy && votes.length === 0
-        ? `Resolving ${closesLabel(d.resolvesBy, now, clock.zone)}`
-        : state === "locked" && d.resolvesBy
-          ? `Voting ends ${closesLabel(d.resolvesBy, now, clock.zone)}`
-          : (state === "resolved" || state === "voided" || state === "expired") && (d.resolvedAt ?? d.resolvesBy)
-            // After the end the band says when (3.37, 3.38; Round C part 2): settled, voided, called off, or closed for good.
-            ? endedClock(state, d.resolvedBy, (d.resolvedAt ?? d.resolvesBy) as Date, now, clock.zone)
-            : null;
+  const bandClockWords = bandClock({ state, resolvesBy: d.resolvesBy, resolvedAt: d.resolvedAt, resolvedBy: d.resolvedBy, votes: votes.length, now, zone: clock.zone });
   const bandLive =
     d.resolvesBy !== null &&
     ((state === "open" && !mine) || (state === "locked" && myVote === null));
@@ -748,47 +744,21 @@ export default async function MarketPage({
   // A set with no name is named by its people (4.7, 3.38): the seats beside the asker, on a draft and a live market alike.
   const seatNames = !group?.name && seats.some((x) => x.userId !== me.id) ? (await db.select({ displayName: schema.users.displayName }).from(schema.users).where(inArray(schema.users.id, seats.map((x) => x.userId).filter((x): x is string => x !== null)))).map((u) => u.displayName) : [];
   const setName = group?.name ?? (seatNames.length > 1 ? setLabel({ name: null, isDyad: group?.isDyad ?? false, memberNames: seatNames, viewerName: me.displayName }) : null);
-  // A draft (3.25): the band's edge is dashed, the clock reads "Not sent yet" after the dotted ring, and the asker line is the people glyph and who it is for.
+  // The band (3.25, 9.4, 9.7): the shared component, so the shell a row draws before this screen arrives is the same geometry.
   const band = (
-    <section className={`-mx-2 flex flex-col gap-3 rounded-card bg-field p-4 pb-[18px] ${state === "draft" ? "outline outline-1 -outline-offset-1 outline-dashed outline-line-strong" : ""}`} data-band-state={bandState}>
-      <div className="flex items-center justify-between gap-3">
-        {markRefOf(d) ? <MarkRefStamp mark={markRefOf(d)} size={44} onGround /> : <span />}
-        <span className="flex items-center gap-2 text-label text-ink-2">
-          {bandLive ? <LiveDot /> : null}
-          <StateMark
-            state={onWayHere ? "onway" : bandState}
-            hue={!onWayHere && bandState === "in" ? hueFor(me.id) : undefined}
-            ink={INKS[ink].ink}
-          />
-          {onWayHere ? <span>On its way</span> : state === "draft" ? <span>Not sent yet</span> : memoryView ? <span>{dateLabel(endedAt, clock.zone)}</span> : bandClock ? <span>{bandClock}</span> : null}
-        </span>
-      </div>
-      <h1 className="text-serif-l text-ink">{d.title}</h1>
-      <p className="flex items-center gap-2 text-caption text-ink-2">
-        {state === "draft" ? (
-          <>
-            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
-              <circle cx="9" cy="9" r="3.4" />
-              <path d="M3.5 19.5c.6-3.2 2.9-5 5.5-5s4.9 1.8 5.5 5" />
-              <path d="M16 6.4a3.2 3.2 0 0 1 0 5.9" />
-              <path d="M17.6 14.9c2 .6 3.4 2.2 3.9 4.6" />
-            </svg>
-            <span>{setName ? `For ${setName}` : "For whoever you send it to"}</span>
-          </>
-        ) : (
-          <>
-            <Avatar
-              name={person.get(d.creatorId)?.displayName ?? "?"}
-              hue={hueFor(d.creatorId)}
-              size={22}
-            />
-            <span>
-              {askerLine(first(d.creatorId), setName, group?.isDyad ?? false)}
-            </span>
-          </>
-        )}
-      </p>
-    </section>
+    <QuestionBand
+      state={bandState}
+      clock={memoryView ? dateLabel(endedAt, clock.zone) : bandClockWords}
+      live={bandLive}
+      onWay={onWayHere}
+      draft={state === "draft"}
+      mark={markRefOf(d)}
+      title={d.title}
+      asker={{ name: person.get(d.creatorId)?.displayName ?? "?", hue: hueFor(d.creatorId), line: askerLine(first(d.creatorId), setName, group?.isDyad ?? false) }}
+      forWhom={setName ? `For ${setName}` : undefined}
+      ink="var(--market-ink)"
+      hue={hueFor(me.id)}
+    />
   );
   // The source card (3.35): where a person's claim card stands, once the final score is in and before anyone has
   // said. No avatar and no "says": the score the terms named is speaking, not a person.
@@ -998,7 +968,7 @@ export default async function MarketPage({
     ) : numberUnit ? (
       rulerData ? <Ruler ruler={rulerData} state={resolved ? "resolved" : undefined} size="screen" surface="var(--ground)" /> : null
     ) : (
-      <CallLine pins={pins} state={resolved ? "resolved" : "in"} outcome={resolved && outcome ? (outcome === "yes" ? 1 : 0) : undefined} size="screen" surface="var(--ground)" ends={teams} />
+      <CallLine words={((w) => (w ? { yes: w.yesLine, no: w.noLine } : null))(outcomeWordsOf(d))} pins={pins} state={resolved ? "resolved" : "in"} outcome={resolved && outcome ? (outcome === "yes" ? 1 : 0) : undefined} size="screen" surface="var(--ground)" ends={teams} />
     );
   const settledOutcome = state === "resolved" && outcome !== null && outcome !== "void";
   const participants = positions.map((p) => pidOf(p));
@@ -1154,13 +1124,11 @@ export default async function MarketPage({
   );
 
   return (
-    <div
-      className="grain flex flex-1 flex-col"
-      style={inkVars(ink) as CSSProperties}
-    >
+    <div className="flex flex-1 flex-col">
+      <InkRoot ink={ink} />
       <PhotoAdding dareId={d.id} night={night} canAdd={canAdd} capture={state === "open"} viewer={{ name: me.displayName, hue: hueFor(me.id) }}>
-      <Screen>
-        <TopBar back right={group?.name ? <Chip>{group.name}</Chip> : null} />
+      <Screen arrive="fade">
+        <TopBar back right={<>{group?.name ? <Chip>{group.name}</Chip> : null}{mine || state !== "open" ? more : null}</>} info={infoKeyFor(state, memoryView, pickAnswers ? "categorical" : numberUnit ? "numeric" : "binary")} />
         <div className="flex flex-col gap-7 py-2">
           {band}
           {game && awayFace && homeFace ? (
@@ -1237,7 +1205,6 @@ export default async function MarketPage({
 
 
           {state !== "draft" ? details : null}
-          {mine || state !== "open" ? more : null}
           {openPhotos}
 
           {/* The tiebreaker's ruling, word for word (3.38); a final score's ending is the one caption line under the outcome (3.35), never a card. */}

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Avatar } from "@/components/ledger/avatar";
 import type { NumberLineAxis } from "@/lib/ledger/number-axis";
 import { hueVar, type Hue } from "@/lib/ui/hue";
+import { MOTION, staggerDelay, staggeredTotal } from "@/lib/ui/motion";
 
 /**
  * The weight line for a number market (docs/design.md 3.22 "Number markets"): the same row of columns, on an
@@ -32,7 +33,7 @@ export function NumberLine({ axis, me, heading, caption, rise = false }: { axis:
   const myColumn = myValue === null || mineOff ? -1 : axis.mode === "values" ? axis.columns.findIndex((c) => c.value !== null && BigInt(c.value) === myValue) : sliceIndex(myValue, axis);
 
   const marker = (
-    <div aria-hidden="true" className="pointer-events-none absolute -top-[50px] bottom-[22px] z-10 flex -translate-x-1/2 flex-col items-center duration-200 motion-safe:transition-opacity" style={{ left: `${Math.min(98, Math.max(2, (axis.marker?.xPermille ?? 0) / 10))}%`, opacity: risen ? 1 : 0, transitionDelay: risen ? "900ms" : "0ms" }}>
+    <div aria-hidden="true" className="pointer-events-none absolute -top-[50px] bottom-[22px] z-10 flex -translate-x-1/2 flex-col items-center ease-fade motion-safe:transition-opacity" style={{ left: `${Math.min(98, Math.max(2, (axis.marker?.xPermille ?? 0) / 10))}%`, opacity: risen ? 1 : 0, transitionDuration: `${MOTION.base}ms`, transitionDelay: risen && rise ? `${staggeredTotal(axis.columns.length)}ms` : "0ms" }}>
       <span className="flex h-[22px] items-center whitespace-nowrap rounded-pill bg-ink px-2 text-label text-ground tabular-nums">{axis.marker?.chip}</span>
       <span className="w-[2px] flex-1 bg-ink" />
     </div>
@@ -42,12 +43,12 @@ export function NumberLine({ axis, me, heading, caption, rise = false }: { axis:
       {withMarker ? marker : null}
       <div className="relative h-[100px] w-full rounded-column bg-surface">
         {mine && me ? (
-          <span className="absolute left-1/2 z-[2] -translate-x-1/2 duration-[400ms] ease-out motion-safe:transition-[bottom]" style={{ bottom: risen ? "calc(100% + 28px)" : 6 }}>
+          <span className="absolute left-1/2 z-[2] -translate-x-1/2 ease-move motion-safe:transition-[bottom]" style={{ bottom: risen ? "calc(100% + 28px)" : 6, transitionDuration: `${MOTION.base}ms`, transitionDelay: risen && rise ? `${staggerDelay(Math.max(0, i)) + MOTION.travel - MOTION.base}ms` : "0ms" }}>
             <Avatar name={me.name} hue={me.hue} size={22} ring="var(--ground)" />
           </span>
         ) : null}
-        <span aria-hidden="true" className="absolute inset-x-0 bottom-0 rounded-column bg-market-ink ease-out motion-safe:transition-[height]" style={{ height: risen ? `${c.heightPermille / 10}%` : 6, transitionDuration: "700ms", transitionDelay: risen && !mine ? `${120 + i * 30}ms` : "0ms" }} />
-        {mine && me ? <span aria-hidden="true" className="absolute inset-x-0 bottom-0 rounded-column duration-[400ms] ease-out motion-safe:transition-[height]" style={{ height: risen ? `${myShare}%` : 0, background: hueVar(me.hue), boxShadow: "0 -2px 0 var(--ground)", transitionDelay: risen ? "300ms" : "0ms" }} /> : null}
+        <span aria-hidden="true" className="absolute inset-x-0 bottom-0 rounded-column bg-market-ink ease-move motion-safe:transition-[height]" style={{ height: risen ? `${c.heightPermille / 10}%` : 6, transitionDuration: `${rise ? MOTION.travel : MOTION.base}ms`, transitionDelay: risen && rise ? `${staggerDelay(Math.max(0, i))}ms` : "0ms" }} />
+        {mine && me ? <span aria-hidden="true" className="absolute inset-x-0 bottom-0 rounded-column ease-move motion-safe:transition-[height]" style={{ height: risen ? `${myShare}%` : 0, background: hueVar(me.hue), boxShadow: "0 -2px 0 var(--ground)", transitionDuration: `${rise ? MOTION.travel : MOTION.base}ms`, transitionDelay: risen && rise ? `${staggerDelay(Math.max(0, i))}ms` : "0ms" }} /> : null}
         {Array.from({ length: Math.min(c.noStake, 3) }, (_, k) => (
           <span key={k} aria-hidden="true" className="absolute left-1/2 h-2 w-2 -translate-x-1/2 rounded-pill border border-ink-2 bg-ground" style={{ bottom: 2 + k * 10 }} />
         ))}

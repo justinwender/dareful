@@ -9,6 +9,7 @@ import { DeviceNotice, MeProvider } from "@/components/auth/device";
 import type { Me } from "@/lib/auth/device";
 import { OpenFromNotification } from "@/components/notify/open-from-notification";
 import { Refresh } from "@/components/ui/refresh";
+import { Shells } from "@/components/ui/shells";
 
 const environmentId = process.env.NEXT_PUBLIC_DYNAMIC_ENVIRONMENT_ID ?? "";
 
@@ -42,6 +43,7 @@ export function Providers({ children, settled, me }: { children: ReactNode; sett
         <DeviceNotice />
         <OpenFromNotification />
         <Refresh />
+        <Shells />
         {children}
       </MeProvider>
     </DynamicContextProvider>

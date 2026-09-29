@@ -24,7 +24,7 @@ self.addEventListener("push", (event) => {
   } catch (_) {
     // A payload that is not JSON still deserves a notification; the default above is it.
   }
-  event.waitUntil(self.registration.showNotification(String(notice.title).slice(0, 120), { body: String(notice.body).slice(0, 240), data: { url: String(notice.url) }, icon: "/icons/192", badge: "/icons/96", tag: String(notice.url) }));
+  event.waitUntil(self.registration.showNotification(String(notice.title).slice(0, 120), { body: String(notice.body).slice(0, 240), data: { url: String(notice.url) }, icon: "/icons/192.png", badge: "/icons/96.png", tag: String(notice.url) }));
 });
 
 /** Only ever this app's own pages, whatever the payload said. */

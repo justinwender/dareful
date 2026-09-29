@@ -23,14 +23,15 @@ export function Avatar({ name, hue, size = 28, ghost = false, ring, className }:
     <span
       role="img"
       aria-label={initial ? name : "unnamed friend"}
-      className={cn("inline-flex shrink-0 items-center justify-center rounded-pill font-bold text-avatar-ink", ghost && "outline-dashed outline-1 outline-line-strong", className)}
+      className={cn("inline-flex shrink-0 items-center justify-center rounded-pill font-bold text-avatar-ink", ghost && "outline-dashed outline-1 outline-offset-2 outline-line-strong", className)}
       style={{
         width: size,
         height: size,
         fontSize,
         lineHeight: 1,
         background: ghost ? hueVar("stone") : hueVar(hue),
-        boxShadow: ring ? `0 0 0 ${ringWidth}px ${ring}` : undefined,
+        // The avatar's own edge first, then the ring in the surface behind it when stacked (1.5, 8.7).
+        boxShadow: ring ? `inset 0 0 0 1px var(--avatar-edge), 0 0 0 ${ringWidth}px ${ring}` : "inset 0 0 0 1px var(--avatar-edge)",
       }}
     >
       {initial}

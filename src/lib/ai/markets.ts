@@ -56,7 +56,7 @@ Write:
 
 Never mention odds, prices, markets, wagers, or money. These are friends.`;
 
-export async function scopeMarket(input: { line: string; criterion?: string; answers?: Array<{ question: string; yes: boolean }>; now: Date }): Promise<MarketScope> {
+export async function scopeMarket(input: { line: string; criterion?: string; answers?: Array<{ question: string; yes: boolean }>; now: Date; /** The answer's JSON as it is written (9.8). */ onDelta?: (partialJson: string) => void }): Promise<MarketScope> {
   const answered = (input.answers ?? []).slice(0, 3).map((a) => `<answered question="${a.question.replace(/["<>]/g, "").slice(0, 140)}">${a.yes ? "yes" : "no"}</answered>`).join("\n");
   const user = `<line>${input.line.slice(0, 280)}</line>\n${answered ? `The person asking answered these about edge cases. Write the terms so each answer is settled in them, in plain words, and set ambiguous to false.\n${answered}\n` : ""}${input.criterion ? `The group chose to decide it by: <criterion>${input.criterion.slice(0, 120)}</criterion>. Write the terms around that and set ambiguous to false.\n` : ""}Right now it is ${input.now.toISOString()}.`;
   return structured({
@@ -79,6 +79,7 @@ export async function scopeMarket(input: { line: string; criterion?: string; ans
     },
     shape: Scope,
     timeoutMs: 12_000,
+    onDelta: input.onDelta,
   });
 }
 
@@ -121,7 +122,7 @@ Write:
 
 Never mention odds, prices, markets, wagers, or money. These are friends.`;
 
-export async function scopeNumber(input: { line: string; now: Date }): Promise<MarketNumberScope> {
+export async function scopeNumber(input: { line: string; now: Date; onDelta?: (partialJson: string) => void }): Promise<MarketNumberScope> {
   return structured({
     label: "scope number",
     model: MODELS.drafting,
@@ -143,6 +144,7 @@ export async function scopeNumber(input: { line: string; now: Date }): Promise<M
     },
     shape: NumberScope,
     timeoutMs: 12_000,
+    onDelta: input.onDelta,
   });
 }
 
@@ -174,7 +176,7 @@ Write:
 
 Never mention odds, prices, markets, wagers, or money. These are friends.`;
 
-export async function scopePickOne(input: { line: string; answers: string[]; now: Date }): Promise<MarketPickOneScope> {
+export async function scopePickOne(input: { line: string; answers: string[]; now: Date; onDelta?: (partialJson: string) => void }): Promise<MarketPickOneScope> {
   const answers = input.answers.slice(0, 6).map((a) => `<answer>${a.replace(/[<>]/g, "").slice(0, 40)}</answer>`).join("\n");
   return structured({
     label: "scope pick one",
@@ -189,6 +191,7 @@ export async function scopePickOne(input: { line: string; answers: string[]; now
     },
     shape: PickOneScope,
     timeoutMs: 12_000,
+    onDelta: input.onDelta,
   });
 }
 

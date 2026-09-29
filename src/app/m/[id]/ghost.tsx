@@ -1,4 +1,3 @@
-import type { CSSProperties } from "react";
 import { SignInButton } from "@/components/auth/sign-in-button";
 import { Avatar, AvatarStack } from "@/components/ledger/avatar";
 import { MarkRefStamp } from "@/components/ledger/mark-stamp";
@@ -28,7 +27,8 @@ import { CONSENT, DRIVE_CONSENT, SLIDER_REACH } from "@/lib/sports/templates";
 import type { Sport } from "@/lib/sports/types";
 import { clockOf, closesLabel, firstName, untilLabel } from "@/lib/ui/copy";
 import { hueFor } from "@/lib/ui/hue";
-import { INKS, inkOf, inkVars } from "@/lib/ui/ink";
+import { inkOf } from "@/lib/ui/ink";
+import { InkRoot } from "@/components/ledger/ink-root";
 import { markRefOf } from "@/lib/ui/mark";
 import type { TeamFace } from "@/lib/ui/team";
 import { formatMoney, unitWords } from "@/lib/ui/units";
@@ -128,16 +128,17 @@ export async function GhostMarketPage({ id, clock }: { id: string; clock: Awaite
     );
 
   return (
-    <div className="grain flex flex-1 flex-col" style={inkVars(ink) as CSSProperties}>
+    <div className="flex flex-1 flex-col">
+      <InkRoot ink={ink} />
       <Screen>
-        <TopBar title="dareful" />
+        <TopBar title="dareful" info="market-link" />
         <div className="flex flex-col gap-7 py-2">
           <section className="-mx-2 flex flex-col gap-3 rounded-card bg-field p-4 pb-[18px]">
             <div className="flex items-center justify-between gap-3">
               {markRefOf(d) ? <MarkRefStamp mark={markRefOf(d)} size={44} onGround /> : <span />}
               <span className="flex items-center gap-2 text-label text-ink-2">
                 {state === "open" && d.resolvesBy && !mine ? <LiveDot /> : null}
-                <StateMark state={bandState} hue={bandState === "in" && ghostMine ? hueFor(ghostMine.claimId) : undefined} ink={INKS[ink].ink} />
+                <StateMark state={bandState} hue={bandState === "in" && ghostMine ? hueFor(ghostMine.claimId) : undefined} ink="var(--market-ink)" />
                 {bandClock ? <span>{bandClock}</span> : null}
               </span>
             </div>

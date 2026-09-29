@@ -70,7 +70,7 @@ export type TimelineEvent =
   | { kind: "obligation"; at: Date; obligation: ObligationRow; denomination: DenominationRow; open: bigint; settled: bigint; forgiven: bigint; netted: bigint; groupName: string | null }
   | { kind: "proposal"; at: Date; proposal: ProposalRow; denomination: DenominationRow; groupName: string | null }
   /** A market both people were in: one story, with only what it left between these two beneath it. */
-  | { kind: "market"; at: Date; market: MarketCardData }
+  | { kind: "market"; at: Date; market: MarketCardData; /** An unnamed set by its people, for the dashed chip (3.19); null when the set is named. */ groupPeople?: string | null }
   /** A game with more than one question between these two (3.4): one story for the night, its questions inside it. */
   | { kind: "game"; at: Date; game: { id: string; groupId: string; name: string; away: TeamFace; home: TeamFace; score: string | null; over: boolean }; markets: MarketCardData[]; groupName: string | null };
 
@@ -221,7 +221,14 @@ export async function personView(me: UserRow, them: UserRow): Promise<PersonView
   }
   const grouped = new Set<string>();
   for (const list of byGame.values()) if (list.length > 1) for (const m of list) grouped.add(m.dare.id);
-  for (const m of markets) if (!grouped.has(m.dare.id)) timeline.push({ kind: "market", at: m.at, market: m });
+  // An unnamed set is named by its people on the card's chip (3.19, 4.7), never as a place.
+  const unnamed = Array.from(new Set(markets.filter((m) => !m.groupName).map((m) => m.dare.groupId)));
+  const unnamedMembers = unnamed.length ? await membersOfGroups(unnamed) : new Map<string, Array<{ userId: string | null; displayName: string }>>();
+  const peopleLabel = (groupId: string) => {
+    const names = (unnamedMembers.get(groupId) ?? []).filter((x) => x.userId).map((x) => x.displayName);
+    return names.length > 1 ? setLabel({ name: null, isDyad: names.length === 2, memberNames: names, viewerName: me.displayName }) : null;
+  };
+  for (const m of markets) if (!grouped.has(m.dare.id)) timeline.push({ kind: "market", at: m.at, market: m, groupPeople: m.groupName ? null : peopleLabel(m.dare.groupId) });
   for (const [, list] of byGame) {
     if (list.length < 2) continue;
     const g = games.get(list[0]!.dare.id)!.game;

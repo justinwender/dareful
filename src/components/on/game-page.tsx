@@ -36,7 +36,9 @@ import { clockWithDay } from "@/lib/notify/messages";
 import { startLabel } from "@/components/on/game-row";
 import { clockOf, dateLabel, firstName, fromThatNight, setCaption } from "@/lib/ui/copy";
 import { hueFor, hueVar } from "@/lib/ui/hue";
-import { inkOf, INKS } from "@/lib/ui/ink";
+import { inkColorVar, inkFieldVar, inkOf } from "@/lib/ui/ink";
+import { bandClock } from "@/lib/ui/band";
+import { serialiseShell, shellSheet } from "@/lib/ui/shell";
 import { markRefOf } from "@/lib/ui/mark";
 import { outcomeLine } from "@/lib/ui/outcome-words";
 import type { TeamFace } from "@/lib/ui/team";
@@ -65,7 +67,7 @@ export async function GamePage({ id, g, add, start }: { id: string; g: string | 
     const asked = g && /^[0-9a-f-]{36}$/i.test(g) ? (await gameMarkets(game.id, g)).filter((r) => r.dare.creatorSignature) : [];
     return (
       <Screen>
-        <TopBar title="dareful" />
+        <TopBar title="dareful" info="game-link" />
         <div className="flex flex-col gap-6 py-6">
           <GameHeader game={header} caption="Everything closes at kickoff." />
           {asked.length > 0 ? (
@@ -118,7 +120,7 @@ export async function GamePage({ id, g, add, start }: { id: string; g: string | 
 
   if (ahead && (start || !chosen)) {
     const { sets, people } = await setsAndPeople();
-    return <StartGame game={header} menu={menuItems} sets={sets} people={people} chrome={<TopBar back title="Start a game" />} signing={signing} mode={{ kind: "start" }} closes={closes} />;
+    return <StartGame game={header} menu={menuItems} sets={sets} people={people} chrome={<TopBar back title="Start a game" info="game-start" />} signing={signing} mode={{ kind: "start" }} closes={closes} />;
   }
   if (!chosen) {
     // The game has started and this person is on it with nobody: nothing to show but the game.
@@ -138,7 +140,7 @@ export async function GamePage({ id, g, add, start }: { id: string; g: string | 
     const { sets: all, people } = await setsAndPeople();
     let sets = all.filter((s) => s.groupId === chosen.groupId);
     if (sets.length === 0) sets = [{ takenInks: [], groupId: chosen.groupId, label: chosen.label, caption: "", avatars: [], offerName: false, size: 0, units: (await denominationsForGroup(chosen.groupId)).filter((u) => !u.monetary).map((u) => ({ id: u.id, label: u.label, template: u.template })) }];
-    return <StartGame game={header} menu={menuItems.filter((m) => m.key === add)} sets={sets} people={people} chrome={<TopBar back title="Add another" />} signing={signing} mode={{ kind: "add", groupId: chosen.groupId, groupLabel: chosen.label, key: add as TemplateKey }} closes={closes} />;
+    return <StartGame game={header} menu={menuItems.filter((m) => m.key === add)} sets={sets} people={people} chrome={<TopBar back title="Add another" info="game-start" />} signing={signing} mode={{ kind: "add", groupId: chosen.groupId, groupLabel: chosen.label, key: add as TemplateKey }} closes={closes} />;
   }
 
   // The cards: the group's questions on this game, with the viewer's own value and the group's number where numbers may be shown.
@@ -230,7 +232,7 @@ export async function GamePage({ id, g, add, start }: { id: string; g: string | 
       {cardRows.map((c) => {
         const live = c.dare.id === firstOpenNotIn && ahead;
         return (
-          <Link key={c.dare.id} prefetch={false} href={`/m/${c.dare.id}`} className="relative flex flex-col gap-2 rounded-card border border-line bg-surface px-3 py-3" data-game-card={c.template.key} data-card-state={c.state}>
+          <Link key={c.dare.id} prefetch={false} href={`/m/${c.dare.id}`} data-press="row" data-shell={serialiseShell({ kind: "market", id: c.dare.id, ink: c.ink, mark: markRefOf(c.dare), state: c.meta.mark, clock: bandClock({ state: c.state, resolvesBy: c.dare.resolvesBy, resolvedAt: c.dare.resolvedAt, resolvedBy: c.dare.resolvedBy, votes: c.meta.mark === "voting" ? 1 : 0, now, zone: clock.zone }), question: c.dare.title, asker: null, sheet: shellSheet(c.meta.mark, c.meta.mark === "in") })} data-shell-id={c.dare.id} className="press-row relative flex flex-col gap-2 rounded-card border border-line bg-surface px-3 py-3" data-game-card={c.template.key} data-card-state={c.state}>
             <LinkPending />
             <span className="grid grid-cols-[40px_minmax(0,1fr)_18px] items-center gap-3">
               {markRefOf(c.dare) ? <MarkRefStamp mark={markRefOf(c.dare)} size={40} ink={c.ink} /> : <span />}
@@ -238,7 +240,7 @@ export async function GamePage({ id, g, add, start }: { id: string; g: string | 
                 <span className="text-body-strong text-ink">{c.dare.title}</span>
                 <span className="flex items-center gap-2 text-caption text-ink-3">
                   {live ? <LiveDot /> : null}
-                  <StateMark state={c.meta.mark} hue={c.meta.mark === "in" ? hueFor(me.id) : undefined} ink={c.meta.mark === "resolved" ? INKS[c.ink].ink : undefined} />
+                  <StateMark state={c.meta.mark} hue={c.meta.mark === "in" ? hueFor(me.id) : undefined} ink={c.meta.mark === "resolved" ? inkColorVar(c.ink) : undefined} />
                   <span className="truncate">{c.meta.text}</span>
                 </span>
               </span>
@@ -249,7 +251,7 @@ export async function GamePage({ id, g, add, start }: { id: string; g: string | 
             {c.slider ? (
               <span aria-hidden="true" className="flex h-5 items-center gap-2">
                 <TeamStamp team={away} size={20} />
-                <span className="relative h-[6px] min-w-0 flex-1 rounded-[3px]" style={{ background: INKS[c.ink].field }}>
+                <span className="relative h-[6px] min-w-0 flex-1 rounded-[3px]" style={{ background: inkFieldVar(c.ink) }}>
                   <span className="absolute top-1/2 left-1/2 h-3 w-px -translate-x-1/2 -translate-y-1/2 bg-line-strong" />
                   {c.groupT !== null ? <span className="absolute top-1/2 h-3 w-[2px] -translate-x-1/2 -translate-y-1/2 bg-ink" style={{ left: `${c.groupT * 100}%` }} /> : null}
                   {c.myT !== null ? <span className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-pill" style={{ left: `${c.myT * 100}%`, background: hueVar(hueFor(me.id)) }} /> : null}
@@ -289,7 +291,7 @@ export async function GamePage({ id, g, add, start }: { id: string; g: string | 
     return (
       <PhotoAdding dareId={first?.dare.id ?? ids[0] ?? ""} night={night} canAdd={inAny && storageConfigured() && Boolean(first)} capture={false} viewer={{ name: me.displayName, hue: hueFor(me.id) }}>
         <Screen>
-          <TopBar back />
+          <TopBar back info="game-night" />
           <div className="flex flex-col gap-7 py-2">
             <section className="-mx-2 flex flex-col gap-3 rounded-card bg-surface-2 p-4 pb-[18px]" data-game-header={game.id} data-game-night="">
               <div className="flex items-center justify-between gap-3">
@@ -364,7 +366,7 @@ export async function GamePage({ id, g, add, start }: { id: string; g: string | 
 
   return (
     <Screen>
-      <TopBar back right={more} />
+      <TopBar back right={more} info="game" />
       <div className="flex flex-col gap-7 py-2">
         <GameHeader game={header} caption={`${askerLine} ${ahead ? "Everything closes at kickoff." : "Everything closed at kickoff."}`.trim()} right={ahead ? undefined : feedFinal ? scoreLine(feedFinal, game.homeShort, game.awayShort) : "Started"} />
         {chips}

@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { Avatar } from "@/components/ledger/avatar";
 import { Button } from "@/components/ui/button";
 import { dismissNamePromptAction, nameGroupAction } from "@/lib/actions/join";
-import type { Hue } from "@/lib/ui/hue";
+import { hueRing, type Hue } from "@/lib/ui/hue";
 import type { InkName } from "@/lib/ui/ink";
 import { cn } from "@/lib/utils";
 
@@ -19,7 +19,7 @@ const COUNT = ["", "", "two", "three", "four", "five", "six", "seven", "eight", 
  * second question, the dashed "Someone else" row with the people the asker knows, and "Whoever I send it to". The
  * same step in the ask flow and in starting a game (3.33); the parent renders what stands above it and the sheet.
  */
-export function WhoStep({ sets, people, who, onWho, argument = false }: { sets: SetOption[]; people: Person[]; who: Who; onWho: (who: Who) => void; argument?: boolean }) {
+export function WhoStep({ sets, people, who, onWho, argument = false, hue = "stone" }: { sets: SetOption[]; people: Person[]; who: Who; onWho: (who: Who) => void; argument?: boolean; /** The asker's hue, for the selection ring on the chosen row (3.20). */ hue?: Hue }) {
   const [picking, setPicking] = useState(sets.length === 0 && people.length > 0);
   const [named, setNamed] = useState<Record<string, string>>({});
   const [waved, setWaved] = useState<Record<string, boolean>>({});
@@ -46,7 +46,7 @@ export function WhoStep({ sets, people, who, onWho, argument = false }: { sets: 
           const label = named[s.groupId] ?? s.label;
           return (
             <div key={s.groupId} className="flex flex-col gap-2">
-              <button type="button" role="radio" aria-checked={on} onClick={() => (onWho({ kind: "set", groupId: s.groupId }), setPicking(false))} className={cn("grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-card border border-line px-[14px] py-3 text-left", on && "bg-surface shadow-[inset_0_0_0_1px_rgba(185,165,243,0.5)]")}>
+              <button type="button" role="radio" aria-checked={on} onClick={() => (onWho({ kind: "set", groupId: s.groupId }), setPicking(false))} className={cn("grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-card border border-line px-[14px] py-3 text-left", on && "bg-surface")} style={on ? { boxShadow: hueRing(hue) } : undefined}>
                 <span className="flex">
                   {s.avatars.slice(0, 3).map((a, i) => (
                     <span key={i} style={{ marginLeft: i === 0 ? 0 : -10 }}>

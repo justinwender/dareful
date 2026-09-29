@@ -1,5 +1,5 @@
 import { ButtonLink } from "@/components/ui/button";
-import { Screen } from "@/components/ledger/screen";
+import { RootHeader, Screen } from "@/components/ledger/screen";
 import { OfflineBar } from "@/components/ui/offline-bar";
 import { FirstRun } from "@/components/home/first-run";
 import { JustHappened } from "@/components/home/just-happened";
@@ -31,16 +31,20 @@ export default async function Now({ searchParams }: { searchParams: Promise<{ al
   const sp = await searchParams;
   const now = new Date(clock.now);
 
-  const home = await nowFor(user, { now, closes: (at) => closesLabel(at, now, clock.zone) });
+  const home = await nowFor(user, { now, closes: (at) => closesLabel(at, now, clock.zone), zone: clock.zone });
   const empty = !home.hasAnything;
   // "Got a code?" at the top right, placed as the question step places it (docs/design.md 6.1, amended 2026-09-27): joining by code is one tap from home.
   const today = (
-    <div className="flex items-center justify-between pt-5">
+    <RootHeader
+      info="now"
+      right={
+        <ButtonLink href="/join" variant="tertiary" data-got-a-code="">
+          Got a code?
+        </ButtonLink>
+      }
+    >
       <h2 className="text-label text-ink-3">{todayLabel(now, clock.zone)}</h2>
-      <ButtonLink href="/join" variant="tertiary" className="-my-3" data-got-a-code="">
-        Got a code?
-      </ButtonLink>
-    </div>
+    </RootHeader>
   );
 
   if (empty) return <FirstRun today={todayLabel(now, clock.zone)} games={(await starterGames(now)).map((g) => rowData(g, clock.zone, null, null))} viewerHue={hueFor(user.id)} />;

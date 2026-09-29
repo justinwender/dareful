@@ -1,0 +1,87 @@
+/**
+ * The write-up (PLANNING.md 8a; docs/design.md 9.8): one line into terms a group can resolve, for a yes-or-no
+ * question, a number question or a pick-one question, with the plain fallback when the model is slow, down or
+ * wrong-shaped. One function behind the server action (`scopeMarketAction`) and the streaming route
+ * (`/api/m/write-up`), which hands each piece of the model's answer to `onDelta` as it is written, so the terms
+ * step can show the words at the pace they arrive.
+ */
+import { createHmac, timingSafeEqual } from "node:crypto";
+import { z } from "zod";
+import { plainNumberScope, plainPickOneScope, plainScope, scopeMarket, scopeNumber, scopePickOne } from "@/lib/ai/markets";
+import { checkScale } from "@/lib/ledger/scale";
+import { MAX_ANSWER_LENGTH, MAX_ANSWERS, MIN_ANSWERS } from "@/lib/ledger/pick-one";
+import { outcomeWordsFrom } from "@/lib/ui/outcome-words";
+
+export type ScopeResult = { title: string; terms: string; ambiguous: boolean; criteria: string[]; resolvesInHours: number; plain: boolean; number: NumberScopeResult | null; /** The outcomes in the question's own words (3.25), when the write-up gave four usable phrasings. */ outcomes: [string, string, string, string] | null };
+/**
+ * A number question's write-up carries its unit and, when the model's scale passed the check, that scale under a
+ * token only this server can mint for this person: the draft that comes back with it is stored as the model's
+ * scale, which is never shown, so a scale nobody but the server chose must not be able to wear that label.
+ */
+export type NumberScopeResult = { unit: { singular: string; plural: string }; model: { range: string | null; typical: string; token: string } | null };
+
+/** The token covers the model's scale (null when it failed the check) and its most likely answer together. */
+export function scaleToken(userId: string, range: string | null, typical: string): string {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret || secret.length < 32) throw new Error("SESSION_SECRET is not set or too short");
+  return createHmac("sha256", secret).update(`dareful:ai-scale:v2:${userId}:${range ?? ""}:${typical}`).digest("base64url");
+}
+export function scaleTokenValid(userId: string, range: string | null, typical: string, token: string): boolean {
+  const want = Buffer.from(scaleToken(userId, range, typical));
+  const got = Buffer.from(token);
+  return want.length === got.length && timingSafeEqual(want, got);
+}
+
+
+export const WriteUpInput = z.object({
+  line: z.string().trim().min(3).max(280),
+  criterion: z.string().trim().min(3).max(120).optional(),
+  answers: z.array(z.object({ question: z.string().trim().min(3).max(160), yes: z.boolean() })).max(3).optional(),
+  kind: z.enum(["binary", "numeric", "categorical"]).optional(),
+  choices: z.array(z.string().trim().min(1).max(MAX_ANSWER_LENGTH)).max(MAX_ANSWERS).optional(),
+});
+export type WriteUpRequest = { line: string; criterion?: string; answers?: Array<{ question: string; yes: boolean }>; kind?: "binary" | "numeric" | "categorical"; choices?: string[] };
+
+export async function writeUp(raw: WriteUpRequest, userId: string, onDelta?: (partialJson: string) => void): Promise<ScopeResult | { error: string }> {
+  const line = z.string().trim().min(3).max(280).safeParse(raw.line);
+  if (!line.success) return { error: "Ask it in a line." };
+  const criterion = raw.criterion ? z.string().trim().min(3).max(120).safeParse(raw.criterion) : null;
+  if (raw.kind === "categorical") {
+    // A pick-one question (3.29): the write-up is given the answers and leaves them exactly as the asker wrote them.
+    const choices = z.array(z.string().trim().min(1).max(MAX_ANSWER_LENGTH)).min(MIN_ANSWERS).max(MAX_ANSWERS).safeParse(raw.choices ?? []);
+    if (!choices.success) return { error: `Two to ${MAX_ANSWERS} answers, a few words each.` };
+    try {
+      const s = await scopePickOne({ line: line.data, answers: choices.data, now: new Date(), onDelta });
+      return { title: s.title, terms: s.terms, ambiguous: false, criteria: [], resolvesInHours: s.resolvesInHours, plain: false, number: null, outcomes: null };
+    } catch (err) {
+      console.error("scoping a pick-one question failed; using the line as typed", err);
+      const p = plainPickOneScope(line.data);
+      return { ...p, ambiguous: false, criteria: [], resolvesInHours: 24, plain: true, number: null, outcomes: null };
+    }
+  }
+  if (raw.kind === "numeric") {
+    try {
+      const s = await scopeNumber({ line: line.data, now: new Date(), onDelta });
+      const unit = { singular: s.unit.singular.toLowerCase(), plural: s.unit.plural.toLowerCase() };
+      // The model's scale is used only when it passes the check; otherwise the asker sets one (src/lib/ledger/scale.ts).
+      const checked = checkScale({ low: s.low, high: s.high, typical: s.typical });
+      if (!checked.ok) console.warn("number scale proposal refused", { why: checked.why, low: s.low, high: s.high, typical: s.typical });
+      const range = checked.ok ? checked.range.toString() : null;
+      const typical = Number.isInteger(s.typical) && s.typical >= 0 ? String(s.typical) : "0";
+      return { title: s.title, terms: s.terms, ambiguous: false, criteria: [], resolvesInHours: s.resolvesInHours, plain: false, number: { unit, model: { range, typical, token: scaleToken(userId, range, typical) } }, outcomes: null };
+    } catch (err) {
+      console.error("scoping a number question failed; using the line as typed", err);
+      const p = plainNumberScope(line.data);
+      return { ...p, ambiguous: false, criteria: [], resolvesInHours: 24, plain: true, number: { unit: { singular: "", plural: "" }, model: null }, outcomes: null };
+    }
+  }
+  try {
+    const answers = z.array(z.object({ question: z.string().trim().min(3).max(160), yes: z.boolean() })).max(3).safeParse(raw.answers ?? []);
+    const s = await scopeMarket({ line: line.data, criterion: criterion?.success ? criterion.data : undefined, answers: answers.success ? answers.data : undefined, now: new Date(), onDelta });
+    return { title: s.title, terms: s.terms, ambiguous: s.ambiguous && s.criteria.length > 0, criteria: s.criteria, resolvesInHours: s.resolvesInHours, plain: false, number: null, outcomes: outcomeWordsFrom(s.outcomes) };
+  } catch (err) {
+    console.error("scoping failed; using the line as typed", err);
+    const p = plainScope(line.data);
+    return { ...p, ambiguous: false, criteria: [], resolvesInHours: 24, plain: true, number: null, outcomes: null };
+  }
+}

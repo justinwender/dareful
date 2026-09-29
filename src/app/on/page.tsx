@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { GameRow, rowData } from "@/components/on/game-row";
 import { FeedFailed } from "@/components/on/try-again";
-import { Screen, SectionLabel } from "@/components/ledger/screen";
+import { RootHeader, Screen, SectionLabel } from "@/components/ledger/screen";
 import { TabBar } from "@/components/ui/tab-bar";
 import { currentUser } from "@/lib/auth/session";
 import { whatsOn } from "@/lib/sports";
@@ -30,7 +30,9 @@ export default async function WhatsOnPage() {
   const nothing = on.days.length === 0;
   return (
     <Screen root>
-      <h1 className="pt-5 text-label text-ink-3">What’s on</h1>
+      <RootHeader info="whats-on">
+        <h1 className="text-label text-ink-3">What’s on</h1>
+      </RootHeader>
       <OfflineBar />
       <div className="flex flex-col gap-7 py-4">
         {on.feed.failing ? <FeedFailed lastOk={on.feed.lastOkAt ? clockOf(on.feed.lastOkAt, clock.zone) : null} nothingSaved={nothing} /> : null}

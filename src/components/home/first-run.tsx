@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Screen } from "@/components/ledger/screen";
+import { RootHeader, Screen } from "@/components/ledger/screen";
 import { CodeJoinCompact } from "@/components/home/code-join";
 import { GameRow, type GameRowData } from "@/components/on/game-row";
 import { ButtonLink } from "@/components/ui/button";
@@ -20,7 +20,9 @@ const STARTERS = ["Does John fall asleep during the movie?", "Does anyone actual
 export function FirstRun({ today, games = [], viewerHue = "stone" }: { today: string; games?: GameRowData[]; viewerHue?: Hue }) {
   return (
     <Screen root>
-      <h2 className="pt-5 text-label text-ink-3">{today}</h2>
+      <RootHeader info="now-first-run">
+        <h2 className="text-label text-ink-3">{today}</h2>
+      </RootHeader>
       <OfflineBar />
       <div className="flex flex-1 flex-col gap-7 py-6">
         <div className="flex flex-col gap-3">

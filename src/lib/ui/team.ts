@@ -10,8 +10,7 @@ export type TeamFace = { abbr: string; name: string; color: string | null };
 /** The stamp sizes the doc names: 20 beside the name in words, 28 in a list row, 44 in a game's header, and 18 to 60 on a slider. */
 export type StampSize = 20 | 28 | 44 | number;
 
-const GRAPHITE = "#121110";
-const CREAM = "#f2ede3";
+import { CREAM, GRAPHITE } from "./palette";
 
 /** The stamp's fill: the team's colour, or the ground when the feed gave none. */
 export const stampFill = (color: string | null): string => (color ? `#${color}` : "var(--ground)");

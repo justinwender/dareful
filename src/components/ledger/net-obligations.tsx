@@ -80,11 +80,14 @@ export function NetObligations({ otherId, lines, domain, onWay = [] }: { otherId
             <span>Cancelling out the {line.cancels} each way · on its way</span>
           </p>
         ) : (
-          <div key={`${line.groupId}:${line.denomId}`} className="flex flex-col gap-1.5">
-            <Button variant="secondary" onClick={() => setOpenLine(line)} className="w-full">
-              Cancel out the {line.cancels} each way
+          <div key={`${line.groupId}:${line.denomId}`} className="flex items-center justify-between gap-3" data-cancel-out="">
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <p className="text-body-strong text-ink">Cancel out the {line.cancels} each way</p>
+              <p className="text-caption text-ink-3">{line.both}</p>
+            </div>
+            <Button variant="row" onClick={() => setOpenLine(line)}>
+              Cancel out
             </Button>
-            <p className="text-caption text-ink-3">{line.both}</p>
           </div>
         ),
       )}
@@ -98,10 +101,10 @@ export function NetObligations({ otherId, lines, domain, onWay = [] }: { otherId
         {error ? <ProblemSummary messages={[error]} /> : null}
         <div className="flex flex-col gap-[10px]">
           <Button variant="primary" onClick={() => (openLine ? run(openLine) : undefined)} loading={phase !== "idle"}>
-            Cancel them out
+            Cancel out {openLine?.cancels} each way
           </Button>
           <Button variant="tertiary" onClick={() => setOpenLine(null)} disabled={phase !== "idle"}>
-            Never mind
+            Not now
           </Button>
         </div>
       </Sheet>

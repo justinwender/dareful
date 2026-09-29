@@ -8,6 +8,8 @@
 import { and, desc, eq, inArray, isNotNull, isNull, ne, or } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { inkOf, type InkName } from "@/lib/ui/ink";
+import { shellOf } from "./shell-data";
+import type { MarketShell } from "@/lib/ui/shell";
 import { markRefOf, type MarkRef } from "@/lib/ui/mark";
 import { bytes16ToUuid, uuidToBytes16 } from "./ids";
 import { denominationsByIds, type DenominationRow } from "./denominations";
@@ -26,7 +28,7 @@ import type { TeamFace } from "@/lib/ui/team";
 type Person = { id: string; displayName: string };
 
 /** What the row's state mark says (docs/design.md 3.23), and the market's mark and ink for its 40px stamp (3.15). */
-type QuestionLook = { mark: MarkRef | null; ink: InkName; state: "open" | "locked" | "voting" | "draft" };
+type QuestionLook = { mark: MarkRef | null; ink: InkName; state: "open" | "locked" | "voting" | "draft"; /** What the row knows of the screen it opens, for its shell (docs/design.md 9.4). */ shell?: MarketShell };
 
 /** A game on Now (docs/design.md 4.7): the two stamps in the 40px slot, the game as the subject, and the most pressing question's verb and clock. */
 export type GameLook = { away: TeamFace; home: TeamFace; /** How many questions the game runs with these people. */ questions: number; /** The pressing question's screen, which the verb opens; the row itself opens the game page. */ questionHref: string; state: QuestionLook["state"] };
@@ -103,7 +105,7 @@ export function needFromMarket(m: Pick<MarketCardData, "dare" | "state" | "peopl
 export type PersonRow = { user: Person; token: { ownerId: string; denomination: DenominationRow; quantity: bigint } | null };
 
 /** A question in flight this person has already acted on: where it stands, and no action (docs/design.md 4.7). A game with more than one is one row, its href the game page. */
-export type RunningRow = { id: string; title: string; mark: MarkRef | null; ink: InkName; state: "in" | "locked" | "voting"; caption: string; /** The set of people it belongs to, for collapsing a game's questions into one row. */ groupId?: string; game?: { away: TeamFace; home: TeamFace; href: string; /** The game's questions in this set, which the row swipes as one (3.15, ruled 2026-09-27). */ ids: string[] } | null; /** A market this person asked that nobody else is in, or a game none of whose questions anyone else is in: the row answers a left swipe with Remove (3.15). */ removable?: true; /** This person's last tap on it (the lock, the vote that decided it) is still going through (3.15, 5.2): the on-its-way mark stands in for the state mark. */ onWay?: true };
+export type RunningRow = { id: string; title: string; /** For the row's shell (9.4). */ shell?: MarketShell; mark: MarkRef | null; ink: InkName; state: "in" | "locked" | "voting"; caption: string; /** The set of people it belongs to, for collapsing a game's questions into one row. */ groupId?: string; game?: { away: TeamFace; home: TeamFace; href: string; /** The game's questions in this set, which the row swipes as one (3.15, ruled 2026-09-27). */ ids: string[] } | null; /** A market this person asked that nobody else is in, or a game none of whose questions anyone else is in: the row answers a left swipe with Remove (3.15). */ removable?: true; /** This person's last tap on it (the lock, the vote that decided it) is still going through (3.15, 5.2): the on-its-way mark stands in for the state mark. */ onWay?: true };
 
 export type HomeData = {
   needs: NeedRow[];
@@ -223,7 +225,7 @@ export function collapseGames<N extends { kind: NeedRow["kind"]; key: string; co
   return { needs, running, over, happened };
 }
 /** Every question this person can see, sorted into what needs them, what is running, and what is over. */
-async function questionsFor(me: { id: string }, opts: { now: Date; closes: (at: Date) => string }): Promise<{ needs: NeedRow[]; running: RunningRow[]; over: MarketCardData[]; gamesOver: Array<Extract<HomeData["happened"][number], { kind: "game" }>> }> {
+async function questionsFor(me: { id: string }, opts: { now: Date; closes: (at: Date) => string; zone: string }): Promise<{ needs: NeedRow[]; running: RunningRow[]; over: MarketCardData[]; gamesOver: Array<Extract<HomeData["happened"][number], { kind: "game" }>> }> {
   const [cards, myVotes] = await Promise.all([marketCards({ viewerId: me.id, limit: 40 }), db.select({ dareId: schema.dareVotes.dareId }).from(schema.dareVotes).where(eq(schema.dareVotes.userId, me.id))]);
   const voted = new Set(myVotes.map((v) => v.dareId));
   const needs: NeedRow[] = [];
@@ -231,9 +233,10 @@ async function questionsFor(me: { id: string }, opts: { now: Date; closes: (at: 
   const over: MarketCardData[] = [];
   for (const m of cards) {
     const n = needFromMarket(m, me.id, voted.has(m.dare.id), opts.now, opts.closes);
-    if (n) needs.push({ ...n, groupId: m.dare.groupId } as NeedRow);
+    const shell = shellOf(m, me.id, opts.now, opts.zone);
+    if (n) needs.push({ ...n, groupId: m.dare.groupId, shell } as NeedRow);
     else if (m.state === "open" || m.state === "locked") {
-      running.push({ id: m.dare.id, title: m.dare.title, mark: markRefOf(m.dare), ink: m.ink, state: m.state === "locked" ? (m.votesCast > 0 ? "voting" : "locked") : "in", caption: runningCaption(m, opts.closes, me.id), groupId: m.dare.groupId, ...(m.state === "open" && m.dare.creatorId === me.id && m.people.length === 1 && m.viewerIn ? { removable: true as const } : {}) });
+      running.push({ id: m.dare.id, title: m.dare.title, shell, mark: markRefOf(m.dare), ink: m.ink, state: m.state === "locked" ? (m.votesCast > 0 ? "voting" : "locked") : "in", caption: runningCaption(m, opts.closes, me.id), groupId: m.dare.groupId, ...(m.state === "open" && m.dare.creatorId === me.id && m.people.length === 1 && m.viewerIn ? { removable: true as const } : {}) });
     } else over.push(m);
   }
   // A game with more than one question in the same set is one row (4.7).
@@ -246,9 +249,9 @@ async function questionsFor(me: { id: string }, opts: { now: Date; closes: (at: 
 }
 
 /** Now: what needs this person, what is running, and what just happened are all in the database; the one indexer read is for how the closed ones closed, and only when there are any. */
-export async function nowFor(me: { id: string; displayName: string }, opts: { now: Date; closes: (at: Date) => string }): Promise<NowData> {
+export async function nowFor(me: { id: string; displayName: string }, opts: { now: Date; closes: (at: Date) => string; /** The viewer's zone, for the clocks the rows' shells carry (9.4). */ zone?: string }): Promise<NowData> {
   const [{ needs: needsAll, running, over, gamesOver }, pendingAll, drafts, covers, closed, again, onWay, suggested] = await Promise.all([
-    questionsFor(me, opts),
+    questionsFor(me, { ...opts, zone: opts.zone ?? "UTC" }),
     pendingForDebtor(me.id),
     db.select().from(schema.dares).where(and(eq(schema.dares.creatorId, me.id), isNull(schema.dares.creatorSignature))).orderBy(desc(schema.dares.createdAt)).limit(6),
     db

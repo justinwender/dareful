@@ -1,4 +1,5 @@
-import { INKS, type InkName } from "@/lib/ui/ink";
+import { inkFieldVar, type InkName } from "@/lib/ui/ink";
+import type { CSSProperties } from "react";
 import { stickerSrc, type MarkRef } from "@/lib/ui/mark";
 import { cn } from "@/lib/utils";
 
@@ -19,16 +20,16 @@ const GLYPH: Record<Size, number> = { 20: 13, 28: 16, 40: 22, 44: 24, 64: 34 };
  * `--surface-2`, never on an ink (1.7). Inside an obligation token a unit's mark has no stamp at all; the token
  * draws the bare glyph itself.
  */
-export function MarkStamp({ kind, value, size = 28, ink, onGround = false, className }: { kind: MarkRef["kind"] | "image"; value: string; size?: Size; ink?: InkName; onGround?: boolean; className?: string }) {
-  const background = onGround ? "var(--ground)" : ink ? INKS[ink].field : "var(--surface-2)";
+export function MarkStamp({ kind, value, size = 28, ink, onGround = false, className, travels = false }: { kind: MarkRef["kind"] | "image"; value: string; size?: Size; ink?: InkName; onGround?: boolean; className?: string; /** The band's stamp on a market's own screen (9.7): its mark carries the name the row's mark travels to. */ travels?: boolean }) {
+  const background = onGround ? "var(--ground)" : ink ? inkFieldVar(ink) : "var(--surface-2)";
   return (
-    <span aria-hidden="true" className={cn("inline-flex shrink-0 items-center justify-center overflow-hidden", RADIUS[size], className)} style={{ width: size, height: size, fontSize: GLYPH[size], lineHeight: 1, background }}>
+    <span aria-hidden="true" data-stamp="" className={cn("inline-flex shrink-0 items-center justify-center overflow-hidden", RADIUS[size], className)} style={{ width: size, height: size, fontSize: GLYPH[size], lineHeight: 1, background }}>
       {kind === "emoji" ? (
-        value
+        <span data-stamp-mark="" style={travels ? ({ viewTransitionName: "market-mark" } as CSSProperties) : undefined}>{value}</span>
       ) : kind === "sticker" ? (
         // The 256px derivative with its edge, behind the mark's own door; a broken image falls back to none (3.9).
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={stickerSrc(value, size)} alt="" width={size} height={size} data-mark="sticker" className="h-[80%] w-[80%] object-contain" />
+        <img src={stickerSrc(value, size)} alt="" width={size} height={size} data-mark="sticker" data-stamp-mark="" className="h-[80%] w-[80%] object-contain" style={travels ? ({ viewTransitionName: "market-mark" } as CSSProperties) : undefined} />
       ) : (
         // A 256px derivative behind a signed URL; next/image would need a loader for a URL that expires.
         // eslint-disable-next-line @next/next/no-img-element
@@ -39,7 +40,7 @@ export function MarkStamp({ kind, value, size = 28, ink, onGround = false, class
 }
 
 /** The same stamp from a `MarkRef`, for callers that hold one; nothing for no mark. */
-export function MarkRefStamp({ mark, ...rest }: { mark: MarkRef | null; size?: Size; ink?: InkName; onGround?: boolean; className?: string }) {
+export function MarkRefStamp({ mark, ...rest }: { mark: MarkRef | null; size?: Size; ink?: InkName; onGround?: boolean; className?: string; travels?: boolean }) {
   if (!mark) return null;
   return <MarkStamp kind={mark.kind} value={mark.kind === "emoji" ? mark.value : mark.id} {...rest} />;
 }

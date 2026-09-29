@@ -6,6 +6,7 @@ import { LinkPending } from "@/components/ui/link-pending";
 import { CallOff } from "./call-off";
 import { ON_WAY, type RunningRow } from "@/lib/ledger/home";
 import { hueFor } from "@/lib/ui/hue";
+import { serialiseShell } from "@/lib/ui/shell";
 
 /**
  * Running (docs/design.md 4.7): questions in flight that this person has already acted on, so "I entered that,
@@ -21,7 +22,7 @@ export function Running({ rows, viewerId }: { rows: RunningRow[]; viewerId: stri
       <div className="overflow-hidden rounded-card border border-line bg-surface">
         {rows.map((r, i) => {
           const row = (
-          <Link prefetch={false} href={r.game ? r.game.href : `/m/${r.id}`} data-game-running={r.game ? "" : undefined} className={`relative grid items-center gap-3 px-4 py-[14px] ${r.mark || r.game ? "grid-cols-[40px_minmax(0,1fr)]" : "grid-cols-[minmax(0,1fr)]"} ${i > 0 ? "border-t border-line" : ""}`}>
+          <Link prefetch={false} href={r.game ? r.game.href : `/m/${r.id}`} data-game-running={r.game ? "" : undefined} data-press="row" data-shell={!r.game && r.shell ? serialiseShell(r.shell) : undefined} data-shell-id={r.game ? undefined : r.id} className={`press-row relative grid items-center gap-3 px-4 py-[14px] ${r.mark || r.game ? "grid-cols-[40px_minmax(0,1fr)]" : "grid-cols-[minmax(0,1fr)]"} ${i > 0 ? "border-t border-line" : ""}`}>
             <LinkPending />
             {r.game ? <TeamPair away={r.game.away} home={r.game.home} size={28} overlap /> : <MarkRefStamp mark={r.mark} size={40} ink={r.ink} />}
             <span className="flex min-w-0 flex-col gap-1">

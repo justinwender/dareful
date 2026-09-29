@@ -124,13 +124,13 @@ export function WhosInRow({ people, holdouts = [], count, share, code, chalk = f
       })()}
       {share ? (
         <div className="-mr-[11px] flex shrink-0 items-center gap-[2px]" role="group" aria-label="Share it">
-          <button type="button" aria-label="Share" data-share="" onClick={send} className={cn("flex h-11 w-11 items-center justify-center rounded-pill transition-opacity duration-[120ms] active:opacity-[0.88]", chalk ? "bg-chalk text-on-chalk" : "text-ink")}>
+          <button type="button" aria-label="Share" data-share="" onClick={send} className={cn("flex h-11 w-11 items-center justify-center rounded-pill transition-opacity duration-(--motion-quick) ease-fade active:opacity-[0.88]", chalk ? "bg-chalk text-on-chalk" : "text-ink")}>
             <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 3v12M7.5 7.5 12 3l4.5 4.5" />
               <path d="M5 13v5.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V13" />
             </svg>
           </button>
-          <button type="button" aria-label={copied ? "Link copied" : "Copy the link"} data-copy={copied ? "copied" : ""} onClick={copy} className="flex h-11 w-11 items-center justify-center rounded-pill text-ink transition-opacity duration-[120ms] active:opacity-[0.88]">
+          <button type="button" aria-label={copied ? "Link copied" : "Copy the link"} data-copy={copied ? "copied" : ""} onClick={copy} className="flex h-11 w-11 items-center justify-center rounded-pill text-ink transition-opacity duration-(--motion-quick) ease-fade active:opacity-[0.88]">
             {copied ? (
               <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M5 12.5l4.5 4.5L19 7.5" />
@@ -143,7 +143,7 @@ export function WhosInRow({ people, holdouts = [], count, share, code, chalk = f
             )}
           </button>
           {code ? (
-            <button type="button" aria-label="Show a code to scan" aria-haspopup="dialog" aria-expanded={codeOpen} data-code="" onClick={() => setCodeOpen(true)} className="flex h-11 w-11 items-center justify-center rounded-pill text-ink transition-opacity duration-[120ms] active:opacity-[0.88]">
+            <button type="button" aria-label="Show a code to scan" aria-haspopup="dialog" aria-expanded={codeOpen} data-code="" onClick={() => setCodeOpen(true)} className="flex h-11 w-11 items-center justify-center rounded-pill text-ink transition-opacity duration-(--motion-quick) ease-fade active:opacity-[0.88]">
               <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="4" y="4" width="6" height="6" rx="1" />
                 <rect x="14" y="4" width="6" height="6" rx="1" />
@@ -154,7 +154,7 @@ export function WhosInRow({ people, holdouts = [], count, share, code, chalk = f
           ) : null}
           {pass ? (
             // Pass the phone (3.45): the fourth icon, a phone with an arrow each way; the first tap explains it once, then it goes straight to the friend's entry.
-            <button type="button" aria-label="Pass the phone" aria-haspopup={pass.explained ? undefined : "dialog"} data-pass-phone="" onClick={() => (pass.explained ? router.replace(`/m/${pass.dareId}/pass`) : setPassOpen(true))} className="flex h-11 w-11 items-center justify-center rounded-pill text-ink transition-opacity duration-[120ms] active:opacity-[0.88]">
+            <button type="button" aria-label="Pass the phone" aria-haspopup={pass.explained ? undefined : "dialog"} data-pass-phone="" onClick={() => (pass.explained ? router.replace(`/m/${pass.dareId}/pass`) : setPassOpen(true))} className="flex h-11 w-11 items-center justify-center rounded-pill text-ink transition-opacity duration-(--motion-quick) ease-fade active:opacity-[0.88]">
               <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="7" y="2.5" width="10" height="19" rx="2" />
                 <path d="M11 18h2" />
@@ -226,8 +226,9 @@ export function CodeSheet({ open, onClose, dareId, url, question, mark }: { open
     if (!open) return;
     let alive = true;
     // The mark sits over the middle of the code, so the code is drawn at the level that survives a covered centre.
-    QRCode.toString(url, { type: "svg", margin: 0, errorCorrectionLevel: "H", color: { dark: "#121110", light: "#F2EDE3" } })
-      .then((svg) => alive && setQr(svg))
+    QRCode.toString(url, { type: "svg", margin: 0, errorCorrectionLevel: "H", color: { dark: "#000000ff", light: "#00000000" } })
+      // Drawn in the current ink on the surface, so the code follows the theme (8.7): the generator's black becomes `currentColor`.
+      .then((svg) => alive && setQr(svg.replace(/#000000(ff)?/gi, "currentColor")))
       .catch(() => alive && setQr(null));
     if (code === null) {
       start(async () => {
@@ -248,10 +249,10 @@ export function CodeSheet({ open, onClose, dareId, url, question, mark }: { open
         {question}
       </h2>
       <div className="flex flex-col items-center gap-4" data-code-sheet="">
-        <div className="relative h-[216px] w-[216px] rounded-card bg-chalk p-3" role="img" aria-label="A code to scan that opens this question">
+        <div className="relative h-[216px] w-[216px] rounded-card border border-line bg-surface p-3 text-ink" role="img" aria-label="A code to scan that opens this question">
           {qr ? <div className="h-full w-full [&>svg]:h-full [&>svg]:w-full" dangerouslySetInnerHTML={{ __html: qr }} /> : null}
           {mark ? (
-            <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-card bg-chalk p-[3px]">
+            <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-card bg-surface p-[3px]">
               <MarkRefStamp mark={mark} size={44} />
             </span>
           ) : null}

@@ -7,6 +7,7 @@ import { LinkPending } from "@/components/ui/link-pending";
 import { ThatsMe } from "@/components/ledger/suggested-ghost";
 import type { NeedRow } from "@/lib/ledger/home";
 import { hueFor } from "@/lib/ui/hue";
+import { serialiseShell } from "@/lib/ui/shell";
 
 const SHOWN = 4;
 
@@ -35,7 +36,7 @@ export function NeedsYou({ rows, viewer, showAll, allHref }: { rows: NeedRow[]; 
             // Two links side by side, never one inside the other: the row opens the game page, the verb the pressing question.
             return (
               <div key={`game-${r.key}`} data-game-need="" data-need="game" className={`relative grid grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-3 py-[14px] pr-[14px] pl-4 ${i > 0 ? "border-t border-line" : ""}`}>
-                <Link prefetch={false} href={r.href} className="absolute inset-0" aria-label={r.subject}>
+                <Link prefetch={false} href={r.href} className="absolute inset-0" aria-label={r.subject} data-press="row">
                   <LinkPending />
                 </Link>
                 <TeamPair away={r.game.away} home={r.game.home} size={28} overlap />
@@ -74,7 +75,7 @@ export function NeedsYou({ rows, viewer, showAll, allHref }: { rows: NeedRow[]; 
           // never landed wears the didn't-go-through mark in its place (5.2).
           const mark = r.failed ? "failed" : r.question ? r.state : "proposed";
           return (
-            <Link prefetch={false} key={`${r.kind}-${r.key}`} href={r.href} data-need={r.kind} className={`relative grid items-center gap-3 py-[14px] pr-[14px] pl-4 ${stamp ? "grid-cols-[40px_minmax(0,1fr)_auto]" : "grid-cols-[minmax(0,1fr)_auto]"} ${i > 0 ? "border-t border-line" : ""}`}>
+            <Link prefetch={false} key={`${r.kind}-${r.key}`} href={r.href} data-need={r.kind} data-press="row" data-shell={r.question && r.shell ? serialiseShell(r.shell) : undefined} data-shell-id={r.question ? r.key : undefined} className={`press-row relative grid items-center gap-3 py-[14px] pr-[14px] pl-4 ${stamp ? "grid-cols-[40px_minmax(0,1fr)_auto]" : "grid-cols-[minmax(0,1fr)_auto]"} ${i > 0 ? "border-t border-line" : ""}`}>
               <LinkPending />
               {stamp}
               <span className="flex min-w-0 flex-col gap-1">

@@ -30,7 +30,8 @@ function anthropic(): Anthropic {
  * then parsed with the caller's Zod schema: a shape the model invented, or no tool call at all, throws and never
  * reaches the caller.
  */
-export async function structured<T>(req: { label: string; model: string; system: string; user: string; toolName: string; toolDescription: string; inputSchema: Record<string, unknown>; shape: z.ZodType<T>; timeoutMs: number; maxTokens?: number; /** Screenshots attached to what happened, each labelled with who supplied it (`evidenceBlocks`). */ images?: EvidenceImage[] }): Promise<T> {
+export async function structured<T>(req: { label: string; model: string; system: string; user: string; toolName: string; toolDescription: string; inputSchema: Record<string, unknown>; shape: z.ZodType<T>; timeoutMs: number; maxTokens?: number; /** Screenshots attached to what happened, each labelled with who supplied it (`evidenceBlocks`). */ images?: EvidenceImage[]; /** Each piece of the answer's JSON as the model writes it (docs/design.md 9.8): given, the call streams; the parse at the end is the same. */ onDelta?: (partialJson: string) => void }): Promise<T> {
+  if (req.onDelta) return structuredStream(req, req.onDelta);
   const content = req.images && req.images.length > 0 ? [{ type: "text" as const, text: req.user }, ...evidenceBlocks(req.images)] : req.user;
   const ask = (forced: boolean) =>
     anthropic().messages.create(
@@ -55,6 +56,33 @@ export async function structured<T>(req: { label: string; model: string; system:
   });
   if (process.env.AI_RECORD_TO) (await import("node:fs")).writeFileSync(`${process.env.AI_RECORD_TO}/${req.label.replace(/\s+/g, "-")}.json`, JSON.stringify(res, null, 2));
   // An answer cut off by the token limit is a tool call with fields missing. Say that, rather than a parse error.
+  if (res.stop_reason === "max_tokens") throw new Error(`the model ran out of room before finishing (${req.label})`);
+  return answerFrom(res, req.toolName, req.shape, req.label);
+}
+
+/**
+ * The same structured answer, streamed: the tool's input arrives as pieces of JSON, each handed to `onDelta` as it
+ * is written, so the terms step can show the words at the pace they arrive (9.8); the final message is parsed
+ * exactly as an unstreamed one, and a shape the model invented still throws.
+ */
+async function structuredStream<T>(req: { label: string; model: string; system: string; user: string; toolName: string; toolDescription: string; inputSchema: Record<string, unknown>; shape: z.ZodType<T>; timeoutMs: number; maxTokens?: number }, onDelta: (partialJson: string) => void): Promise<T> {
+  const res = await timed(`ai ${req.label} (streamed)`, async () => {
+    const stream = anthropic().messages.stream(
+      {
+        model: req.model,
+        max_tokens: req.maxTokens ?? 900,
+        system: req.system,
+        messages: [{ role: "user", content: req.user }],
+        tools: [{ name: req.toolName, description: req.toolDescription, input_schema: { type: "object", ...req.inputSchema } }],
+        tool_choice: { type: "tool", name: req.toolName },
+      },
+      { timeout: req.timeoutMs },
+    );
+    for await (const event of stream) {
+      if (event.type === "content_block_delta" && event.delta.type === "input_json_delta") onDelta(event.delta.partial_json);
+    }
+    return stream.finalMessage();
+  });
   if (res.stop_reason === "max_tokens") throw new Error(`the model ran out of room before finishing (${req.label})`);
   return answerFrom(res, req.toolName, req.shape, req.label);
 }

@@ -51,3 +51,16 @@ test("text inside an obligation token is outside the count, its serif words incl
   assert.match(r.out, /src\/app\/tokens\/page\.tsx: 4 sizes \(hanken 13, hanken 15, hanken 17, serif 26\)\n/);
   assert.doesNotMatch(r.out, /tokens\/page\.tsx: [56] sizes|tokens\/page\.tsx: 2 serif sizes/);
 });
+
+test("a duration or a curve typed outside the motion set is refused (9.1)", () => {
+  const r = lint();
+  assert.match(r.out, /src\/app\/motion\/page\.tsx: motion "duration-200" typed outside the set/);
+  assert.match(r.out, /src\/app\/motion\/page\.tsx: motion "ease-out" typed outside the set/);
+  assert.match(r.out, /src\/app\/motion\/page\.tsx: motion "700ms" typed outside the set/);
+});
+
+test("a colour typed outside the tokens is refused (1.1, 8.8)", () => {
+  const r = lint();
+  assert.match(r.out, /src\/app\/colour\/page\.tsx: colour "#F4B73E" typed outside the tokens/);
+  assert.match(r.out, /src\/app\/colour\/page\.tsx: colour "rgba\(1" typed outside the tokens/);
+});

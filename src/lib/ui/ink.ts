@@ -122,3 +122,35 @@ export function inkVars(name: InkName): Record<string, string> {
     "--market-wash": `rgba(${ink.inkRgb.replace(/,/g, ", ")}, 0.40)`,
   };
 }
+
+/** The light theme's layers for the eight inks (docs/design.md 8.4): each hue unchanged, matched in OKLCH like the dark set. */
+export const INKS_LIGHT: Record<InkName, InkLayers> = {
+  clay: { hue: 45, ground: "#F9EDE9", surface: "#FEF9F7", field: "#F4D9CD", line: "#E0CAC1", ink: "#A26448", hi: "#6E412D", inkRgb: "162,100,72" },
+  ochre: { hue: 85, ground: "#F4F0E6", surface: "#FCFAF6", field: "#EADEC7", line: "#D8CEBB", ink: "#8F7131", hi: "#604B1C", inkRgb: "143,113,49" },
+  olive: { hue: 112, ground: "#F0F1E7", surface: "#FAFBF6", field: "#E0E2C9", line: "#CFD2BD", ink: "#777B38", hi: "#4F5221", inkRgb: "119,123,56" },
+  sea: { hue: 192, ground: "#E6F3F2", surface: "#F6FBFB", field: "#C7E7E5", line: "#BCD6D4", ink: "#1E8783", hi: "#0A5A58", inkRgb: "30,135,131" },
+  slate: { hue: 248, ground: "#E9F1F9", surface: "#F7FBFE", field: "#CFE2F6", line: "#C2D1E1", ink: "#487AA8", hi: "#2D5173", inkRgb: "72,122,168" },
+  iris: { hue: 288, ground: "#EFEFF9", surface: "#FAF9FE", field: "#DEDDF6", line: "#CECDE1", ink: "#746DA8", hi: "#4D4872", inkRgb: "116,109,168" },
+  plum: { hue: 330, ground: "#F6EDF5", surface: "#FDF9FC", field: "#EDD8EB", line: "#DAC9D8", ink: "#94628F", hi: "#644061", inkRgb: "148,98,143" },
+  rose: { hue: 8, ground: "#F9ECEE", surface: "#FEF8F9", field: "#F5D7DB", line: "#E1C8CC", ink: "#A35F6B", hi: "#6F3D47", inkRgb: "163,95,107" },
+};
+
+/** The stamp's field and the mark's ink as the stylesheet's own variables, so a stamp on a neutral surface follows the theme (8.4). */
+export const inkFieldVar = (name: InkName) => `var(--ink-${name}-field)`;
+export const inkColorVar = (name: InkName) => `var(--ink-${name}-ink)`;
+
+function declarations(ink: InkLayers): string {
+  return `--ground:${ink.ground};--surface:${ink.surface};--line:${ink.line};--field:${ink.field};--market-ink:${ink.ink};--market-ink-hi:${ink.hi};--market-wash:rgba(${ink.inkRgb.replace(/,/g, ", ")}, 0.40)`;
+}
+
+/**
+ * A market's own screen tints the whole shell (1.8, 9.3): the four structural tokens swap to its layers on
+ * `html`, so the band behind the status bar, the grain, the pinned sheet and any modal sheet, which live outside
+ * the page, read the market's ground and surface too, in whichever theme is on. Rendered as one style element by
+ * `InkRoot`, so the server-rendered page carries it and nothing flashes.
+ */
+export function inkStyleText(name: InkName): string {
+  const dark = declarations(INKS[name]);
+  const light = declarations(INKS_LIGHT[name]);
+  return `html{${dark}}html[data-theme="light"]{${light}}@media (prefers-color-scheme: light){html:not([data-theme="dark"]){${light}}}`;
+}

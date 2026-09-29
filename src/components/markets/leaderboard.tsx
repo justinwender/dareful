@@ -49,7 +49,7 @@ export function NumberLeaderboard({ standings, answer, viewerId, said }: { stand
               </div>
               <span className="text-numeral-sm text-ink-2">{off === 0n ? "dead on" : `off by ${off.toLocaleString("en-US")}`}</span>
             </div>
-            <div className="relative mt-2 h-1 rounded-pill bg-surface-2" aria-hidden="true">
+            <div className="relative mt-2 h-1 rounded-pill bg-field" aria-hidden="true">
               <span className="absolute inset-y-0 rounded-pill" style={{ left: `${lo}%`, width: `${hi - lo}%`, background: hueBar(hue) }} />
               <span className="absolute top-1/2 h-3 w-[3px] -translate-x-1/2 -translate-y-1/2 rounded-pill bg-chalk" style={{ left: `${truth}%` }} />
               <span className="absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-pill" style={{ left: `${mine}%`, background: hueVar(hue) }} />
@@ -61,10 +61,28 @@ export function NumberLeaderboard({ standings, answer, viewerId, said }: { stand
   );
 }
 
+/**
+ * The one annotated row (3.7): a result that reads wrong at a glance, someone on the wrong side of even who still
+ * ranks above others, gets one 13px line under their bar naming who they beat. At most one per screen. Pure.
+ */
+export function annotation(sorted: Array<{ userId: string; name: string; percent: number }>, outcome: 0 | 1, viewerId: string): { userId: string; line: string } | null {
+  const wrongSide = (p: number) => (outcome === 1 ? p < 50 : p > 50);
+  for (let i = 0; i < sorted.length; i++) {
+    const s = sorted[i] as { userId: string; name: string; percent: number };
+    if (!wrongSide(s.percent)) continue;
+    const below = sorted.slice(i + 1).map((o) => (o.userId === viewerId ? "you" : (o.name.split(/\s+/)[0] ?? o.name)));
+    if (below.length === 0) return null;
+    const names = below.length === 1 ? below[0] : `${below.slice(0, -1).join(", ")} and ${below[below.length - 1]}`;
+    return { userId: s.userId, line: `Only ${s.percent}%, and still closer than ${names}.` };
+  }
+  return null;
+}
+
 export function Leaderboard({ standings, outcome, viewerId, ends }: { standings: Standing[]; outcome: 0 | 1; viewerId: string; /** Between two teams (3.40): "said Bills 70%", and a lean the other way reads "said Chiefs 55%". */ ends?: { away: string; home: string } | null }) {
   const truth = outcome * 100;
   const sorted = [...standings].sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
   const dense = sorted.length >= 9;
+  const note = ends ? null : annotation(sorted, outcome, viewerId);
   return (
     <ol className="flex flex-col gap-1.5">
       {sorted.map((s) => {
@@ -90,12 +108,17 @@ export function Leaderboard({ standings, outcome, viewerId, ends }: { standings:
               </div>
               <span className="text-numeral-sm text-ink-2">{off === 0 ? "dead on" : `off by ${off}`}</span>
             </div>
-            <div className="relative mt-2 h-1 rounded-pill bg-surface-2" aria-hidden="true">
+            <div className="relative mt-2 h-1 rounded-pill bg-field" aria-hidden="true">
               <span className="absolute inset-y-0 rounded-pill" style={{ left: `${lo}%`, width: `${hi - lo}%`, background: hueBar(hue) }} />
               <span className="absolute top-1/2 h-2 w-px -translate-y-1/2 bg-line-strong" style={{ left: "50%" }} />
               <span className="absolute top-1/2 h-3 w-[3px] -translate-x-1/2 -translate-y-1/2 rounded-pill bg-chalk" style={{ left: `${truth}%` }} />
               <span className="absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-pill" style={{ left: `${s.percent}%`, background: hueVar(hue) }} />
             </div>
+            {note && note.userId === s.userId ? (
+              <p className="col-start-2 pt-1 text-caption text-ink-2" data-annotated="">
+                {note.line}
+              </p>
+            ) : null}
           </li>
         );
       })}

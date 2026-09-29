@@ -1,13 +1,16 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition, type CSSProperties, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/ledger/avatar";
 import { Chip } from "@/components/ledger/chip";
 import { MarkRefStamp } from "@/components/ledger/mark-stamp";
 import { FIELD_PROBLEM_CLASS, Problem, ProblemSummary } from "@/components/ledger/problem";
-import { Screen } from "@/components/ledger/screen";
-import { Button } from "@/components/ui/button";
+import { Screen, TopBar } from "@/components/ledger/screen";
+import { Button, ButtonLink } from "@/components/ui/button";
+import { withViewTransition } from "@/lib/ui/transitions";
+import { streamWriteUp } from "@/lib/ui/write-up-stream";
+import { MOTION, waitStage } from "@/lib/ui/motion";
 import { PinnedSheet } from "@/components/ui/pinned-sheet";
 import { carefulQuestionsAction, draftFromTemplateAction, draftMarketAction, scopeMarketAction, triageAction, type ScopeResult, type TriageResult } from "@/lib/actions/markets";
 import { emojiInk } from "@/lib/ui/emoji-ink";
@@ -49,9 +52,18 @@ type Choice = { text: string; userId: string | null };
  */
 export type TemplateForAsking = { id: string; title: string; terms: string; kind: "binary" | "numeric" | "categorical"; gameName: string; /** "Sunday at 1pm": when it closes, in the asker's zone. */ closes: string; decidedByScore: boolean; /** "Off by 28 points or more scores nothing.", where the template sets a scale. */ scored: string | null };
 
-export function AskForm({ sets, people, initialLine = "", initialPace = "dare", me, chrome, stickers = [], canPaste = false, template = null, initialMark = null }: { sets: SetOption[]; people: Person[]; initialLine?: string; initialPace?: "dare" | "argument"; me: { id: string; name: string; hue: Hue }; /** The screen's top bar, rendered by the page; the form owns the screen so a picked mark can retint all of it (3.29). */ chrome: ReactNode; /** This person's stickers for the picker (3.28), and whether a cutout can be pasted at all. */ stickers?: Sticker[]; canPaste?: boolean; /** A public question (3.33): the flow starts at who's in, with the wording locked. */ template?: TemplateForAsking | null; /** A sticker just made from a photo (3.28): the question step opens with it as the mark. */ initialMark?: PickedMark | null }) {
+export function AskForm({ sets, people, initialLine = "", initialPace = "dare", me, screenTitle, gotCode = true, layer = false, stickers = [], canPaste = false, template = null, initialMark = null }: { sets: SetOption[]; people: Person[]; initialLine?: string; initialPace?: "dare" | "argument"; me: { id: string; name: string; hue: Hue }; /** The screen's name in its header; the form owns the screen so a picked mark can retint all of it (3.29). */ screenTitle: string; /** "Got a code?" beside the information icon on the question step (3.29, 10.3). */ gotCode?: boolean; /** Rendered in the ask layer (9.5), where the sheet sits in flow and Close sinks the layer. */ layer?: boolean; /** This person's stickers for the picker (3.28), and whether a cutout can be pasted at all. */ stickers?: Sticker[]; canPaste?: boolean; /** A public question (3.33): the flow starts at who's in, with the wording locked. */ template?: TemplateForAsking | null; /** A sticker just made from a photo (3.28): the question step opens with it as the mark. */ initialMark?: PickedMark | null }) {
   const router = useRouter();
-  const [step, setStep] = useState<"question" | "declined" | "criterion" | "subject" | "careful" | "who" | "terms">(template ? "who" : "question");
+  type Step = "question" | "declined" | "criterion" | "subject" | "careful" | "who" | "terms";
+  const [step, setStepRaw] = useState<Step>(template ? "who" : "question");
+  /** Advancing moves the step's content 24px left under a band that holds still; back mirrors it (9.8). */
+  const setStep = (next: Step, back = false) => withViewTransition(() => setStepRaw(next), { back });
+  const previous: Record<Step, Step | null> = { question: null, declined: "question", criterion: "question", subject: "question", careful: "question", who: template ? null : "question", terms: "who" };
+  const stepBack = () => {
+    const to = previous[step];
+    if (to) setStep(to, true);
+  };
+  const infoKey = step === "question" ? "ask-question" : step === "who" ? "ask-who" : step === "terms" ? "ask-terms" : "ask-careful";
   /** A named subject the model could not place (a person, a pet, a thing): asked in one tap before the three questions. */
   const [subjectAsk, setSubjectAsk] = useState<string | null>(null);
   /** What the name turned out to be (3.44), shown collapsed on the careful step with Change. */
@@ -91,6 +103,21 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
   const [fieldProblem, setFieldProblem] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [waiting, startWait] = useTransition();
+  /** The terms being written (9.8): the words so far, when the last arrived, and whether it finished or failed. */
+  const [written, setWritten] = useState<{ title: string; terms: string; done: boolean; failed: boolean; /** When the last words arrived, or the start once the clock has read it; null until then. */ lastAt: number | null } | null>(null);
+  const lastWriteUp = useRef<{ chosen?: string; source?: string } | null>(null);
+  const writing = written !== null && !written.done && !written.failed;
+  // A clock for the stall rules (9.8: "Still writing." at three seconds without new words, the block at ten), ticking only while writing.
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (!writing) return;
+    const timer = setInterval(() => {
+      const now = Date.now();
+      setTick(now);
+      setWritten((w) => (w && w.lastAt === null ? { ...w, lastAt: now } : w));
+    }, 500);
+    return () => clearInterval(timer);
+  }, [writing]);
   const [saving, startSave] = useTransition();
   const selectedSet = who.kind === "set" ? sets.find((s) => s.groupId === who.groupId) : undefined;
   const numeric = pace === "dare" && kind === "numeric";
@@ -104,16 +131,35 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
   }, [mark, draftId, step, selectedSet]);
   const room: CSSProperties | undefined = previewInk ? (inkVars(previewInk) as CSSProperties) : undefined;
 
+  /**
+   * The write-up starts when the question step's Next is tapped and streams into the terms step as it is written
+   * (9.8); if the question is edited it starts again. Where the stream cannot be read, the caret waits and the
+   * terms arrive whole from the action, the same result either way.
+   */
   function writeUp(chosen?: string, source?: string) {
+    lastWriteUp.current = { chosen, source };
+    setWritten({ title: "", terms: "", done: false, failed: false, lastAt: null });
+    setScope(null);
+    const asked = questions.map((question, i) => ({ question, yes: answers[i] ?? false })).filter((_, i) => i in answers);
+    const body = { line: source ?? line, criterion: chosen, answers: mode === "careful" && pace === "dare" ? asked : undefined, kind: (pickOne ? "categorical" : numeric ? "numeric" : "binary") as "binary" | "numeric" | "categorical", choices: pickOne ? filledChoices.map((c) => c.text.trim()) : undefined };
     scoping.current = (async () => {
-      const asked = questions.map((question, i) => ({ question, yes: answers[i] ?? false })).filter((_, i) => i in answers);
-      const r = await scopeMarketAction(source ?? line, chosen, mode === "careful" && pace === "dare" ? asked : undefined, pickOne ? "categorical" : numeric ? "numeric" : "binary", pickOne ? filledChoices.map((c) => c.text.trim()) : undefined);
-      if ("error" in r) return setProblem(r.error);
+      let r: ScopeResult | { error: string };
+      try {
+        r = await streamWriteUp<ScopeResult | { error: string }>(body, (p) => setWritten((w) => (w ? { ...w, title: p.title ?? w.title, terms: p.terms ?? w.terms, lastAt: Date.now() } : w)));
+      } catch {
+        r = await scopeMarketAction(body.line, body.criterion, body.answers, body.kind, body.choices);
+      }
+      if ("error" in r) {
+        setProblem(r.error);
+        setWritten((w) => (w ? { ...w, failed: true } : w));
+        return;
+      }
       setScope(r);
       setTitle(r.title);
       setTerms(r.terms);
       if (r.number) setUnitWords(r.number.unit);
       setHours(WHEN.reduce((best, w) => (Math.abs(w.hours - r.resolvesInHours) < Math.abs(best - r.resolvesInHours) ? w.hours : best), WHEN[0]?.hours ?? 30));
+      setWritten((w) => (w ? { ...w, title: r.title, terms: r.terms, done: true, lastAt: Date.now() } : w));
     })();
   }
 
@@ -166,12 +212,9 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
   function toTerms() {
     setProblem(null);
     if (who.kind === "people" && who.userIds.length === 0) return setProblem("Pick someone, or just send the link around.");
-    startWait(async () => {
-      // What's on wrote the wording (3.33), so there is nothing to write up.
-      if (!template) await scoping.current;
-      setUnit({ kind: "usd" });
-      setStep("terms");
-    });
+    // The terms step opens at once and the write-up streams into it (9.8); What's on wrote a public question's wording (3.33).
+    setUnit({ kind: "usd" });
+    setStep("terms");
   }
 
   /** Sends a public question to one's own friends (3.33): the template's wording, the asker's people, stake and reveal. */
@@ -222,9 +265,13 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
 
   const wrap = (children: ReactNode) => (
     <div style={room} className={cn("flex flex-1 flex-col", previewInk && "grain retint")}>
-      <Screen>
-        {chrome}
-        <div className="py-2">{children}</div>
+      <Screen layer={layer ? "ask" : undefined}>
+        {previous[step] === null ? (
+          <TopBar close title={screenTitle} right={gotCode ? <ButtonLink href="/join" variant="tertiary" data-got-a-code="">Got a code?</ButtonLink> : undefined} info={infoKey} />
+        ) : (
+          <TopBar onBack={stepBack} title={screenTitle} info={infoKey} />
+        )}
+        <div className="py-2" style={{ viewTransitionName: "ask-step" } as CSSProperties}>{children}</div>
       </Screen>
     </div>
   );
@@ -241,7 +288,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
         }}
       >
         {/* The question band (3.29): on the market's field, neutral until a mark is picked. The mark row opens the picker; "Optional" is said once. */}
-        <section className="-mx-2 flex flex-col gap-4 rounded-card bg-field p-4 pb-5">
+        <section className="-mx-2 flex flex-col gap-4 rounded-card bg-field p-4 pb-5" style={{ viewTransitionName: "ask-band" } as CSSProperties}>
           <button type="button" aria-haspopup="dialog" aria-expanded={pickingMark} onClick={() => setPickingMark(true)} className="flex items-center gap-4 rounded-button text-left">
             {mark ? (
               <MarkRefStamp mark={refOfPicked(mark)} size={64} onGround />
@@ -276,12 +323,12 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
         />
         <div role="group" aria-label="What kind of thing" className="flex flex-wrap gap-2">
           <button type="button" aria-pressed={pace === "dare"} onClick={() => setPace("dare")} className="rounded-pill">
-            <Chip size={36} selected={pace === "dare"}>
+            <Chip size={36} selected={pace === "dare"} choice>
               Something that’ll happen
             </Chip>
           </button>
           <button type="button" aria-pressed={pace === "argument"} onClick={() => setPace("argument")} className="rounded-pill">
-            <Chip size={36} selected={pace === "argument"}>
+            <Chip size={36} selected={pace === "argument"} choice>
               Settle an argument
             </Chip>
           </button>
@@ -433,7 +480,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
             <p className="text-body-strong text-ink">{instead}</p>
           </div>
         ) : null}
-        <Button variant="tertiary" className="self-start" onClick={() => setStep("question")}>
+        <Button variant="tertiary" className="self-start" onClick={() => setStep("question", true)}>
           Say it another way
         </Button>
         <PinnedSheet
@@ -480,7 +527,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
             </Button>
           ))}
         </div>
-        <Button variant="tertiary" onClick={() => setStep("question")}>
+        <Button variant="tertiary" onClick={() => setStep("question", true)}>
           Say it another way
         </Button>
       </div>,
@@ -541,14 +588,14 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
             <p className="text-body-sm text-ink">
               {subjectAsk} is <span className="text-ink-2">{subjectKind === "person" ? "a person" : subjectKind === "pet" ? "a pet" : "something else"}</span>
             </p>
-            <Button variant="tertiary" onClick={() => setStep("subject")}>
+            <Button variant="tertiary" onClick={() => setStep("subject", true)}>
               Change
             </Button>
           </div>
         ) : null}
         <ol className="flex flex-col gap-4">
           {questions.map((q, i) => (
-            <li key={i} className="flex flex-col gap-2 rounded-card border border-line bg-surface px-4 py-3">
+            <li key={i} className="flex flex-col gap-2 rounded-card border border-line bg-surface px-4 py-3 motion-fade-in" style={{ animationDelay: `${i * MOTION.stagger}ms`, animationDuration: `${MOTION.quick}ms` }}>
               <p id={`careful-${i}`} className="text-body-sm text-ink">
                 {q}
               </p>
@@ -585,20 +632,24 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
 
   const question = template ? (
     // The band shows the template's question, with "From What's on" where Edit would be (3.33).
-    <div className="flex items-start justify-between gap-3 rounded-card border border-line bg-surface px-4 py-3" data-from-whats-on="">
+    <div className="flex items-start justify-between gap-3 rounded-card border border-line bg-surface px-4 py-3" data-from-whats-on="" style={{ viewTransitionName: "ask-band" } as CSSProperties}>
       <div className="flex min-w-0 flex-col gap-1">
         <span className="text-caption text-ink-3">From What’s on · {template.gameName}</span>
         <span className="text-serif-l text-ink">{template.title}</span>
       </div>
     </div>
   ) : (
-    <div className="flex items-start justify-between gap-3 rounded-card border border-line bg-surface px-4 py-3">
+    <div className="flex items-start justify-between gap-3 rounded-card border border-line bg-surface px-4 py-3" style={{ viewTransitionName: "ask-band" } as CSSProperties}>
       <div className="flex min-w-0 flex-col gap-1">
         <span className="text-caption text-ink-3">Your question</span>
-        <span className="text-serif-l text-ink">{step === "terms" && title ? title : verdict?.kind === "ok" && pace === "argument" ? verdict.claim : line}</span>
+        {step === "terms" && scope ? (
+          <textarea id="ask-title" rows={2} value={title} onChange={(e) => setTitle(e.target.value)} maxLength={140} aria-label="The question" className="field-sizing-content -mx-1 resize-none rounded-button bg-transparent px-1 text-serif-l text-ink" />
+        ) : (
+          <span className="text-serif-l text-ink">{step === "terms" && written?.title ? written.title : verdict?.kind === "ok" && pace === "argument" ? verdict.claim : line}</span>
+        )}
         {criterion && pace === "argument" ? <span className="text-caption text-ink-3">Decided {criterion}</span> : null}
       </div>
-      <Button variant="tertiary" onClick={() => setStep("question")}>
+      <Button variant="tertiary" onClick={() => setStep("question", true)}>
         Edit
       </Button>
     </div>
@@ -608,16 +659,16 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
     return wrap(
       <div className="flex flex-col gap-6">
         {question}
-        <WhoStep sets={sets} people={people} who={who} onWho={setWho} argument={pace === "argument"} />
+        <WhoStep sets={sets} people={people} who={who} onWho={setWho} argument={pace === "argument"} hue={me.hue} />
         <PinnedSheet
           label="Next"
           low={
             <>
               <ProblemSummary messages={[problem]} />
-              <Button variant="primary" onClick={toTerms} loading={waiting}>
+              <Button variant="primary" onClick={toTerms}>
                 Set the terms
               </Button>
-              <p className="text-caption text-ink-3">{waiting ? "Writing up how you’ll know. A few seconds." : "You can add anyone else right up until it closes."}</p>
+              <p className="text-caption text-ink-3">You can add anyone else right up until it closes.</p>
             </>
           }
         />
@@ -631,7 +682,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
       const selected = u.kind === unit.kind && (u.kind === "usd" || (u.kind === "existing" && unit.kind === "existing" && u.id === unit.id) || (u.kind === "new" && unit.kind === "new" && u.template === unit.template));
       return (
         <button key={key} type="button" onClick={() => setUnit(u)} className="rounded-pill">
-          <Chip size={36} selected={selected}>
+          <Chip size={36} selected={selected} choice>
             {label}
           </Chip>
         </button>
@@ -671,20 +722,17 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
           <h2 className="text-label text-ink-3">Where everyone landed</h2>
           <div className="flex flex-wrap gap-2">
             <button type="button" aria-pressed={!blind} onClick={() => setBlind(false)} className="rounded-pill">
-              <Chip size={36} selected={!blind}>
+              <Chip size={36} selected={!blind} choice>
                 Shows once you’ve picked
               </Chip>
             </button>
             <button type="button" aria-pressed={blind} onClick={() => setBlind(true)} className="rounded-pill">
-              <Chip size={36} selected={blind}>
+              <Chip size={36} selected={blind} choice>
                 Hidden until it’s locked
               </Chip>
             </button>
           </div>
         </div>
-        <Button variant="tertiary" className="self-start" onClick={() => setStep("who")} disabled={saving}>
-          Back to who’s in
-        </Button>
         <PinnedSheet
           label="Finish"
           low={
@@ -699,8 +747,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
       </div>,
     );
   }
-  if (!scope) return wrap(<ProblemSummary messages={[problem ?? "The write-up didn’t come through. Go back and try once more."]} />);
-  if (scope.ambiguous && scope.criteria.length > 0) {
+  if (scope?.ambiguous && scope.criteria.length > 0) {
     return wrap(
       <div className="flex flex-col gap-6">
         {question}
@@ -731,130 +778,155 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
     const selected = u.kind === unit.kind && (u.kind === "usd" || (u.kind === "existing" && unit.kind === "existing" && u.id === unit.id) || (u.kind === "new" && unit.kind === "new" && u.template === unit.template));
     return (
       <button key={key} type="button" onClick={() => setUnit(u)} className="rounded-pill">
-        <Chip size={36} selected={selected}>
+        <Chip size={36} selected={selected} choice>
           {label}
         </Chip>
       </button>
     );
   };
+  // The stall rules read the same stages as a working button (9.8, 5.2): "Still writing." at three seconds without new words, the block at ten.
+  const stage = writing && written && written.lastAt !== null && tick > 0 ? waitStage(true, tick - written.lastAt) : "none";
+  const row = (label: string, body: ReactNode) => (
+    <div key={label} className="flex flex-col gap-2 border-t border-line py-3 first:border-t-0" data-terms-row={label}>
+      <dt className="text-label text-ink-3">{label}</dt>
+      <dd className="flex flex-col gap-2">{body}</dd>
+    </div>
+  );
 
   return wrap(
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-2">
-        <label htmlFor="ask-title" className="text-label text-ink-3">
-          The question
-        </label>
-        <textarea id="ask-title" rows={2} value={title} onChange={(e) => setTitle(e.target.value)} maxLength={140} className="rounded-button border border-line bg-surface px-3 py-3 text-serif-l text-ink" />
-      </div>
-      <div className="flex flex-col gap-2">
-        <label htmlFor="ask-terms" className="text-label text-ink-3">
-          How you’ll know
-        </label>
-        <textarea id="ask-terms" rows={4} value={terms} onChange={(e) => setTerms(e.target.value)} maxLength={800} className="rounded-button border border-line bg-surface px-3 py-3 text-body-sm text-ink" />
-        <p className="text-caption text-ink-3">{scope.plain ? "The write-up didn’t come through, so this is your line as you typed it. Change it however you like." : "Written up from your line. Change anything; everyone sees exactly this before they’re in."}</p>
-      </div>
-      {numeric ? (
-        <>
-          <div className="flex flex-col gap-2">
-            <h2 className="text-label text-ink-3">What the number counts</h2>
-            <div className="grid grid-cols-2 gap-2">
-              <input id="ask-unit-one" value={unitWords.singular} onChange={(e) => setUnitWords((u) => ({ ...u, singular: e.target.value }))} maxLength={24} aria-label="One of them" className="h-12 min-w-0 rounded-button border border-line bg-surface px-4 text-body text-ink placeholder:text-ink-3" />
-              <input id="ask-unit-many" value={unitWords.plural} onChange={(e) => setUnitWords((u) => ({ ...u, plural: e.target.value }))} maxLength={24} aria-label="More than one" className="h-12 min-w-0 rounded-button border border-line bg-surface px-4 text-body text-ink placeholder:text-ink-3" />
+      {question}
+      <p aria-live="polite" className="sr-only">
+        {scope ? "The terms are written" : "Writing the terms"}
+      </p>
+      {/* The details card, all four labels drawn in the first frame; the written values arrive at the pace they arrive, and become editable once written and not before (9.8). */}
+      <dl className="flex flex-col rounded-card border border-line bg-surface px-4" data-terms-card={scope ? "written" : "writing"}>
+        {row(
+          "Counts if",
+          scope ? (
+            <>
+              <textarea id="ask-terms" rows={3} value={terms} onChange={(e) => setTerms(e.target.value)} maxLength={800} aria-label="Counts if" className="field-sizing-content -mx-1 resize-none rounded-button bg-transparent px-1 text-body text-ink" />
+              <p className="text-caption text-ink-3">{scope.plain ? "The write-up didn’t come through, so this is your line as you typed it. Change it however you like." : "Written up from your line. Change anything; everyone sees exactly this before they’re in."}</p>
+            </>
+          ) : (
+            <p className="min-h-6 text-body text-ink" data-terms-writing="">
+              {written?.terms ?? ""}
+              <Caret />
+            </p>
+          ),
+        )}
+        {numeric
+          ? row(
+              "What the number counts",
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  <input id="ask-unit-one" value={unitWords.singular} onChange={(e) => setUnitWords((u) => ({ ...u, singular: e.target.value }))} maxLength={24} aria-label="One of them" disabled={!scope} className="h-12 min-w-0 rounded-button border border-line bg-ground px-4 text-body text-ink disabled:text-ink-3" />
+                  <input id="ask-unit-many" value={unitWords.plural} onChange={(e) => setUnitWords((u) => ({ ...u, plural: e.target.value }))} maxLength={24} aria-label="More than one" disabled={!scope} className="h-12 min-w-0 rounded-button border border-line bg-ground px-4 text-body text-ink disabled:text-ink-3" />
+                </div>
+                <p className="text-caption text-ink-3">One shirt, two shirts. Whole numbers only: a question that needs halves asks in a smaller unit.</p>
+              </>,
+            )
+          : null}
+        {numeric
+          ? row(
+              "Scored on",
+              <>
+                <div className="flex items-center gap-3">
+                  <input id="ask-scale" inputMode="numeric" pattern="[0-9]*" value={scale} onChange={(e) => setScale(e.target.value)} maxLength={11} aria-describedby="ask-scale-help" disabled={!scope} className="h-12 w-32 rounded-button border border-line bg-ground px-4 text-body text-ink disabled:text-ink-3" />
+                  <span className="text-body text-ink-2">{unitWords.plural.trim() || unitWords.singular.trim() || "of them"} off scores nothing</span>
+                </div>
+                <p id="ask-scale-help" className="text-caption text-ink-3">{scope?.number?.model?.range ? "How far off scores nothing. Leave it blank and it’s set for you; type one and everyone sees it in the details." : "How far off scores nothing. Everyone sees it in the details."}</p>
+              </>,
+            )
+          : null}
+        {pace === "argument"
+          ? row(
+              "Your side",
+              <>
+                <div role="group" aria-label="Your side" className="flex flex-wrap gap-2">
+                  {(["yes", "no"] as const).map((v) => (
+                    <button key={v} type="button" aria-pressed={side === v} onClick={() => setSide(v)} className="rounded-pill">
+                      <Chip size={36} selected={side === v} choice>
+                        {v === "yes" ? "I say yes" : "I say no"}
+                      </Chip>
+                    </button>
+                  ))}
+                </div>
+                <p className="text-caption text-ink-3">All the way, by default, so whoever’s wrong is out the whole thing. You can soften your number on the next screen.</p>
+              </>,
+            )
+          : row(
+              "Decided",
+              <div className="flex flex-wrap gap-2">
+                {WHEN.map((w) => (
+                  <button key={w.label} type="button" onClick={() => setHours(w.hours)} className="rounded-pill">
+                    <Chip size={36} selected={hours === w.hours} choice>
+                      {w.label}
+                    </Chip>
+                  </button>
+                ))}
+              </div>,
+            )}
+        {row(
+          "Stakes",
+          <>
+            <div className="flex flex-wrap gap-2">
+              {unitChip({ kind: "usd" }, "Dollars", "usd")}
+              {units.map((u) => unitChip({ kind: "existing", id: u.id }, u.template === "next_time" ? "a next time" : u.template ? `${u.label}s` : `“${u.label}”`, u.id))}
+              {PRESETS.filter((p) => !units.some((u) => u.template === p.template)).map((p) => unitChip({ kind: "new", template: p.template, label: p.template }, p.label, p.template))}
             </div>
-            <p className="text-caption text-ink-3">One shirt, two shirts. Whole numbers only: a question that needs halves asks in a smaller unit.</p>
-          </div>
-          <div className="flex flex-col gap-2">
-            <label htmlFor="ask-scale" className="text-label text-ink-3">
-              Scored on
-            </label>
-            <div className="flex items-center gap-3">
-              <input id="ask-scale" inputMode="numeric" pattern="[0-9]*" value={scale} onChange={(e) => setScale(e.target.value)} maxLength={11} aria-describedby="ask-scale-help" className="h-12 w-32 rounded-button border border-line bg-surface px-4 text-body text-ink placeholder:text-ink-3" />
-              <span className="text-body text-ink-2">{unitWords.plural.trim() || unitWords.singular.trim() || "of them"} off scores nothing</span>
-            </div>
-            <p id="ask-scale-help" className="text-caption text-ink-3">{scope.number?.model?.range ? "How far off scores nothing. Leave it blank and it’s set for you; type one and everyone sees it in the details." : "How far off scores nothing. Everyone sees it in the details."}</p>
-          </div>
-        </>
-      ) : null}
-      {pace === "argument" ? (
-        <div className="flex flex-col gap-3">
-          <h2 className="text-label text-ink-3">Your side</h2>
-          <div role="group" aria-label="Your side" className="flex flex-wrap gap-2">
-            {(["yes", "no"] as const).map((v) => (
-              <button key={v} type="button" aria-pressed={side === v} onClick={() => setSide(v)} className="rounded-pill">
-                <Chip size={36} selected={side === v}>
-                  {v === "yes" ? "I say yes" : "I say no"}
+            <p className="text-caption text-ink-3">One kind of thing for everyone, fixed now. Dollars and beers can’t be weighed against each other.</p>
+          </>,
+        )}
+        {pace === "dare"
+          ? row(
+              "Where everyone landed",
+              <div className="flex flex-wrap gap-2">
+                <button type="button" aria-pressed={!blind} onClick={() => setBlind(false)} className="rounded-pill">
+                  <Chip size={36} selected={!blind} choice>
+                    Shows once you’ve picked
+                  </Chip>
+                </button>
+                <button type="button" aria-pressed={blind} onClick={() => setBlind(true)} className="rounded-pill">
+                  <Chip size={36} selected={blind} choice>
+                    Hidden until it’s locked
+                  </Chip>
+                </button>
+              </div>,
+            )
+          : null}
+        {row(
+          "If it’s unclear",
+          <>
+            <div role="group" aria-label="If you can't agree" className="flex flex-wrap gap-2">
+              <button type="button" aria-pressed={stalemate === "arbitrate"} onClick={() => setStalemate("arbitrate")} className="rounded-pill">
+                <Chip size={36} selected={stalemate === "arbitrate"} choice>
+                  A tiebreaker hears both sides and calls it
                 </Chip>
               </button>
-            ))}
-          </div>
-          <p className="text-caption text-ink-3">All the way, by default, so whoever’s wrong is out the whole thing. You can soften your number on the next screen.</p>
-        </div>
-      ) : (
-      <div className="flex flex-col gap-3">
-        <h2 className="text-label text-ink-3">You’ll know by</h2>
-        <div className="flex flex-wrap gap-2">
-          {WHEN.map((w) => (
-            <button key={w.label} type="button" onClick={() => setHours(w.hours)} className="rounded-pill">
-              <Chip size={36} selected={hours === w.hours}>
-                {w.label}
-              </Chip>
-            </button>
-          ))}
-        </div>
-      </div>
-      )}
-      <div className="flex flex-col gap-3">
-        <h2 className="text-label text-ink-3">What’s riding on it</h2>
-        <div className="flex flex-wrap gap-2">
-          {unitChip({ kind: "usd" }, "Dollars", "usd")}
-          {units.map((u) => unitChip({ kind: "existing", id: u.id }, u.template === "next_time" ? "a next time" : u.template ? `${u.label}s` : `“${u.label}”`, u.id))}
-          {PRESETS.filter((p) => !units.some((u) => u.template === p.template)).map((p) => unitChip({ kind: "new", template: p.template, label: p.template }, p.label, p.template))}
-        </div>
-        <p className="text-caption text-ink-3">One kind of thing for everyone, fixed now. Dollars and beers can’t be weighed against each other.</p>
-      </div>
-      {pace === "dare" ? (
-      <div className="flex flex-col gap-3">
-        <h2 className="text-label text-ink-3">Where everyone landed</h2>
-        <div className="flex flex-wrap gap-2">
-          <button type="button" aria-pressed={!blind} onClick={() => setBlind(false)} className="rounded-pill">
-            <Chip size={36} selected={!blind}>
-              Shows once you’ve picked
-            </Chip>
-          </button>
-          <button type="button" aria-pressed={blind} onClick={() => setBlind(true)} className="rounded-pill">
-            <Chip size={36} selected={blind}>
-              Hidden until it’s locked
-            </Chip>
-          </button>
-        </div>
-      </div>
+              <button type="button" aria-pressed={stalemate === "void"} onClick={() => setStalemate("void")} className="rounded-pill">
+                <Chip size={36} selected={stalemate === "void"} choice>
+                  It just goes unsettled
+                </Chip>
+              </button>
+            </div>
+            <p className="text-caption text-ink-3">Everyone sees this before they’re in, and being in means they’re fine with it.</p>
+          </>,
+        )}
+      </dl>
+      {stage === "still" ? (
+        <p className="text-caption text-ink-3" data-still-writing="">
+          Still writing.
+        </p>
       ) : null}
-      <div className="flex flex-col gap-3">
-        <h2 className="text-label text-ink-3">If you can’t agree how it came out</h2>
-        <div role="group" aria-label="If you can't agree" className="flex flex-wrap gap-2">
-          <button type="button" aria-pressed={stalemate === "arbitrate"} onClick={() => setStalemate("arbitrate")} className="rounded-pill">
-            <Chip size={36} selected={stalemate === "arbitrate"}>
-              A tiebreaker hears both sides and calls it
-            </Chip>
-          </button>
-          <button type="button" aria-pressed={stalemate === "void"} onClick={() => setStalemate("void")} className="rounded-pill">
-            <Chip size={36} selected={stalemate === "void"}>
-              It just goes unsettled
-            </Chip>
-          </button>
-        </div>
-        <p className="text-caption text-ink-3">Everyone sees this before they’re in, and being in means they’re fine with it.</p>
-      </div>
-      <Button variant="tertiary" className="self-start" onClick={() => setStep("who")} disabled={saving}>
-        Back to who’s in
-      </Button>
       <PinnedSheet
         label="Finish"
         low={
           <>
+            {stage === "block" || written?.failed ? <ProblemSummary messages={[TERMS_STOPPED]} retry={() => writeUp(lastWriteUp.current?.chosen, lastWriteUp.current?.source)} /> : null}
             <ProblemSummary messages={[problem]} />
-            <Button variant="primary" onClick={save} loading={saving}>
-              Looks right
+            <Button variant="primary" onClick={save} loading={saving} disabled={!scope}>
+              Send it
             </Button>
           </>
         }
@@ -862,3 +934,11 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
     </div>,
   );
 }
+
+/** The words being written have a caret at their end (9.8): 2 by 20px in `--ink-2`, blinking on the loop, steady with Reduce Motion. */
+function Caret() {
+  return <span aria-hidden="true" data-caret="" className="ml-0.5 inline-block h-5 w-[2px] rounded-[1px] bg-ink-2 align-text-bottom motion-loop-caret" />;
+}
+
+/** The block when the words stop (9.8): in the sheet above "Send it", with "Try again", which writes them again. */
+export const TERMS_STOPPED = "The terms stopped partway.";

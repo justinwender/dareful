@@ -1,3 +1,4 @@
+import { CREAM_RGB } from "./palette";
 /**
  * Cutting a subject inside the app (docs/design.md 3.28, frame 5; Round C, pre-approved). MediaPipe's interactive
  * segmenter runs in the browser and returns a confidence mask for the point tapped; the mask is thresholded near
@@ -207,7 +208,7 @@ export async function cutAt(segmenter: Segmenter, bitmap: ImageBitmap, nx: numbe
 }
 
 /** The cream of the outline (docs/design.md 1.7). */
-const CREAM = "rgb(242,237,227)";
+const CREAM = `rgb(${CREAM_RGB})`;
 
 /**
  * The dashed cream outline around the subject (3.28, frame 5), drawn onto a canvas the size of the cut: the edge

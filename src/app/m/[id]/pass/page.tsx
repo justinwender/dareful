@@ -1,4 +1,3 @@
-import type { CSSProperties } from "react";
 import { notFound, redirect } from "next/navigation";
 import { MarkRefStamp } from "@/components/ledger/mark-stamp";
 import { Screen } from "@/components/ledger/screen";
@@ -20,7 +19,8 @@ import { CONSENT, DRIVE_CONSENT, SLIDER_REACH } from "@/lib/sports/templates";
 import type { Sport } from "@/lib/sports/types";
 import { closesLabel, firstName, untilLabel } from "@/lib/ui/copy";
 import { hueFor } from "@/lib/ui/hue";
-import { INKS, inkOf, inkVars } from "@/lib/ui/ink";
+import { inkOf } from "@/lib/ui/ink";
+import { InkRoot } from "@/components/ledger/ink-root";
 import { markRefOf } from "@/lib/ui/mark";
 import type { TeamFace } from "@/lib/ui/team";
 import { viewerClock } from "@/lib/ui/zone";
@@ -70,7 +70,7 @@ export default async function HandOverPage({ params }: { params: Promise<{ id: s
       <div className="flex items-center justify-between gap-3">
         {markRefOf(d) ? <MarkRefStamp mark={markRefOf(d)} size={44} onGround /> : <span />}
         <span className="flex items-center gap-2 text-label text-ink-2">
-          <StateMark state="open" ink={INKS[ink].ink} />
+          <StateMark state="open" ink="var(--market-ink)" />
           {d.resolvesBy ? <span>Closes {closesLabel(d.resolvesBy, now, clock.zone)}</span> : null}
         </span>
       </div>
@@ -101,7 +101,8 @@ export default async function HandOverPage({ params }: { params: Promise<{ id: s
   );
 
   return (
-    <div className="grain flex flex-1 flex-col" style={inkVars(ink) as CSSProperties} data-pass-screen="">
+    <div className="flex flex-1 flex-col" data-pass-screen="">
+      <InkRoot ink={ink} />
       <Screen>
         <HandOver
           dareId={d.id}

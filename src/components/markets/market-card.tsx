@@ -5,6 +5,7 @@ import { AvatarStack } from "@/components/ledger/avatar";
 import { Chip } from "@/components/ledger/chip";
 import { CloseObligation } from "@/components/ledger/close-obligation";
 import { MarkRefStamp } from "@/components/ledger/mark-stamp";
+import { serialiseShell, shellSheet } from "@/lib/ui/shell";
 import { MediaFrame } from "@/components/ledger/media-frame";
 import { ObligationToken } from "@/components/ledger/obligation-token";
 import { StateMark, type MarketMark } from "@/components/ledger/state-mark";
@@ -24,6 +25,8 @@ export type MarketCardProps = {
   mark: MarkRef | null;
   ink: InkName;
   groupName: string | null;
+  /** An unnamed set, by its people ("Priya, Gabe and you"), on a dashed chip (3.19); null when the set is named or the card cannot name them. */
+  groupPeople?: string | null;
   state: "open" | "locked" | "resolved" | "voided" | "expired";
   viewerIn: boolean;
   votesCast: number;
@@ -74,7 +77,7 @@ export function MarketCard(p: MarketCardProps) {
   // The story is the link; its consequences sit under it, outside the link, because one of them may be a control.
   return (
     <article className="flex flex-col rounded-card border border-line bg-surface">
-      <Link prefetch={false} href={`/m/${p.id}`} className="relative flex flex-col gap-3 rounded-card px-4 py-3.5">
+      <Link prefetch={false} href={`/m/${p.id}`} data-press="row" data-shell={serialiseShell({ kind: "market", id: p.id, ink: p.ink, mark: p.mark, state: mark, clock: p.clockLine ?? null, question: p.title, asker: null, sheet: shellSheet(mark, p.viewerIn) })} data-shell-id={p.id} className="press-row relative flex flex-col gap-3 rounded-card px-4 py-3.5">
         <LinkPending />
         <div className="flex items-center justify-between gap-2">
           <span className="inline-flex min-w-0 items-center gap-2 text-label text-ink-2">
@@ -83,7 +86,7 @@ export function MarketCard(p: MarketCardProps) {
             {p.argument ? <span>Argument</span> : null}
             {p.clockLine ? <span className="truncate">{p.clockLine}</span> : null}
           </span>
-          {p.groupName ? <Chip>{p.groupName}</Chip> : null}
+          {p.groupName ? <Chip>{p.groupName}</Chip> : p.groupPeople ? <Chip dashed data-unnamed-set="">{p.groupPeople}</Chip> : null}
         </div>
         <h3 className="text-serif-l text-ink">{p.title}</h3>
         {(p.state === "resolved" || p.state === "voided" || p.state === "expired") && p.media && p.media.length > 0 ? <MediaFrame items={p.media.map((m) => ({ id: m.id, author: { name: m.author.displayName, hue: hueFor(m.author.id) } }))} height={180} interactive={false} className="-mx-4" /> : null}

@@ -262,6 +262,39 @@ for (const file of walk(SRC)) {
     problems.push(`${r}: literal size "${m[0]}" outside a control component`);
 }
 
+// 3. Motion (docs/design.md 9.1): every transition and animation reads the set; a duration or a curve typed
+// anywhere else fails, the way a colour from outside section 1 does. The set itself, and the opening's first
+// frame (11.4), drawn by an inline style before the stylesheet loads, are the two places a value may be written.
+const MOTION_ALLOW = new Set(["src/lib/ui/motion.ts", "src/lib/ui/opening.ts"]);
+const MOTION_CLASS = /\b(?:motion-safe:|motion-reduce:)?(?:duration|delay)-(?:\[|\d)[^\s"'`]*|\bease-(?:in|out|in-out|linear)\b|\banimate-(?:\[|pulse|spin|bounce|ping)[^\s"'`]*/g;
+const MOTION_LITERAL = /["'`]((?:\d*\.\d+|[1-9]\d*)(?:ms|s))["'`]|(cubic-bezier\()/g;
+// 4. Colour (1.1, 8.8): every colour on a screen is a token. The tokens, the ink tables, the palette of the two
+// literals that never follow the theme, the opening, and the two renderers that draw one image for everyone are
+// the only files that may write one; the code to scan writes the generator's black, which becomes currentColor.
+const COLOUR_ALLOW = new Set(["src/lib/ui/ink.ts", "src/lib/ui/palette.ts", "src/lib/ui/opening.ts", "src/lib/ui/tiles.tsx", "src/lib/ui/share-card.tsx", "src/components/markets/whos-in-row.tsx"]);
+const COLOUR = /#[0-9a-fA-F]{3,8}\b|\brgba?\(\s*\d|\bhsla?\(/g;
+for (const file of walk(SRC)) {
+  const r = rel(file);
+  if (RENDERERS.some((re) => re.test(r))) continue;
+  const text = readFileSync(file, "utf8");
+  if (!MOTION_ALLOW.has(r)) {
+    for (const m of text.matchAll(MOTION_CLASS)) problems.push(`${r}: motion "${m[0]}" typed outside the set (9.1: duration-(--motion-*), ease-move, ease-leave, ease-fade, the motion-* classes)`);
+    for (const m of text.matchAll(MOTION_LITERAL)) problems.push(`${r}: motion "${m[1] ?? m[2]}" typed outside the set (9.1: read MOTION or the custom properties)`);
+  }
+  if (!COLOUR_ALLOW.has(r)) for (const m of text.matchAll(COLOUR)) problems.push(`${r}: colour "${m[0]}" typed outside the tokens (1.1, 8.8)`);
+}
+// The stylesheet: a colour, a duration or a curve lives only in a custom property's definition.
+const GLOBALS = join(SRC, "app", "globals.css");
+if (existsSync(GLOBALS)) {
+  const lines = readFileSync(GLOBALS, "utf8").split("\n");
+  lines.forEach((line, i) => {
+    const definition = /^\s*--[\w-]+:/.test(line);
+    if (definition) return;
+    for (const m of line.matchAll(COLOUR)) problems.push(`src/app/globals.css:${i + 1}: colour "${m[0]}" outside a token's definition (1.1, 8.8)`);
+    for (const m of line.matchAll(/\b(?:\d*\.\d+|[1-9]\d*)(?:ms|s)\b|cubic-bezier\(/g)) problems.push(`src/app/globals.css:${i + 1}: motion "${m[0]}" outside the set's definition (9.1)`);
+  });
+}
+
 // 2. Each screen: at most four sizes, one serif size, two weights at a size and only 400 and 600.
 const pages = walk(join(SRC, "app")).filter((p) => /[/\\]page\.tsx$/.test(p));
 const screens = [
@@ -338,5 +371,5 @@ if (problems.length) {
   process.exit(1);
 }
 console.log(
-  `\ntype budget: no legacy token, no literal size; ${screens.length} screens, ${over} over the budget and held to a baseline`,
+  `\nstyle budget: no legacy token, no literal size, no motion or colour outside the set; ${screens.length} screens, ${over} over the budget and held to a baseline`,
 );

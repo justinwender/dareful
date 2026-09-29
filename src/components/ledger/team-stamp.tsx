@@ -8,14 +8,14 @@ import { stampFill, stampGlyph, stampInk, stampRadius, type TeamFace } from "@/l
  * is why its smallest size never appears without the name beside it. No logo, ever. A team's colour appears only
  * inside its stamp (4.5).
  */
-export function TeamStamp({ team, size = 28, className }: { team: TeamFace; size?: number; className?: string }) {
+export function TeamStamp({ team, size = 28, className, travels }: { team: TeamFace; size?: number; className?: string; /** A game page's header stamp (9.7): the name a game row's stamp travels to. */ travels?: string }) {
   return (
     <span
       role="img"
       aria-label={team.name}
       data-team-stamp={team.abbr}
       className={`inline-flex shrink-0 items-center justify-center font-bold uppercase ${className ?? ""}`}
-      style={{ width: size, height: size, borderRadius: stampRadius(size), background: stampFill(team.color), color: stampInk(team.color), fontSize: stampGlyph(size, team.abbr), lineHeight: 1, letterSpacing: "0.02em", boxShadow: "inset 0 0 0 1px rgba(242, 237, 227, 0.16)" }}
+      style={{ width: size, height: size, borderRadius: stampRadius(size), background: stampFill(team.color), color: stampInk(team.color), fontSize: stampGlyph(size, team.abbr), lineHeight: 1, letterSpacing: "0.02em", boxShadow: "inset 0 0 0 1px var(--stamp-edge)", viewTransitionName: travels }}
     >
       {team.abbr}
     </span>

@@ -4,6 +4,7 @@ import { StateMark } from "@/components/ledger/state-mark";
 import { LinkPending } from "@/components/ui/link-pending";
 import type { Hue } from "@/lib/ui/hue";
 import type { TeamFace } from "@/lib/ui/team";
+import { serialiseShell } from "@/lib/ui/shell";
 
 export type GameRowData = {
   id: string;
@@ -27,7 +28,7 @@ export type GameRowData = {
 export function GameRow({ game, viewerHue, divider = false }: { game: GameRowData; viewerHue: Hue; divider?: boolean }) {
   const href = game.yours ? `/on/${game.id}?g=${game.yours.groupId}` : `/on/${game.id}`;
   return (
-    <Link prefetch={false} href={href} data-game-row={game.id} className={`relative grid grid-cols-[60px_minmax(0,1fr)_18px] items-center gap-3 px-[14px] py-3 ${divider ? "border-t border-line" : ""}`}>
+    <Link prefetch={false} href={href} data-game-row={game.id} data-press="row" data-shell={serialiseShell({ kind: "game", id: game.id, href, name: game.name, start: game.start, away: game.away, home: game.home })} className={`press-row relative grid grid-cols-[60px_minmax(0,1fr)_18px] items-center gap-3 px-[14px] py-3 ${divider ? "border-t border-line" : ""}`}>
       <LinkPending />
       <TeamPair away={game.away} home={game.home} size={28} />
       <span className="flex min-w-0 flex-col gap-0.5">

@@ -32,9 +32,10 @@ export function pickOneFor(m: Pick<MarketCardData, "people" | "pickOne">, viewer
 }
 
 /** The view model from `marketCards()` as a timeline card. */
-export function MarketCardFrom({ m, viewerId, clock, consequenceStates, close }: { m: MarketCardData; viewerId: string; clock: { zone: string; now: number }; consequenceStates?: MarketCardProps["consequenceStates"]; close?: MarketCardProps["close"] }) {
+export function MarketCardFrom({ m, viewerId, clock, consequenceStates, close, groupPeople = null }: { m: MarketCardData; viewerId: string; clock: { zone: string; now: number }; consequenceStates?: MarketCardProps["consequenceStates"]; close?: MarketCardProps["close"]; /** An unnamed set by its people, for the dashed chip (3.19). */ groupPeople?: string | null }) {
   return (
     <MarketCard
+      groupPeople={groupPeople}
       consequenceStates={consequenceStates}
       close={close}
       id={m.dare.id}

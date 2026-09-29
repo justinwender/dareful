@@ -11,13 +11,14 @@ import { isHex, type Hex } from "viem";
 import { z } from "zod";
 import { isInkName } from "@/lib/ui/ink";
 import { outcomeWordsFrom } from "@/lib/ui/outcome-words";
-import { plainNumberScope, plainPickOneScope, plainScope, proposeAnswer, proposeNumber, proposeOutcome, scopeMarket, scopeNumber, scopePickOne } from "@/lib/ai/markets";
+import { proposeAnswer, proposeNumber, proposeOutcome } from "@/lib/ai/markets";
+import { scaleTokenValid, writeUp, type NumberScopeResult, type ScopeResult } from "@/lib/ledger/write-up";
+export type { NumberScopeResult, ScopeResult };
 import { addMarketPhoto, MediaError } from "@/lib/media";
 import { evidenceFor } from "@/lib/media/evidence";
 import { MAX_UPLOAD_BYTES } from "@/lib/media/pipeline";
 import { StorageUnavailable } from "@/lib/media/storage";
-import { createHmac, timingSafeEqual } from "node:crypto";
-import { checkScale, parseAskerScale } from "@/lib/ledger/scale";
+import { parseAskerScale } from "@/lib/ledger/scale";
 import { MAX_NUMBER } from "@/lib/ledger/scoring";
 import { viewerZone } from "@/lib/ui/zone";
 import { currentUser, requireUser } from "@/lib/auth/session";
@@ -36,26 +37,6 @@ import { MAX_ANSWER_LENGTH, MAX_ANSWERS, MIN_ANSWERS } from "@/lib/ledger/pick-o
 
 const uuid = z.string().uuid();
 const say = (err: unknown, fallback: string) => (err instanceof SendPending ? pendingCopy(err) : err instanceof MarketError ? err.message : fallback);
-
-export type ScopeResult = { title: string; terms: string; ambiguous: boolean; criteria: string[]; resolvesInHours: number; plain: boolean; number: NumberScopeResult | null; /** The outcomes in the question's own words (3.25), when the write-up gave four usable phrasings. */ outcomes: [string, string, string, string] | null };
-/**
- * A number question's write-up carries its unit and, when the model's scale passed the check, that scale under a
- * token only this server can mint for this person: the draft that comes back with it is stored as the model's
- * scale, which is never shown, so a scale nobody but the server chose must not be able to wear that label.
- */
-export type NumberScopeResult = { unit: { singular: string; plural: string }; model: { range: string | null; typical: string; token: string } | null };
-
-/** The token covers the model's scale (null when it failed the check) and its most likely answer together. */
-function scaleToken(userId: string, range: string | null, typical: string): string {
-  const secret = process.env.SESSION_SECRET;
-  if (!secret || secret.length < 32) throw new Error("SESSION_SECRET is not set or too short");
-  return createHmac("sha256", secret).update(`dareful:ai-scale:v2:${userId}:${range ?? ""}:${typical}`).digest("base64url");
-}
-function scaleTokenValid(userId: string, range: string | null, typical: string, token: string): boolean {
-  const want = Buffer.from(scaleToken(userId, range, typical));
-  const got = Buffer.from(token);
-  return want.length === got.length && timingSafeEqual(want, got);
-}
 
 /**
  * "We're waiting on you" (docs/design.md 3.42, amended 2026-09-27: the nudge is the only way someone in a market
@@ -84,47 +65,7 @@ export async function nudgeAction(rawId: string, rawTo?: string): Promise<({ ok:
  */
 export async function scopeMarketAction(rawLine: string, rawCriterion?: string, rawAnswers?: Array<{ question: string; yes: boolean }>, rawKind?: "binary" | "numeric" | "categorical", rawChoices?: string[]): Promise<ScopeResult | { error: string }> {
   const user = await requireUser();
-  const line = z.string().trim().min(3).max(280).safeParse(rawLine);
-  if (!line.success) return { error: "Ask it in a line." };
-  const criterion = rawCriterion ? z.string().trim().min(3).max(120).safeParse(rawCriterion) : null;
-  if (rawKind === "categorical") {
-    // A pick-one question (3.29): the write-up is given the answers and leaves them exactly as the asker wrote them.
-    const choices = z.array(z.string().trim().min(1).max(MAX_ANSWER_LENGTH)).min(MIN_ANSWERS).max(MAX_ANSWERS).safeParse(rawChoices ?? []);
-    if (!choices.success) return { error: `Two to ${MAX_ANSWERS} answers, a few words each.` };
-    try {
-      const s = await scopePickOne({ line: line.data, answers: choices.data, now: new Date() });
-      return { title: s.title, terms: s.terms, ambiguous: false, criteria: [], resolvesInHours: s.resolvesInHours, plain: false, number: null, outcomes: null };
-    } catch (err) {
-      console.error("scoping a pick-one question failed; using the line as typed", err);
-      const p = plainPickOneScope(line.data);
-      return { ...p, ambiguous: false, criteria: [], resolvesInHours: 24, plain: true, number: null, outcomes: null };
-    }
-  }
-  if (rawKind === "numeric") {
-    try {
-      const s = await scopeNumber({ line: line.data, now: new Date() });
-      const unit = { singular: s.unit.singular.toLowerCase(), plural: s.unit.plural.toLowerCase() };
-      // The model's scale is used only when it passes the check; otherwise the asker sets one (src/lib/ledger/scale.ts).
-      const checked = checkScale({ low: s.low, high: s.high, typical: s.typical });
-      if (!checked.ok) console.warn("number scale proposal refused", { why: checked.why, low: s.low, high: s.high, typical: s.typical });
-      const range = checked.ok ? checked.range.toString() : null;
-      const typical = Number.isInteger(s.typical) && s.typical >= 0 ? String(s.typical) : "0";
-      return { title: s.title, terms: s.terms, ambiguous: false, criteria: [], resolvesInHours: s.resolvesInHours, plain: false, number: { unit, model: { range, typical, token: scaleToken(user.id, range, typical) } }, outcomes: null };
-    } catch (err) {
-      console.error("scoping a number question failed; using the line as typed", err);
-      const p = plainNumberScope(line.data);
-      return { ...p, ambiguous: false, criteria: [], resolvesInHours: 24, plain: true, number: { unit: { singular: "", plural: "" }, model: null }, outcomes: null };
-    }
-  }
-  try {
-    const answers = z.array(z.object({ question: z.string().trim().min(3).max(160), yes: z.boolean() })).max(3).safeParse(rawAnswers ?? []);
-    const s = await scopeMarket({ line: line.data, criterion: criterion?.success ? criterion.data : undefined, answers: answers.success ? answers.data : undefined, now: new Date() });
-    return { title: s.title, terms: s.terms, ambiguous: s.ambiguous && s.criteria.length > 0, criteria: s.criteria, resolvesInHours: s.resolvesInHours, plain: false, number: null, outcomes: outcomeWordsFrom(s.outcomes) };
-  } catch (err) {
-    console.error("scoping failed; using the line as typed", err);
-    const p = plainScope(line.data);
-    return { ...p, ambiguous: false, criteria: [], resolvesInHours: 24, plain: true, number: null, outcomes: null };
-  }
+  return writeUp({ line: rawLine, criterion: rawCriterion, answers: rawAnswers, kind: rawKind, choices: rawChoices }, user.id);
 }
 
 const Unit = z.discriminatedUnion("kind", [

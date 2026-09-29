@@ -11,6 +11,7 @@ import type { MarkRef } from "@/lib/ui/mark";
 import type { GlyphKey } from "@/lib/ui/units";
 import type { Hue } from "@/lib/ui/hue";
 import { PassThePhoneRow } from "./pass-the-phone";
+import { AppearanceRow } from "./appearance";
 
 export type UnitRow = { id: string; label: string; pluralLabel: string; glyph: GlyphKey | null; monetary: boolean; emoji: string | null };
 
@@ -45,6 +46,7 @@ export function AccountRows({ units, marks, unitsCaption, marksCaption, passTheP
         <Row title="Your units" caption={unitsCaption} onClick={() => setOpen("units")} data-account-row="units" />
         <Row title="Your marks" caption={marksCaption} onClick={() => setOpen("marks")} data-account-row="marks" />
         <Row title="Your number" caption="Used to sign in. Nobody else sees it." data-account-row="number" />
+        <AppearanceRow />
         <PassThePhoneRow status={passThePhone} hue={hue} />
         <Row title="Sign out" onClick={() => setOpen("signout")} data-account-row="signout" />
       </div>
@@ -58,8 +60,8 @@ export function AccountRows({ units, marks, unitsCaption, marksCaption, passTheP
           <ul className="flex flex-col" data-your-units="">
             {units.map((u) => (
               <li key={u.id} className="flex min-h-12 items-center gap-3 border-t border-line first:border-t-0">
-                <span className="flex h-7 w-7 items-center justify-center rounded-button bg-surface-2 text-ink" aria-hidden="true">
-                  {u.glyph ? <UnitGlyph unit={u.glyph} size={18} /> : u.emoji ? <span className="text-body-sm">{u.emoji}</span> : u.monetary ? <span className="text-body-sm">$</span> : <span className="text-body-sm">“</span>}
+                <span className="flex h-7 w-7 items-center justify-center rounded-stamp-28 bg-surface-2 text-ink" aria-hidden="true" data-unit-mark="">
+                  {u.glyph ? <UnitGlyph unit={u.glyph} size={16} /> : u.emoji ? <span className="text-body-sm">{u.emoji}</span> : u.monetary ? <span className="text-body-sm">$</span> : <span className="text-body-sm">“</span>}
                 </span>
                 <span className="text-body-sm text-ink">{u.monetary ? "Dollars" : u.pluralLabel.charAt(0).toUpperCase() + u.pluralLabel.slice(1)}</span>
               </li>

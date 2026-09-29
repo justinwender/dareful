@@ -13,8 +13,13 @@ export function SetupSheet({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Button variant="tertiary" onClick={() => setOpen(true)}>
-        More
+      {/* More is the 48px icon beside the information icon in the header (3.25, 10.3): three dots, named. */}
+      <Button variant="icon" aria-label="More" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(true)} data-more="">
+        <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+          <circle cx="5" cy="12" r="1.6" />
+          <circle cx="12" cy="12" r="1.6" />
+          <circle cx="19" cy="12" r="1.6" />
+        </svg>
       </Button>
       <Sheet open={open} onClose={() => setOpen(false)} labelledBy="setup-title">
         <h2 id="setup-title" className="text-body-strong text-ink">

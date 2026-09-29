@@ -238,7 +238,7 @@ export function MarkPicker({ open, onClose, value, onPick, hue, preview = true, 
       {!query.trim() ? (
         <div role="tablist" aria-label="Categories" className="-mx-4 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none]">
           {CATEGORIES.map((c) => (
-            <button key={c.group} type="button" role="tab" aria-selected={group === c.group} onClick={() => setGroup(c.group)} className={cn("inline-flex h-9 shrink-0 items-center rounded-pill border px-3 chip-text", group === c.group ? "border-ink bg-ink text-ground" : "border-line-strong text-ink-2")}>
+            <button key={c.group} type="button" role="tab" aria-selected={group === c.group} onClick={() => setGroup(c.group)} className={cn("inline-flex h-9 shrink-0 items-center rounded-pill border px-3 chip-text", group === c.group ? "border-ink-3 bg-surface-2 text-ink" : "border-line-strong text-ink-2")}>
               {c.label}
             </button>
           ))}

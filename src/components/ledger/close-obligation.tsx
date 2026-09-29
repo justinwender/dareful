@@ -154,7 +154,7 @@ export function CloseObligation({ obligationId, card, children, sentence, what, 
           <p className="text-body-sm text-ink-2">{what}</p>
         </div>
         {photosOn && !done ? (
-          <label className="flex min-h-14 cursor-pointer items-center gap-3 rounded-button bg-surface-2 px-4 py-2 text-body-strong text-ink">
+          <label className="flex min-h-14 cursor-pointer items-center gap-3 rounded-button text-body-strong text-ink" data-photo-row="">
             {preview ? (
               // A file the person just picked, shown back before it goes anywhere.
               // eslint-disable-next-line @next/next/no-img-element
@@ -166,6 +166,7 @@ export function CloseObligation({ obligationId, card, children, sentence, what, 
               </svg>
             )}
             <span className="min-w-0 flex-1">{preview ? "Change the photo" : "Add a photo of it"}</span>
+            <span className="link-row" aria-hidden="true">{preview ? "Change" : "Add"}</span>
             <input type="file" accept="image/*" capture="environment" className="sr-only" disabled={phase !== "idle"} onChange={(e) => pick(e.target.files?.[0] ?? null)} />
           </label>
         ) : null}

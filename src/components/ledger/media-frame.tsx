@@ -8,6 +8,8 @@ import { cn } from "@/lib/utils";
 import { Avatar } from "./avatar";
 import { PhotoView } from "./photo-view";
 import { usePhotoAdding } from "@/components/markets/photo-adding";
+import { withViewTransition } from "@/lib/ui/transitions";
+import type { CSSProperties } from "react";
 
 export type FrameItem = { id: string; author: { name: string; hue: Hue }; /** Whether the viewer added it as a memory, so its full-screen view offers "Remove" (3.8). */ removable?: boolean };
 
@@ -49,12 +51,13 @@ export function MediaFrame({ items, height, interactive = true, inset = false, a
             src={src(shown.id)}
             alt={`Photo ${current + 1} of ${items.length}, added by ${firstName(shown.author.name)}`}
             className={cn("h-full w-full object-cover", s !== "ok" && "opacity-0")}
+            style={interactive ? ({ viewTransitionName: "photo" } as CSSProperties) : undefined}
             onLoad={() => setState((x) => ({ ...x, [shown.id]: "ok" }))}
             onError={() => setState((x) => ({ ...x, [shown.id]: "failed" }))}
           />
         ) : null}
         {interactive && s === "ok" ? (
-          <button type="button" aria-label={`Open photo ${current + 1} of ${items.length}`} onClick={() => setViewing(true)} className="absolute inset-0 rounded-none" />
+          <button type="button" aria-label={`Open photo ${current + 1} of ${items.length}`} onClick={() => withViewTransition(() => setViewing(true))} className="absolute inset-0 rounded-none" />
         ) : null}
         {s === "failed" ? (
           <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-ink-2">
@@ -136,7 +139,7 @@ function AddTile({ night }: { night: string }) {
       </svg>
       {pending > 0 ? (
         <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] overflow-hidden bg-surface-2">
-          <span className="absolute inset-y-0 w-1/3 animate-[button-runner_1.2s_linear_infinite] bg-ink" />
+          <span className="absolute inset-y-0 w-1/3 motion-loop-runner bg-ink" />
         </span>
       ) : null}
     </button>

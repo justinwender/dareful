@@ -1,4 +1,4 @@
-import { hueVar, type Hue } from "@/lib/ui/hue";
+import { hueStrokeVar, type Hue } from "@/lib/ui/hue";
 
 /**
  * The state mark (docs/design.md 3.23): a 16px stroke mark on a 16 by 16 grid that replaces the sentence a screen
@@ -47,13 +47,13 @@ const QUIET: ReadonlySet<MarkState> = new Set<MarkState>(["open", "voided", "exp
  * open and resolved marks take the market's ink (3.25). Otherwise the mark is ink, or ink-3 for the quiet states.
  */
 export function StateMark({ state, hue, ink, size = 16, className }: { state: MarkState; hue?: Hue; ink?: string; size?: number; className?: string }) {
-  const color = state === "in" || state === "owed" ? (hue ? hueVar(hue) : "var(--ink)") : ink && (state === "open" || state === "resolved") ? ink : QUIET.has(state) ? "var(--ink-3)" : "var(--ink)";
+  const color = state === "in" || state === "owed" ? (hue ? hueStrokeVar(hue) : "var(--ink)") : ink && (state === "open" || state === "resolved") ? ink : QUIET.has(state) ? "var(--ink-3)" : "var(--ink)";
   if (state === "onway") {
     // The ring at 0.32 opacity, with a quarter of it drawn at full turning once every 1.2s (the circumference is 40.2; a quarter is 10.05).
     return (
       <svg role="img" aria-label={LABEL[state]} data-mark="onway" width={size} height={size} viewBox="0 0 16 16" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" className={className} style={{ color, flexShrink: 0 }}>
         <circle cx="8" cy="8" r="6.4" opacity={0.32} />
-        <circle cx="8" cy="8" r="6.4" strokeDasharray="10.05 30.15" transform="rotate(-90 8 8)" className="motion-safe:animate-[onway-turn_1.2s_linear_infinite] [transform-origin:center]" />
+        <circle cx="8" cy="8" r="6.4" strokeDasharray="10.05 30.15" transform="rotate(-90 8 8)" className="motion-loop-turn" />
       </svg>
     );
   }
@@ -80,5 +80,5 @@ export function StateMark({ state, hue, ink, size = 16, className }: { state: Ma
 
 /** The citron dot (3.23, 6.4): this one is waiting on you and has a clock. Never a number. */
 export function LiveDot({ className, ...rest }: { className?: string } & Record<`data-${string}`, string>) {
-  return <span aria-hidden="true" className={`inline-block h-1.5 w-1.5 shrink-0 rounded-pill bg-live ${className ?? ""}`} {...rest} />;
+  return <span aria-hidden="true" className={`inline-block h-1.5 w-1.5 shrink-0 rounded-pill bg-live ${className ?? ""}`} style={{ boxShadow: "0 0 0 1px var(--live-edge)" }} {...rest} />;
 }

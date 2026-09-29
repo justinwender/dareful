@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Avatar } from "@/components/ledger/avatar";
 import { hueVar, type Hue } from "@/lib/ui/hue";
 import { answerShares } from "@/lib/ledger/pick-one";
+import { MOTION, staggerDelay, staggeredTotal } from "@/lib/ui/motion";
 
 /** An answer as the screen draws it: the words, or the person with their avatar (docs/design.md 3.31). */
 export type PickOneAnswer = { index: number; text: string; person: { name: string; hue: Hue } | null };
@@ -54,20 +55,20 @@ export function PickOneBars({ answers, bars, entries, me, livePick = null, headi
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center">{a.person ? <Avatar name={a.person.name} hue={a.person.hue} size={28} /> : null}</span>
                 <span className="min-w-0 flex-1 truncate text-body-strong text-ink">{a.text}</span>
                 {mine && me ? (
-                  <span className="duration-300 motion-safe:transition-opacity" style={{ opacity: risen ? 1 : 0 }}>
+                  <span className="ease-move motion-safe:transition-opacity" style={{ opacity: risen ? 1 : 0, transitionDuration: `${MOTION.base}ms`, transitionDelay: risen && rise ? `${staggerDelay(i) + MOTION.travel - MOTION.base}ms` : "0ms" }}>
                     <Avatar name={me.name} hue={me.hue} size={22} ring="var(--ground)" />
                   </span>
                 ) : null}
                 {showShares ? (
-                  <span className="text-numeral-sm tabular-nums text-ink-2 motion-safe:transition-opacity" style={{ opacity: risen ? 1 : 0, transitionDuration: "300ms", transitionDelay: risen ? "600ms" : "0ms" }}>
+                  <span className="text-numeral-sm tabular-nums text-ink-2 ease-fade motion-safe:transition-opacity" style={{ opacity: risen ? 1 : 0, transitionDuration: `${MOTION.base}ms`, transitionDelay: risen && rise ? `${staggeredTotal(answers.length)}ms` : "0ms" }}>
                     {shares[i]}%
                   </span>
                 ) : null}
               </div>
               <div className="relative h-3 overflow-hidden rounded-[6px] bg-surface" aria-hidden="true">
                 <>
-                    <span className="absolute inset-y-0 left-0 rounded-[6px] bg-market-ink ease-out motion-safe:transition-[width]" style={{ width: risen ? `${width}%` : 0, transitionDuration: "700ms", transitionDelay: risen && !mine ? `${120 + i * 30}ms` : "0ms" }} />
-                    {mine && me ? <span className="absolute inset-y-0 left-0 rounded-[6px] ease-out motion-safe:transition-[width]" style={{ width: risen ? `${myWidth}%` : 0, background: hueVar(me.hue), boxShadow: "2px 0 0 var(--ground)", transitionDuration: "400ms", transitionDelay: risen ? "300ms" : "0ms" }} /> : null}
+                    <span className="absolute inset-y-0 left-0 rounded-[6px] bg-market-ink ease-move motion-safe:transition-[width]" style={{ width: risen ? `${width}%` : 0, transitionDuration: `${rise ? MOTION.travel : MOTION.base}ms`, transitionDelay: risen && rise ? `${staggerDelay(i)}ms` : "0ms" }} />
+                    {mine && me ? <span className="absolute inset-y-0 left-0 rounded-[6px] ease-move motion-safe:transition-[width]" style={{ width: risen ? `${myWidth}%` : 0, background: hueVar(me.hue), boxShadow: "2px 0 0 var(--ground)", transitionDuration: `${rise ? MOTION.travel : MOTION.base}ms`, transitionDelay: risen && rise ? `${staggerDelay(i)}ms` : "0ms" }} /> : null}
                     {Array.from({ length: Math.min(bars[a.index]?.noStake ?? 0, 3) }, (_, k) => (
                       <span key={k} className="absolute top-1/2 h-2 w-2 -translate-y-1/2 rounded-pill border border-ink-2 bg-ground" style={{ left: 2 + k * 10 }} />
                     ))}

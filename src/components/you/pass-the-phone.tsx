@@ -105,10 +105,10 @@ export function PassThePhoneRow({ status, hue }: { status: { on: boolean; delega
           disabled={busy !== null || (!on && !ownPhone)}
           onClick={() => (on ? void turnOff() : setOpen(true))}
           data-pass-switch={on ? "on" : "off"}
-          className={cn("relative h-7 w-12 shrink-0 rounded-pill transition-colors duration-[120ms] disabled:opacity-60", on ? "" : "bg-surface-2 outline outline-1 outline-line-strong")}
+          className={cn("relative h-7 w-12 shrink-0 rounded-pill transition-colors duration-(--motion-quick) ease-fade disabled:opacity-60", on ? "" : "bg-surface-2 outline outline-1 outline-line-strong")}
           style={on ? { background: hueVar(hue) } : undefined}
         >
-          <span aria-hidden="true" className={cn("absolute top-1/2 h-5 w-5 -translate-y-1/2 rounded-pill transition-[left] duration-[120ms]", on ? "left-[26px] bg-ground" : "left-[4px] bg-ink-3")} />
+          <span aria-hidden="true" className={cn("absolute top-1/2 h-5 w-5 -translate-y-1/2 rounded-pill transition-[left] duration-(--motion-quick) ease-move", on ? "left-[26px] bg-ground" : "left-[4px] bg-ink-3")} />
         </button>
       </div>
       <Sheet open={open} onClose={() => (busy ? undefined : setOpen(false))} labelledBy={`${id}-title`}>

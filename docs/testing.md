@@ -903,6 +903,24 @@ Cutting a sticker on the phone with its timings (94), the lift as the fallback (
 
 The stake fact on a phone (102), the ballot before anyone has said (103), the number vote's heading (104), the band after the end (105), the claimant screen (106), Coming up and Show earlier (107), the offline bar (108), Try again and the ten-second step (109), the cutter's first load with the lift meanwhile (110), a voided story's frame (111).
 
+## Session 28: Round D, how it feels, in the real localhost session
+
+**When:** September 28, 2026, after Round C part 2 was committed. **Who:** the localhost test account; nobody on a phone; the pane hidden, so taps were dispatched from the page's own script onto the real controls, and every timing is the DOM's arrival rather than the paint. **Checked first:** the merged design doc's sections 8 to 11 and the owner's two corrections.
+
+### Exercised
+
+- **The foundation:** on Now, People and You the tab bar lives in the layers host after the app root, sits at the viewport's bottom on both roots, the document scrolls, and nothing between the app root and the bar carries a transform (walked in the live tree and in every screen's markup by the http suite).
+- **The four moments, measured before and after** (dev mode): switching tabs 280 to 608ms before, 8 to 13ms after within the router's hold and 191 to 433ms on a first visit; + to ask 358 to 466ms before, 25ms after with the layer rising over Now (the first tap of a load waits for the step's payload when the prefetch has not landed, 678ms in dev); opening a market from Now 495ms before, the shell in 8 to 16ms after with the screen landing at 550ms the first time and 29ms from the hold, back 35 to 50ms; the steps of asking 9ms before and 5 to 11ms after, with "Set the terms" opening in 10ms instead of the 3.0 to 3.8 seconds it waited on the write-up, the first words streaming in at 2.3 seconds and the whole write-up at 3.2.
+- **The ask layer:** rises with the question step drawn whole, the root inert beneath, the sheet in flow at its foot, Close at the top left; the steps advance and return under the band; the terms stream in with the caret and "Send it" enables once written.
+- **The shell:** the market's ground, band and sheet in the frame after the tap, the ink swapped on `html`, the tab bar hidden under it, the screen landing over it and the shell gone.
+- **Appearance:** the row on You reads "Match your phone" (the pane prefers light, so the app drew light), "Always dark" puts `data-theme` on `html` at once and the ground reads the dark token; reset after.
+- **Held by the suites, not the eyes:** the motion set and its stagger; the slow-load stages; the sheet's settling and overscroll; the layers' rules; presses; the theme's script and the two light blocks; the opening's images and first frame; a row's shell; the band's clock; the roots' hold; the half-written terms; whole dollars and the Mixed token; the call line's words, the annotated row and the stake default; every information sheet against 10.6 and the copy scan; the lint's two new rules against their fixtures.
+
+### What broke
+
+- The first frame's inline style kept `html`'s ground in the phone's scheme after the stylesheet loaded, so "Always dark" left a light ground behind a dark card. The style now holds only until the handoff marks the document dressed.
+- The claimant screen's covers were pressed by default; the ballot's empty line hid behind the app's read; the tab bar's hiding rule under a shell lost to the layer's inline display. Each fixed and held by a test.
+
 ## The final test: one checklist
 
 Everything from sessions 11 through 15 that needs a phone, a second person or a real game, in one place, grouped by what it needs, so the final pass on real phones is one document to walk through. Each item says exactly what to check; the session it came from has the detail. Tick them in order within a group; the two-phone items want both phones signed in to two accounts that share a set.
@@ -1037,3 +1055,16 @@ Everything from sessions 11 through 15 that needs a phone, a second person or a 
 109. **Try again, and the ten-second step** (27): with the network slow, get into a question; expect the runner, "Still going." at three seconds, and at ten the block "That didn't come back." with "Try again" under the chalk, the chalk tappable again; when a send fails outright, expect "Try again" inside the block under "That didn't go through".
 110. **The cutter's first load on a phone** (27, with item 94): on an iPhone with the runtime and model not yet cached, tap "Make a sticker"; expect "Getting the cutter ready. It's about 17 MB the first time, and your phone keeps it after." with "Or, in the meantime: hold what you want, tap Copy Subject, then paste it here." and "Paste"; paste a lifted subject meanwhile and expect the sticker; or wait, and expect the line and the lift offer to go once the cutter is ready. On Android expect the loading line alone.
 111. **A voided story's frame** (27): on a person view with a voided question that has a photo between you, expect its story to carry the frame at 180, drawn without controls.
+
+### Round D
+
+112. **The tab bar through every transition** (28): open a market from Now, go back, switch every tab twice, open the ask layer and close it, raise and lower a sheet; expect the bar pinned at the very bottom throughout, never drifting with a page, and the Start button with it.
+113. **The band still gone on People and You** (28, with 61): cold start the installed app and open People, then You; expect the bar at the very bottom on both, with no band beneath it, now that the bar lives outside the page.
+114. **No white on a cold open, either appearance** (28): with the phone in light, then in dark, open the installed app cold; expect the launch image's ground with the logo box, the same frame from the page, then the fade into Now; never a white flash. Reload a market's link the same way.
+115. **The launch images by appearance** (28): with the phone in light, cold start; expect the light launch image; in dark, the dark one. If iOS shows the dark image in light, say so: the layout then lists the dark set only and the light phone's handoff fades from dark into light (11.3).
+116. **The market opening out of its row** (28): on Now, tap a question row; expect the stamp's colour opening into the band over 320ms with the mark riding into it, the words fading in, the tab bar fading out, and the sheet fading in; Back shrinks it into the row where it now sits. With Reduce Motion on, expect a crossfade with nothing travelling.
+117. **The ask layer** (28): tap +; expect the question step rising from the bottom over 320ms with Now holding still under it; Close sinks it and Now is exactly where it was, scrolled the same. Next moves the content 24px left under a band that holds; Back 24px right.
+118. **The terms written in front of you** (28): on the terms step, expect the caret at the start of "Counts if", the words arriving as they're written, "Still writing." after three seconds without new words, and "Send it" enabling when they finish; with the network slow, expect "The terms stopped partway." with "Try again" at ten.
+119. **Presses and tabs on the touch** (28): touch a row and hold; expect it to go to the ground after a moment, and nothing to flash while scrolling; touch a tab; expect it selected on the touch, not the release, and the root drawn in the next frame when it was visited within thirty seconds.
+120. **Light mode on a phone** (28): with the phone in light, expect paper, the graphite primary, the citron dot with its edge, avatars with their edge, the light grain, and a market's light layers; on You, "Always dark" and back.
+121. **The information icon** (28): on every screen it lists, expect the icon at the top right, "Got a code?" and More directly left of it, the sheet opening to the screen's name, the fixed line and the groups, closing from its close, a drag on its handle and the icon again; on the full-screen photo, the close at the top left and the counter centred.

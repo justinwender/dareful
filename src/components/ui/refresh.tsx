@@ -18,7 +18,7 @@ const RETURN_AFTER_MS = 2_000;
  *      switching to Messages and back, and a page restored from the back-forward cache.
  *
  * Both re-read the current screen through the router, which is one server render of exactly what is shown and
- * never a reload. A touch that starts inside a modal sheet belongs to the sheet.
+ * never a reload. A touch that starts inside a modal sheet or the ask layer belongs to it.
  */
 export function Refresh() {
   const router = useRouter();
@@ -34,9 +34,9 @@ export function Refresh() {
   };
 
   useEffect(() => {
-    const inDialog = (t: EventTarget | null) => t instanceof Element && t.closest("[role=dialog]") !== null;
+    const inLayer = (t: EventTarget | null) => t instanceof Element && t.closest("[role=dialog], [data-layer=ask]") !== null;
     const onStart = (e: TouchEvent) => {
-      startY.current = window.scrollY <= 0 && e.touches.length === 1 && !inDialog(e.target) ? (e.touches[0]?.clientY ?? null) : null;
+      startY.current = window.scrollY <= 0 && e.touches.length === 1 && !inLayer(e.target) ? (e.touches[0]?.clientY ?? null) : null;
     };
     const onMove = (e: TouchEvent) => {
       if (startY.current === null) return;
@@ -89,13 +89,14 @@ export function Refresh() {
   }, []);
 
   if (pull === 0 && !pending) return null;
+  return <TopRunner state={pending ? "running" : "pulling"} pull={pull} />;
+}
+
+/** The 2px line under the status band (5.5, 9.4): filling with a pull, or running while something is being read. */
+export function TopRunner({ state, pull = 1 }: { state: "running" | "pulling"; pull?: number }) {
   return (
-    <div aria-hidden="true" data-refresh={pending ? "running" : "pulling"} className="pointer-events-none fixed inset-x-0 top-[env(safe-area-inset-top)] z-40 h-[2px] overflow-hidden">
-      {pending ? (
-        <span className="absolute inset-y-0 w-1/3 bg-ink motion-safe:animate-[button-runner_1.2s_linear_infinite]" />
-      ) : (
-        <span className="absolute inset-y-0 left-1/2 -translate-x-1/2 bg-ink" style={{ width: `${Math.round(pull * 100)}%` }} />
-      )}
+    <div aria-hidden="true" data-refresh={state} className="pointer-events-none fixed inset-x-0 top-[env(safe-area-inset-top)] z-40 h-[2px] overflow-hidden">
+      {state === "running" ? <span className="absolute inset-y-0 w-1/3 bg-ink motion-loop-runner" /> : <span className="absolute inset-y-0 left-1/2 -translate-x-1/2 bg-ink" style={{ width: `${Math.round(pull * 100)}%` }} />}
     </div>
   );
 }

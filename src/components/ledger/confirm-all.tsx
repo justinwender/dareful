@@ -76,8 +76,8 @@ export function ConfirmAll({ payload, entries = [], claims = [], viewer }: { pay
   const [state, setState] = useState<"idle" | "signing" | "sending" | "done">("idle");
   const [error, setError] = useState<string | null>(null);
   const [kept, setKept] = useState<Set<string>>(() => new Set(entries.map((e) => e.dareId)));
-  // Every claim row is pressed by default (3.38); an unpressed one stays unclaimed under the name it was logged with.
-  const [keptClaims, setKeptClaims] = useState<Set<string>>(() => new Set(payload?.proposalIds ?? []));
+  // A cover someone recorded against this person starts unpressed (the owner's correction, Round D): an account holder confirms each with a deliberate yep, and an unpressed one stays pending under the name it was logged with. The person's own entries start pressed, since they made them.
+  const [keptClaims, setKeptClaims] = useState<Set<string>>(() => new Set());
   const n = (payload?.proposalIds.length ?? 0) + entries.length;
   const pressedClaims = (payload?.proposalIds ?? []).filter((id) => keptClaims.has(id));
   const pressed = pressedClaims.length + entries.filter((e) => kept.has(e.dareId)).length;
@@ -182,7 +182,7 @@ export function ConfirmAll({ payload, entries = [], claims = [], viewer }: { pay
                       {c.conceded ? <span className="text-caption text-ink-3">You said “fine, you got me.”</span> : null}
                     </span>
                   </span>
-                  {/* A 44px target holding a 24px chalk circle with the check, pressed by default (3.38); a tap unpresses it, and the row itself opens nothing. */}
+                  {/* A 44px target holding a 24px chalk circle with the check, unpressed until this person presses it (Round D); the row itself opens nothing. */}
                   <button type="button" role="checkbox" aria-checked={on} aria-label={`Confirm: ${possessive(first)} got you`} disabled={state !== "idle"} onClick={() => toggle(setKeptClaims, c.proposalId)} className="flex h-11 w-11 items-center justify-center rounded-pill">
                     {check(on)}
                   </button>
@@ -228,7 +228,7 @@ export function ConfirmAll({ payload, entries = [], claims = [], viewer }: { pay
         label="Confirm"
         low={
           <Button variant="primary" onClick={confirmAll} loading={state !== "idle"} disabled={state === "done" || pressed === 0} data-confirm-all="">
-            {n === 1 ? "Yep, that’s right" : pressed === n ? `Yep, all ${n} are right` : `Yep, these ${pressed} are right`}
+            {pressed === 0 ? "Yep, these are right" : n === 1 ? "Yep, that’s right" : pressed === n ? `Yep, all ${n} are right` : pressed === 1 ? "Yep, this one’s right" : `Yep, these ${pressed} are right`}
           </Button>
         }
       />

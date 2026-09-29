@@ -6,28 +6,33 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 import { LinkPending } from "./link-pending";
 import { NOTHING_CAME_BACK, ProblemSummary } from "@/components/ledger/problem";
+import { RUNNER_MS, STILL_GOING_MS, TRY_AGAIN_MS, waitStage, type WaitStage } from "@/lib/ui/motion";
+
+export { STILL_GOING_MS, TRY_AGAIN_MS, waitStage, type WaitStage };
 
 /**
- * docs/design.md 3.12. Six kinds, fixed heights, radius 10, no shadows, no red. Pressed is opacity 0.88 over
- * 120ms; disabled is ink-3 text with a line border and no fill. Pending is 5.2: past 300ms the label stays
- * exactly where it was, the control holds its size at 0.88, and a 2px line runs along its bottom edge; at three
- * seconds a line under it says "Still going."; at ten it becomes the 5.1 summary block with "Try again", which
- * fires the same tap again, and the control takes taps again too. A tap is never silently dropped, and nothing
- * else on the screen locks. Focus is the global 2px ink outline (5.1). At most one chalk-filled control per viewport.
+ * docs/design.md 3.12. Six kinds, fixed heights, radius 10, no shadows, no red. Pressed is set from `pointerdown`
+ * (9.4): 0.88 on a control with a fill, 0.5 on one drawn only in lines and words, released over quick. Pending is
+ * 5.2: past 300ms the label stays exactly where it was, the control holds its size at 0.88, and a 2px line runs
+ * along its bottom edge on the loop; at three seconds a line under it says "Still going."; at ten it becomes the
+ * 5.1 summary block with "Try again", which fires the same tap again, and the control takes taps again too. The
+ * stages are `waitStage`, the one set of rules a tap that goes somewhere reads as well (9.4). A tap is never
+ * silently dropped, and nothing else on the screen locks. Focus is the global 2px ink outline (5.1). At most one
+ * chalk-filled control per viewport.
  *
  * Button labels belong to this component and do not count toward a screen's type budget (1.2), which is why
  * their sizes are literal here and nowhere else.
  */
 const buttonVariants = cva(
-  "relative overflow-hidden inline-flex items-center justify-center gap-2 whitespace-nowrap select-none transition-[opacity,background-color] duration-[120ms] ease-out active:opacity-[0.88] disabled:pointer-events-none disabled:text-ink-3 disabled:border disabled:border-line disabled:bg-transparent aria-busy:pointer-events-none aria-busy:opacity-[0.88]",
+  "relative overflow-hidden inline-flex items-center justify-center gap-2 whitespace-nowrap select-none disabled:pointer-events-none disabled:text-ink-3 disabled:border disabled:border-line disabled:bg-transparent aria-busy:pointer-events-none aria-busy:opacity-[0.88]",
   {
     variants: {
       variant: {
-        primary: "bg-chalk text-on-chalk font-bold",
-        secondary: "bg-transparent border border-line-strong text-ink-2 font-semibold",
-        row: "bg-surface-2 border border-line-strong text-ink font-semibold",
-        tertiary: "bg-transparent text-ink-2 font-semibold",
-        icon: "bg-transparent text-ink",
+        primary: "bg-chalk text-on-chalk font-bold press-fill",
+        secondary: "bg-transparent border border-line-strong text-ink-2 font-semibold press-line",
+        row: "bg-surface-2 border border-line-strong text-ink font-semibold press-fill",
+        tertiary: "bg-transparent text-ink-2 font-semibold press-line",
+        icon: "bg-transparent text-ink press-line",
       },
       size: {
         primary: "h-14 rounded-button px-6 text-[17px] leading-[22px]",
@@ -57,20 +62,11 @@ function sizeFor(variant: Variants["variant"], size: Variants["size"]): Variants
   return "secondary";
 }
 
-/** The wait's stages (5.2), pure: nothing under 300ms, the runner, "Still going." at three seconds, the block at ten. */
-export type WaitStage = "none" | "pending" | "still" | "block";
-export const STILL_GOING_MS = 3_000;
-export const TRY_AGAIN_MS = 10_000;
-export function waitStage(loading: boolean, heldMs: number): WaitStage {
-  if (!loading) return "none";
-  if (heldMs >= TRY_AGAIN_MS) return "block";
-  if (heldMs >= STILL_GOING_MS) return "still";
-  if (heldMs >= 300) return "pending";
-  return "none";
-}
+/** The press kind a variant belongs to (9.4): a fill dims to 0.88, lines and words to 0.5. */
+const PRESS: Record<NonNullable<Variants["variant"]>, "fill" | "line"> = { primary: "fill", row: "fill", secondary: "line", tertiary: "line", icon: "line" };
 
 /** True once `on` has been true for `ms`. Under 300ms a wait shows nothing: a spinner that lives 180ms reads as a glitch. */
-function useHeldFor(on: boolean, ms: number): boolean {
+export function useHeldFor(on: boolean, ms: number): boolean {
   const [held, setHeld] = React.useState(false);
   React.useEffect(() => {
     if (!on) return;
@@ -83,11 +79,16 @@ function useHeldFor(on: boolean, ms: number): boolean {
   return on && held;
 }
 
+/** The wait's stage for something that has been going on, from the three timers (5.2, 9.4): one reading for buttons and shells. */
+export function useWaitStage(waiting: boolean): WaitStage {
+  const held = useHeldFor(waiting, RUNNER_MS);
+  const still = useHeldFor(waiting, STILL_GOING_MS);
+  const block = useHeldFor(waiting, TRY_AGAIN_MS);
+  return block ? waitStage(true, TRY_AGAIN_MS) : still ? waitStage(true, STILL_GOING_MS) : held ? waitStage(true, RUNNER_MS) : "none";
+}
+
 export function Button({ className, variant = "secondary", size, loading, disabled, children, onClick, type, ...props }: ButtonProps) {
-  const held = useHeldFor(Boolean(loading), 300);
-  const still = useHeldFor(Boolean(loading), STILL_GOING_MS);
-  const block = useHeldFor(Boolean(loading), TRY_AGAIN_MS);
-  const stage: WaitStage = block ? "block" : still ? "still" : held ? "pending" : "none";
+  const stage = useWaitStage(Boolean(loading));
   const pending = stage === "pending" || stage === "still";
   const long = stage === "still";
   // Past ten seconds the control takes taps again, and the block under it offers the same tap as "Try again".
@@ -99,6 +100,7 @@ export function Button({ className, variant = "secondary", size, loading, disabl
         className={cn(buttonVariants({ variant, size: sizeFor(variant, size) }), className)}
         disabled={disabled}
         aria-busy={busy || undefined}
+        data-press={PRESS[variant ?? "secondary"]}
         onClick={
           busy
             ? undefined
@@ -112,8 +114,8 @@ export function Button({ className, variant = "secondary", size, loading, disabl
       >
         {children}
         {pending ? (
-          <span aria-hidden="true" className={cn("pointer-events-none absolute inset-x-0 bottom-0 h-[2px] overflow-hidden", variant === "primary" ? "bg-[rgba(18,17,16,0.25)]" : "bg-surface-2")}>
-            <span className={cn("absolute inset-y-0 w-1/3 animate-[button-runner_1.2s_linear_infinite]", variant === "primary" ? "bg-on-chalk" : "bg-ink")} />
+          <span aria-hidden="true" className={cn("pointer-events-none absolute inset-x-0 bottom-0 h-[2px] overflow-hidden", variant === "primary" ? "bg-runner-track" : "bg-surface-2")}>
+            <span className={cn("absolute inset-y-0 w-1/3 motion-loop-runner", variant === "primary" ? "bg-on-chalk" : "bg-ink")} />
           </span>
         ) : null}
       </button>
@@ -132,9 +134,9 @@ export type ButtonLinkProps = React.ComponentProps<typeof Link> & Variants;
  */
 export function ButtonLink({ className, variant = "secondary", size, children, prefetch = false, ...props }: ButtonLinkProps) {
   return (
-    <Link prefetch={prefetch} className={cn(buttonVariants({ variant, size: sizeFor(variant, size) }), "relative overflow-hidden", className)} {...props}>
+    <Link prefetch={prefetch} data-press={PRESS[variant ?? "secondary"]} className={cn(buttonVariants({ variant, size: sizeFor(variant, size) }), "relative overflow-hidden", className)} {...props}>
       {children}
-      <LinkPending />
+      <LinkPending look="control" />
     </Link>
   );
 }

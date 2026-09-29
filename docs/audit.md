@@ -11,23 +11,14 @@ An audit of `docs/design.md` against the build, made on 2026-09-28 (Round B, par
 
 ## Planned for later rounds before submission
 
-Motion (a twelfth design session's files arrive with the next round):
+Motion (the twelfth design session's section 9). **Closed in Round D (2026-09-28):** the set as custom properties every transition reads and a lint that refuses a timing typed anywhere else; the sheet by a transform on itself over travel on the move curve; the columns, bars and number columns over travel with the 40ms stagger, the avatar over base as its column lands, the marker over base after the last; the riding mark with no transition; the marker sliding over base; the pulse and the runner on the loop; a swipe row over base on the move curve; presses from `pointerdown`; the shells; the ask layer; tabs on the touch; the market opening out of its row and back into it; the steps under a band that holds; the terms streaming with the caret; Reduce Motion in one block.
 
-- 1.6: the sheet between its two heights at 320ms on `cubic-bezier(0.2, 0.8, 0.2, 1)`; the build uses 300ms ease-out, and `--motion-sheet-height` and `--ease-sheet` are defined and unused.
-- 1.6: growth into the weight line at 700ms on the same curve; the build eases out.
-- 1.6: the mark riding the odds line at 90ms linear on font-size; no transition.
-- 3.22: re-bucketing's 200ms crossfade and the marker sliding to its place; the marker only fades.
-- 3.8: loading with no spinner before 300ms then a 1.2s opacity pulse; the frame shows a static hatch, and the empty slot names keyframes that do not exist.
-- 3.15: a row resolved elsewhere collapsing over 200ms (unverified).
-
-Light mode (section 8, with its toggle on You):
-
-- All of section 8; 1.1's Light column with `--live-edge`; the light `--live` in globals (`#8a7a00`) that 8.5 rejects; 1.5's shadow 4; 1.8's light layers; the Appearance row (3.34, 8.1).
+Light mode (section 8, with its toggle on You). **Closed in Round D (2026-09-28):** the Light column as the second set of values, chosen on You or by the phone; `--live-edge`, the citron keeping its colour; the stroke variants for people; the avatar's edge; the light grain; the eight inks' light layers on the document root; the Appearance row (3.34, 8.1). Every colour the audit found outside a token is on one, or in the palette of the two literals that never follow the theme (the tiles, the share card, the outline on a photo, a team stamp's abbreviation, the code generator's black turned to `currentColor`).
 
 Also:
 
 - 3.28: cutting a sticker inside the app (frame 5). **Closed in Round C (2026-09-28): the cut path first, the lift as the fallback.**
-- The labels that still call light mode "after submission" and pass the phone "scheduled" or "not yet scheduled".
+- The labels that still call light mode "after submission" and pass the phone "scheduled" or "not yet scheduled". **Closed in Round D:** the doc merged three ways carries dated notes at each.
 
 ## After submission
 
@@ -57,7 +48,7 @@ Also:
 
 - 4.9: example placeholders inside fields: the cover form ("Gabe", "dumpling run", "47.20", "Dinner at Sal's"), the claim's field ("The sign said 8,558 feet"), the ask form ("shirt", "shirts", "20"), the number entry ("How many"), the name step ("First name"). **Closed in Round C (2026-09-28).** Every example is gone (the cover form itself is gone, WC item 5). One placeholder stays: the even share in an adjusted split, which is the value in effect when the field is left blank, not an example.
 - 3.29, 4.9: the captions under the kind chips, where the step's one advice is "If none of them might happen, add that too."; the sticker caption in the picker, where 3.29 says stickers are taught at the photos. **Closed in Round C (2026-09-28).**
-- 4.9: the two stake-step sentences the doc keeps, "The most you can be out is what you put on it." and "You only settle with people who land closer than you, and only by the gap between your numbers.", are not on the terms step. **Round C, part 2:** the first sentence built on the stake step, the one fact that changes whether someone stakes; the second, about settling only with people who land closer, declined here and sent to the market's information sheet next round.
+- 4.9: the two stake-step sentences the doc keeps, "The most you can be out is what you put on it." and "You only settle with people who land closer than you, and only by the gap between your numbers.", are not on the terms step. **Round C, part 2:** the first sentence built on the stake step, the one fact that changes whether someone stakes; the second, about settling only with people who land closer, declined here and sent to the market's information sheet next round. **Round D:** the second sentence is on the open market's information sheet, under Rules and timing.
 - 4.9: the weight-line caption is shown always; the doc keeps it only when one stake is more than half the total. **Closed in Round C (2026-09-28).** The rule now holds on all three pictures (the weight line, the number axis, the pick-one bars); 3.22's "Everyone on one number." caption amended away.
 - 4.6: "waiting on" outside the two uses the doc allows: the group invite page, the claim landing's "Nothing is waiting on you.", the tab bar's screen-reader text, the ghost actions, the Running captions "Waiting on how it came out" and "Waiting on the other side", and the errors "It isn't waiting on an answer." and "It isn't waiting on the feed.". **Closed in Round C (2026-09-28).** The two that stay are the doc's: the nudge card (3.42) and the game page's locked line (3.33); the feed's waiting sheet lost its "Waiting on the score" label and its explaining caption too.
 
@@ -81,7 +72,7 @@ Also:
 - 3.37, 3.42: the code icon in locked, voting and settled; the build passes it only while open. **Closed in Round C by amending the doc:** a room code is dead at lock (the joining rules), so the icon is open-only; 3.42 and 3.37 amended.
 - 3.37: the claim's clip opens in a new tab rather than full screen; the memory view's consequences lack the closed mark. **The clip closed in Round C** (it opens in the album viewer). The closed mark on the memory view's consequences needs the indexer's state per edge on that screen: declined by the owner in Round C, part 2 (new data from the indexer).
 - 3.24: the number vote's "What was it?" heading; the app's read on the claim card only while nobody has voted. **Sorted in Round C:** the read sits in the sheet's header while nobody has voted and as a caption in the raised sheet after, which is the doc's rule in the sheet rather than on a card; "What was it?" over the number vote's raised sheet was built in Round C, part 2; the app's read on a claim card of its own was declined by the owner (a prominent opinion from the app invites people to rubber-stamp it instead of judging), so it stays the sheet's header.
-- 3.35: the ballot count line "Nobody has said yet. Two of you and it settles."; the waiting text past two hours; the feed-settled ruling card where the doc has one caption line; a void reason over three words; the ending's 14px glyph. **Closed in Round C:** the waiting sheet's explaining caption, the feed's ruling card (the one caption line stands) and the void reason ("unclear terms"). The count line before anyone has said ("Nobody has said yet. Two of you and it settles.") was built in Round C, part 2; the glyph's size is the feel round's.
+- 3.35: the ballot count line "Nobody has said yet. Two of you and it settles."; the waiting text past two hours; the feed-settled ruling card where the doc has one caption line; a void reason over three words; the ending's 14px glyph. **Closed in Round C:** the waiting sheet's explaining caption, the feed's ruling card (the one caption line stands) and the void reason ("unclear terms"). The count line before anyone has said ("Nobody has said yet. Two of you and it settles.") was built in Round C, part 2, and in Round D it is the count line's empty state on every ballot, under the app's read where there is one (the owner's correction).
 - 3.22, 3.38: the time series in the market's ink, the current value at 13px 600 and the day labels; the locked caption's capital mid-caption. **The capital closed in Round C** ("2 beers · locked at 10:40pm"); the series' colour and sizes are the feel round's.
 - 3.33, 3.40: "Bills won." (the build says "The Bills won."); the first drive's naming; the voting meta line with a count. **Closed in Round C:** "Bills won." on the settled lines (the wells keep "The", so the chalk reads "That’s right, the Bills won" as 3.35 has it); the voting line is the clock alone. The first drive's menu name ("The first drive" against the doc's "The Bills' first drive") is the doc's possessive of a team name, which a real session read as "the Giants's" (docs/decisions.md); left as built.
 - 3.27: the tile's close time with an extra comma. **Closed in Round C (2026-09-28).**
@@ -89,7 +80,7 @@ Also:
 ### Screens drawn and not built
 
 - 3.38: the argument ruled split (the band with no mark, the positions card, THE CALL, WHAT IT MOVES, the reference cells). **Closed in Round C by cutting it from the doc:** the tiebreaker rules yes, no or void and the contract scores against 0 or 1, so no ruling is ever split; 3.38, 3.2, 3.4 and 1.2 carry the cut.
-- 3.38: the claimant screen as drawn: the wordmark alone with no back, the prints, "You were already in 6 stories.", groups per person, a check on every row labelled "Confirm: Priya's got you". **Round C, part 2:** the headline, its line, the groups per person with their count and the check rows are built; the prints were declined (the wordmark comes with the logo, being designed now), and the back control stays for the same reason.
+- 3.38: the claimant screen as drawn: the wordmark alone with no back, the prints, "You were already in 6 stories.", groups per person, a check on every row labelled "Confirm: Priya's got you". **Round C, part 2:** the headline, its line, the groups per person with their count and the check rows are built; the prints were declined (the wordmark comes with the logo, being designed now), and the back control stays for the same reason. **Round D:** the covers start unpressed and the person's own link entries pressed (the owner's correction).
 - 3.38, 3.10, 3.14: the person view's "Coming up", the today rule, dates in `label`, "Show earlier", the rally in its own card with its label and caption, the identity caption ("43 things since March"), the starter under "Nothing between you two yet", and the resolved market's line "Priya was closest at 85%. You said 55%.". **Round C, part 2:** "Coming up" and "Show earlier" built; the rest declined by the owner (a lot of words on the most repeated element).
 - 3.4, 3.6, 3.38: the story card's "Everyone's number" label, the roll call (not built at all), "Everyone else called it even.", the "Market · asked by Priya" kicker, "Covered a round", off-the-tab covers with "Nobody's paying it back" and no consequence, argument cards, the tertiary "The whole table, and 7 more between others", frames on voided and expired cards, "Never settled.", the error card "Couldn't load this one". **The error card closed in Round C** (`ErrorCard`, the shape every failed screen takes); frames on voided and expired cards were built in Round C, part 2 (an ended market takes photos whatever its ending); the rest ("Everyone's number", the roll call, "Everyone else called it even.", the "asked by" kicker, "Covered a round", "Nobody's paying it back", argument cards, "The whole table, and 7 more between others", "Never settled.") were declined by the owner: a lot of words on the most repeated element in the app.
 - 3.38: pick one's who's-got-who collapse past three rows, ending "Everyone else called it even.". **Built in Round C, part 2 (2026-09-28).** At most three rows under one person, the rest in one caption naming them; the list keeps its "Called it even:" caption, since "Everyone else called it even." was declined.
@@ -97,17 +88,17 @@ Also:
 
 ### Components at the wrong size or shape
 
-- 3.1: the ghost ring is on the edge, not 2px outside.
-- 3.2, 2.2: the fraction state ("½ ×") and the Mixed token; whole dollars in lists (the build shows cents in tokens).
-- 3.3: the selected style of word chips (the kind chips, the picker's categories); stake chips at radius 999 and 13px instead of radius 10 and 17px 600; the smallest not selected when the sheet raises; "Something else" not swapping the row.
-- 3.5: the call line's cluster past six, the cap's height, "Yes, he did" labels, the track on the market's field.
-- 3.7: the gap bar's track on the field; the annotated line.
-- 3.10: the header's padding per column; the cancel-out row and its sheet's words; "Gabe settled up"; the photo row's action.
-- 3.11: the rally avatar at 24px (the build has 22px).
-- 3.19: the dashed chip for an unnamed set on event rows.
-- 1.7: the unit mark in "Your units" (28px at radius 8 with a 16px glyph).
-- 2.2: the argument and coming-up glyphs, unused.
-- 1.1: the grain as one fixed layer (the build paints it on the body). 1.5: the modal sheet's translucent scrim.
+- 3.1: the ghost ring is on the edge, not 2px outside. **Closed in Round D (2026-09-28):** the dashed ring 2px outside.
+- 3.2, 2.2: the fraction state ("½ ×") and the Mixed token; whole dollars in lists (the build shows cents in tokens). **Closed in Round D:** the fraction state was cut with the split ruling (3.38); the Mixed token in one pill with `splitMixed` past what fits; whole dollars in every token, the cents in the accessible name and on the detail sheet.
+- 3.3: the selected style of word chips (the kind chips, the picker's categories); stake chips at radius 999 and 13px instead of radius 10 and 17px 600; the smallest not selected when the sheet raises; "Something else" not swapping the row. **Closed in Round D:** the choice chips' fill, border and ink; the stake chips at 44px, radius 10, 17px 600, the selected one chalk; the smallest by default; "Something else" swapping the row for the field.
+- 3.5: the call line's cluster past six, the cap's height, "Yes, he did" labels, the track on the market's field. **Closed in Round D:** two stacked avatars and "+N" past six within six points; the cap 8px taller than the pins; the outcome's label from the settled lines ("Yes, he did"); the track on the field.
+- 3.7: the gap bar's track on the field; the annotated line. **Closed in Round D:** the track on the field; one annotated line per screen naming who a wrong-sided number still beat.
+- 3.10: the header's padding per column; the cancel-out row and its sheet's words; "Gabe settled up"; the photo row's action. **Closed in Round D:** 14 by 16 per column; the row in `body` 600 with its caption and a 44px "Cancel out"; the sheet's chalk "Cancel out $10 each way" and "Not now"; the notice "Gabe settled up"; the photo row with the camera glyph and a 44px "Add".
+- 3.11: the rally avatar at 24px (the build has 22px). **Closed in Round D.**
+- 3.19: the dashed chip for an unnamed set on event rows. **Closed in Round D:** a story card on a person view names an unnamed set by its people on a dashed chip.
+- 1.7: the unit mark in "Your units" (28px at radius 8 with a 16px glyph). **Closed in Round D.**
+- 2.2: the argument and coming-up glyphs, unused. **The coming-up glyph closed in Round D** (it leads "Coming up" on the person view); the argument glyph waits with the argument cards the owner declined.
+- 1.1: the grain as one fixed layer (the build paints it on the body). 1.5: the modal sheet's translucent scrim. **Closed in Round D:** the grain is a fixed layer of the shell over `html`'s ground; a modal sheet's backdrop takes the touches and dims nothing.
 
 ### The link page and asking
 

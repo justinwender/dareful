@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ProblemSummary } from "@/components/ledger/problem";
 import { pickInkAction } from "@/lib/actions/markets";
-import { INK_NAMES, INKS, type InkName } from "@/lib/ui/ink";
+import { INK_NAMES, inkColorVar, type InkName } from "@/lib/ui/ink";
 
 const NAME: Record<InkName, string> = { clay: "Clay", ochre: "Ochre", olive: "Olive", sea: "Sea", slate: "Slate", iris: "Iris", plum: "Plum", rose: "Rose" };
 
@@ -40,7 +40,7 @@ export function InkPicker({ dareId, current }: { dareId: string; current: InkNam
               }
               className="flex h-11 w-11 items-center justify-center rounded-pill"
             >
-              <span aria-hidden="true" className="block h-7 w-7 rounded-pill" style={{ background: INKS[name].ink, boxShadow: on ? "0 0 0 2px var(--ground), 0 0 0 3.5px var(--ink)" : undefined }} />
+              <span aria-hidden="true" className="block h-7 w-7 rounded-pill" style={{ background: inkColorVar(name), boxShadow: on ? "0 0 0 2px var(--ground), 0 0 0 3.5px var(--ink)" : undefined }} />
             </button>
           );
         })}

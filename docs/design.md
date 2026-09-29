@@ -23,10 +23,14 @@ below match the artboards:
   `Notices`; `WhatsOnStates`; `FeedBallot`; and `WhatsOnFlow`, starting a game with one
   question), You (`You`; `YouEarly`), two rows for the eleventh session (`OneTap`, `ShareIcons`,
   `AddPhotos`, `Explainers`, `CutList`, `GotThisOne` and `CallOff`; then `Holdouts`,
-  `PickOneSheet`, `NamedSubject`, `StickerFromPhoto`, `OnItsWay` and `WhosIn`), a row for what
-  is drawn and scheduled for the round after this one (`PassThePhone`), a row for the contract redeploy only
-  (`SpreadRedeploy`), which must not be built before it, and a last row for after submission,
-  the light theme (`LightScreens`, `LightRules`).
+  `PickOneSheet`, `NamedSubject`, `StickerFromPhoto`, `OnItsWay` and `WhosIn`), two rows for the
+  twelfth session, motion (`MotionSet`, `Shells`, `TabsInstant`, `Presses`, `SheetMotion`,
+  `ReducedMotion` and `MotionLayers`; then `OpenMarket`, interactive, `OpenMarketFrames`,
+  `OpenFrom`, `AskSteps`, interactive, and `AskStepsFrames`), a row for the thirteenth session,
+  the information sheets and the opening (`InfoCorner`, `InfoSheet`, `InfoRules`, `Opening` and
+  `OpeningSpec`), a row for pass the phone (`PassThePhone`, built in Round B, part 3), a row for
+  the contract redeploy only (`SpreadRedeploy`), which must not be built before it, and a last
+  row for the light theme (`LightScreens`, `LightRules`, built in Round D).
 
 Market colours on boards other than `Inks` and `MarkPicker` are illustrative and were drawn
 before the emoji ink table existed (1.8). Where a board and `src/lib/ui/emoji-inks.json`
@@ -38,122 +42,64 @@ what happens after a market ends and the memory it leaves (3.37), and the rest o
 (3.38). Where a board is older than its text, 3.38 says so, and the text wins.
 
 Target: mobile web, installable as a PWA, 390px reference width. Tailwind plus shadcn/ui. Dark
-is the default and only shipped theme for v1. The light theme is specified in section 8, to be
-built after submission.
+is the default theme, and the light theme specified in section 8 ships beside it (built 2026-09-28,
+Round D), following the phone's setting, with an Appearance row on You.
 
 ### What changed in this revision
 
-This revision covers the eleventh design session only. Everything not listed here is unchanged
-from the copy in the repository, including the five amendments dated 2026-09-27, which stand as
-written; two boards now match them (`WhatsOnFlow`'s tie row reads "It's void.", and `WhoWins`
-marks the tie at the middle for the redeploy). Each item says what it asks of existing code. The
-session's aim is a product that explains itself less and keeps its actions in fewer places, with
-structure doing the work that sentences were doing.
+(Merged 2026-09-28, Round D: the twelfth and thirteenth sessions worked from the copy that
+preceded Round A, and their combined file was merged three ways onto the repository's copy, which
+carries every dated amendment since; the seams and how each was resolved are in
+docs/decisions.md, "Round D". Where a session's words and a later ruling disagreed, the ruling
+stands, dated in place.)
 
-1. One tap (new 3.41; 3.34, 3.24). Routine actions (settling, calling it even, saying yep,
-   getting in) can go through on the tap alone, with no second step, once the person says so.
-   The ask comes once, after the first routine action has gone through, in the sheet it was made
-   from: "Skip this step next time?", what it covers, that voting always asks, and where to turn
-   it off. No changes nothing and is never asked again. Nothing happens without a tap, the
-   wallet provider never shows a screen of its own, and a row on You, "One tap", has a switch
-   that always says what is true: if the delegated share stops working, routine actions quietly
-   go back to their step and the switch shows off. Built code: a recorded consent before the
-   delegated share signs anything, the ask, the row, and the silent fallback.
-2. Sharing in one place (new 3.42; 3.24, 3.25, 3.27, 3.37). "They're right here: show a code",
-   "Send the link", "Copy" and "Send how it ended" become icons at the end of the who's-in row:
-   share, copy, a code to scan, and pass the phone, which explains itself once the first time
-   it's tapped and ships with item 12 (until then the row has three). With four icons, the count
-   sits under the stack. The icons show wherever you're in, and on the settled screen for anyone
-   who can see it, where share sends the result. While you're the only one in, share is the
-   screen's chalk. Built code: the "you're in" and settled sheets go (item 3); the code to scan
-   is a new modal.
-3. Photos, one slot (3.8, 3.24, 3.25, 3.37, 3.39). While a market is open and you're in, adding
-   photos looks exactly like adding them after it ends: the same slot, then the same frame and
-   strip, placed last on the screen. Once it ends, they move up under the outcome. With photos,
-   a dashed add tile ends the strip. "Yours from tonight" is gone. The settled, voided, expired
-   and memory screens have no sheet at all. Built code: those sheets are removed, and the open
-   market's photo control is the settled one, placed last.
-4. Fewer sentences (4.9, 4.10; 3.14, 3.16, 3.17, 3.20, 3.21, 3.24, 3.25, 3.26, 3.29, 3.32, 3.33,
-   3.34, 3.38). Every explainer paragraph and example placeholder the brief named is gone, the
-   same test was run over every screen, and `CutList` lists each cut with what does its job now.
-   The draft's paragraph becomes a dashed band edge, "Not sent yet" and "For the Friday crew"
-   (3.25). The notifications offer becomes "Want a heads-up?" over two marked rows and "Turn on
-   notifications" (4.10). "John was out" leaves the claim's field, which is empty under "What
-   happened?" (3.24). "Put your number on it" appears nowhere. The compact code field is six
-   boxes (3.16). 4.9 gains two rules, that an example never sits inside a field and that the app
-   asks one thing at a time, and its keep list gains this revision's few lines. Built code: copy
-   and markup.
-5. I got this one (new 3.43; 3.29, 6.1 to 6.3). Logging a cover moves from the Start sheet to
-   the person view, where "I got this one" rests at the bottom as the page's one move. Raised:
-   what, how many, who picks up next (shown as the token it will make), a photo, and one primary
-   that says it ("I got Gabe a beer"). The + now only asks: it opens the question step, which
-   carries "Got a code?" at its top right. The Start sheet no longer exists. Built code: the
-   sheet and its routes go; the cover flow's first step moves into the person view's sheet.
-6. Removing a market nobody joined, and archiving a finished one (3.15; 1.1, 3.12, 3.23, 3.34,
-   4.7, 5.1). On Now, a market only you are in swipes left to a red remove, which asks once,
-   takes it off Now, and counts against nobody. A finished market in Just happened swipes left
-   to an amber archive, which asks once and takes it off Now and nowhere else. Nothing on a
-   market's screen ends it. The red and the amber exist for these two swipe actions only. Built
-   code: the swipe rows, an asker-only early void (3.15 says what to do if the contract can't
-   end a market before its close), and an archive flag per person.
-7. Holdouts (3.42; 3.1, 3.22, 3.31, 3.38, 4.6). The people still out are dashed avatars after
-   the stack, and the count says "4 of 6 in". Closing early is the asker's quiet tertiary "Close
-   it with 4", never the primary while the close is still ahead, and it asks once, naming who it
-   leaves out. Blind markets change: once you're in you see everyone's so far, and your answer
-   is final, which one line in the entry sheet says before anyone commits. Built code: blind's
-   reveal moves from lock to entry, Change goes on blind markets, and the early close is demoted
-   and renamed.
-8. The pick-one sheet (3.30). It opens raised, since picking is the move, and lowers to a bar
-   ("Pick one" and the count of answers, or your pick) so the terms behind six answers can be
-   read. Built code: the sheet's second height.
-9. A named subject (new 3.44). When a question names someone or something the app can't place,
-   the careful step opens with one tap-to-answer question, "Nova is" a person, a pet, or
-   something else, and then asks the careful questions written for that answer. Built code: the
-   subject's kind is an input to the careful write-up.
-10. A sticker from a photo (3.28, 3.38). The full-screen photo carries "Make a sticker". If the
-    phone's own lift works inside the installed app, the entry is a guided path (hold, Copy,
-    then Paste here) ending in "In your stickers" and "Ask something with it". If it doesn't,
-    the viewer ships without the entry, and after submission the entry returns with tap-to-cut.
-    Built code: one check on a real iPhone decides which; the paste path exists.
-11. On its way (3.23, 5.2; 3.13, 3.15, 4.7). A tap can take longer than a second to go through
-    now. The screen moves on, and the result is marked On its way, a turning quarter of a ring,
-    until it's through. A miss is marked Didn't go through with "Try again" beside it, in the
-    place it happened, and becomes a Needs you row. No wallet, transaction, gas, signature,
-    chain or token anywhere. Built code: an optimistic state and a failed state per routine
-    action.
-12. Pass the phone (new 3.45, scheduled for the round after this one, before submission). A friend with an account, who set up One tap
-    and a PIN on their own phone, can enter on yours from the fourth icon on the who's-in row.
-    It runs the same steps as the link page (item 13): the entry as anyone sees it, "Who's
-    joining?" (pick yourself, then your PIN), a clear handback, and a notice on their own phone,
-    "You entered this from Sam's phone". It waits on the developer confirming that entering is
-    signed by the delegated share. Built code: none this round; the who's-in row shows three
-    icons until it is built.
-13. Arriving from a link (3.17; 3.1, 3.27, 3.38, 3.42, 4.9, 6.3). The page someone without an
-    account lands on was built with three departures, all kept with changes. No code is texted:
-    the number is how their entries find them when they later sign in, and the claim screen lets
-    them keep what it found; the caption says so in plain words. A name field whose suggestions
-    ("Is one of these you?") appear only once its first letters are typed, where a picked name
-    needs the number it joined with, so taking someone else's is unlikely and says so when it
-    happens; someone without an account is a stone avatar with a dashed ring everywhere. Stake
-    chips at entry, the same as for everyone. A typed name counts at once, and before the lock
-    the asker can remove an entry from someone without an account, from the who's-in list the
-    avatar stack opens. The page names the asker and the group; the link preview still names
-    only the asker. The link, the code and passing the phone now run as one flow. Built code:
-    suggestions wait for typing and match on the number, the stone avatar, the new caption, the
-    who's-in list with Remove, and the claim screen at sign-in.
-14. Canvas. Fourteen new boards in three rows under You: items 1 to 6, items 7 to 11 with 13's
-    `WhosIn`, and `PassThePhone` in a row of its own, marked for the round after this one. `JoinLink` is
-    redrawn as seven frames in the screens row, and the boards to its right move over. Every
-    existing board these items touch is redrawn to match rather than marked older than the text:
-    `MarketDock` and `PickOneMarket` (no sheet once you're in), `DockStates`, `Leaderboard`,
-    `Memory`, `SettledPhotos`, `OpenPhoto`, `BlindSlow`, `InkCompare`, `Split`, `PickOneEntry`,
-    `PickOneResolve`, `SpreadRedeploy`, `LightScreens`, the What's on boards (`WhatsOn`,
-    `WhatsOnStates`, `FeedBallot`, `WhatsOnFlow`, `GamePage`, `WhoWins`, `Margin`, `Endings`),
-    `FirstRun`, `Main`, `You`, `YouEarly`, `Ask`, `Join`, `Claim`, `MarkPicker`,
-    `MarkPickerFrames`, and the spec boards `System2`, `WeightSpec`, `Nav` and `Marks`. `Now`
-    changes only in its button's accessible name. The export at
-    `docs/design/reference/design.html` is regenerated, and it was opened in a browser to check
-    that every board draws.
+This revision covers the thirteenth design session, the information sheets and the opening,
+only. It builds on the twelfth session's copy, the one with section 9 on motion, and the
+developer applies both onto the repository's file together. Everything not listed here is
+unchanged from that copy. Almost all of it is the new sections 10 and 11; other sections change
+only where these need them to, and each is named below. Each item says what it asks of existing
+code.
+
+1. An information icon on every screen (new 10.1 to 10.3; 3.17, 3.29, 3.38, 6.3, 6.4). For the
+   hackathon, every full screen a person can look around carries a 22px circled-i at its top
+   right, in `--ink-2`, named "What you can do here"; modal sheets, pass the phone's PIN steps,
+   the opening, the camera and system prompts don't. The icon owns the corner on every screen,
+   and whatever sat there moves one place left, into the same header row: More on a market, a
+   person view, a game page and the signed-in link page; "Got a code?" on Now and on the
+   question step. The full-screen photo's close moves to the top left and its counter to the
+   centre. The four roots gain a 56px header row for the hackathon. 10.3's table says where each
+   returns once the icon goes. Built code: the icon in every screen's header, the moved
+   controls, and the roots' header row.
+2. The rules for the sheets, and the worked example (new 10.4 to 10.8; 4.9, 9.11, 9.13). The
+   sheet is a modal sheet on the current place's surface that opens to 88% of the screen at
+   most, with a pinned header (the screen's name and a close), then the fixed line, then up to
+   four groups in a fixed order: Gestures, Icons, Rules and timing, Everything else. An entry is
+   a term of five words at most and one sentence of 90 characters at most, with an optional
+   qualifier; a sheet holds sixteen entries at most. Gestures and icons are named by fixed
+   words; a label the screen already shows is never narrated. The fixed line, word for word:
+   "This sheet is here only for the hackathon, so every feature on every screen can be seen." It
+   moves as a modal sheet (9.9) and follows the light theme by the token swap. 10.8 writes the
+   sheet for a market while it's open, fifteen entries, with the swaps for number and pick-one
+   markets. 4.9 now says the sheets sit outside its rule, since nobody meets one without asking.
+   Built code: the sheet component, one sheet per screen and state written from the code, and
+   the lint over them.
+3. The opening (new 11; 8.1, 9.11, 9.13). The launch image, the app's first frame and the
+   handoff to Now are one picture: the flat ground with the logo at the centre, then a fade into
+   Now. The logo is a 120 by 120 CSS px placeholder, centred on the full screen, which the real
+   logo replaces without anything else moving. iOS needs a launch image per iPhone size, in a
+   dark and a light set, or it shows white; the first frame is inline HTML and style that
+   repeats it exactly, in the phone's own scheme; once Now's shell has painted, the logo fades
+   over quick and the ground over base. Nothing travels, nothing waits for data, and the logo is
+   never held for show. Built code: the startup images and their link tags, the inline head
+   style and `#opening` element, the viewport meta, and the handoff.
+4. Canvas. A row under the motion rows: `InfoCorner` (the header row of every screen during and
+   after the hackathon), `InfoSheet` (the worked example in six frames, four dark and two
+   light), `InfoRules` (the sheet's anatomy, its words, and the example unrolled in dark and
+   light), `Opening` (the sequence in dark and in light) and `OpeningSpec` (the placeholder's
+   size and place, the timeline and the head). Existing boards are not redrawn with the icon,
+   which is added by rule (10.3); 4.8 gains rows for the new boards. The export at
+   `docs/design/reference/design.html` is regenerated, and it was opened in a browser to check
+   that every board draws.
 
 ---
 
@@ -163,8 +109,8 @@ structure doing the work that sentences were doing.
 
 Root is 16px. All colors are opaque hex unless an alpha form is given.
 
-The Light column is not shipped before submission. It is the value half of the light theme;
-section 8 gives the rules that are not a value swap, and they win where the two differ.
+The Light column ships (Round D, 2026-09-28). It is the value half of the light theme; section
+8 gives the rules that are not a value swap, and they win where the two differ.
 
 | Token | Dark | Light | Used for |
 | --- | --- | --- | --- |
@@ -363,15 +309,18 @@ translucency, and they carry no blur.
 
 - Minimum hit target 48px. Primary action 56px. Inline secondary action 44px.
 - An icon-only control may be drawn at 28px, but its tappable box is 44px via padding.
-- Taps: 120ms ease-out on opacity and background. Screen transitions and a sheet opening: 200ms
-  ease-out. Media opens at 240ms.
-- The sheet moving between its two heights: 320ms `cubic-bezier(0.2, 0.8, 0.2, 1)`, and none
-  while a finger is dragging it.
-- The odds line growing into the weight line on entry: 700ms on the same curve (3.13).
-- The mark riding the odds line: 90ms linear on font-size, so it tracks the finger without lag.
+- Motion: section 9. Three durations (quick 120ms, base 200ms, travel 320ms), three curves
+  (move, leave, fade), a 40ms stagger and a 1.2s loop; nothing moves on any other timing (9.1).
+- The sheet moving between its two heights: 320ms `cubic-bezier(0.2, 0.8, 0.2, 1)` (travel on
+  the move curve), and none while a finger is dragging it (9.9).
+- The odds line growing into the weight line on entry: each segment over 320ms on the same
+  curve, 40ms after the one to its left (3.13, 9.10).
+- The mark riding the odds line follows the finger with no transition, so it never lags; a tap
+  that places the value moves it over 120ms (9.10).
 - No parallax, no confetti, no celebratory animation on a resolution. The settled screen is not
   a win screen.
-- Respect `prefers-reduced-motion`: drop the transitions, keep the state changes.
+- Respect `prefers-reduced-motion`: drop the travel, keep the state changes; 9.11 gives each
+  transition's quieter version.
 
 ### 1.7 Marks
 
@@ -497,7 +446,7 @@ market row, so balance can be checked without re-reading any pixels.
 Arguments get an ink the same way, which usually means a hash, because most arguments have no
 mark.
 
-The light theme's layers for all eight inks are in 8.4, for after submission.
+The light theme's layers for all eight inks are in 8.4, built in Round D.
 
 ---
 
@@ -632,6 +581,8 @@ States:
   halves.
 - **Mixed**: glyphs, then quoted words, then the rule, then dollars. If the pill would exceed
   the row width, drop to two stacked tokens on the owner's side rather than shrinking type.
+  (Built 2026-09-28, Round D: one pill while up to three parts fit, the non-money parts beside the
+  dollars; past that a second token under the first, dollars always in the last, `splitMixed`.)
 - **Custom word too long**: truncate the quoted word at 18 characters with an ellipsis inside
   the closing quote, full text in the `aria-label` and in the detail sheet.
 - **Unconfirmed** (claimant has not said yes): border becomes 1px dashed `--line-strong`, hue
@@ -915,8 +866,10 @@ events total** (hide the rally entirely; it needs a pattern to show one); **all 
 | Tertiary | 44 | 0 | none | `--ink-2`, 13 to 15px 600 |
 | Icon only | 48 | 999 | transparent | `--ink`, glyph 22-24px, `aria-label` required |
 
-States: **pressed** (opacity 0.88, 120ms); **disabled** (`--ink-3` text, 1px `--line` border, no
-fill, `aria-disabled`, no opacity trick); **pending** (5.2); **destructive** (secondary styling,
+States: **pressed** (opacity 0.88 on a control with a fill and 0.5 on one drawn only in lines
+and words, the secondary, tertiary and icon-only kinds, set from `pointerdown` in the same frame
+and released over 120ms, 9.4); **disabled** (`--ink-3` text, 1px `--line` border, no fill,
+`aria-disabled`, no opacity trick); **pending** (5.2); **destructive** (secondary styling,
 `--ink` text, and a confirmation sheet; no red, apart from the swipe-to-remove square on Now,
 3.15).
 
@@ -979,13 +932,13 @@ mark, "Didn't go through" and what was tried, "70%, 2 beers", with a 44px "Try a
 weight line and the icons leave, since you are not in, 5.2).
 
 **Entering, as a moment.** Confirming lowers the sheet over 320ms, which carries the stake row
-away. Then every segment grows from 6px to its column height over 700ms, your share of your
-column fills in your hue, your avatar rises to sit above your column, and the group's marker
-draws last. At about 1.8s the sheet goes, since once you're in nothing is your move, and the
-screen gains the entry line, "You're in at 70%", with the full weight line under it and the
-icons at the end of the who's-in row (3.42). No toast, no navigation. With
-`prefers-reduced-motion`, the resting state renders at once. The growth is the reveal as well as
-the receipt: other people's weight is never visible before you are in.
+away. Then every segment grows from 6px to its column height, each over 320ms and 40ms after the
+one to its left (9.10), your share of your column fills in your hue, your avatar rises to sit
+above your column, and the group's marker draws last. At about 1.8s the sheet goes, since once
+you're in nothing is your move, and the screen gains the entry line, "You're in at 70%", with
+the full weight line under it and the icons at the end of the who's-in row (3.42). No toast, no
+navigation. With `prefers-reduced-motion`, the resting state renders at once. The growth is the
+reveal as well as the receipt: other people's weight is never visible before you are in.
 
 ### 3.14 Empty and first-run states
 
@@ -1113,7 +1066,9 @@ that there is something to look at, because a preview is what gets forwarded fur
 outlives the chat it was sent to. Neither says what anyone picked or what it could cost.
 
 - **Header**: the wordmark on the left and nothing on the right when they are not signed in,
-  because there is nowhere in the app to go back to. Signed in, the normal back and more.
+  because there is nowhere in the app to go back to. Signed in, the normal back and more. For
+  the hackathon the information icon takes the right-hand corner in both, with More beside it
+  (10.3).
 - **Content** (frame 1): the question band (mark, state and close time, the question, "Priya
   asked the Friday crew"), the who's-in row before you're in, with a plain count ("Four friends
   are in"), and a `dl` of two facts: Decided, and How it works ("Everyone puts in their odds.
@@ -1464,7 +1419,8 @@ goes with the sheet.
 
 **One-time asks borrow the sheet.** The two things the app asks once, One tap (3.41) and the
 heads-up (4.10), appear in the sheet of the moment they belong to, or, on a state with no sheet,
-as a modal sheet in the same place. Never both in one moment (4.9).
+as a modal sheet in the same place. Never both in one moment (4.9). (Amended 2026-09-28: the One
+tap ask is dropped, 3.41; the heads-up is the one ask left.)
 
 **Saying what happened.** A well raises the sheet to the claim: the outcome chosen, in the
 market's words, at the top; then an optional line: "What happened?" in `label` over an empty
@@ -1631,8 +1587,8 @@ their stake. So the sheet blocks a number at or past a limit, and there is no wa
 - The limit applies to entries only. Saying what happened on a number market is never blocked.
 
 **Entering, as a moment.** The odds line's moment, unchanged: the sheet lowers, then the columns
-grow from the baseline over 700ms, your share fills in your hue, your avatar rises above your
-column and the marker draws last.
+grow from the baseline, each over 320ms and 40ms after the one to its left (9.10), your share
+fills in your hue, your avatar rises above your column and the marker draws last.
 
 **No range, and the scoring scale stays out of sight.** The field never shows a range and never
 clamps to one. Telling people to pick inside a range puts an answer in their mouths, and its
@@ -1810,12 +1766,13 @@ and `MarkPickerFrames` (nothing picked, a mark with a colour, a hueless mark, do
 on it is an existing part: the question band (3.25), the stamp (1.7, 3.9), the sheet (3.24) and
 chips (3.3). This step is what makes an ink mean something.
 
-**The step.** Header: the 48px back control on the left and, on the right, a 44px tertiary "Got
-a code?" in `--ink-2`, which opens the code screen (3.16). The + only asks (6.1), so joining
-someone else's question starts from the same place as asking one. There is no step counter. Then
-the question band on the market's field, which is the neutral `--surface-2` until a mark is
-picked: 12px from the screen edges, radius 12, 16px padding (20 at the bottom), 16px between its
-two parts.
+**The step.** Header: the 48px close control on the left, a down chevron, because the step rises
+from the + (9.5), and, on the right, a 44px tertiary "Got a code?" in `--ink-2` (for the
+hackathon, directly left of the information icon, 10.3), which opens the code screen (3.16). The
++ only asks (6.1), so joining someone else's question starts from the same place as asking one.
+There is no step counter. Then the question band on the market's field, which is the neutral
+`--surface-2` until a mark is picked: 12px from the screen edges, radius 12, 16px padding (20 at
+the bottom), 16px between its two parts.
 
 - **The mark row**, one button with `aria-haspopup="dialog"`: the 64px stamp, then "Add a mark"
   in `body` 600 over "Optional" in `caption` `--ink-2`. What a mark does is shown by the retint
@@ -1951,9 +1908,10 @@ reopens the sheet with your pick selected and "Never mind" beside "Save: Priya, 
 Failing to send and locking are the odds line's states (3.13).
 
 **Entering, as a moment.** The sheet lowers over 320ms and goes, since once you're in nothing is
-your move (3.24). Then the bars (3.31) grow from the left over 700ms, your stake fills in your
-hue on your pick's bar, your 22px avatar appears on its row, and the shares fade in last (300ms,
-starting at 600ms). With `prefers-reduced-motion`, the resting state renders at once.
+your move (3.24). Then the bars (3.31) grow from the left, each over 320ms and 40ms after the
+one above it (9.10), your stake fills in your hue on your pick's bar, your 22px avatar appears
+on its row, and the shares fade in last, over 200ms as the last bar lands. With
+`prefers-reduced-motion`, the resting state renders at once.
 
 Unchanged from the last revision: the answers editor and its "If none of them might happen, add
 that too." (3.29), and voting on which answer happened, with "I couldn't tell" as the vote to
@@ -2263,6 +2221,11 @@ band, a tertiary "Measure the screen" sits under the card; it leaves with the ca
 submission, an "Appearance" row joins the card (8.1). When pass the phone is built (3.45, the
 round after this one), "Your PIN for a friend's phone" joins it under One tap; until then it is
 not drawn on `You`.
+
+(Amended 2026-09-28, Round D, built: the "Appearance" row is in the card between "Your number"
+and "Pass the phone", captioned with the current choice ("Match your phone", "Always dark",
+"Always light"), opening the three-row sheet of 8.1; the PIN is set inside the pass-the-phone
+flow, so no PIN row is drawn.)
 
 (Amended 2026-09-27, built. The screen is as above, with three readings: the "One tap" row is
 not drawn, since pass the phone takes its place (built 2026-09-28: the row "Pass the phone" with the
@@ -2675,11 +2638,13 @@ screen (a signed-out link, the claimant screen). On tiles it is 32px in ink-hi, 
 left and 44px from the bottom. It is a logo, outside the type budget.
 
 **The full-screen photo.** Opened from a frame or a strip square: black, the photo fitted, a
-13px 600 counter ("2 / 5") at the top left and the 48px close at the top right, the credit chip
-at the photo's bottom left, and under it, 44px icon buttons with their words in `caption`: "Make
-a sticker" (3.28, when the phone can lift) and "Save" (named "Save to your phone", through the
-share sheet, 3.39). For your own memory, "Remove" joins them. Swipes move through the market's
-photos in the frame's order. Board: `StickerFromPhoto`.
+13px 600 counter ("2 / 5") at the top left and the 48px close at the top right (for the
+hackathon, the close moves to the top left, the counter to the centre of the row, and the
+information icon takes the top right, 10.3), the credit chip at the photo's bottom left, and
+under it, 44px icon buttons with their words in `caption`: "Make a sticker" (3.28, when the
+phone can lift) and "Save" (named "Save to your phone", through the share sheet, 3.39). For your
+own memory, "Remove" joins them. Swipes move through the market's photos in the frame's order.
+Board: `StickerFromPhoto`.
 
 ### 3.39 A photo while the market is open
 
@@ -3083,12 +3048,12 @@ on the canvas; where the build's card differs, the build's card wins.
 "something else", the tap answering; the collapsed line with Change; and the sheet "Next: who's
 in" on the careful step. The step's heading and its explaining line are gone.)
 
-### 3.45 Pass the phone (scheduled: the round after this one, before submission)
+### 3.45 Pass the phone (built: Round B, parts 2 and 3, 2026-09-28)
 
 Drawn ready. The owner scheduled it on 2026-09-27 for the round after this one, before
 submission, together with One tap (3.41), on the developer confirming that entering is signed by
-the delegated share. Board: `PassThePhone`; its NOT YET SCHEDULED banner predates the scheduling,
-and the who's-in row shows three icons until it is built (3.42).
+the delegated share. Board: `PassThePhone`; its NOT YET SCHEDULED banner predates the build, and
+the who's-in row shows the fourth icon (3.42).
 
 The case: at the table, one person has the market open, and a friend whose phone is dead, or in
 a coat, wants in. Passing the phone should take the friend under a minute and leave nothing of
@@ -3440,7 +3405,7 @@ The canvas after this revision, outside controls and tokens:
 | `WhoWins`, all five | 13 · 15 · 17 · serif 26 | 4 |
 | `Margin`, all three | 13 · 15 · 17 · serif 26 | 4 |
 | `Endings`, all four | 13 · 15 · 17 · serif 26 | 4 |
-| `LightScreens` (after submission) | the same sizes as `Now`, `OpenPhoto` frame 3 and `Leaderboard` | 3, 3 and 4 |
+| `LightScreens` (built in Round D) | the same sizes as `Now`, `OpenPhoto` frame 3 and `Leaderboard` | 3, 3 and 4 |
 | `DockStates`, all seven | 13 · 17 · serif 26 | 3 |
 | `PickOneMarket` | entering: 13 · 17 · serif 26; in: 13 · 15 · 17 · serif 26 | 3, then 4 |
 | `PickOneEntry`, frames 1 to 5 | 13 · 17 · serif 26, plus 15 once the shares show (frame 4) | 3 or 4 |
@@ -3464,8 +3429,19 @@ The canvas after this revision, outside controls and tokens:
 | `NamedSubject`, all three | 13 · 17 · serif 26 at most (the answers are controls) | 2 |
 | `StickerFromPhoto`, all five | 13 · 15 · 17 at most | 1 to 3 |
 | `OnItsWay`, the four phones | 13 · 15 · 17 · serif 26 at most; Now 13 · serif 17 | 2 or 3 |
-| `PassThePhone` (the round after this one) | 13 · 15 · 17 · serif 26 at most | 2 to 4 |
+| `PassThePhone` (built) | 13 · 15 · 17 · serif 26 at most | 2 to 4 |
 | `WhosIn`, all four | 13 · 17 · serif 26, plus 15 in the remove sheet | 3 or 4 |
+| `Shells`, all eleven | 13 · 15 · 17 · serif 26 at most; a shell draws less than its screen | 0 to 4 |
+| `TabsInstant`, all four | 13 (the rows and the bar are controls) | 1 |
+| `SheetMotion`, all six | 13 · 17 · serif 26 | 3 |
+| `OpenMarketFrames`, all fifteen | 13 · 15 · 17 · serif 26 at most; a frame caught mid-transition shows two screens, each inside its own budget | 1 to 4 |
+| `OpenFrom`, all nine | 13 · 15 · 17 · serif 26 at most | 1 to 4 |
+| `AskStepsFrames`, all eighteen | 13 · 17 · serif 26 at most | 1 to 3 |
+| `ReducedMotion`, all eight | 13 · 15 · 17 · serif 26 at most | 2 to 4 |
+| `OpenMarket`, `AskSteps` (interactive) | As their frames boards | 1 to 4 |
+| `InfoCorner` | The strips are header rows, 13 at most (their controls aren't counted); the phones in place, 13 · 17 · serif 26 at most | 0 to 3 |
+| `InfoSheet`, all six | 13 · 17 · serif 26; with the sheet open, plus 15 | 3, then 4 |
+| `Opening`, all ten | None in the launch image and first frame (the placeholder's label is board annotation); Now: 13 | 0 or 1 |
 
 The screens at the cap each read as one serif line, a subject line, a supporting line and
 metadata, which is the shape the cap is meant to allow. What's on's lists carry no serif at all,
@@ -3520,6 +3496,8 @@ The product may not say wallet, transaction, gas, signature, chain or token, whi
 mechanism had to be explained in plain language, and those explanations turned into paragraphs
 sitting on screens. The rule that clears it: an explanation appears at the moment it changes a
 decision, once per flow, and never again on a screen where the person has already acted on it.
+The information sheets (10) are outside this rule rather than an exception to it: nobody meets
+one without asking for it, and they go after the hackathon.
 
 Keep, at the point of consequence:
 
@@ -3575,7 +3553,7 @@ details sheet on the market, where someone can go looking for it.
 lists each cut, where it was, and what does its job now; the lines above are what stayed.
 
 **One ask at a time.** The app asks two things once each: One tap (3.41) and the heads-up
-(4.10). Never both in one moment and never back to back: One tap goes first, at the first
+(4.10). (Amended 2026-09-28: One tap's ask is dropped, 3.41, so the heads-up asks alone.) Never both in one moment and never back to back: One tap goes first, at the first
 routine action, and the heads-up waits for its own next moment. A no to either is final, and the
 row on You (One tap) or the phone's own settings (the heads-up) is where it changes.
 
@@ -3684,6 +3662,16 @@ abandoned.
 At 3 seconds, a 13px `--ink-3` line appears under the control: "Still going." At 10 seconds it
 becomes the 5.1 summary block with "Try again". A tap is never silently dropped.
 
+(Amended 2026-09-28, Round D: one set of rules for waiting, for a tap that does something and a
+tap that goes somewhere alike. The stages are one function, `waitStage`: nothing under 300ms, the
+runner from 300ms, "Still going." at three seconds, and at ten the 5.1 block with "Try again". A
+working control carries them as above. A navigation's shell (9.4) carries the 2px runner under the
+status band, "Still going." under the last thing drawn, and the block with "Try again", which asks
+for the screen again. The terms being written (9.8) read the same stages from the last word to
+arrive, with "Still writing." and "The terms stopped partway." as their words. A form's summary
+block draws "Try again" for a failure a retry could put right (5.1), never for a refusal at a
+field. Round C part 2's ten-second step under a control is this rule's first half.)
+
 **On its way, and didn't go through** (`OnItsWay`). Pending covers the wait for the app to have
 the tap. Some taps then take longer to go through, because what they change is recorded
 underneath: settling, calling it even, saying yep, getting in, a vote. The screen does not wait
@@ -3703,10 +3691,13 @@ a photo going up.
 
 ### 5.3 Waiting, and the one place a skeleton is allowed
 
-A tap keeps the screen it was made on. The control carries the wait; the screen does not
-replace itself with a skeleton of itself. Two reasons beyond the aesthetic one: a route-level
-streamed loading state made this app answer 404s with a 200, and a person reading a screen in
-a bar who loses it loses their place.
+A tap that does something keeps the screen it was made on, and the control carries the wait. A
+tap that goes somewhere leaves at once for its destination's shell: the destination's real
+parts, drawn from what the tapped thing already knew, with the rest fading in as it arrives
+(9.4). Neither replaces a screen with a skeleton of itself. Two reasons beyond the aesthetic
+one: a route-level streamed loading state made this app answer 404s with a 200, and a person
+reading a screen in a bar who loses it loses their place, which is why back from any shell
+returns them to exactly where they were.
 
 Under 300ms: nothing beyond the press. A spinner that lives for 180ms reads as a glitch.
 
@@ -3804,7 +3795,7 @@ it. Groups are not a destination for the reasons in 4.7.
 | Adding a question to a game | The game page's dashed rows, anyone in the group, until kickoff (3.33) |
 | Picking a mark | The ask flow's question step, then the picker sheet (3.29); the same picker wherever a unit is made |
 | Joining by link | Deep link → the market's own screen, the sheet holding the empty odds line, with or without an account (3.17) |
-| Joining by code | "Got a code?" at the top right of the question step; the six boxes on an empty Now (3.16); scanning someone's code opens the link page (3.17) |
+| Joining by code | "Got a code?" at the top right of the question step, beside the information icon during the hackathon (10.3); the six boxes on an empty Now (3.16); scanning someone's code opens the link page (3.17) |
 | Putting your odds in | Market screen, the sheet (3.13, 3.26) |
 | Picking an answer | Market screen, the sheet (3.30); dividing it only after the contract redeploy (3.36) |
 | Confirming a public result | Market screen, voting state, the sheet, on the source card (3.35) |
@@ -3832,9 +3823,10 @@ it. Groups are not a destination for the reasons in 4.7.
 | Removing a market nobody joined | Now, a left swipe on its Running row (3.15) |
 | Archiving a finished market | Now, a left swipe on its Just happened row (3.15) |
 | Seeing who's in; removing an entry from someone without an account | The avatar stack on the who's-in row; Remove is the asker's, until the lock (3.42) |
-| One tap | Asked once after the first routine action; the switch on You (3.41) |
-| Entering on a friend's phone (the round after this one) | The fourth icon on the who's-in row (3.45) |
+| Pass the phone | The switch on You, with the PIN set in the same flow (3.45); the One tap ask is dropped (3.41, amended 2026-09-28) |
+| Entering on a friend's phone | The fourth icon on the who's-in row (3.45) |
 | Profile, calibration, clean resolution | You (3.34) |
+| What a screen can do (for the hackathon) | The information icon, at the top right of every screen (10) |
 
 ### 6.4 Shell rules
 
@@ -3844,6 +3836,9 @@ it. Groups are not a destination for the reasons in 4.7.
 - Every non-root screen has a 48px back control at its top left, and back lands on the root it
   came from. The app is installed with no browser chrome, so this is the only way home. A market
   screen reached from a link while signed out shows the wordmark instead.
+- For the hackathon, the top-right corner of every screen is the information icon (10). A
+  screen's own control from that corner (More, "Got a code?") sits directly left of it, and the
+  full-screen photo's close moves to the top left (10.3).
 - A modal sheet (settling an obligation, sending a vote, the code to scan, closing early,
   removing, archiving, who's in, One tap) closes with a 48px close at its top right and by
   dragging its handle down; the drag is read from the handle row only, so the sheet's content
@@ -3859,23 +3854,23 @@ it. Groups are not a destination for the reasons in 4.7.
 
 Not drawn in this canvas: the People tab's list and its standings segment, the rest of You (the
 unit editor and the marks list behind its account rows), the rest of market creation (the terms
-step; the question step, the careful step's named subject and the who's-in step exist), argument
-creation, the people picker behind "Someone else", the claim behind the two outcome wells (3.24
-specifies it), the arbitration screen, a cover for a group, receipt capture and splitting,
-credit-card roulette, plans and RSVPs, search, the details sheet, the pick-one asking and result
-tiles (3.27 specifies them), the light theme beyond its three proving screens (section 8), and
-any desktop layout. Every one of them has an address in 6.3, so a later phase has somewhere to
-put its screens without reopening the structure. The three about a group's money (a cover for a
-group, a receipt, roulette) are marked not placed: the person view that now holds covers is
-about one person, and where a group's cover lives is the next decision this structure needs.
+step once written; its writing is drawn in `AskStepsFrames`, and the question step, the careful
+step's named subject and the who's-in step exist), argument creation, the people picker behind
+"Someone else", the claim behind the two outcome wells (3.24 specifies it), the arbitration
+screen, a cover for a group, receipt capture and splitting, credit-card roulette, plans and
+RSVPs, search, the details sheet, the pick-one asking and result tiles (3.27 specifies them),
+the light theme beyond its three proving screens (section 8), and any desktop layout. Every one
+of them has an address in 6.3, so a later phase has somewhere to put its screens without
+reopening the structure. The three about a group's money (a cover for a group, a receipt,
+roulette) are marked not placed: the person view that now holds covers is about one person, and
+where a group's cover lives is the next decision this structure needs.
 
 Drawn, but not to be built yet: multi-choice dividing (3.36, `SpreadRedeploy`), which waits for
 the contract redeploy. So does a stake of nothing: boards that draw "Just pride" show the
-redeploy (3.3). The light theme (section 8, `LightScreens`, `LightRules`) waits for after
-submission. So do questions on quarters and halves (3.33), which are not drawn, and which close
-at the game's start like the rest, and the app's own tap-to-cut from a photo (3.28,
-`StickerFromPhoto` frame 5). Pass the phone (3.45, `PassThePhone`) is drawn and scheduled
-for the round after this one, before submission.
+redeploy (3.3). Questions on quarters and halves (3.33), which are not drawn, and which close at
+the game's start like the rest, wait for after submission. (Amended 2026-09-28: the light theme
+(section 8) was built in Round D, the app's own tap-to-cut from a photo (3.28, `StickerFromPhoto`
+frame 5) in Round C, and pass the phone (3.45, `PassThePhone`) in Round B, parts 2 and 3.)
 
 Group management has come off this list rather than moving up it. Leaving, archiving, renaming
 and the group view do not exist, because a group is not a navigable object: there is no place to
@@ -3912,13 +3907,13 @@ then density.
 
 ---
 
-## 8. The light theme (for after submission; do not build yet)
+## 8. The light theme (built in Round D, 2026-09-28)
 
-Dark stays the only shipped theme until after submission. This section specifies light so it can
-be built then, and it is not an inversion: v2 is dark-specific in ways that carry weight, and
+Light ships beside dark, following the phone's setting (built 2026-09-28, Round D). This section
+specifies it, and it is not an inversion: v2 is dark-specific in ways that carry weight, and
 each is decided here. Almost all of it is a second set of values for the same custom properties.
 Four rules change how something is drawn: the citron's edge, person-hue strokes, the avatar's
-edge and the grain tile. Boards, both marked for after submission: `LightScreens` (Now, a market
+edge and the grain tile. Boards: `LightScreens` (Now, a market
 in its ink, and the settled screen, board 14, each converted by exactly these rules) and
 `LightRules` (the primary action, the tokens and inks side by side, citron, focus and marks).
 
@@ -3933,10 +3928,12 @@ Automatic gets it at sunset anyway, and the override is for the first person. It
 preference kept on the device, like recents, and never a record about the person.
 
 Before first paint, an inline script in the document head reads the stored choice and sets
-`data-theme` on `html`, so a cold start of the installed app never flashes the wrong theme.
-`color-scheme` follows the theme, and `theme-color` has one value per scheme (`<meta
-name="theme-color" media="(prefers-color-scheme: light)" content="#F5EFE4">`). On a market's own
-screen the status band already paints that market's ground, in either theme.
+`data-theme` on `html`, so a cold start of the installed app never flashes the wrong theme. The
+opening (11) is the one exception: it draws in the phone's own scheme, since that is what picked
+the launch image, and the override takes over as it hands off to Now. `color-scheme` follows the
+theme, and `theme-color` has one value per scheme (`<meta name="theme-color"
+media="(prefers-color-scheme: light)" content="#F5EFE4">`). On a market's own screen the status
+band already paints that market's ground, in either theme.
 
 What does not follow the theme: link tiles, which are one image for everyone, frozen into a chat
 whose theme the app can't know, so they stay as 3.27 draws them.
@@ -4053,4 +4050,838 @@ and nothing else depends on the grain.
 theme. The component changes are the four drawn rules: the citron's edge, the person-hue variant
 for strokes and washes, the avatar's edge, and the light grain tile. Everything else is the
 swap, which is why `LightScreens` could be made from the dark boards by the values plus those
-four rules and nothing more. Nothing reads `data-theme` before submission.
+four rules and nothing more. `data-theme` is read by the inline script in the head (8.1) and by
+`globals.css`, and by nothing else: a component never asks which theme it is in.
+
+---
+
+## 9. Motion
+
+Moving around the app felt clunky in four places: tapping + to ask, switching tabs, opening a
+market, and the steps of asking. Part of that is waiting, a tap that shows nothing while the
+server answers, which the build times and fixes. This section is the design's part: what appears
+at the instant of a tap, and how things move. Every transition comes from the set in 9.1 and
+follows the rules in 9.2, and 9.13 lists each one with the layer it moves. Boards, in two rows:
+`MotionSet`, `Shells`, `TabsInstant`, `Presses`, `SheetMotion`, `ReducedMotion` and
+`MotionLayers`; then `OpenMarket` (interactive), `OpenMarketFrames`, `OpenFrom`, `AskSteps`
+(interactive) and `AskStepsFrames`.
+
+### 9.1 The set
+
+Three durations and three curves. Nothing in the app moves on any other timing.
+
+| Token | Value | For |
+| --- | --- | --- |
+| `--motion-quick` | 120ms | A press letting go; a label or a small part changing in place; the page being left, before what replaces it arrives |
+| `--motion-base` | 200ms | Content arriving in a shell; a step of asking; a row collapsing; a retint; anything leaving the screen |
+| `--motion-travel` | 320ms | Something going to a new place: a market opening and closing, the ask layer rising, a sheet rising or changing height, a photo opening, a column growing |
+| `--ease-move` | `cubic-bezier(0.2, 0.8, 0.2, 1)` | Anything that travels, grows or arrives: quick off the mark, a long settle, no overshoot |
+| `--ease-leave` | `cubic-bezier(0.4, 0, 1, 1)` | Anything leaving the screen: a slow start, gone at speed |
+| `--ease-fade` | `cubic-bezier(0, 0, 0.58, 1)`, which is CSS `ease-out` | Opacity and colour |
+
+The move curve is the one the sheet already used (1.6). Anything leaving the screen takes base
+on the leave curve, whatever it took to arrive, because a thing on its way out is no longer
+being read.
+
+Two more values complete the set, and neither is a duration. **Stagger**, 40ms: when a moment
+grows several things at once (the columns of the weight line, the bars of a pick-one market),
+each starts 40ms after the one before it, so ten columns take 680ms from the first starting to
+the last landing. **Loop**, 1.2s, linear: the three things that repeat, the pending runner
+(5.2), the on-its-way ring (3.23) and the writing caret (9.8), repeat on it, and only while what
+they stand for is happening.
+
+All of it lives as custom properties on `:root` (`--motion-quick`, `--motion-base`,
+`--motion-travel`, `--ease-move`, `--ease-leave`, `--ease-fade`, `--motion-stagger`,
+`--motion-loop`), and every `transition` and `animation` in the app reads them. A duration or a
+curve typed anywhere else fails lint, the way a colour from outside section 1 does. Board:
+`MotionSet`.
+
+### 9.2 What moves and what holds still
+
+1. **Motion answers the person.** Something moves because someone tapped, dragged or changed
+   something. Nothing moves to get attention: no pulsing citron, no shimmer, no nudging +,
+   nothing that wiggles. The three loops are the only repeating motion, and each stops the
+   moment its reason ends.
+2. **One thing travels.** In any transition, one thing goes from where it was to where it will
+   be: the market's ink when it opens, the ask layer when asking starts, a step's content when
+   the step advances, the sheet when it rises. Everything else fades or holds still. If two
+   things would travel in two directions, it is two transitions, and one of them goes.
+3. **Some things never move.** The tab bar. The Start button. A header and its back control. The
+   question band while the steps of asking pass under it (what it says changes; where it is does
+   not). The page behind a sheet: no dimming, no pushing back, no shrinking into a card. Type
+   never scales, and a number never counts up or rolls: it is drawn at its value, because count
+   comes before amount and a figure that spins makes the amount the show.
+4. **Short distances.** Content inside a page travels 24px at most. Only whole layers travel
+   further (the ask layer, a sheet, a market's ink as it opens, a photo as it opens), and they
+   go from where they are to where they will be, never in from an arbitrary edge.
+5. **Direction means something.** Up is a layer arriving over the place you were. Leftward is
+   forward through steps, rightward is back. Growing out of a row is opening it, and shrinking
+   into it is going back.
+6. **Arrive on the move curve, leave on the leave curve, fade on the fade curve.** No spring, no
+   bounce, no overshoot, no parallax, no blur, no 3D, and still no confetti (1.6).
+
+### 9.3 Layers: what a transition may move
+
+The tab bar and the pinned sheet are `position: fixed`, and any ancestor that carries a
+transform becomes their containing block, so they stop being fixed to the screen and ride along
+with that ancestor. That is the bug that made the tab bar drift for weeks, and 1.5's no-glass
+rule exists for the same reason. So the app is built in layers, and motion moves page content
+only. Board: `MotionLayers`.
+
+| Layer | What it holds | May it move? |
+| --- | --- | --- |
+| `app` | `html`, `body` and the app root, which holds every other layer | Never. None of the properties below is ever set on it, not even for a frame |
+| `page` | The current screen: its header, band, content and scroller. Nothing inside it is `position: fixed` | Yes, and it is the only layer navigation moves: through view-transition snapshots (below), or a transform on an element inside it |
+| `tab-bar` | The tab bar, fixed | Never. It can be covered, and its snapshot can fade out and back in |
+| `start` | The Start button, fixed | Never, as the tab bar |
+| `sheet` | The pinned sheet, fixed (3.24) | Only itself: a `translateY` on the sheet element while it changes height, arrives or leaves |
+| `modal` | Modal sheets, fixed (6.4) | Only itself, as the sheet |
+| `ask` | The ask layer, fixed, full screen (9.5) | Only itself, while it rises or lowers. Nothing inside it is `position: fixed` |
+
+The fixed layers are children of the app root, rendered there through a portal, and never
+descendants of `page`. A fixed layer may carry a transform on itself, because that moves it
+without making it anyone's containing block. Nothing may carry one on an element that contains a
+fixed layer.
+
+These make an element the containing block of its fixed descendants, so none of them is ever set
+on `app`, on anything between `app` and a fixed layer, or on anything that contains a fixed
+layer: `transform`, `translate`, `rotate`, `scale`, `perspective`, `filter` and
+`backdrop-filter` with any value but `none` (`translateZ(0)` and `scale(1)` included); `contain:
+layout`, `paint`, `strict` or `content`; `content-visibility: auto`; and `will-change` naming
+any of them. A test walks the ancestors of the tab bar, the Start button and the sheet on every
+root and task screen, and fails on any of these.
+
+(Built 2026-09-28, Round D: the walk is the http suite's, over the markup of every root and task
+screen, with the rules in `src/lib/ui/layers.ts`, which also read the live tree's computed styles
+in the browser check. A fixed layer renders in place on the server, so the first frame has it, and
+is portalled to the host once hydrated. The grain and the band behind the status bar are layers of
+the shell too, painted from `--ground` on `html`, which a market's own screen swaps for its ink.)
+
+A transform is on an element only while its motion runs. At the end it is removed (`transform:
+none`, never left at `translateY(0)`), and a motion that is interrupted, by a tap or a route
+change, removes it too, so no transform outlives its motion.
+
+**View transitions.** Opening a market, going back from one, and the steps of asking use the
+View Transitions API (`document.startViewTransition`), which Safari has supported for
+same-document transitions since 18.0. It never transforms the live page: the browser draws
+snapshots on a layer of its own and animates those, so the fixed layers underneath stay fixed.
+Each fixed layer carries its own `view-transition-name` (`tab-bar`, `start`, `sheet`) so no
+transition drags it along inside the page's snapshot, and each transition below says what those
+groups do. Five rules keep it quick:
+
+- The update callback draws the destination's shell (9.4) synchronously and returns. It never
+  awaits a fetch: while the callback runs, the browser holds the old snapshot on screen, so an
+  awaited fetch would freeze the screen for exactly the wait this section is about.
+- A name is given to the one element that travels just before the transition starts, and taken
+  off when it ends, so a list of rows never holds two elements with one name.
+- The page's two snapshots never fade out together. The new page fades in over the old one,
+  which holds with no animation of its own, and the root's images use `mix-blend-mode: normal`,
+  so nothing behind the transition shows through between them.
+- A tap during a transition finishes it (`skipTransition()`), and then the tap acts.
+- Where the API is missing (iOS before 18) there is no transition: the shell is simply there in
+  the next frame. Style the pseudo-elements by name, with a class on `html` for direction
+  (`html.back`), rather than with view-transition classes or types, which arrived only in Safari
+  18.2.
+
+### 9.4 The instant of a tap
+
+A tap shows something in the frame it happens in, and the next frame shows where it leads.
+Boards: `Presses`, `Shells`.
+
+**Presses.** Set from `pointerdown`, in the same frame, with no transition in; released over
+quick on the fade curve. Use a pointer listener rather than `:active` alone, which iOS Safari
+applies late, or not at all inside a scrolling area, and set `touch-action: manipulation` on the
+app so no tap waits to find out whether it is a double tap.
+
+| What is pressed | Its pressed state |
+| --- | --- |
+| A control with a fill: primary, row action, a selected chip or stake chip, a well, the Start button | Opacity 0.88, as 3.12 has it |
+| A control drawn only in lines and words: secondary, tertiary, icon-only, back, close, an unselected chip, the icons on the who's-in row, a tab | Opacity 0.5. At 0.88 a line, a glyph or a word barely changes, so the tap would show nothing |
+| A row or card that opens something: a Now row, a person row, a story card, a game row, a question card on a game page, a picker row | Its fill goes to the ground of the place it is in: `--ground`, or the market's ground on a market's own screen. Its stamp, text and line stay as they were |
+
+A row in a scrolling list waits 60ms before showing its press and cancels it if the finger
+travels 8px, so a scroll never flashes rows. A tap quicker than 60ms shows the press at release,
+which is also the frame the next screen's transition captures, so the pressed row is what the
+market opens out of. A press that turns into a drag lets go at once.
+
+A row presses to the ground rather than to `--surface-2` because of its stamp. On a row pressed
+to the ground, the stamp's field still stands off it by 1.36 to 1.40:1 in dark and 1.15 to
+1.17:1 in light; on `--surface-2` it would drop to 1.04 to 1.07:1 in light, and the ink would
+vanish in the one frame it matters (9.12).
+
+**Two kinds of tap.** A tap that goes somewhere (a row, a card, a tab, the +, a step's Next,
+back) leaves at once for the destination's shell. A tap that does something (getting in, voting,
+settling, joining by code) keeps its screen, and the control carries the wait as 5.2 says. 5.3's
+first rule is now about the second kind only.
+
+**The shell** is the destination drawn in the frame after the tap from what the tapped thing
+already knew, before anything is fetched. Everything in a shell is real: the real header, the
+real band with the real question, real labels. What isn't known yet isn't drawn, and the ground
+shows there. It is not a skeleton, and 5.3 still allows none on a navigation: no bars, no
+hatching, no spinner, no blank screen. What arrives later fades in over base, in place, and
+nothing already drawn moves to make room for it: a part whose size is known holds its room from
+the first frame.
+
+| Destination | Drawn in the first frame | Fades in when it arrives |
+| --- | --- | --- |
+| A market, from anywhere that lists it | The header (back, More); the market's ground, surfaces and line; the band, whole: the stamp and its mark, the state mark and the clock's words, the question, the asker line; the sheet at the resting height of the state the row showed, with its first line ("What are the odds?", a count line) | The entry line, the weight or call line, the who's-in row, the details, the photos, and the sheet's controls. If the market's state has changed since the row was drawn, the sheet crossfades to the right one over quick |
+| A game page, from What's on | The header band on `--surface-2`: both team stamps, the time, the game | The caption, then the menu or the question cards |
+| A person view | The header: the avatar and the name | The rest of the header, then the timeline |
+| Now, What's on, People or You, on the first visit in a session | Now: the date line. What's on: its label. People: the People and Standings segments. You: the identity block (avatar, name, caption), which the phone already knows | Everything else, section by section in order |
+| The question step, from the + | All of it: nothing on it needs the server (9.5) | Nothing |
+| Who's in | The band, "Who's in?" and its caption, and the sheet with "Set the terms" | The saved groups, fetched when the question step opened, so usually there already |
+| The terms | The band, the four detail labels, the stake chips, and "Send it", disabled | The written terms (9.8) |
+| A photo, full screen | The thumbnail's own image, enlarged, since it is already loaded | The full image, crossfaded over base |
+
+The source knows enough because every row, card and tile that opens a market already draws its
+mark, its ink, its question and its state. The asker's name travels with them; where it doesn't,
+the asker line's 22px row is held empty until it comes.
+
+**When it is slow.** At 300ms without content, the 2px runner under the status band runs, the
+same line pull to refresh uses (5.5). At 3 seconds, "Still going." in `caption` `--ink-3` under
+the last thing drawn. At 10 seconds, the 5.1 block with "Try again". Back works throughout, and
+returns the person to exactly where they were, scroll and all. A market that turns out not to
+exist replaces its shell with the not-found state in place (3.17). The shell is drawn by the
+client from what it holds, never by a route-level streamed loading state, so route handlers keep
+answering with real status codes (5.3).
+
+### 9.5 Starting to ask
+
+The + opens the ask layer: fixed, full screen, a sibling of the tab bar, holding the steps of
+asking. Its header, band, step content and action bar are one column, and the action bar sits in
+flow at the layer's foot rather than being fixed, so the layer moves as one piece. "Ask
+something" on an empty Now opens it the same way. Boards: `AskSteps` (interactive),
+`AskStepsFrames` row A.
+
+- **The tap.** The Start button presses (0.88) in the same frame. In the next, the layer is
+  mounted at `translateY(100%)` with the question step drawn whole, and it rises to
+  `translateY(0)` over travel on the move curve. The root holds still under it: no dim, no push,
+  no shrink; the tab bar and the Start button are simply covered. At the end the transform is
+  removed, and the root is made `inert` but kept mounted, scroll and all.
+- **Its control.** The question step's 48px top-left control is Close, a down chevron, because
+  the layer came up from below. The steps after it show Back, the left chevron, because they
+  come from the side (9.8). This changes 3.29's header.
+- **Closing.** The layer goes to `translateY(100%)` over base on the leave curve and is removed,
+  and the root is live again as it was.
+- Nothing on the question step waits on the server, so nothing about its arrival waits either.
+  The saved groups that who's in will show are fetched when it opens.
+
+With Reduce Motion, the layer fades in over base and fades out over base.
+
+### 9.6 Switching tabs
+
+Instant, as on iOS: no slide and no crossfade. What felt clunky there is the tab loading after
+the tap, which the build fixes; the design's part is what the tap draws, and when. Board:
+`TabsInstant`.
+
+- The bar acts on `pointerdown`, the one control in the app that does. The bar never scrolls, so
+  a touch on it is always meant, and a tab switch is undone by another tap, so acting on the
+  touch rather than the release costs nothing and gives back the length of a tap.
+- The selected tab's glyph and label change at once, and the new root is drawn in the next
+  frame. Nothing in the bar moves.
+- A root, once visited, stays mounted while it isn't showing, with its scroll position, so going
+  back to it draws its last content at once. If it was last read more than 30 seconds ago it
+  re-reads silently, and what changed is drawn in place, with no motion (5.5). (Built 2026-09-28,
+  Round D, as the router's own hold rather than four mounted screens: a root read within thirty
+  seconds is drawn from what the router holds, its scroll put back, and re-read after; every
+  mutation revalidates what it changes. Four rendered roots kept mounted would render every root
+  on every load.)
+- After Now's first paint, the other three roots are fetched while the phone is idle, so no
+  tab's first visit waits. If one does, its shell is drawn (9.4) and its content fades in over
+  base.
+- Tapping the tab you are on scrolls that root to the top, smoothly (at once with Reduce
+  Motion). At the top it does nothing, and it never reloads.
+
+### 9.7 Opening a market
+
+The market opens out of the row it was in. A market's row carries its ink in exactly one place,
+the stamp on its field colour (1.8), and a market's band is that same field colour, so the stamp
+grows into the band. Boards: `OpenMarket` (interactive: tap a row, go back, slow it down, turn
+Reduce Motion on, switch to light), `OpenMarketFrames` (opening and back, in dark and in light,
+frame by frame) and `OpenFrom` (from People, from a game page, and from What's on into a game
+page).
+
+**Opening**, 320ms, with times from the tap's release:
+
+1. Frame one: the row is pressed (9.4). Its stamp takes `view-transition-name: market-ink` and
+   the mark inside it `market-mark`, and the transition starts. The callback draws the market's
+   shell, where the band's background element takes `market-ink`, the band's content (its
+   stamp's ground square, the state and clock, the question, the asker line) takes
+   `market-words`, and the band stamp's mark takes `market-mark`.
+2. `market-ink`, 0 to 320ms, travel on the move curve: from the stamp's box (on Now, 40px square
+   at radius 10) to the band's box (12px in from each side, radius 12). Both ends are the
+   market's field colour, so what is seen is the ink opening out. Its snapshots are drawn at
+   full size and clipped (`object-fit: none` on the images, `overflow: clip` and the radius
+   animated on the group), so the colour never stretches and the corners stay round.
+3. `market-mark`, 0 to 320ms, travel on the move curve: the mark from the row's stamp into the
+   band's stamp.
+4. The old page, the list, holds where it is under everything. It is never faded, only covered.
+5. The new page and `market-words`, 120 to 320ms: the market's ground and everything under the
+   band fade in over the list, and the band's words fade in above the ink, base, on the fade
+   curve. The question arrives as the ink lands, so the band fills with its own words.
+6. `tab-bar` and `start`, 0 to 120ms: fade out, quick. `sheet`, 120 to 320ms: fades in, base.
+   The sheet does not rise here: it belongs to the place, and the place is what is opening.
+7. After 320ms the market is live, and whatever arrives later fades in (9.4).
+
+**Back** is the reverse over the same 320ms. Before the new snapshot is taken, the list's scroll
+position is restored, and the market's row, wherever it now is, takes `market-ink` and
+`market-mark` (after getting in, a row may have moved from Needs you to Running, and the ink
+goes to where it is now). The ink shrinks from the band into that stamp and the mark goes with
+it; `market-words` fades out over quick above the ink; the list fades in over the market from 0
+to 200ms, base, while the market holds under it; `sheet` fades out over quick, and the tab bar
+and the Start button fade in over base from 120ms. If the row is gone, or out of view once the
+scroll is restored, nothing takes the names, and the ink fades out over quick with the band's
+words. A market reached from a link, a notification or a cold start has no row to go back to, so
+its back is a fade: the root fades in over the market over base.
+
+**From elsewhere**, it is the same transition from that place's stamp: a story card's 20px
+kicker stamp on a person view (radius 6), and a question card's stamp on a game page. What's on
+opens a game page, whose band is `--surface-2` rather than an ink, so there the game row's own
+box travels into the band as `market-ink` (a surface at both ends) and its two team stamps
+travel as `market-mark` and `market-mark-2`. A photo opens the same way, from its thumbnail or
+frame to full screen as `photo`, travel on the move curve, which replaces 1.6's 240ms.
+
+**Every other push** (a person view from a row or an avatar, a row on You, More, the code screen
+from "Got a code?") uses the step transition (9.8): the content moves 24px and crossfades, the
+header crossfades, and, when it leaves a root, the tab bar and the Start button fade out over
+quick and fade back in over base on the way back. (Built 2026-09-28, Round D, as the arrival
+half: the router commits a push when its screen has arrived, and holding the old snapshot until
+then would freeze the screen on the fetch this section forbids, so the header fades in over base
+and the content comes 24px from the side it is going to, rightward on Back, while the old screen
+is not animated out. Opening a market and Back from one keep both halves, through the shell and
+the root the router holds.)
+
+With Reduce Motion nothing travels: the market fades in over the list, which holds, over base,
+and back is the same the other way.
+
+### 9.8 The steps of asking
+
+Each step advances, and back returns. Boards: `AskSteps` (interactive), `AskStepsFrames` rows B
+and C.
+
+**Advancing** ("Next: who's in", "Set the terms", a careful step's Next), 200ms:
+
+- The question band holds its place. It carries `view-transition-name: ask-band`, and where its
+  height changes (the question step's band is taller than the compact band on the steps after
+  it), the group's height changes over base on the move curve, with its snapshots drawn at full
+  size and clipped from the top so nothing in it stretches. What it says crossfades over quick.
+- The step's content under the band is `ask-step`. The old content moves 24px left and fades out
+  over quick on the leave curve; the new comes from 24px to the right and fades in over base on
+  the move curve. The group itself does not morph.
+- The action bar, `ask-action`, holds still. Its label crossfades over quick ("Next: who's in"
+  to "Set the terms").
+- The header crossfades with the page: Close becomes Back, and "Got a code?" goes.
+- A retint the step brings (balance moving the ink on who's in, 1.8) waits for the step to land,
+  then runs over base on the fade curve.
+
+**Back** (the header's Back, or Edit in the band) mirrors it: the old content goes 24px to the
+right, and the new comes from 24px to the left.
+
+**The write-up starts early.** The model writes the terms, and that takes a few seconds however
+fast everything else is. So the write-up starts when the question step's Next is tapped (or the
+careful step's), not when "Set the terms" is, and most of its seconds pass while the person
+chooses who's in. If the question is edited, it starts again.
+
+**The terms being written** (`AskStepsFrames` row C). The terms step is the market before anyone
+is in (7): the band; the details card with its four labels, "Counts if", "Decided", "Stakes" and
+"If it's unclear", all drawn in the first frame; the stake chips; and the sheet with "Send it",
+disabled. Stakes come from the chips, so that value is drawn at once. The other three are
+written in front of the person:
+
+- The write-up streams, and each value's words appear as they arrive, at the pace they arrive,
+  in `body` `--ink`. Words are never held back to look like typing, and typing is never faked
+  when the words came all at once.
+- A caret, 2 by 20px in `--ink-2` at radius 1, sits at the end of the words being written and
+  blinks on the loop, 0.6s shown and 0.6s hidden. It moves to the next value when that one
+  starts. Before the first words arrive, it waits at the start of "Counts if": the pen on the
+  paper.
+- A value not yet started is empty: no bar, no dash, no dots.
+- If the write-up can't stream, the caret waits in "Counts if" until the terms arrive, then the
+  three values appear in order, each fading in over quick, 40ms apart.
+- When the last value is written, the caret goes and "Send it" enables, its fill crossfading
+  over quick. The values become editable then, and not before.
+- A polite live region says "Writing the terms" once when the step opens and "The terms are
+  written" at the end, so a screen reader hears the same story.
+- **When it stalls.** If no new words arrive for 3 seconds, "Still writing." appears in
+  `caption` `--ink-3` under the details card. At 10 seconds without new words, the 5.1 block
+  sits in the sheet above "Send it" with "The terms stopped partway." and "Try again", which
+  writes them again. A slow write that keeps moving shows neither, because it is visibly
+  working.
+- Back is allowed while it writes. The write-up carries on, and coming back shows what it has
+  written so far.
+
+The careful step's questions (3.44) are written the same way: the step's card holds the caret,
+then each question fades in over quick as it arrives, the one-tap "Nova is" question included.
+(Read 2026-09-28, Round D: the three come from one answer, so they arrive together and fade in
+over quick 40ms apart, the rule for words that came all at once. The terms step's four labels are
+the rows of one details card whose editors are the chips already there, "Counts if" the field
+that opens once written; the title stays in the band and opens once written too.)
+
+**Sending it.** "Send it" turns the terms step into the market's own screen in place.
+`market-ink` is on the band in both, so the band doesn't move; the terms' edit affordances fade
+over quick; the action bar gives way to the market's sheet (the entry, 3.25) in a crossfade over
+base; and Back now leads to the root the + was tapped on. Going back from there is 9.7's back,
+which on Now shrinks the ink into the market's new row.
+
+With Reduce Motion, every step change is a crossfade over base, nothing slides, the band's
+height changes at once, and the caret holds still.
+
+### 9.9 Sheets
+
+Board: `SheetMotion`.
+
+**The pinned sheet between its heights** (3.24). The sheet is laid out at its raised height and
+sits at its low height by a `translateY` on itself equal to the difference, with nothing inside
+it fixed and nothing that contains it moving. A tap on the grabber or a touch on the move raises
+or lowers it over travel on the move curve, the value 1.6 always gave it. While a finger drags
+the handle, the sheet follows the finger with no transition; past either height it moves a third
+of the finger's travel, 16px at most. On release it goes where 3.24's 24px rule sends it, over
+base if less than half the distance is left and over travel otherwise, on the move curve, from
+wherever it is. `--sheet-room`, the page's bottom padding, changes when the sheet settles, never
+frame by frame.
+
+**The pinned sheet arriving or leaving**, when a state gains or loses a move (the sheet going
+once you're in, 3.13; a market closing while it is on screen): it arrives from below its own
+height over travel on the move curve, and leaves downward over base on the leave curve. The
+page's padding changes at the end.
+
+**Modal sheets** (6.4) open from below over travel on the move curve and close over base on the
+leave curve. A drag on the handle row follows the finger; on release the sheet closes if it has
+gone a third of its height or was flicked down, and otherwise returns over base on the move
+curve. The page behind holds still and does not dim (1.5).
+
+**Swipe rows** on Now (3.15) follow the finger; on release a row opens to 76px or closes over
+base on the move curve, and after a remove or an archive it collapses over base, as 3.15 already
+says.
+
+With Reduce Motion, the sheet still follows a dragging finger, since the person is moving it,
+and every settle, arrival and exit is instant, with the sheet's content crossfading over quick
+where it changes.
+
+### 9.10 Everything else that moves
+
+Every existing motion, in the set:
+
+| Motion | Duration and curve |
+| --- | --- |
+| A press (3.12, 9.4) | In at once; out over quick, fade |
+| Pending (5.2): the control at 0.88 after 300ms, and its 2px runner | The runner on the loop |
+| The on-its-way ring (3.23) | One turn per loop, linear |
+| Entering, as a moment (3.13): the sheet lowers | Travel, move |
+| Entering: the ten segments grow into columns | Each over travel on the move curve, 40ms after the one to its left, 680ms from first to last (was 700ms, all at once) |
+| Entering: your avatar rises over your column, and the group's marker draws | The avatar over base, move, as your column lands; the marker over base, fade, after the last column |
+| Entering: the sheet goes, at about 1.8s | Base, leave (9.9) |
+| Pick one, entering (3.30): the bars grow, then the shares | Each bar over travel, 40ms apart from the top; the shares over base, fade, as the last bar lands (was 700ms, and the shares 300ms from 600ms) |
+| Number entry (3.26): the columns grow | As entering |
+| Re-bucketing (3.22): the columns crossfade, the marker slides | Base, fade; base, move |
+| A retint (1.8, 3.29) | Base, fade |
+| A Now row collapsing (3.15) | Base, move |
+| The riding mark on the odds line (3.13) | Follows the finger with no transition; a tap that places the value moves the thumb, the percent and the mark over quick, move (was 90ms linear on font-size) |
+| A switch (Pass the phone, 3.45) and a selection circle or checkbox | The knob over quick, move; a fill over quick, fade |
+| Pull to refresh (5.5) | Follows the finger, then the runner on the loop |
+| A skeleton loading into a screen already shown (5.3) | Its content replaces it with a fade over base, after its 200ms minimum |
+| Link tiles, the claimant's prints, a resolution | Nothing moves (1.6) |
+
+### 9.11 Reduce Motion
+
+When the phone's Reduce Motion setting is on (`@media (prefers-reduced-motion: reduce)`, which
+an installed web app follows), the app keeps every change of state and drops the travel:
+crossfades or instant changes, and nothing slides or grows. Board: `ReducedMotion`.
+
+| Transition | With Reduce Motion |
+| --- | --- |
+| Opening a market, and back | The new page fades in over the old one over base, and the old holds under it. The ink and the mark stay where they are |
+| Starting to ask, and closing | The ask layer fades in over base, and out over base |
+| A step of asking, and back | A crossfade over base; the band's height changes at once |
+| Switching tabs | Unchanged: it was already instant. Scrolling to the top jumps |
+| Presses | Unchanged: they change colour and opacity, and nothing moves |
+| The pinned sheet: raising, lowering, arriving, leaving | Instant. It still follows a finger that drags it |
+| Modal sheets | Fade in over base, out over quick |
+| The entering moment, pick one and number entry | The resting state at once, as 3.13 already says |
+| Swipe rows | Follow the finger; open, close and collapse at once |
+| A retint, a label changing, content arriving in a shell | Unchanged: they are fades |
+| The pending runner | Holds still as a full 2px line in the runner's colour |
+| The on-its-way ring | Rests at a quarter, as 3.23 says |
+| The writing caret | Shown and steady, not blinking |
+| The information sheet (10) | As modal sheets |
+| The opening's handoff (11) | Unchanged: it is two fades |
+
+It is one `@media` block: the travelling keyframes swap for the fade, the translate and height
+transitions go, and the three durations stay as they are.
+
+### 9.12 Light
+
+Motion is the same in both themes: the same set, the same layers, the same choreography. The one
+transition that depends on colour is a market opening, carried by the stamp's field growing into
+the band, and it reads in light because the field keeps its distance from what it passes over in
+both themes: against a Now row's surface it is 1.25 to 1.29:1 in dark and 1.27 to 1.30:1 in
+light, and against a pressed row (the ground) 1.36 to 1.40:1 in dark and 1.15 to 1.17:1 in
+light. A market's ground barely differs from the app's in either theme, and in light least of
+all ("a whisper on paper", 8.4), so the page's fade carries almost no colour and the band
+carries the place, as 8.4 says it should. `OpenMarketFrames` row C draws the opening in light,
+and `OpenMarket` switches between the themes.
+
+The other motions that carry colour hold as well. A retint fades between the light inks as it
+does between the dark ones. A pressed graphite primary at 0.88 is still the darkest thing on the
+screen. A control drawn only in lines and words presses by opacity, so it reads the same on
+either ground.
+
+### 9.13 Every transition, and the layer it moves
+
+| Transition | Trigger | Layer that moves | How | Duration and curve | Start → end | With Reduce Motion |
+| --- | --- | --- | --- | --- | --- | --- |
+| A press | `pointerdown` on a control | None: the control's own opacity or fill | A class set from a pointer listener | In at once; out over quick, fade | Rest → pressed → rest | The same |
+| Switching tabs | `pointerdown` on a tab | None | The mounted roots swap | None | The old root hidden, the new one shown, in one frame | The same |
+| The current tab again | A tap on it | The root's own scroll | `scrollTo({ top: 0, behavior: 'smooth' })` | The browser's smooth scroll | Where it was → the top | Jumps |
+| Content arriving in a shell | Data | None: the arriving parts' opacity | CSS on those parts | Base, fade | 0 → 1, in place | The same |
+| Opening a market | A tap on a row, card or question card | `page`, as snapshots | View transition: `market-ink`, `market-words`, `market-mark`, the root, `tab-bar`, `start`, `sheet` | The ink and the mark travel, move; the new page, `market-words` and `sheet` fade in over base from 120ms over the old page, which holds; `tab-bar` and `start` fade out over quick | The stamp's box → the band's box | The new page fades in over the old, over base |
+| Back from a market | Back | `page`, as snapshots | The same names, with `html.back` | As opening | The band's box → the row's stamp, where the row now is | The list fades in over the market, over base |
+| Opening a photo | A tap on a thumbnail or frame | `page`, as snapshots | View transition: `photo` | Travel, move | The thumbnail's box → full screen | Crossfade |
+| Starting to ask | A tap on + | `ask`, itself | `translateY` on the layer | Travel, move | 100% → 0, then `none` | Fades in over base |
+| Closing the ask layer | Close | `ask`, itself | `translateY` on the layer | Base, leave | 0 → 100%, then removed | Fades out over base |
+| A step forward, and every other push | Next, "Set the terms", a push | `page`, as snapshots | View transition: `ask-band`, `ask-step`, `ask-action`, the root | The old content over quick, leave; the new over base, move; the band's height over base, move | Old 0 → −24px and out; new +24px → 0 and in | Crossfade over base |
+| A step back | Back, Edit | `page`, as snapshots | As forward, with `html.back` | As forward | Old 0 → +24px and out; new −24px → 0 and in | Crossfade over base |
+| The terms being written | The write-up streaming | None: words appear, the caret blinks | Text appended; the caret on the loop | The loop | Empty → written | The caret holds still |
+| Sending it | "Send it" | `page`, as snapshots | `market-ink` on both bands; the root crossfades | Base, fade | The terms step → the market | The same |
+| The sheet raising or lowering | The grabber, the move, a drag | `sheet`, itself | `translateY` on the sheet | Travel, move; base if less than half is left | Its low offset → 0, and back | Instant |
+| The sheet arriving or leaving | A state gains or loses a move | `sheet`, itself | `translateY` on the sheet | Arriving over travel, move; leaving over base, leave | Its height → 0; 0 → its height | Instant |
+| A modal sheet opening or closing | Its control; close; a drag | `modal`, itself | `translateY` on the sheet | Opening over travel, move; closing over base, leave | Its height → 0; 0 → its height | Fades in over base, out over quick |
+| A swipe row | A sideways drag on Now | The row's inner box, inside `page` | `translateX` on it | Base, move, on release | 0 ↔ −76px | Instant |
+| A row collapsing | Removed, archived or handled | The row, inside `page` | `height` to 0 | Base, move | Its height → 0 | Instant |
+| Entering, as a moment | "I'm in" | `sheet` itself, then the columns inside `page` | `translateY`; `height` per column | Travel, move; the 40ms stagger | As 3.13 | The resting state at once |
+| The information sheet opening or closing | The icon; its close, a drag, or the icon again | `modal`, itself | `translateY` on the sheet | Opening over travel, move; closing over base, leave | Its height → 0; 0 → its height | Fades in over base, out over quick |
+| The opening's handoff to Now | Now's shell has painted | `#opening`, a fixed element outside the app root, itself | Opacity only | The logo over quick and the ground over base, both on the fade curve, from the same frame | Opaque → gone, then removed | The same |
+
+---
+
+## 10. The information icon and its sheets (for the hackathon)
+
+A lot of what the app does is invisible by design: icon-only controls, swipes, holding a photo,
+tapping the avatar stack, rules such as a blind answer being final. That is right for someone
+who knows the app and a problem for someone exploring it for a few minutes, a judge above all.
+So for the hackathon every screen carries a small information icon at its top right, and the
+icon opens a sheet listing everything a person can do on that screen. This does not undo 4.9's
+cut: that cut was about words nobody can avoid, and a sheet appears only when someone asks for
+it. The icon and its sheets come out after the hackathon, and 10.3 says where everything they
+displaced returns. Boards: `InfoCorner`, `InfoSheet`, `InfoRules`.
+
+The developer writes every screen's sheet from the code, since the code is the final word on
+what a screen does. This section is what they write to: how the icon and the sheet look and move
+(10.2 to 10.5), how a sheet is written (10.6), the one line every sheet carries word for word
+(10.7), and a worked example that holds to all of it (10.8).
+
+### 10.1 Which screens get it
+
+Every full screen a person can land on and look around:
+
+- The four roots: Now (first run included), What's on, People and You.
+- A market's own screen in every state (open, closed, voting, split, settled, voided, expired,
+  the draft), the page someone reaches from a link (3.17, signed in or not), and the memory it
+  leaves (3.37).
+- A person view, a game page, the claimant screen and the code screen.
+- Each step of asking: the question step, the careful step, who's in and the terms.
+- The full-screen photo.
+
+Not these, because each is a moment rather than a place, or someone else's interface: any modal
+sheet (who's in, the code to scan, a confirmation, a vote, the mark picker, the heads-up, and
+the information sheet itself); pass the phone's picker, PIN keypad and handback
+(3.45); the opening (11); the camera and the phone's own prompts.
+
+While a modal sheet is open over a screen, that screen's icon does nothing, because a sheet
+never opens another sheet (6.4).
+
+### 10.2 The icon
+
+A 22px glyph, a circle with a lower-case i (a 9px-radius ring, a stem from 11 to 16 and a dot at
+8, on the 24px grid, 1.8px stroke), in `--ink-2`, inside a 48px target. `--ink-2` rather than
+`--ink`, so it is findable and never louder than the screen's own controls. Its accessible name
+is "What you can do here", with `aria-haspopup="dialog"` and `aria-expanded` following the
+sheet. It presses to 0.5 like every control drawn in lines (9.4). On the full-screen photo,
+which is black in both themes, it draws in `--ink` of the dark theme, `#F2EDE3`. Nothing about
+it moves, pulses or marks itself as new: it is found by being in the same place everywhere.
+
+### 10.3 The corner, and what moves out of it
+
+The icon owns the top-right corner of every screen in 10.1: the rightmost 48px of the 56px
+header row, 8px from the screen's right edge, identical everywhere. The rule for everything else
+is short. The top-left control leaves a screen (Back, or Close where the screen rose from
+below), the top-right corner is the icon, and a screen's own control that used to sit in the
+corner moves one place left, into the same header row, directly beside the icon. Screens with no
+header row (Now, What's on, People, You) gain one for the hackathon: 56px, with what already sat
+at the top of the screen moved into it.
+
+| Screen | Top left | Beside the icon | After the hackathon |
+| --- | --- | --- | --- |
+| Now | The date line, now in the header row | "Got a code?", a 44px tertiary in `--ink-2` | "Got a code?" returns to the corner |
+| What's on | "What's on" | Nothing | The row goes; the label returns to the top of the screen |
+| People | The People and Standings segments, narrower by the icon's 56px | Nothing | The segments return to full width |
+| You | Nothing | Nothing | The row goes |
+| A market, a person view, a game page, the link page signed in | Back | More, the 48px icon | More returns to the corner |
+| The link page signed out, the claimant screen | The wordmark | Nothing | The corner is empty again |
+| The question step | Close (9.5) | "Got a code?" | "Got a code?" returns to the corner |
+| The careful step, who's in, the terms, the code screen | Back | Nothing | The corner is empty again |
+| The full-screen photo | Close, moved from the top right | Nothing; the counter ("2 / 5") moves from the top left to the centre of the row | Close returns to the top right and the counter to the top left |
+
+"Got a code?" stays on Now at the top, reachable without going through asking, and in the same
+header row as ever: it has moved 48px. (This copy of the spec puts "Got a code?" on the question
+step, 3.29; the build also has it on Now, and both are covered.) On an empty Now the six boxes
+stay where they are (3.16).
+
+The icon is added by this rule, so the existing boards are not redrawn with it: `InfoCorner`
+draws the header row of every screen in 10.1 as it is during the hackathon and after.
+
+### 10.4 The sheet: how it looks
+
+A modal sheet (6.4) on the current place's surface: a market's surface on a market, `--surface`
+elsewhere, with its 1px top line and 12px top corners, in both themes by the token swap of
+section 8. Nothing behind it dims (1.5). From the top:
+
+1. The grabber (36 by 5px, `--line-strong`), then the header row, pinned while the rest scrolls:
+   the screen's name in `body` 600 on the left and the 48px close on the right. The name is what
+   the screen is, in five words at most, sentence case: "Now", "Who's in", "A market, while it's
+   open".
+2. The fixed line (10.7), in `caption` `--ink-3`, 4px under the name.
+3. The groups, in 10.6's order. Each opens with its heading in `label` `--ink-3`, 20px above it.
+   Under the heading, the entries, 12px apart.
+4. An entry is two lines at most of its own. The term, in `body-sm` 600 `--ink`, is what to
+   touch or what the rule is about; an icon's term starts with the icon's own glyph at 20px in
+   `--ink`, 8px before its name. After the term, on the same line where it fits, an optional
+   qualifier in `caption` `--ink-3` says who or when ("if you asked it", "once you're in").
+   Under the term, the description in `body-sm` `--ink-2`.
+5. 24px of padding at the bottom, plus the phone's safe area.
+
+The sheet is 16px in from each side, as every sheet is, and its type is 13, 15 and 17 only
+(4.8). It is as tall as its content and never taller than 88% of the screen, so the screen's
+header row, with its icon, stays in view above it; past that the content scrolls under the
+pinned header row.
+
+In light, the sheet is the light surface with the light line, and the glyphs, terms and
+descriptions take the light `--ink`, `--ink-2` and `--ink-3`. Nothing else changes.
+
+### 10.5 The sheet: how it moves
+
+It is a modal sheet in 9.9's terms: it rises from below over travel on the move curve, and
+closes over base on the leave curve. It closes from its close, from a drag down on its handle
+row (past a third of its height, or a downward flick), and from the icon, which stays visible
+above it and toggles it. The page behind holds still. The layer that moves is `modal`, by a
+`translateY` on the sheet itself (9.3). With Reduce Motion it fades in over base and out over
+quick (9.11). Opening it does not change the screen's scroll position, and closing it returns
+focus to the icon.
+
+### 10.6 Writing a sheet
+
+**What it is for.** Someone should see every function on the screen at a glance, and a fairly
+technical person should be able to find and use any of them from the sheet alone. So it lists
+everything a person can do on the screen, and it starts with what the screen doesn't show.
+
+**The groups, in this order, each left out when it would be empty:**
+
+1. **Gestures.** Anything done by a movement rather than a tap on something labelled: a swipe, a
+   hold, a drag, a tap on something that doesn't look tappable (an avatar stack, a photo).
+2. **Icons.** Every control drawn as a glyph with no word beside it.
+3. **Rules and timing.** What changes when, and what binds: what locks at the close, what is
+   final, who sees what and when, who can do what.
+4. **Everything else.** A labelled control whose effect goes beyond its label, or whose place
+   isn't obvious. Its entry says where it is and what it does that its label doesn't.
+
+**Within a group**, entries go in the order the screen meets the eye: top to bottom, and left to
+right within a row.
+
+**An entry** is a term and a description. The term is five words at most. The description is one
+sentence of at most 90 characters, two lines in the sheet, in the second person and the present
+tense, with contractions. A sheet holds at most 16 entries; a screen that needs more is doing
+too much, and that goes back to design.
+
+**Naming a gesture.** The words are Tap, Hold (for half a second), Drag, Swipe (up, down, left
+or right) and Pinch, followed by the thing touched, named as the screen names it: "Swipe left on
+a row", "Hold a photo", "Tap the avatars", "Drag along the odds line". Never press, long-press,
+click or scroll.
+
+**Naming an icon.** The glyph, then its accessible name exactly as its `aria-label` has it
+("Share", "Copy the link", "Show a code to scan", "Pass the phone", "More"). The word "icon"
+appears only where the description needs it ("the icon turns to a check").
+
+**Never narrate a label the screen already shows.** "Tap Vote to vote" is never an entry. A
+labelled control earns an entry only through what it does beyond its words, or through where it
+is: "Change, on your entry line" reopens your entry until the close.
+
+**Qualifiers** say who can do it or when it applies, and nothing else: "if you asked it", "once
+you're in", "in a blind market", "until the lock".
+
+**States.** A sheet describes the screen in the state it is in, and each state that changes what
+a person can do gets its own sheet: a market while it's open, while it's closed, while voting,
+once it's settled. Kinds of market share a sheet, with the entries that differ swapped in (10.8
+gives the swaps).
+
+**Shared gestures** that work on every screen, pulling down from the top to re-read it (5.5) and
+the back control, are listed on Now's sheet and nowhere else, so no sheet spends its entries on
+them.
+
+**Every copy rule still applies** (4.6, 4.9): the product's words, sentence case, no exclamation
+marks, no wallet, transaction, gas, signature, chain or token, no sportsbook words, no "button",
+"click" or "simply", no marketing, and no number except the rule's own. The app's words for
+things are the sheet's words for them.
+
+**Checking a sheet.** Every control and gesture the screen's code wires up has an entry, or is a
+label that says everything it does. Every entry is under its length. The shared lint (4.8) runs
+over the sheets for the banned words.
+
+### 10.7 The fixed line
+
+Every sheet carries this line, word for word, under the screen's name:
+
+"This sheet is here only for the hackathon, so every feature on every screen can be seen."
+
+### 10.8 The worked example: a market while it's open
+
+The busiest screen, written to 10.6 for a yes-or-no market (`InfoSheet`; unrolled on
+`InfoRules`). It covers someone not yet in and someone in, since both are the open market;
+qualifiers mark what applies to whom.
+
+**A market, while it's open**
+
+"This sheet is here only for the hackathon, so every feature on every screen can be seen."
+
+Gestures
+
+- Tap the avatars. Opens who's in: everyone in, and anyone still out, whom you can nudge.
+- Swipe the sheet. Up shows your stake and the button that gets you in; down lowers it to read
+  the market.
+- Drag along the odds line. Sets your odds from 0% to 100%; a tap anywhere on the line jumps
+  there.
+
+Icons
+
+- More. Beside this sheet's icon: the rest of the market's details, and how it gets decided.
+- Share · once you're in. Sends the market's link to a chat, with the question as its picture.
+- Copy the link · once you're in. Copies it; the icon turns to a check for a moment.
+- Show a code to scan · once you're in. A code a friend scans with their own phone to open this
+  market.
+- Pass the phone · once you're in. A friend with an account gets in on your phone with their
+  PIN.
+
+Rules and timing
+
+- Your entry · once you're in. Yours to change until the close, from Change on your entry line.
+- Where everyone landed. Shows once you're in, never before.
+- Your answer · in a blind market. Final once you're in, and then you see everyone's.
+- The close. The time in the band: after it nobody gets in or changes, and people say what
+  happened.
+- Photos · once you're in. Add them any time from the slot at the bottom; everyone in it sees
+  them.
+
+Everything else
+
+- Remove, in who's in · if you asked it. Takes out an entry from someone without an account,
+  until the lock.
+- Close it with 4 · if you asked it. Closes it early; whoever isn't in yet can't get in after.
+
+Fifteen entries, each under 90 characters. The swaps for the other kinds: a number market
+replaces the odds line's entry with "Tap the number. Type your number; − and + step it, and
+holding either repeats."; a pick-one market replaces it with "Tap an answer. Picks it; tap
+another to move your pick." and its sheet entry with "Swipe the sheet down. Lowers it to a bar
+so the terms behind six answers can be read."
+
+Two entries follow the brief this revision was written from rather than an older section, and
+the code decides between them: that everyone in sees photos added while it is open (3.39 keeps
+them to the person who added them until it ends), and that anyone still out can be nudged from
+who's in (3.42 has nothing that nudges). Whichever the build does is what those two lines say.
+(Resolved 2026-09-28, Round D: the album is open the whole time and who's in nudges the people
+still out, both by the owner's rulings amended into 3.39 and 3.42, so the two lines stand as
+written.)
+
+---
+
+## 11. The opening
+
+Opening the installed app used to show a few seconds of white. It is two things in a row. iOS
+shows a static launch image from the moment the home-screen icon is tapped, and shows white when
+the app supplies none sized for that phone; it ignores the manifest's `background_color` for
+this. Then the app takes a moment to start, and its first paint can be white before its styles
+arrive. The opening makes those one continuous moment, the launch image, then the app's first
+frame, then Now, with nothing jumping between them. Boards: `Opening` (dark and light),
+`OpeningSpec`.
+
+### 11.1 The three parts
+
+1. **The launch image**, which iOS shows while the app starts. It cannot animate.
+2. **The app's first frame**, drawn by the page itself from its own HTML and an inline style in
+   the document head, before any script or stylesheet loads. It is the launch image again, pixel
+   for pixel, so the moment iOS swaps its image for the page nobody can see it happen.
+3. **The handoff to Now**: once the app has drawn Now's shell underneath (9.4), the first frame
+   fades away over it.
+
+Both still parts are the same picture: the ground, flat, with the logo at the centre. No grain
+(1.1), which arrives with Now in the handoff, no text, no spinner and no status of any kind,
+because the only honest thing to show before the app runs is the app's mark.
+
+### 11.2 The logo placeholder
+
+The logo is designed in a separate session, so everything here is drawn with a placeholder that
+the real logo replaces without anything else moving: a box of 120 by 120 CSS px, centred
+horizontally and vertically on the full screen (the whole display, status bar and home indicator
+included, since the launch image covers all of it). Its centre is the screen's centre. The real
+logo is delivered as an SVG drawn to fit inside that box, centred in it at any aspect ratio, in
+one colourway for each ground: on the dark ground `#121110` and on the light ground `#F5EFE4`.
+On the boards the placeholder is a 1.5px dashed `--line-strong` square labelled "Logo, 120 ×
+120".
+
+### 11.3 The launch image
+
+One PNG per iPhone screen size the app supports, portrait, at the device's full pixel size (1179
+× 2556 on a 6.1-inch iPhone 15 or 16, 1290 × 2796 on a 6.7-inch one; the generator's device list
+supplies the rest), each linked with `<link rel="apple-touch-startup-image" media="…">` matching
+that device's width, height, pixel ratio and portrait orientation. A script renders the whole
+set from one SVG of the placeholder or logo, so the box sits at exactly 120 × 120 CSS px times
+the pixel ratio, centred. Two sets, dark and light, each with `(prefers-color-scheme: dark)` or
+`(prefers-color-scheme: light)` in its `media`.
+
+Check on a real iPhone, in both appearances, that iOS picks the set by scheme. If it doesn't, it
+takes the first image that matches the size, so list only the dark set: dark is the default, the
+first frame draws dark to match (11.4), and a light phone's handoff fades from dark into light.
+
+### 11.4 The first frame
+
+In the document head, before anything else, an inline style and one element in the body:
+
+- `html` and `body` take the ground as their background (`#121110`, and `#F5EFE4` under `@media
+  (prefers-color-scheme: light)`), with `color-scheme` to match, so the page never paints white
+  behind anything.
+- A fixed element, `#opening`, covering the screen (`inset: 0`), in the same ground, holding the
+  logo box: `position: absolute; left: 50%; top: 50%; width: 120px; height: 120px; margin: -60px
+  0 0 -60px`. The logo is inline SVG, so it paints in the first frame with nothing to fetch.
+- The viewport is `width=device-width, initial-scale=1, viewport-fit=cover`, so the page covers
+  the same full screen the launch image did.
+
+The first frame draws in the phone's own scheme, whatever the Appearance override on You says
+(8.1), because the phone's scheme is what picked the launch image. The override takes over from
+Now, and when the two differ the handoff's fade carries the change.
+
+`#opening` is a child of the body, never inside the app root, and it is never transformed (9.3):
+it only fades.
+
+(Built 2026-09-28, Round D: the first frame's inline style holds `html`'s ground only until the
+handoff marks the document (`data-dressed`); from that frame the stylesheet's tokens, and the
+Appearance override with them, own `html`'s ground, which is how the fade carries the change when
+the two differ.)
+
+### 11.5 The handoff to Now
+
+The app starts under `#opening`, draws the first screen's shell (Now's date line or, for the
+hackathon, its header row, its tab bar and the + for someone signed in, first run for someone
+who isn't), and on the frame after that shell has painted:
+
+- the logo fades out over quick on the fade curve;
+- `#opening`'s ground fades out over base on the fade curve, starting at the same moment,
+  uncovering Now, grain and all;
+- at the end `#opening` is removed from the page.
+
+Nothing travels, grows or shrinks: the logo is not Now's, and nothing on Now takes its place.
+Now's content then fades in as it arrives (9.4). The handoff never waits for data, and never
+holds the logo for show: if the app is ready in 300ms, the opening lasts 300ms and the fade. If
+it is slow, the first frame simply stays; nothing is added to it.
+
+With Reduce Motion the handoff is unchanged, since it is two fades (9.11).
+
+The opening runs on a cold start only. Coming back to the app from the background shows it as it
+was, and 5.5's re-read keeps it current.

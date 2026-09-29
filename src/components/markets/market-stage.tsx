@@ -25,7 +25,7 @@ import { PickOneBars, type PickOneAnswer, type PickOneBar } from "./pick-one-bar
 import { PickOneEntry } from "./pick-one-entry";
 import { numberAxis, serialiseAxis, unitPhrase, withSeparators, type NumberLineAxis } from "@/lib/ledger/number-axis";
 import type { Signing, StakeUnit } from "./market-actions";
-import { StakeChips } from "./stake-chips";
+import { defaultStake, StakeChips } from "./stake-chips";
 
 export type StagePicture =
   | {
@@ -158,7 +158,7 @@ export function MarketStage(props: {
   // A pick-one sheet opens raised (3.30); the others raise on the first touch (3.13).
   const [raised, setRaised] = useState(mine?.unsigned === true || (pickOne !== null && mine === null));
   const [stake, setStake] = useState<string>(
-    mine?.stake ?? (unit.quantifiable ? String(unit.monetary ? 1000 : 1) : "1"),
+    mine?.stake ?? defaultStake(unit),
   );
   const [other, setOther] = useState(false);
   const [custom, setCustom] = useState("");

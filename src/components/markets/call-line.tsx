@@ -10,7 +10,7 @@ export type Pin = { id: string; name: string; percent: number; /** Someone in it
  * dashed track and nothing said, 3.22); full pins once they are; and when it has resolved, the true half takes the
  * wash and the true end a solid cream cap. Pins closer than 6 points cluster once there are more than six.
  */
-export function CallLine({ pins, state, outcome, size = "card", surface = "var(--surface)", ends }: { pins: Pin[]; state: "hidden" | "in" | "resolved"; outcome?: 0 | 1; size?: "card" | "screen"; surface?: string; /** Between two teams (3.40): the away side at the low end and the home side at the high end, each a 20px stamp with its name, "Even" in the middle; the winner's name in ink once resolved. */ ends?: { away: TeamFace; home: TeamFace } | null }) {
+export function CallLine({ pins, state, outcome, size = "card", surface = "var(--surface)", ends, words = null }: { pins: Pin[]; state: "hidden" | "in" | "resolved"; outcome?: 0 | 1; size?: "card" | "screen"; surface?: string; /** Between two teams (3.40): the away side at the low end and the home side at the high end, each a 20px stamp with its name, "Even" in the middle; the winner's name in ink once resolved. */ ends?: { away: TeamFace; home: TeamFace } | null; /** The outcomes in the question's own words, as the settled lines ("He did.", "He didn't."): once resolved the outcome's label reads "Yes, he did" or "No, he didn't" (3.5, 3.25). */ words?: { yes: string; no: string } | null }) {
   const pin = size === "card" ? 24 : 32;
   const track = size === "card" ? 6 : 8;
   if (state === "hidden") {
@@ -24,12 +24,12 @@ export function CallLine({ pins, state, outcome, size = "card", surface = "var(-
   return (
     <div className="flex flex-col gap-2">
       <div className="relative mx-3" style={{ height: pin + 8 }}>
-        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 overflow-hidden rounded-pill bg-surface-2" style={{ height: track }}>
+        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 overflow-hidden rounded-pill bg-field" style={{ height: track }}>
           {state === "resolved" ? <span className="absolute inset-y-0" style={{ background: "var(--market-wash)", left: outcome === 1 ? "50%" : 0, right: outcome === 1 ? 0 : "50%" }} /> : null}
         </div>
         <span aria-hidden="true" className="absolute top-1/2 left-1/2 w-px -translate-y-1/2 bg-line-strong" style={{ height: size === "card" ? 16 : 24 }} />
         {state === "resolved" ? (
-          <span aria-hidden="true" className="absolute top-1/2 -translate-y-1/2 rounded-pill bg-chalk" style={{ width: size === "card" ? 4 : 6, height: pin, [outcome === 1 ? "right" : "left"]: -2 }} />
+          <span aria-hidden="true" data-call-cap="" className="absolute top-1/2 -translate-y-1/2 rounded-pill bg-chalk" style={{ width: size === "card" ? 4 : 6, height: pin + 8, [outcome === 1 ? "right" : "left"]: -2 }} />
         ) : (
           <>
             <span aria-hidden="true" className="absolute top-1/2 left-0 h-3 w-0.5 -translate-y-1/2 bg-line-strong" />
@@ -41,8 +41,14 @@ export function CallLine({ pins, state, outcome, size = "card", surface = "var(-
             {c.members.length === 1 || pins.length <= 6 ? (
               <Avatar name={(c.members[0] as Pin).name} hue={hueFor((c.members[0] as Pin).id)} size={pin} ring={surface} ghost={(c.members[0] as Pin).ghost} />
             ) : (
-              <span className="inline-flex items-center justify-center rounded-pill bg-ink text-label text-ground" style={{ width: pin, height: pin, boxShadow: `0 0 0 2px ${surface}` }}>
-                {c.members.length}
+              // Beyond six people, pins within six points share one stacked marker (3.5): the first two, then how many more.
+              <span className="inline-flex items-center" data-call-cluster={c.members.length}>
+                {c.members.slice(0, 2).map((m, k) => (
+                  <span key={m.id} style={{ marginLeft: k === 0 ? 0 : -Math.round(pin / 3) }}>
+                    <Avatar name={m.name} hue={hueFor(m.id)} size={pin} ring={surface} ghost={m.ghost} />
+                  </span>
+                ))}
+                {c.members.length > 2 ? <span className="ml-1 inline-flex h-6 items-center rounded-pill border border-line-strong bg-surface px-2 chip-text text-ink-2">+{c.members.length - 2}</span> : null}
               </span>
             )}
           </span>
@@ -62,9 +68,9 @@ export function CallLine({ pins, state, outcome, size = "card", surface = "var(-
         </div>
       ) : (
       <div className="flex justify-between text-caption text-ink-3">
-        <span>{state === "resolved" && outcome === 0 ? <b className="font-semibold text-ink">No</b> : state === "resolved" ? "Said no" : "No"}</span>
+        <span>{state === "resolved" && outcome === 0 ? <b className="font-semibold text-ink">{outcomeLabel("no", words)}</b> : state === "resolved" ? "Said no" : "No"}</span>
         <span>even</span>
-        <span>{state === "resolved" && outcome === 1 ? <b className="font-semibold text-ink">Yes</b> : state === "resolved" ? "Said yes" : "Yes"}</span>
+        <span>{state === "resolved" && outcome === 1 ? <b className="font-semibold text-ink">{outcomeLabel("yes", words)}</b> : state === "resolved" ? "Said yes" : "Yes"}</span>
       </div>
       )}
     </div>
@@ -102,7 +108,7 @@ export function Ruler({ ruler, size = "card", surface = "var(--surface)", state 
   return (
     <div className="flex flex-col gap-2">
       <div className="relative" style={{ height: pin + 8, marginLeft: offLow.length ? side + 12 : 12, marginRight: offHigh.length ? side + 12 : 12 }}>
-        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 rounded-pill bg-surface-2" style={{ height: track }} />
+        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 rounded-pill bg-field" style={{ height: track }} />
         {offLow.length ? <span aria-hidden="true" className="absolute top-1/2 h-3 w-[6px] -translate-y-1/2 bg-ground" style={{ left: -3 }} /> : null}
         {offHigh.length ? <span aria-hidden="true" className="absolute top-1/2 h-3 w-[6px] -translate-y-1/2 bg-ground" style={{ right: -3 }} /> : null}
         {ruler.answer && state === "resolved" ? <span aria-hidden="true" className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-pill bg-chalk" style={{ width: size === "card" ? 4 : 6, height: pin + 8, left: `${ruler.answer.xPermille / 10}%`, zIndex: 30 }} /> : null}
@@ -126,6 +132,13 @@ export function Ruler({ ruler, size = "card", surface = "var(--surface)", state 
       ) : null}
     </div>
   );
+}
+
+/** The outcome's label once resolved (3.5): "Yes, he did" and "No, he didn't" from the settled lines, or "Yes" and "No" without them. Pure. */
+export function outcomeLabel(side: "yes" | "no", words: { yes: string; no: string } | null | undefined): string {
+  const line = words ? (side === "yes" ? words.yes : words.no).trim().replace(/[.!]+$/, "") : "";
+  if (!line) return side === "yes" ? "Yes" : "No";
+  return `${side === "yes" ? "Yes" : "No"}, ${line.charAt(0).toLowerCase()}${line.slice(1)}`;
 }
 
 /** Beyond six people, pins within six points of each other share one stacked marker; the line never grows a second row. */

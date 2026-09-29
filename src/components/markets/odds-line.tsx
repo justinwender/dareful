@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useRef } from "react";
-import { hueVar, type Hue } from "@/lib/ui/hue";
+import { hueStrokeVar, hueVar, type Hue } from "@/lib/ui/hue";
 import { band } from "./probability-entry";
 
 /** The thumb travels from 12px to the width minus 12px (3.13), so its centre sits over the segment it fills. */
@@ -140,7 +140,7 @@ export function OddsLine({
               className="absolute top-0 flex h-7 -translate-x-1/2 items-center rounded-pill bg-ground px-2 text-numeral font-bold text-ink tabular-nums"
               style={{
                 left: thumbLeft(v),
-                boxShadow: `inset 0 0 0 1.5px ${hueVar(hue)}`,
+                boxShadow: `inset 0 0 0 1.5px ${hueStrokeVar(hue)}`,
               }}
             >
               {v}%

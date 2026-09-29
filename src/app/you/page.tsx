@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { Avatar } from "@/components/ledger/avatar";
-import { Screen } from "@/components/ledger/screen";
+import { RootHeader, Screen } from "@/components/ledger/screen";
 import { TabBar } from "@/components/ui/tab-bar";
 import { ViewportProbe } from "@/components/ui/viewport-probe";
 import { AccountRows } from "@/components/you/account";
@@ -35,7 +35,9 @@ export default async function YouPage() {
   const marksCaption = you.marks.length === 0 ? "The emoji and stickers you put on questions" : "The emoji you’ve used, most recent first, and your stickers";
   return (
     <Screen root>
-      <h1 className="pt-5 text-label text-ink-3">You</h1>
+      <RootHeader info="you">
+        <h1 className="text-label text-ink-3">You</h1>
+      </RootHeader>
       <OfflineBar />
       <div className="flex flex-col gap-6 py-4">
         <div className="flex items-center gap-4">

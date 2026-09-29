@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Avatar } from "@/components/ledger/avatar";
 import { hueVar, type Hue } from "@/lib/ui/hue";
 import { leanPill } from "@/lib/ui/team";
+import { MOTION, staggerDelay, staggeredTotal } from "@/lib/ui/motion";
 
 /** One of the ten buckets, with what is riding there as a decimal string so no float touches a stake. */
 export type WeightBucket = { n: number; stake: string; noStake: number };
@@ -83,11 +84,13 @@ export function WeightLine({
         {group ? (
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute top-0 bottom-0 z-10 flex -translate-x-1/2 flex-col items-center duration-200 motion-safe:transition-opacity"
+            className="pointer-events-none absolute top-0 bottom-0 z-10 flex -translate-x-1/2 flex-col items-center motion-safe:transition-[opacity,left]"
             style={{
               left: `${Math.min(98, Math.max(2, group.percent))}%`,
               opacity: risen ? 1 : 0,
-              transitionDelay: risen ? "900ms" : "0ms",
+              transitionDuration: `${MOTION.base}ms`,
+              transitionTimingFunction: "var(--ease-fade), var(--ease-move)",
+              transitionDelay: risen && rise ? `${staggeredTotal(buckets.length)}ms` : "0ms",
             }}
           >
             <span className="flex h-[22px] items-center whitespace-nowrap rounded-pill bg-ink px-2 text-label text-ground">
@@ -107,9 +110,11 @@ export function WeightLine({
               >
                 {isMine && me ? (
                   <span
-                    className="absolute left-1/2 z-[2] -translate-x-1/2 duration-[400ms] ease-out motion-safe:transition-[bottom]"
+                    className="absolute left-1/2 z-[2] -translate-x-1/2 ease-move motion-safe:transition-[bottom]"
                     style={{
                       bottom: risen ? "calc(100% + 28px)" : 6,
+                      transitionDuration: `${MOTION.base}ms`,
+                      transitionDelay: risen && rise ? `${staggerDelay(i) + MOTION.travel - MOTION.base}ms` : "0ms",
                     }}
                   >
                     <Avatar
@@ -123,23 +128,23 @@ export function WeightLine({
                 <>
                     <span
                       aria-hidden="true"
-                      className="absolute inset-x-0 bottom-0 rounded-column bg-market-ink ease-out motion-safe:transition-[height]"
+                      className="absolute inset-x-0 bottom-0 rounded-column bg-market-ink ease-move motion-safe:transition-[height]"
                       style={{
                         height: risen ? `${height}%` : 6,
-                        transitionDuration: "700ms",
-                        transitionDelay:
-                          risen && !isMine ? `${120 + i * 30}ms` : "0ms",
+                        transitionDuration: `${rise ? MOTION.travel : MOTION.base}ms`,
+                        transitionDelay: risen && rise ? `${staggerDelay(i)}ms` : "0ms",
                       }}
                     />
                     {isMine && me ? (
                       <span
                         aria-hidden="true"
-                        className="absolute inset-x-0 bottom-0 rounded-column duration-[400ms] ease-out motion-safe:transition-[height]"
+                        className="absolute inset-x-0 bottom-0 rounded-column ease-move motion-safe:transition-[height]"
                         style={{
                           height: risen ? `${myShare}%` : 0,
                           background: hueVar(me.hue),
                           boxShadow: "0 -2px 0 var(--ground)",
-                          transitionDelay: risen ? "300ms" : "0ms",
+                          transitionDuration: `${rise ? MOTION.travel : MOTION.base}ms`,
+                          transitionDelay: risen && rise ? `${staggerDelay(i)}ms` : "0ms",
                         }}
                       />
                     ) : null}

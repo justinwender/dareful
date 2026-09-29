@@ -20,12 +20,14 @@ export function glyphKeyOf(d: Pick<DenominationRow, "template">): GlyphKey | nul
 }
 
 /** Whole dollars in lists; cents only when `cents` is asked for. Never a float. */
-export function formatMoney(centsValue: bigint, opts: { cents?: boolean } = {}): string {
+/** Dollars from cents. `cents` forces the cents; `whole` rounds to the nearest dollar for a list (2.2: whole dollars in lists, cents on a detail sheet). */
+export function formatMoney(centsValue: bigint, opts: { cents?: boolean; whole?: boolean } = {}): string {
   const negative = centsValue < 0n;
   const abs = negative ? -centsValue : centsValue;
+  const sign = negative ? "-" : "";
+  if (opts.whole && !opts.cents) return `${sign}$${((abs + 50n) / 100n).toLocaleString("en-US")}`;
   const dollars = abs / 100n;
   const rem = abs % 100n;
-  const sign = negative ? "-" : "";
   if (opts.cents || rem !== 0n) {
     return `${sign}$${dollars.toLocaleString("en-US")}.${rem.toString().padStart(2, "0")}`;
   }

@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { ProblemSummary } from "@/components/ledger/problem";
 import { Button } from "@/components/ui/button";
 import { Sheet } from "@/components/ui/sheet";
+import { InfoIcon } from "@/components/ui/info";
 import { addStickerAction, removeMarketPhotoAction } from "@/lib/actions/media";
 import { imageFromClipboard, imageFromPaste, NotACutoutHere, prepareCutout } from "@/lib/ui/cutout-clipboard";
 import { cutAt, drawOutline, loadSegmenter, type Cut, type Segmenter } from "@/lib/ui/cut-subject";
@@ -231,28 +232,30 @@ export function PhotoView({ items, index = 0, onClose, stickers = false }: { ite
 
   return (
     <div role="dialog" aria-modal="true" aria-label={alt} data-photo-view={id} className="fixed inset-0 z-40 flex flex-col bg-ground pt-[env(safe-area-inset-top)]">
-      <div className="flex h-14 shrink-0 items-center justify-between px-2">
+      <div className="grid h-14 shrink-0 grid-cols-[48px_minmax(0,1fr)_48px] items-center px-2" data-photo-header="">
+        {/* For the hackathon the close sits at the top left, the counter in the centre and the information icon at the top right (10.3). */}
+        <button type="button" aria-label="Close" onClick={onClose} data-press="line" className="inline-flex h-12 w-12 items-center justify-center rounded-pill text-ink press-line">
+          <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <path d="M6 6l12 12M18 6L6 18" />
+          </svg>
+        </button>
         {items.length > 1 ? (
-          <p className="ml-2 flex h-7 items-center rounded-pill bg-scrim px-3 text-caption tabular-nums text-ink" data-album-counter="">
+          <p className="mx-auto flex h-7 items-center rounded-pill bg-scrim px-3 text-caption tabular-nums text-ink" data-album-counter="">
             {current + 1} / {items.length}
           </p>
         ) : (
           <span />
         )}
-        <button type="button" aria-label="Close" onClick={onClose} className="inline-flex h-12 w-12 items-center justify-center rounded-pill text-ink">
-          <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            <path d="M6 6l12 12M18 6L6 18" />
-          </svg>
-        </button>
+        <InfoIcon sheet="photo" onPhoto />
       </div>
       <div ref={rowRef} onScroll={onScroll} className="flex min-h-0 flex-1 snap-x snap-mandatory overflow-x-auto overflow-y-hidden [scrollbar-width:none]" data-album="" aria-roledescription="album">
         {items.map((item, i) => (
           <div key={item.id} className="flex h-full w-full shrink-0 snap-center items-center justify-center px-2" aria-hidden={i !== current}>
             {/* The wrapper shrinks to the drawn image, so a tap's place on it is a place on the photo and the outline canvas lies over it exactly. The phone's long-press stays on: the lift path is the phone's own Copy Subject (3.28). */}
             <span className="relative inline-flex max-h-full max-w-full" onClick={i === current ? tapPhoto : undefined} data-photo-tap={i === current && making && mode === "cut" ? "" : undefined}>
-              {/* A signed URL that expires; next/image would need a loader for one. */}
+              {/* A signed URL that expires; next/image would need a loader for one. The photo opens from the frame as `photo` (9.7): the one on screen carries the name the frame's image travels to. */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={`/api/media/${item.id}`} alt={item.alt} loading={Math.abs(i - current) <= 1 ? "eager" : "lazy"} className="max-h-full max-w-full object-contain" data-photo-image="" />
+              <img src={`/api/media/${item.id}`} alt={item.alt} loading={Math.abs(i - current) <= 1 ? "eager" : "lazy"} className="max-h-full max-w-full object-contain" data-photo-image="" style={i === current ? ({ viewTransitionName: "photo" } as CSSProperties) : undefined} />
               {i === current && making && mode === "cut" ? <canvas ref={outline} aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full" data-cut-outline={cut ? "" : undefined} /> : null}
             </span>
           </div>

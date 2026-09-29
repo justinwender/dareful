@@ -31,7 +31,7 @@ export function Problem({ message, id }: { message?: string | null; id?: string 
 
 /** Whether a message is a failure the same tap could put right: a send or a save that did not go through, never a refusal at a field. */
 export function isRetryable(message: string): boolean {
-  return /didn[’']t go through|didn[’']t send|didn[’']t come back|didn[’']t come through|couldn[’']t save|couldn[’']t load|try again/i.test(message);
+  return /didn[’']t go through|didn[’']t send|didn[’']t come back|didn[’']t come through|couldn[’']t save|couldn[’']t load|stopped partway|try again/i.test(message);
 }
 
 /** The words the ten-second step shows under a control that has not come back (5.2). */
@@ -41,7 +41,7 @@ export const NOTHING_CAME_BACK = "That didn’t come back.";
 export function TryAgain({ onClick }: { onClick: () => void }) {
   return (
     <div>
-      <button type="button" onClick={onClick} data-try-again="" className="link-row transition-opacity duration-[120ms] ease-out active:opacity-[0.88]">
+      <button type="button" onClick={onClick} data-try-again="" className="link-row transition-opacity duration-(--motion-quick) ease-fade active:opacity-[0.88]">
         Try again
       </button>
     </div>

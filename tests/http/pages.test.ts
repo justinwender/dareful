@@ -533,8 +533,10 @@ test("the first screen groups what was waiting by who it is with, and offers one
   assert.ok(r.text.includes("You were already in 3 stories.") && /kept under your name, /.test(r.text), "the headline and the line");
   assert.equal((r.html.match(/data-claim-group="/g) ?? []).length, 2, "one group per person");
   assert.equal((r.html.match(/data-claim-row="/g) ?? []).length, 3, "a row per cover");
-  assert.equal((r.html.match(/role="checkbox" aria-checked="true" aria-label="Confirm: [^"]+ got you"/g) ?? []).length, 3, "every row's check, pressed by default, named for the tap");
-  for (const s of ["Concert tickets", "Brunch", "Parking", "Yep, all 3 are right", "Covered · "]) assert.ok(r.text.includes(s), s);
+  // Round D, the owner's correction: a cover someone recorded against this person starts unpressed, and the chalk waits for a deliberate yep.
+  assert.equal((r.html.match(/role="checkbox" aria-checked="false" aria-label="Confirm: [^"]+ got you"/g) ?? []).length, 3, "every row's check, unpressed until this person presses it, named for the tap");
+  assert.equal((r.html.match(/role="checkbox" aria-checked="true"/g) ?? []).length, 0, "nothing pressed for them");
+  for (const s of ["Concert tickets", "Brunch", "Parking", "Yep, these are right", "Covered · "]) assert.ok(r.text.includes(s), s);
   assert.ok(!r.text.includes("Here’s what was waiting") && !r.text.includes("With "), "the old lines are gone");
 });
 
@@ -822,7 +824,8 @@ test("the bar is on the four roots and nowhere else, every other screen has a ba
   for (const path of ["/m/new", "/join", `/m/${marketId}`, `/p/${friend.user.id}`, "/welcome", `/on/${feedGameId}?g=${feedGroupId}`]) {
     const r = await get(path, cAsker);
     assert.ok(r.status === 200 || r.loc === "/", `${path}: ${r.status}`);
-    if (r.status === 200) assert.ok(/aria-label="Back"/.test(r.html) && !/<nav aria-label="Main"/.test(r.html) && !/aria-label="Ask something"/.test(r.html) && !/min-h-\[calc\(100lvh/.test(r.html), `${path} is a task screen`);
+    // The question step's top-left control is Close, a down chevron, since it rises from the + (9.5); every other task screen has Back.
+    if (r.status === 200) assert.ok((path === "/m/new" ? /aria-label="Close"/.test(r.html) : /aria-label="Back"/.test(r.html)) && !/<nav aria-label="Main"/.test(r.html) && !/aria-label="Ask something"/.test(r.html) && !/min-h-\[calc\(100lvh/.test(r.html), `${path} is a task screen`);
   }
   const out = await get(`/m/${marketId}`);
   assert.ok(!/aria-label="Back"/.test(out.html) && !/<nav aria-label="Main"/.test(out.html) && out.text.includes("dareful"), "someone signed out has nowhere in the app to go back to");
@@ -1165,6 +1168,92 @@ test("a timestamp is painted in the zone the browser reported, not the server's"
     const r = await fetch(`${BASE}/o/${ghostCoverId}`, { headers: { cookie: `dareful_session=${cA}; dareful_tz=${encodeURIComponent(zone)}` } });
     assert.ok((await r.text()).includes(label(zone)), `${zone}: expected ${label(zone)}`);
   }
+});
+
+// ---------------------------------------------------------------------------------------- round D: how it feels
+
+test("every root and task screen keeps its fixed layers free of a captured ancestor (9.3): the tab bar, the Start button and the sheet, walked in the markup", async () => {
+  const { ancestorsInMarkup, capturesAbove } = await import("@/lib/ui/layers");
+  const screens: Array<[string, string | undefined]> = [["/", cAsker], ["/on", cAsker], ["/people", cAsker], ["/you", cAsker], [`/m/${marketId}`, cFriend], [`/m/${marketId}`, cAsker], [`/p/${friend.user.id}`, cAsker], ["/join", cAsker], ["/welcome", cU], ["/m/new", cAsker], [`/on/${feedGameId}?g=${feedGroupId}`, cRae]];
+  for (const [path, cookie] of screens) {
+    const r = await get(path, cookie);
+    assert.equal(r.status, 200, path);
+    assert.ok(r.html.includes('id="layers"') && r.html.includes('data-layer="grain"') && r.html.includes('data-layer="status-band"'), `${path}: the layers host, the grain and the band behind the status bar are the shell's`);
+    for (const [name, match] of [["the tab bar", (el: { tag: string; attrs: Record<string, string> }) => el.tag === "nav" && el.attrs["aria-label"] === "Main"], ["the Start button", (el: { tag: string; attrs: Record<string, string> }) => el.tag === "a" && el.attrs["aria-label"] === "Ask something"], ["the sheet", (el: { tag: string; attrs: Record<string, string> }) => el.tag === "section" && "data-pinned-sheet" in el.attrs]] as const) {
+      const chain = ancestorsInMarkup(r.html, match);
+      if (!chain) continue;
+      assert.deepEqual(capturesAbove(chain), [], `${path}: ${name} has an ancestor that would capture it`);
+      assert.ok(chain.some((a) => a.attrs["id"] === "app"), `${path}: ${name} sits under the app root`);
+    }
+    assert.ok(!/class="[^"]*\b(transform|translate-[xy]-\d|backdrop-blur|will-change-transform)\b[^"]*"[^>]*>(?:(?!<\/main>)[\s\S])*<main/.test(r.html), `${path}: nothing above the page carries a transform`);
+  }
+});
+
+test("the opening (11) and the theme (8.1): the first frame is inline, in the phone's own scheme, with a launch image per iPhone in both sets, and the stored appearance goes onto html before paint", async () => {
+  const r = await get("/", cAsker);
+  assert.ok(r.html.includes('id="opening"') && r.html.includes("#opening{position:fixed;inset:0") && r.html.includes("html:not([data-dressed]){background:#121110;color-scheme:dark}") && r.html.includes("html:not([data-dressed]){background:#F5EFE4;color-scheme:light}"), "the first frame, never white");
+  assert.ok(r.html.includes('class="on-dark"') && r.html.includes('class="on-light"'), "the logo in both colourways, inline");
+  assert.ok(r.html.includes('classList.add("handoff")'), "the handoff after the first paint");
+  const links = r.html.match(/<link [^>]*rel="apple-touch-startup-image"[^>]*>/g) ?? [];
+  assert.equal(links.length, 26, "a launch image per iPhone size, in a dark and a light set");
+  assert.ok(links[0]?.includes("prefers-color-scheme: dark") && links[0]?.includes("/launch/") && links[0]?.includes("-dark.png"), "dark first");
+  assert.ok(/<meta name="theme-color" content="#121110" media="\(prefers-color-scheme: dark\)"/.test(r.html) && /<meta name="theme-color" content="#F5EFE4" media="\(prefers-color-scheme: light\)"/.test(r.html), "one theme colour per scheme");
+  assert.ok(r.html.includes('localStorage.getItem("dareful.theme")') && r.html.includes('setAttribute("data-theme",t)'), "the appearance script in the head");
+  assert.ok(r.html.includes('content="width=device-width, initial-scale=1, viewport-fit=cover"'), "viewport-fit=cover");
+  for (const path of ["/launch/1179x2556-dark.png", "/launch/1179x2556-light.png", "/icons/180.png", "/icons/192.png", "/favicon.ico"]) {
+    const f = await fetch(BASE + path);
+    assert.equal(f.status, 200, path);
+    assert.ok((f.headers.get("content-type") ?? "").includes(path.endsWith(".ico") ? "icon" : "image/png"), `${path} is an image`);
+  }
+  const you = await get("/you", cAsker);
+  assert.ok(you.html.includes('data-account-row="appearance"') && you.text.includes("Appearance") && you.text.includes("Match your phone"), "the Appearance row on You (8.1)");
+});
+
+test("a row on Now carries its shell (9.4): the market's ink, mark, state, clock and question on the link, and the band it opens into is named for the transition (9.7)", async () => {
+  const { parseShell } = await import("@/lib/ui/shell");
+  const r = await get("/", cAsker);
+  const links = r.html.match(/<a [^>]*data-shell="[^"]*"[^>]*>/g) ?? [];
+  assert.ok(links.length >= 1, "a question row carries a shell");
+  const raw = /data-shell="([^"]*)"/.exec(links[0] as string)?.[1] ?? "";
+  const shell = parseShell(raw.replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&amp;/g, "&"));
+  assert.ok(shell && shell.kind === "market" && shell.question.length > 0 && shell.clock !== undefined, "the shell parses back");
+  assert.ok((links[0] as string).includes('data-press="row"') && (links[0] as string).includes("press-row"), "the row presses to the ground of its place (9.4)");
+  assert.ok(r.html.includes("data-stamp"), "the stamp the ink travels from");
+  const m = await get(`/m/${marketId}`, cAsker);
+  assert.ok(/data-band="" style="view-transition-name:market-ink"/.test(m.html) && m.html.includes("view-transition-name:market-words"), "the band's box and its words are named (9.7)");
+  assert.ok(m.html.includes('data-ink-root="') && /html\{--ground:#[0-9A-Fa-f]{6};/.test(m.html) && m.html.includes('html[data-theme="light"]{--ground:'), "the market's ink on the document root, in both themes (8.4, 9.3)");
+  assert.ok(!/<div class="grain flex flex-1 flex-col" style="--ground/.test(m.html), "the page paints no ground of its own: the shell's grain sits over html's");
+  assert.ok(m.html.includes('data-arrive="fade"'), "a market fades in under its shell");
+});
+
+test("the write-up streams (9.8): the route answers a signed-out visitor with nothing, a bad line with a refusal, and never a page", async () => {
+  const out = await fetch(`${BASE}/api/m/write-up`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ line: "Does he?" }) });
+  assert.equal(out.status, 401);
+  const bad = await fetch(`${BASE}/api/m/write-up`, { method: "POST", headers: { "content-type": "application/json", cookie: `dareful_session=${cAsker}` }, body: JSON.stringify({ line: "x" }) });
+  assert.equal(bad.status, 400);
+  assert.equal((await bad.json()).error, "Ask it in a line.");
+});
+
+test("the roots' header rows and the information icon (10.1, 10.3): the icon at the top right of every screen it lists, the screen's own control beside it, and none on a screen a moment rather than a place", async () => {
+  for (const [path, cookie, key] of [["/", cAsker, "now"], ["/on", cAsker, "whats-on"], ["/people", cAsker, "people"], ["/you", cAsker, "you"], [`/m/${marketId}`, cFriend, "market-open"], [`/p/${friend.user.id}`, cAsker, "person"], ["/join", cAsker, "code"], ["/welcome", cU, "claimant"], ["/m/new", cAsker, "ask-question"]] as const) {
+    const r = await get(path, cookie);
+    assert.equal(r.status, 200, path);
+    const icons = r.html.match(/data-info-icon="[^"]+"/g) ?? [];
+    assert.deepEqual(icons, [`data-info-icon="${key}"`], `${path} carries one icon, for its own sheet`);
+    assert.ok(r.html.includes('aria-label="What you can do here"') && r.html.includes('aria-haspopup="dialog"'), `${path}: named, and it opens a dialog`);
+  }
+  const now = await get("/", cAsker);
+  assert.ok(/data-root-header=""[\s\S]*?data-got-a-code=""[\s\S]*?data-info-icon="now"/.test(now.html), "on Now, Got a code? sits directly left of the icon in the 56px header row");
+  const market = await get(`/m/${marketId}`, cAsker);
+  assert.ok(/aria-label="More"[\s\S]*?data-info-icon="market-open"/.test(market.html), "on a market, More sits beside the icon");
+  const pass = await get(`/m/${marketId}/pass`, cAsker);
+  assert.ok(pass.status !== 200 || !pass.html.includes("data-info-icon"), "pass the phone's steps carry no icon (10.1)");
+});
+
+test("the corrections of Round D: the count line's empty state sits under the app's read on every ballot, and never as a second header", async () => {
+  const r = await get(`/m/${feedVotingId}`, cRae);
+  assert.ok(r.text.includes("Nobody has said yet. Two of you and it settles."), "the empty state on the score's ballot");
+  assert.ok(!r.html.includes('data-count-line=""') || r.html.includes("The app leans"), "under the app's read only; the score speaks on its card (3.35)");
 });
 
 // ------------------------------------------------------------------------------------------------- copy

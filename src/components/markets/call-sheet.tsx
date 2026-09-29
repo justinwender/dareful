@@ -156,11 +156,9 @@ export function CallSheet(props: CallSheetProps) {
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
   // The count line (3.24): "3 of 6 have said yes. Two more and it settles."; on a pick-one question it names the answer ("3 of 6 say Priya."),
   // and when votes split it names the answer nearest to settling ("3 say Priya, 1 says John. Two more for Priya and it settles.").
-  // Before anyone has said, the score's proposal gets the count line's empty state (3.35); the app's read stays the header (the owner's ruling, Round C part 2).
+  // Before anyone has said, the count line's empty state (3.35), on every ballot: it sits under whatever header the ballot has, the app's read included, and is never a second header (the owner's correction, Round D).
   const countLine = !leading
-    ? proposal?.source === "feed"
-      ? nobodyYetLine(threshold)
-      : null
+    ? nobodyYetLine(threshold)
     : tally.length === 1
       ? `${leading.n} of ${quorum} ${answers ? (leading.n === 1 ? "says" : "say") : leading.n === 1 ? "has said" : "have said"} ${bare(leading.outcome, unit)}.${leading.n < threshold ? ` ${cap(countWord(threshold - leading.n))} more and it settles.` : ""}`
       : answers
@@ -507,7 +505,7 @@ export function CallSheet(props: CallSheetProps) {
           onRaise={setRaised}
           header={
             <p className="text-body-strong text-ink">
-              {countLine ?? proposal?.line}
+              {proposal?.source === "app" ? proposal.line : countLine}
             </p>
           }
           low={
@@ -515,6 +513,8 @@ export function CallSheet(props: CallSheetProps) {
               others(claim)
             ) : (
               <>
+                {/* The count line, its empty state included, sits under the app's read and is never a second header (the owner's correction, Round D); a final score speaks on the source card (3.35), so the count line heads that ballot. */}
+                {proposal?.source === "app" ? <p className="text-caption text-ink-3" data-count-line="">{countLine}</p> : null}
                 <ProblemSummary messages={[choice === null ? problem : null]} />
                 {props.myNote ? <p className="text-caption text-ink-3">You added a note. Only a number counts toward settling it.</p> : null}
                 <Button variant="primary" onClick={() => setChoice(claim)}>

@@ -42,7 +42,7 @@ function CodeBoxes({ id, value, onChange, field, describedBy, height, gap, autoF
           const active = focused && i === Math.min(value.length, CODE_LENGTH - 1);
           return (
             <span key={i} data-type-exempt="" className={cn("flex items-center justify-center rounded-button border border-line bg-surface text-numeral text-ink", height === 60 ? "h-[60px]" : "h-12", field && FIELD_PROBLEM_CLASS, active && "outline outline-2 outline-ink outline-offset-2")}>
-              {value[i] ?? (active ? <span className="h-6 w-px animate-pulse bg-ink-2" /> : null)}
+              {value[i] ?? (active ? <span className="h-6 w-px motion-loop-pulse bg-ink-2" /> : null)}
             </span>
           );
         })}

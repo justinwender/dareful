@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Avatar, AvatarStack } from "@/components/ledger/avatar";
 import { ObligationToken } from "@/components/ledger/obligation-token";
-import { Screen } from "@/components/ledger/screen";
+import { RootHeader, Screen } from "@/components/ledger/screen";
 import { LinkPending } from "@/components/ui/link-pending";
 import { TabBar } from "@/components/ui/tab-bar";
 import { currentUser } from "@/lib/auth/session";
@@ -27,7 +27,9 @@ export default async function PeoplePage() {
 
   return (
     <Screen root>
-      <h1 className="pt-5 text-label text-ink-3">People</h1>
+      <RootHeader info="people">
+        <h1 className="text-label text-ink-3">People</h1>
+      </RootHeader>
       <OfflineBar />
       <div className="flex flex-col gap-7 py-4">
         {nobody ? (
@@ -36,7 +38,7 @@ export default async function PeoplePage() {
           <ul className="flex flex-col gap-1.5">
             {people.people.map(({ user: p, token }) => (
               <li key={p.id}>
-                <Link prefetch={false} href={`/p/${p.id}`} className="relative flex min-h-14 items-center gap-3 rounded-button bg-surface px-3">
+                <Link prefetch={false} href={`/p/${p.id}`} data-press="row" className="press-row relative flex min-h-14 items-center gap-3 rounded-button bg-surface px-3">
                   <LinkPending />
                   <Avatar name={p.displayName} hue={hueFor(p.id)} size={36} />
                   <span className="min-w-0 flex-1 truncate text-body-strong text-ink">{p.displayName}</span>
@@ -59,14 +61,14 @@ export default async function PeoplePage() {
                   <summary className="flex min-h-14 cursor-pointer list-none items-center gap-3 px-3">
                     <AvatarStack people={people.square.map((p) => ({ name: p.displayName, hue: hueFor(p.id) }))} size={26} />
                     <span className="min-w-0 flex-1 text-body-sm text-ink-2">{squareSentence(people.square.map((p) => p.displayName))}</span>
-                    <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-ink-3 transition-transform group-open:rotate-90">
+                    <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-ink-3 transition-transform duration-(--motion-quick) ease-move group-open:rotate-90">
                       <path d="M9 5l7 7-7 7" />
                     </svg>
                   </summary>
                   <ul className="flex flex-col border-t border-line">
                     {people.square.map((p) => (
                       <li key={p.id}>
-                        <Link prefetch={false} href={`/p/${p.id}`} className="relative flex min-h-12 items-center gap-3 px-3">
+                        <Link prefetch={false} href={`/p/${p.id}`} data-press="row" className="press-row relative flex min-h-12 items-center gap-3 px-3">
                           <LinkPending />
                           <Avatar name={p.displayName} hue={hueFor(p.id)} size={28} />
                           <span className="min-w-0 flex-1 truncate text-body-sm text-ink">{p.displayName}</span>
@@ -79,7 +81,7 @@ export default async function PeoplePage() {
             ) : null}
             {ghosts.map((g) => (
               <li key={g.id}>
-                <Link prefetch={false} href={`/p/c/${g.id}`} className="relative flex min-h-14 items-center gap-3 rounded-button bg-surface px-3">
+                <Link prefetch={false} href={`/p/c/${g.id}`} data-press="row" className="press-row relative flex min-h-14 items-center gap-3 rounded-button bg-surface px-3">
                   <LinkPending />
                   <Avatar name={g.displayName} hue="stone" size={36} ghost />
                   <span className="min-w-0 flex-1 truncate text-body-strong text-ink">{g.displayName}</span>

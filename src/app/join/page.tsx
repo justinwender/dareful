@@ -16,7 +16,7 @@ export default async function JoinPage({ searchParams }: { searchParams: Promise
   const sp = await searchParams;
   return (
     <Screen>
-      <TopBar back />
+      <TopBar back info="code" />
       <div className="flex flex-col gap-7 py-2">
         <h1 className="text-serif-l text-ink">Got a code?</h1>
         <CodeJoinFocused initial={sp.code ?? ""} />

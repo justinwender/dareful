@@ -13,6 +13,8 @@ import { hueFor } from "@/lib/ui/hue";
 import { markRefOf } from "@/lib/ui/mark";
 import { outcomeLine } from "@/lib/ui/outcome-words";
 import { calledItLine } from "@/lib/ledger/pick-one";
+import { shellOf } from "@/lib/ledger/shell-data";
+import { serialiseShell } from "@/lib/ui/shell";
 
 /**
  * Just happened (docs/design.md 4.7, 3.15): what the group did, each as one row and never a story card. A resolved
@@ -55,7 +57,7 @@ export function JustHappened({ rows, viewerId, clock }: { rows: HomeData["happen
             // A finished market answers a left swipe with Archive (3.15): it leaves this person's Now and nothing else changes.
             return (
               <CallOff key={d.id} kind="archive" dareId={d.id}>
-              <Link prefetch={false} href={`/m/${d.id}`} className={`relative grid items-center gap-3 px-4 py-[14px] ${mark ? "grid-cols-[40px_minmax(0,1fr)_auto]" : "grid-cols-[minmax(0,1fr)_auto]"} ${divider}`}>
+              <Link prefetch={false} href={`/m/${d.id}`} data-press="row" data-shell={serialiseShell(shellOf(m, viewerId, new Date(clock.now), clock.zone))} data-shell-id={d.id} className={`press-row relative grid items-center gap-3 px-4 py-[14px] ${mark ? "grid-cols-[40px_minmax(0,1fr)_auto]" : "grid-cols-[minmax(0,1fr)_auto]"} ${divider}`}>
                 <LinkPending />
                 {mark ? <MarkRefStamp mark={mark} size={40} ink={m.ink} /> : null}
                 <span className="flex min-w-0 flex-col gap-1">
@@ -78,7 +80,7 @@ export function JustHappened({ rows, viewerId, clock }: { rows: HomeData["happen
           if (e.kind === "onway") {
             // A tap still going through (5.2): the person it is with, what it was, and the on-its-way mark; it becomes the ordinary row once it lands.
             return (
-              <Link prefetch={false} key={`onway-${e.href}-${e.at.getTime()}`} href={e.href} data-onway="" className={`relative grid grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-[14px] ${divider}`}>
+              <Link prefetch={false} key={`onway-${e.href}-${e.at.getTime()}`} href={e.href} data-onway="" data-press="row" className={`press-row relative grid grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-[14px] ${divider}`}>
                 <LinkPending />
                 <Avatar name={e.owner.displayName} hue={hueFor(e.owner.id)} size={40} />
                 <span className="flex min-w-0 flex-col gap-1">
@@ -96,7 +98,7 @@ export function JustHappened({ rows, viewerId, clock }: { rows: HomeData["happen
             // A finished game archives as one row (3.15, ruled 2026-09-27): its questions in this set leave this person's Now together.
             return (
               <CallOff key={`g-${e.href}`} kind="archive" dareId={e.ids[0] ?? ""} ids={e.ids} game>
-                <Link prefetch={false} href={e.href} data-game-happened="" className={`relative grid grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-[14px] ${divider}`}>
+                <Link prefetch={false} href={e.href} data-game-happened="" data-press="row" className={`press-row relative grid grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-[14px] ${divider}`}>
                   <LinkPending />
                   <TeamPair away={e.away} home={e.home} size={28} overlap />
                   <span className="flex min-w-0 flex-col gap-1">
@@ -116,7 +118,7 @@ export function JustHappened({ rows, viewerId, clock }: { rows: HomeData["happen
           const state = e.kind === "closed" ? e.state : "owed";
           const photo = e.kind === "closed" && e.obligation.mediaId ? `/api/media/${e.obligation.mediaId}?size=thumb` : null;
           return (
-            <Link prefetch={false} key={`${e.kind}-${e.obligation.id}`} href={`/p/${owner.id === viewerId ? e.to.id : owner.id}`} className={`relative grid grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-[14px] ${divider}`}>
+            <Link prefetch={false} key={`${e.kind}-${e.obligation.id}`} href={`/p/${owner.id === viewerId ? e.to.id : owner.id}`} data-press="row" className={`press-row relative grid grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-[14px] ${divider}`}>
               <LinkPending />
               <Avatar name={owner.displayName} hue={hueFor(owner.id)} size={40} />
               <span className="flex min-w-0 flex-col gap-1">

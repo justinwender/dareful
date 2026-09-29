@@ -9,6 +9,7 @@ import { PersonHeader } from "@/components/ledger/person-header";
 import { RallyStrip } from "@/components/ledger/rally-strip";
 import { CoverSheet } from "@/components/ledger/cover-sheet";
 import { Screen, SectionLabel, TopBar } from "@/components/ledger/screen";
+import { ComingUpGlyph } from "@/components/ledger/glyphs";
 import { ButtonLink } from "@/components/ui/button";
 import { currentUser } from "@/lib/auth/session";
 import { chainId, ledgerAddress } from "@/lib/chain/contracts";
@@ -82,7 +83,7 @@ export default async function PersonPage({ params, searchParams }: { params: Pro
   ]);
 
   const renderEvent = (e: (typeof timeline)[number]) => {
-              if (e.kind === "market") return <MarketCardFrom key={`m-${e.market.dare.id}`} m={e.market} viewerId={me.id} clock={clock} consequenceStates={view.consequenceStates} close={{ domain, photosOn }} />;
+              if (e.kind === "market") return <MarketCardFrom key={`m-${e.market.dare.id}`} m={e.market} viewerId={me.id} clock={clock} consequenceStates={view.consequenceStates} close={{ domain, photosOn }} groupPeople={e.groupPeople} />;
               if (e.kind === "game") return <GameCard key={`g-${e.game.id}-${e.game.groupId}`} game={e.game} markets={e.markets} groupName={e.groupName} at={e.at} clock={clock} viewerId={me.id} themId={them.id} themName={them.displayName} consequenceStates={view.consequenceStates} close={{ domain, photosOn }} />;
               if (e.kind === "proposal") {
                 const debtor = byId.get(e.proposal.fromUser ?? "");
@@ -138,7 +139,7 @@ export default async function PersonPage({ params, searchParams }: { params: Pro
 
   return (
     <Screen>
-      <TopBar back />
+      <TopBar back info="person" />
       <div className="flex flex-col gap-6 py-2">
         <div className="flex items-center gap-4">
           <Avatar name={them.displayName} hue={hueFor(them.id)} size={56} />
@@ -151,7 +152,14 @@ export default async function PersonPage({ params, searchParams }: { params: Pro
           <p className="text-body text-ink-2">Nothing between you two yet.</p>
         ) : (
           <div className="flex flex-col gap-3">
-            {upcoming.length > 0 ? <SectionLabel>Coming up</SectionLabel> : null}
+            {upcoming.length > 0 ? (
+              <SectionLabel>
+                <span className="inline-flex items-center gap-1.5">
+                  <ComingUpGlyph size={16} />
+                  Coming up
+                </span>
+              </SectionLabel>
+            ) : null}
             {[...upcoming, ...shown].map((e, i) => {
               const card = renderEvent(e);
               // The past starts after what is still ahead; nothing labels it, since the dates say so.

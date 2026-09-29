@@ -15,7 +15,7 @@ export function EmptySlot() {
   const { pick, pending, night, viewer } = usePhotoAdding();
   if (pending > 0) {
     return (
-      <div className="relative w-full overflow-hidden rounded-card bg-surface motion-safe:animate-[placeholder-pulse_1.2s_ease-in-out_infinite]" style={{ height: 200, backgroundImage: "repeating-linear-gradient(135deg, var(--field) 0 10px, var(--surface) 10px 20px)" }} aria-busy="true" aria-label="Your photo is going up">
+      <div className="relative w-full overflow-hidden rounded-card bg-surface motion-safe:motion-loop-pulse" style={{ height: 200, backgroundImage: "repeating-linear-gradient(135deg, var(--field) 0 10px, var(--surface) 10px 20px)" }} aria-busy="true" aria-label="Your photo is going up">
         <span className="absolute bottom-2 left-2 inline-flex h-7 items-center gap-[6px] rounded-pill bg-scrim pr-3 pl-1 text-label text-ink">
           <Avatar name={viewer.name} hue={viewer.hue} size={20} />
           <span>{firstName(viewer.name)}</span>

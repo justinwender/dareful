@@ -30,7 +30,7 @@ function RowCells({ name, hue, slots }: { name: string; hue: Hue; slots: boolean
   return (
     <>
       <span className="flex h-6 items-center">
-        <Avatar name={name} hue={hue} size={22} />
+        <Avatar name={name} hue={hue} size={24} />
       </span>
       {slots.map((picked, i) => (
         <span key={i} className="flex h-6 items-center justify-center">

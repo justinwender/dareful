@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import { useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { TypedDataDomain } from "viem";
@@ -62,11 +63,11 @@ function MenuGlyph({ k }: { k: MenuItem["key"] }) {
 /** The game's header band (3.33), on `--surface-2`: the two 44px stamps, the time, the game in serif, and one caption. */
 export function GameHeader({ game, caption, right }: { game: GameHeaderData; caption: ReactNode; right?: ReactNode }) {
   return (
-    <section className="-mx-2 flex flex-col gap-3 rounded-card bg-surface-2 p-4 pb-[18px]" data-game-header={game.id}>
+    <section className="-mx-2 flex flex-col gap-3 rounded-card bg-surface-2 p-4 pb-[18px]" data-game-header={game.id} style={{ viewTransitionName: "market-ink" } as CSSProperties}>
       <div className="flex items-center justify-between gap-3">
         <span className="inline-flex items-center gap-1.5">
-          <TeamStamp team={game.away} size={44} />
-          <TeamStamp team={game.home} size={44} />
+          <TeamStamp team={game.away} size={44} travels="market-mark" />
+          <TeamStamp team={game.home} size={44} travels="market-mark-2" />
         </span>
         <span className="text-label text-ink-2">{right ?? game.start}</span>
       </div>
