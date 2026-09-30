@@ -108,10 +108,13 @@ test("a told send still going through is on its way where it lives, and leaves N
   const g = await createGroup({ name: "on its way check (temporary)", createdBy: gabe.id });
   track.group(g.id);
   const gUsd = await ensureUsd(g.id, gabe.id);
-  // A question gabe asked, sent, is in, and whose time is up: without the send on its way, Now would carry the asker's lock row.
+  // A question gabe asked, sent, is in with justin, and whose time is up: without the send on its way, Now would carry the asker's
+  // lock row. Two are in because the close refuses fewer (the QA round): with gabe alone there would be no lock row to leave.
   const d = await draftMarket({ creatorId: gabe.id, groupId: g.id, denomId: gUsd.id, title: "Is the lock on its way?", termsText: "Yes if the row runs with the mark. No if it does not.", resolvesBy: new Date(Date.now() + H) });
   await db.update(schema.dares).set({ creatorSignature: randomBytes(65), resolvesBy: new Date(Date.now() - H) }).where(eq(schema.dares.id, d.id));
   await db.insert(schema.darePositions).values({ dareId: d.id, userId: gabe.id, stake: 500n, value: 7000n, enterSignature: randomBytes(65), enteredBy: gabe.id, acknowledgedAt: now });
+  await db.insert(schema.groupMembers).values({ groupId: g.id, userId: justin.id });
+  await db.insert(schema.darePositions).values({ dareId: d.id, userId: justin.id, stake: 500n, value: 3000n, enterSignature: randomBytes(65), enteredBy: justin.id, acknowledgedAt: now });
   const obligationId = randomUUID();
   const doneId = randomUUID();
   const row = (id: string, qty: bigint) => ({ id, tokenId: 1n, groupId: dyad.id, fromUser: justin.id, toUser: gabe.id, denomId: usd.id, quantity: units(qty), uniqueObligation: false, amountCents: cents(qty), origin: "manual", settleExpected: true, confirmTx: randomBytes(32) });

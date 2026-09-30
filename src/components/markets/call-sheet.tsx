@@ -253,9 +253,10 @@ export function CallSheet(props: CallSheetProps) {
             </h2>
           </div>
           <p className="text-body-sm text-ink-2">
-            This one counts for everyone in it, not just you. It’s decided once{" "}
-            {threshold} of you say the same thing, and you can change yours
-            until then. Nobody can say it for you, and the app can’t either.
+            {/* A quorum of one (a provisional question with one account-holder) reads as what it is: your word settles it. */}
+            This one counts for everyone in it, not just you.{" "}
+            {threshold <= 1 ? "It’s decided the moment you say it." : `It’s decided once ${threshold} of you say the same thing, and you can change yours until then.`}{" "}
+            Nobody can say it for you, and the app can’t either.
           </p>
           <ProblemSummary messages={[problem]} retry={() => void cast(choice)} />
           <div className="flex flex-col gap-1">
@@ -439,7 +440,8 @@ export function CallSheet(props: CallSheetProps) {
                     variant="secondary"
                     size="primary"
                     aria-pressed={pick === w}
-                    className={cn(pick === w && "border-ink text-ink")}
+                    // A well holds the question's own words (3.25), which can run past half a row: they wrap to a second line, never clip ("inished before midnigh", the QA round).
+                    className={cn("h-auto min-h-14 whitespace-normal py-3 text-center leading-[20px]", pick === w && "border-ink text-ink")}
                     onClick={() => {
                       setPick(w);
                       setRaised(true);
@@ -639,7 +641,8 @@ function AttachRow({ shots, disabled, onChange }: { shots: Shot[]; disabled: boo
                   URL.revokeObjectURL(s.preview);
                   onChange(shots.filter((x) => x !== s));
                 }}
-                className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-pill bg-ink text-ground"
+                data-press="fill"
+                className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-pill bg-ink text-ground press-fill"
               >
                 <svg aria-hidden="true" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
                   <path d="M6 6l12 12M18 6L6 18" />

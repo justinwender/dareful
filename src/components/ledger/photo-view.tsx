@@ -9,15 +9,18 @@ import { InfoIcon } from "@/components/ui/info";
 import { addStickerAction, removeMarketPhotoAction } from "@/lib/actions/media";
 import { imageFromClipboard, imageFromPaste, NotACutoutHere, prepareCutout } from "@/lib/ui/cutout-clipboard";
 import { cutAt, drawOutline, loadSegmenter, type Cut, type Segmenter } from "@/lib/ui/cut-subject";
-import { CutSheet, StickerMade, StickerSheet } from "./sticker-from-photo";
+import { CREAM } from "@/lib/ui/palette";
+import { ScrimChip } from "./scrim-chip";
+import { CutSheet, PHOTO_ROOM, StickerMade, StickerSheet } from "./sticker-from-photo";
 
 /**
- * A photo full screen (docs/design.md 3.8, 3.38, 3.39): the frame's derivative on the ground, a 13px counter at
- * the top left and the 48px close at the top right, and under the photo 44px icon buttons with their words in
- * caption: "Make a sticker" (3.28), "Save" (named "Save to your phone", through the share sheet, because a photo
- * taken by the camera inside a web app on an iPhone is not in the phone's own photos; where there is no share
- * sheet the browser saves the file) and, for whoever added a memory, "Remove", which is destructive (3.12) and
- * asks once in a sheet. The bytes come through the app's own door, which checks who is asking. Long-press on the
+ * A photo full screen (docs/design.md 3.8, 3.38, 3.39): the frame's derivative on black in both themes (the dark
+ * theme's ground, `PHOTO_ROOM`, with the close and the controls in cream, 10.2), a 13px counter at the top left
+ * and the 48px close at the top right, and under the photo 44px icon buttons with their words in caption: "Make
+ * a sticker" (3.28), "Save" (named "Save to your phone", through the share sheet, because a photo taken by the
+ * camera inside a web app on an iPhone is not in the phone's own photos; where there is no share sheet the
+ * browser saves the file) and, for whoever added a memory, "Remove", which is destructive (3.12) and asks once
+ * in a sheet. The bytes come through the app's own door, which checks who is asking. Long-press on the
  * photo is left to the phone: the lift path depends on it (the phone's own Copy Subject).
  *
  * Making a sticker (3.28): the cut path first (frame 5, Round C), where a tap on the photo asks the model in the
@@ -231,18 +234,18 @@ export function PhotoView({ items, index = 0, onClose, stickers = false }: { ite
   if (made) return <StickerMade id={made.id} onDone={() => setMade(null)} onClose={onClose} />;
 
   return (
-    <div role="dialog" aria-modal="true" aria-label={alt} data-photo-view={id} className="fixed inset-0 z-40 flex flex-col bg-ground pt-[env(safe-area-inset-top)]">
+    <div role="dialog" aria-modal="true" aria-label={alt} data-photo-view={id} data-fixed="top" className="fixed inset-0 z-40 flex flex-col bg-ground pt-[env(safe-area-inset-top)]" style={PHOTO_ROOM}>
       <div className="grid h-14 shrink-0 grid-cols-[48px_minmax(0,1fr)_48px] items-center px-2" data-photo-header="">
         {/* For the hackathon the close sits at the top left, the counter in the centre and the information icon at the top right (10.3). */}
-        <button type="button" aria-label="Close" onClick={onClose} data-press="line" className="inline-flex h-12 w-12 items-center justify-center rounded-pill text-ink press-line">
+        <button type="button" aria-label="Close" onClick={onClose} data-press="line" className="inline-flex h-12 w-12 items-center justify-center rounded-pill press-line" style={{ color: CREAM }}>
           <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <path d="M6 6l12 12M18 6L6 18" />
           </svg>
         </button>
         {items.length > 1 ? (
-          <p className="mx-auto flex h-7 items-center rounded-pill bg-scrim px-3 text-caption tabular-nums text-ink" data-album-counter="">
+          <ScrimChip className="mx-auto h-7 px-3 text-caption tabular-nums" data-album-counter="">
             {current + 1} / {items.length}
-          </p>
+          </ScrimChip>
         ) : (
           <span />
         )}
@@ -327,11 +330,15 @@ export function PhotoView({ items, index = 0, onClose, stickers = false }: { ite
   );
 }
 
-/** A 44px icon button with its word in caption under it (3.38, the full-screen photo). A control, outside the type budget. */
+/**
+ * A 44px icon button with its word in caption under it (3.38, the full-screen photo): the glyph in cream and the
+ * word in the dark theme's second ink, as the export draws them, with nothing behind either, since the screen is
+ * black in both themes (10.2). A control, outside the type budget.
+ */
 function IconAction({ label, name, onClick, loading = false, disabled = false, children, ...rest }: { label: string; /** The accessible name when it says more than the word ("Save to your phone"). */ name?: string; onClick: () => void; loading?: boolean; disabled?: boolean; children: React.ReactNode; [k: `data-${string}`]: string }) {
   return (
-    <button type="button" aria-label={name ?? label} aria-busy={loading || undefined} disabled={disabled || loading} onClick={onClick} className="flex w-[84px] flex-col items-center gap-1 rounded-button text-ink disabled:opacity-60" {...rest}>
-      <span className="flex h-11 w-11 items-center justify-center rounded-pill border border-line bg-surface">{children}</span>
+    <button type="button" aria-label={name ?? label} aria-busy={loading || undefined} disabled={disabled || loading} onClick={onClick} data-press="line" className="flex w-[84px] flex-col items-center gap-1 rounded-button press-line disabled:opacity-60" style={{ color: CREAM }} {...rest}>
+      <span className="flex h-11 w-11 items-center justify-center">{children}</span>
       <span className="text-caption text-ink-2">{label}</span>
     </button>
   );

@@ -482,6 +482,10 @@ html.back .motion-step-in { animation-name: step-in-back; }
 .page-arrive > header, .page-arrive > [data-offline] { animation: fade-in var(--motion-base) var(--ease-fade) both; }
 .page-arrive > :not(header):not([data-offline]):not(style):not(script) { animation: step-in var(--motion-base) var(--ease-move) both; }
 html.back .page-arrive > :not(header):not([data-offline]):not(style):not(script) { animation-name: step-in-back; }
+/* The phone's viewport out of step (viewport.ts): each fixed box moves itself back onto the glass by what the guard read,
+   the ones pinned to the top by one distance and the ones pinned to the bottom by the other. Never an ancestor (9.3). */
+html[data-viewport-shift] [data-fixed="top"] { translate: 0 var(--vv-top, 0px); }
+html[data-viewport-shift] [data-fixed="bottom"] { translate: 0 var(--vv-bottom, 0px); }
 /* While a shell is up the tab bar and the Start button are covered: they leave the tree, so the transition fades them out over quick (9.7). */
 html[data-shell] [data-layer="tab-bar"] > *, html[data-shell] [data-layer="start"] > * { display: none; }
 
@@ -495,6 +499,10 @@ html:has([data-now-hint="empty"]):not(:has([data-now])) :is([data-start], [data-
 html:has([data-now="full"]) [data-now-empty],
 html:has([data-now-hint="full"]):not(:has([data-now])) [data-now-empty] { display: none; }
 html[data-arriving] [data-now] { animation: fade-in var(--motion-base) var(--ease-fade) both; }
+/* A screen the phone brought in itself (its swipe from the edge, 9.7) arrives with none of the app's motion on top. */
+html[data-traversal] :is(.motion-arrive, .motion-rise, .motion-step-in, .motion-fade-in),
+html[data-traversal] .page-arrive > *,
+html[data-traversal][data-arriving] [data-now] { animation: none; }
 
 /*
  * 9.3, 9.7, 9.8 View transitions. The fixed layers each carry a name so no transition drags them along inside
@@ -511,6 +519,8 @@ html[data-arriving] [data-now] { animation: fade-in var(--motion-base) var(--eas
 /* The old page holds with no animation of its own; the new fades in over it from quick (9.7). */
 ::view-transition-old(root) { animation: none; }
 ::view-transition-new(root) { animation: fade-in var(--motion-base) var(--ease-fade) both; animation-delay: var(--motion-quick); }
+/* Back (9.7): the list fades in over the market from the first frame, over base, with no wait. */
+html.back::view-transition-new(root) { animation-delay: 0s; }
 ::view-transition-group(market-ink),
 ::view-transition-group(market-mark),
 ::view-transition-group(market-mark-2),
@@ -559,7 +569,9 @@ html[data-arriving] [data-now] { animation: fade-in var(--motion-base) var(--eas
 html.back::view-transition-old(ask-step) { animation-name: step-out-back; }
 html.back::view-transition-new(ask-step) { animation-name: step-in-back; }
 ::view-transition-group(ask-action) { animation: none; }
-::view-transition-old(ask-action), ::view-transition-new(ask-action) { animation-duration: var(--motion-quick); animation-timing-function: var(--ease-fade); }
+/* The action bar's two pictures name their own fades and fill: a step with no bar of its own used to get the old bar back at full strength once its fade had run. */
+::view-transition-old(ask-action) { animation: fade-out var(--motion-quick) var(--ease-fade) both; }
+::view-transition-new(ask-action) { animation: fade-in var(--motion-quick) var(--ease-fade) both; }
 
 @keyframes runner {
   0% { left: -33%; }
@@ -601,6 +613,8 @@ html.back::view-transition-new(ask-step) { animation-name: step-in-back; }
   .motion-loop-caret { animation: none; opacity: 1; }
   .motion-loop-pulse { animation: none; }
   .retint, .retint :is(main, section, div, textarea, span) { transition: none; }
+  /* The pinned sheet's travel is written on the sheet itself, where no class reaches it: raising and lowering are instant (9.11). */
+  [data-pinned-sheet] > div { transition: none !important; }
   ::view-transition-group(*) { animation-duration: var(--motion-base); }
   ::view-transition-old(*), ::view-transition-new(*) { animation-name: none; }
   ::view-transition-new(root), ::view-transition-new(ask-step), ::view-transition-new(market-words) { animation-name: fade-in; animation-duration: var(--motion-base); animation-timing-function: var(--ease-fade); animation-delay: 0s; }

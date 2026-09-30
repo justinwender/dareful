@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import { Avatar } from "@/components/ledger/avatar";
 import { RootHeader, Screen } from "@/components/ledger/screen";
 import { TabBar } from "@/components/ui/tab-bar";
-import { ViewportProbe } from "@/components/ui/viewport-probe";
 import { AccountRows } from "@/components/you/account";
 import { AskedSection } from "@/components/you/asked";
 import { CallsSection, NothingYet } from "@/components/you/calls";
@@ -59,8 +58,6 @@ export default async function YouPage() {
           </>
         )}
         <AccountRows units={you.units.map((u) => ({ id: u.id, label: u.label, pluralLabel: u.pluralLabel, glyph: glyphKeyOf(u), monetary: u.monetary, emoji: u.emoji }))} marks={you.marks} unitsCaption={unitsCaption} marksCaption={marksCaption} passThePhone={passThePhone} hue={hue} />
-        {/* An instrument for the installed app's tab bar (docs/testing.md item 61), to be removed with the cause. */}
-        <ViewportProbe />
       </div>
       <TabBar active="/you" start />
     </Screen>

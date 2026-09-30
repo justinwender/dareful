@@ -33,6 +33,8 @@ export type CoveredCardProps = {
   photo?: { thumb: string; full: string };
   /** The last tap on it (the yep, the close) is sent and still going through (docs/design.md 5.2): the on-its-way mark in place of the state's, and "on its way" after the words. */
   onWay?: boolean;
+  /** The card is the move, inside a control of the caller's (the creditor's covered card opens the close sheet, 6.3): it presses as a row (9.4), as it does with an `href`. */
+  control?: boolean;
 };
 
 /**
@@ -53,8 +55,10 @@ export function CoveredCard(p: CoveredCardProps) {
   const mark = p.state === "pending" ? ("proposed" as const) : p.state === "settled" ? ("settled" as const) : p.state === "forgiven" ? ("forgiven" as const) : ("owed" as const);
   const onWayLine = p.onWay ? `${p.state === "pending" ? "Yep" : p.state === "forgiven" ? "Called it even" : "Settled"} · on its way` : null;
 
+  // A card that opens something presses to the ground of its place (9.4): the press sits on the card itself, since its fill is what a person sees.
+  const press = Boolean(p.href) || p.control === true;
   const body = (
-    <article className="flex flex-col gap-2 rounded-card border border-line bg-surface px-4 py-3.5">
+    <article data-press={press ? "row" : undefined} className={`flex flex-col gap-2 rounded-card border border-line bg-surface px-4 py-3.5${press ? " press-row" : ""}`}>
       <div className="flex items-center justify-between gap-2">
         <span className="inline-flex items-center gap-2 text-label text-ink-2">
           <StateMark state={p.onWay ? "onway" : mark} hue={!p.onWay && mark === "owed" ? (p.debtor.ghost ? "stone" : hueFor(p.debtor.id)) : undefined} />
@@ -88,7 +92,8 @@ export function CoveredCard(p: CoveredCardProps) {
     </article>
   );
   return p.href ? (
-    <Link prefetch={false} href={p.href} className="relative block rounded-card">
+    // The press is the card's (above), not the link's around it: a fill behind the card would never be seen.
+    <Link prefetch={false} href={p.href} data-press-within="" className="relative block rounded-card">
       <LinkPending />
       {body}
     </Link>

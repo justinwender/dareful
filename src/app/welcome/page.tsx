@@ -16,6 +16,7 @@ import { markRefOf } from "@/lib/ui/mark";
 import { formatMoney, unitWords } from "@/lib/ui/units";
 import type { LinkEntryRow } from "@/components/ledger/confirm-all";
 import { denominationsByIds } from "@/lib/ledger/denominations";
+import { setInSentence } from "@/lib/ledger/groups";
 import { CONFIRM_MANY_MAX, confirmManyTypedData } from "@/lib/ledger/proposals";
 import { alreadyInLine, dayLabel, spanWords } from "@/lib/ui/copy";
 import { viewerClock } from "@/lib/ui/zone";
@@ -79,8 +80,10 @@ export default async function WelcomePage() {
   // "Two weeks with the Friday crew, kept under your name, Maya." (3.38): the span of what was waiting, the one set it came from or your friends.
   const whens = [...rows.map((r) => r.createdAt), ...linkEntries.map((e) => e.dare.createdAt)].map((d) => d.getTime());
   const setNames = Array.from(new Set(rows.map((r) => groupName.get(r.groupId)).filter((x): x is string => Boolean(x))));
-  const withWhom = setNames.length === 1 ? `the ${setNames[0]}`.replace(/^the the /i, "the ") : "your friends";
-  const line = whens.length > 0 ? `${spanWords(new Date(Math.min(...whens)), new Date(Math.max(...whens)))} with ${withWhom}, kept under your name, ${me.displayName.split(/\s+/)[0] ?? me.displayName}.` : null;
+  // The set as a sentence names it (`setInSentence`): "with the Friday crew", and a name that can't take "the", such as a possessive, after the dot.
+  const named = setNames.length === 1 && setNames[0] ? setInSentence({ name: setNames[0], members: [] }, me.id, me.id) : null;
+  const withWhom = named ? (named.apart ? ` · ${named.words}` : ` with ${named.words}`) : " with your friends";
+  const line = whens.length > 0 ? `${spanWords(new Date(Math.min(...whens)), new Date(Math.max(...whens)))}${withWhom}, kept under your name, ${me.displayName.split(/\s+/)[0] ?? me.displayName}.` : null;
 
   return (
     <Screen>

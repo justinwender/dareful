@@ -123,3 +123,20 @@ Not an audit of the design against the build, but three things the round found t
 - 11.4, 11.5: the opening could come back and stay. The handoff takes `#opening` off the page, and an app that started after that rebuilt the page with the opening in it. **Closed:** the opening sits in a box the app keeps, and the http suite watches the page in a real browser, signed out and signed in.
 - 10.6: the sheets named things by this document's words ("the chalk", "the band", "the wells", "the photo moment", "the rally", "the set", "the slot", "the add tile", "the owner's colour", and beside them "the count line", "citron", "the context chips", "stone", "the frame"). **Closed:** thirty entries reworded, and the sheet lint refuses each word.
 - 3.33: the chips that switch between groups on a game page are named "Which set of people" to a screen reader, which is the same word on a screen. **Open:** outside this round's list, reported to the owner.
+
+## The QA round (2026-09-29)
+
+A walk through the whole app on the simulator's installed app and Safari, both signed in to production, beside the real sessions, with a private tab as the visitor; the owner's ten findings first. What it closed on this list, and what it added.
+
+- 3.25, 3.38: the entry line under the claim card once voting opens, marked closed in Round C above, had come back on production (the claimant's screen and the voter's alike). **Closed again, with a test:** `MarketStage` takes `claimed` and draws the picture alone.
+- 3.33: the chips named "Which set of people" to a screen reader. **Closed:** "Who you’re on this with".
+- 3.17, frames 6 and 7: a ghost's screen once in (the order, the lock, the end) and a phone that remembers a ghost. **Closed** (the amendment at 3.17).
+- 3.24: a tap on the odds line entering a person, taking a side leaving an argument's sheet low, the wells clipping long words. **Closed** (the amendments at 3.24 and 3.25).
+- 3.29: the Decided chips reading as days the screen contradicts. **Closed** (the amendment at 3.29).
+- 4.6: server-drawn clocks in UTC on a fresh browser. **Closed** (the amendment at 4.6).
+- 3.1: the ghost's stone avatar with its dashed ring, missing under "Who’s got who" and on its tokens. **Closed.**
+- 3.13, 3.24, 5.5, 6.4, 8.8, 9.3, 9.4, 9.5, 9.7, 9.9, 10.4, 10.5, 11.5: the owner's findings, each amended where it stands and listed at the top under "What changed".
+- 3.27, 3.33, 3.38, 3.42: the game page as one flow and the game tile, by the round's areas (docs/decisions.md, "The QA round").
+- Copy: the signed-out line under "Who's got the next one?", "0 friends are in." and the rest of the sweep (the words area); the names people see (the names area); the sheets made true (the sheets area).
+
+Open after this round, for the owner: the decisions listed at the end of the round's entry in docs/decisions.md.

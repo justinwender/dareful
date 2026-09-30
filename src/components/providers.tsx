@@ -10,6 +10,9 @@ import type { SessionFacts } from "@/lib/auth/session-facts";
 import { OpenFromNotification } from "@/components/notify/open-from-notification";
 import { Refresh } from "@/components/ui/refresh";
 import { Shells } from "@/components/ui/shells";
+import { Traversals } from "@/components/ui/traversals";
+import { ViewportGuard } from "@/components/ui/viewport-guard";
+import { ZoneReporter } from "@/components/ui/zone-reporter";
 import { ColdMarks } from "@/components/ui/cold-marks";
 
 const environmentId = process.env.NEXT_PUBLIC_DYNAMIC_ENVIRONMENT_ID ?? "";
@@ -47,6 +50,9 @@ export function Providers({ children, facts }: { children: ReactNode; /** The se
         <ColdMarks />
         <OpenFromNotification />
         <Refresh />
+        <Traversals />
+        <ViewportGuard />
+        <ZoneReporter />
         <Shells />
         {children}
       </MeProvider>

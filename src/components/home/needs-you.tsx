@@ -48,7 +48,7 @@ export function NeedsYou({ rows, viewer, showAll, allHref }: { rows: NeedRow[]; 
                     <span className="truncate">{r.context}</span>
                   </span>
                 </span>
-                <Link prefetch={false} href={r.game.questionHref} className="relative link-row">
+                <Link prefetch={false} href={r.game.questionHref} data-press="fill" className="relative link-row press-fill">
                   <LinkPending />
                   {r.verb}
                 </Link>
@@ -99,7 +99,7 @@ export function NeedsYou({ rows, viewer, showAll, allHref }: { rows: NeedRow[]; 
           );
         })}
         {more > 0 ? (
-          <Link prefetch={false} href={allHref} className="relative flex h-11 items-center border-t border-line px-4 link-tertiary">
+          <Link prefetch={false} href={allHref} data-press="line" className="relative flex h-11 items-center border-t border-line px-4 link-tertiary press-line">
             <LinkPending />
             {more} more
           </Link>

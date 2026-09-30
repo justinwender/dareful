@@ -4,10 +4,9 @@
  * shell is painted are read here instead: Chrome, headless, a fresh profile, a phone's screen.
  *
  *   npx tsx scripts/dev/opening-check.ts [--base=http://localhost:3000] [--path=/] [--scheme=dark|light]
- *        [--reduce] [--still] [--hold=800] [--cpu=4] [--latency=400] [--mbps=4] [--wait=3000]
+ *        [--reduce] [--hold=800] [--cpu=4] [--latency=400] [--mbps=4] [--wait=3000]
  *        [--theme=dark|light] [--shots=<folder>] [--runs=5]
  *
- *   --still   the instrument's switch: open without the count, to time against a run with it
  *   --hold    keep the first screen's shell back this many milliseconds after the first frame has gone out, as a
  *             slow start would, so the count can be seen drawing and stopping where it is; the page is relayed
  *             through a small proxy here, and the app itself is untouched
@@ -30,7 +29,6 @@ export const CHROME = process.env.CHROME ?? "/Applications/Google Chrome.app/Con
 export const chromeIsHere = (): boolean => existsSync(CHROME);
 
 export type OpeningRun = {
-  counted: boolean;
   firstByte: number;
   firstPaint: number | null;
   /** The handoff began: the first screen's shell had painted. */
@@ -40,9 +38,7 @@ export type OpeningRun = {
   removed: number | null;
   /** Where each stroke's clip stood when it was stopped. */
   strokes: string[];
-  content: number | null;
   live: number | null;
-  sdk: number | null;
   dressed: boolean;
   /** Whether the opening is on the page at the end of the run, after everything has had time to start. */
   opening: boolean;
@@ -55,7 +51,7 @@ export type OpeningRun = {
   errors: string[];
 };
 
-export type OpeningOptions = { base?: string; path?: string; scheme?: "dark" | "light"; reduce?: boolean; still?: boolean; hold?: number; cpu?: number; latency?: number; mbps?: number; wait?: number; shots?: string; runs?: number; /** The Appearance choice (8.1), as the row on You keeps it. */ theme?: "dark" | "light"; /** The session cookie's value, for a signed-in run. */ session?: string };
+export type OpeningOptions = { base?: string; path?: string; scheme?: "dark" | "light"; reduce?: boolean; hold?: number; cpu?: number; latency?: number; mbps?: number; wait?: number; shots?: string; runs?: number; /** The Appearance choice (8.1), as the row on You keeps it. */ theme?: "dark" | "light"; /** The session cookie's value, for a signed-in run. */ session?: string };
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -150,7 +146,7 @@ const RECORDER = `(() => {
   }).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ["class"] });
 })();`;
 
-const READING = `(() => { const n = performance.getEntriesByType("navigation")[0]; const at = (k) => { const e = performance.getEntriesByName(k)[0]; return e ? Math.round(e.startTime) : null; }; const o = window.__opening || {}; return { counted: document.documentElement.getAttribute("data-tally") !== "off", firstByte: Math.round(n.responseStart), firstPaint: at("first-contentful-paint"), shell: at("dareful:shell"), handoff: o.handoff == null ? null : Math.round(o.handoff), removed: o.removed == null ? null : Math.round(o.removed), strokes: o.strokes || [], content: at("dareful:content"), live: at("dareful:live"), sdk: at("dareful:sdk"), dressed: document.documentElement.hasAttribute("data-dressed"), opening: !!document.getElementById("opening"), wordmark: !!document.querySelector("[data-wordmark]"), tabBar: !!document.querySelector("[data-tab-bar]"), now: (document.querySelector("[data-now]") || { getAttribute: () => null }).getAttribute("data-now"), ground: getComputedStyle(document.documentElement).backgroundColor }; })()`;
+const READING = `(() => { const n = performance.getEntriesByType("navigation")[0]; const at = (k) => { const e = performance.getEntriesByName(k)[0]; return e ? Math.round(e.startTime) : null; }; const o = window.__opening || {}; return { firstByte: Math.round(n.responseStart), firstPaint: at("first-contentful-paint"), shell: at("dareful:shell"), handoff: o.handoff == null ? null : Math.round(o.handoff), removed: o.removed == null ? null : Math.round(o.removed), strokes: o.strokes || [], live: at("dareful:live"), dressed: document.documentElement.hasAttribute("data-dressed"), opening: !!document.getElementById("opening"), wordmark: !!document.querySelector("[data-wordmark]"), tabBar: !!document.querySelector("[data-tab-bar]"), now: (document.querySelector("[data-now]") || { getAttribute: () => null }).getAttribute("data-now"), ground: getComputedStyle(document.documentElement).backgroundColor }; })()`;
 
 export async function watchOpening(options: OpeningOptions = {}): Promise<OpeningRun[]> {
   const base = new URL(options.base ?? "http://localhost:3000");
@@ -183,7 +179,7 @@ export async function watchOpening(options: OpeningOptions = {}): Promise<Openin
     await page.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: options.scheme ?? "dark" }, { name: "prefers-reduced-motion", value: options.reduce ? "reduce" : "no-preference" }] });
     if ((options.cpu ?? 1) > 1) await page.send("Emulation.setCPUThrottlingRate", { rate: options.cpu });
     if (options.session) await page.send("Network.setCookie", { name: "dareful_session", value: options.session, url: origin, httpOnly: true });
-    await page.send("Page.addScriptToEvaluateOnNewDocument", { source: `${RECORDER}\ntry{${options.still ? 'localStorage.setItem("dareful.tally","off")' : 'localStorage.removeItem("dareful.tally")'};${options.theme ? `localStorage.setItem("dareful.theme","${options.theme}")` : 'localStorage.removeItem("dareful.theme")'}}catch(e){}` });
+    await page.send("Page.addScriptToEvaluateOnNewDocument", { source: `${RECORDER}\ntry{${options.theme ? `localStorage.setItem("dareful.theme","${options.theme}")` : 'localStorage.removeItem("dareful.theme")'}}catch(e){}` });
     const errors: string[] = [];
     page.on((m) => {
       const p = m.params as { exceptionDetails?: { text: string; exception?: { description?: string } }; type?: string; args?: Array<{ value?: unknown; description?: string }>; entry?: { level: string; text: string } } | undefined;
@@ -241,7 +237,7 @@ if ((process.argv[1] ?? "").endsWith("opening-check.ts")) {
       .map(([k, v]) => [k, v ?? "1"]),
   ) as Record<string, string>;
   const n = (k: string): number | undefined => (args[k] === undefined ? undefined : Number(args[k]));
-  const options: OpeningOptions = { base: args["base"], path: args["path"], scheme: args["scheme"] === "light" ? "light" : "dark", reduce: Boolean(args["reduce"]), still: Boolean(args["still"]), hold: n("hold"), cpu: n("cpu"), latency: n("latency"), mbps: n("mbps"), wait: n("wait"), shots: args["shots"], runs: n("runs"), ...(args["theme"] === "dark" || args["theme"] === "light" ? { theme: args["theme"] } : {}) };
+  const options: OpeningOptions = { base: args["base"], path: args["path"], scheme: args["scheme"] === "light" ? "light" : "dark", reduce: Boolean(args["reduce"]), hold: n("hold"), cpu: n("cpu"), latency: n("latency"), mbps: n("mbps"), wait: n("wait"), shots: args["shots"], runs: n("runs"), ...(args["theme"] === "dark" || args["theme"] === "light" ? { theme: args["theme"] } : {}) };
   watchOpening(options)
     .then((runs) => console.log(JSON.stringify({ page: (options.base ?? "http://localhost:3000") + (options.path ?? "/"), scheme: options.scheme, reduce: options.reduce, hold: options.hold ?? 0, cpu: options.cpu ?? 1, latency: options.latency ?? 0, runs }, null, 2)))
     .catch((err: unknown) => {

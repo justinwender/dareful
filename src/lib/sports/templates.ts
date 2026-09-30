@@ -100,6 +100,24 @@ export function offersFirstDrive(game: Pick<FeedGame, "sport" | "seasonType">): 
   return game.sport === "nfl" && game.seasonType === REGULAR_SEASON;
 }
 
+/**
+ * The menu row's short name for a question (3.33), written in one place: the menu, the game page's rows and the
+ * game's link tile (3.27) all read it, so none can drift from the others and none can be the question itself
+ * ("Who wins", never "Who wins, Red Sox or Yankees?"). The total says the sport's unit.
+ */
+export function menuName(key: TemplateKey, sport: Sport): string {
+  switch (key) {
+    case "home_wins":
+      return "Who wins";
+    case "margin":
+      return "By how much";
+    case "total":
+      return `Total ${UNIT[sport].plural}`;
+    case "first_drive":
+      return "The first drive";
+  }
+}
+
 /** The questions for one game, in the menu's order (3.33). */
 export function templatesFor(game: { sport: Sport; home: Pick<FeedGame["home"], "short">; away: Pick<FeedGame["away"], "short">; seasonType: number | null }): Template[] {
   const { sport } = game;
@@ -116,7 +134,7 @@ export function templatesFor(game: { sport: Sport; home: Pick<FeedGame["home"], 
     {
       key: "home_wins",
       kind: "binary",
-      name: "Who wins",
+      name: menuName("home_wins", sport),
       kindLabel: "Between the two teams",
       title: `Who wins, ${away} or ${home}?`,
       // No possessive of a team's name anywhere: mostly plural ("the Giants'") and sometimes not ("the Heat's"), and a real session read "the Giants's".
@@ -135,7 +153,7 @@ export function templatesFor(game: { sport: Sport; home: Pick<FeedGame["home"], 
     {
       key: "margin",
       kind: "numeric",
-      name: "By how much",
+      name: menuName("margin", sport),
       kindLabel: "The margin, between the two teams",
       title: `By how much, ${away} or ${home}?`,
       terms: `${marginCounts} ${BY_SCORE}`,
@@ -152,7 +170,7 @@ export function templatesFor(game: { sport: Sport; home: Pick<FeedGame["home"], 
     {
       key: "total",
       kind: "numeric",
-      name: `Total ${unit.plural}`,
+      name: menuName("total", sport),
       kindLabel: "A number",
       title: `How many ${unit.plural}, ${away} and ${home} together?`,
       terms: `${totalCounts} ${BY_SCORE}`,
@@ -172,7 +190,7 @@ export function templatesFor(game: { sport: Sport; home: Pick<FeedGame["home"], 
     out.push({
       key: "first_drive",
       kind: "categorical",
-      name: "The first drive",
+      name: menuName("first_drive", sport),
       kindLabel: "Pick one",
       title: `${away} at ${home}: how does the first drive end?`,
       terms: `${driveCounts} ${DRIVE_CONSENT} If the play-by-play can't say how it ended, it's void: nothing changes hands, and it counts against nobody. If the game is postponed or called off, this one can't be settled and nothing changes hands.`,

@@ -14,12 +14,11 @@ import sharp from "sharp";
 import manifest from "@/app/manifest";
 import { Mark, Wordmark } from "@/components/ui/wordmark";
 import { keepWarm, WARM_HEADER } from "@/lib/ops/warm";
-import { coldStartRows, serverTimes } from "@/lib/ui/cold-start";
 import { cutPhrasesIn, designWordsIn } from "@/lib/ui/copy-rules";
 import { MARK, WORDMARK, WORDMARK_EM } from "@/lib/ui/logo";
 import { MOTION } from "@/lib/ui/motion";
 import { nowCookie, nowHintOf, shellShows } from "@/lib/ui/now-shell";
-import { dressedOnly, GROUND_DARK, GROUND_LIGHT, HANDOFF_JS, handoffOf, LAUNCH_DEVICES, launchImageLinks, launchImagePath, LOGO_ON_DARK, LOGO_ON_LIGHT, OPENING_CSS, OPENING_ELEMENT, OPENING_HANDOFF_SCRIPT, OPENING_MARK, OPENING_STYLE, TALLY_OFF_CSS, TALLY_SWITCH_SCRIPT, tallyOf } from "@/lib/ui/opening";
+import { dressedOnly, GROUND_DARK, GROUND_LIGHT, HANDOFF_JS, handoffOf, LAUNCH_DEVICES, launchImageLinks, launchImagePath, LOGO_ON_DARK, LOGO_ON_LIGHT, OPENING_CSS, OPENING_ELEMENT, OPENING_HANDOFF_SCRIPT, OPENING_MARK, OPENING_STYLE, tallyOf } from "@/lib/ui/opening";
 
 const rgb = (hex: string): [number, number, number] => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)) as [number, number, number];
 
@@ -53,7 +52,9 @@ test("the first frame is the launch image again, the bare ground with nothing dr
   assert.ok(!/(^|\n)\s*html, body\b/.test(OPENING_STYLE), "every rule on html and body holds only until the handoff");
   assert.equal(OPENING_STYLE.split("html:not([data-dressed]), html:not([data-dressed]) body").length - 1, 3, "the ground, the light ground and the light scheme");
   assert.equal(dressedOnly("#opening { inset: 0; }\nhtml, body { margin: 0; }"), "#opening { inset: 0; }\nhtml:not([data-dressed]), html:not([data-dressed]) body { margin: 0; }");
-  assert.ok(OPENING_STYLE.startsWith(dressedOnly(OPENING_CSS)), "the design's style, and the app's own after it");
+  assert.equal(OPENING_STYLE, dressedOnly(OPENING_CSS), "the design's style, and nothing after it");
+  // No switch for the count on a phone: the instrument that carried one left with the probe (docs/decisions.md 2026-09-29).
+  for (const [name, text] of [["the style", OPENING_STYLE], ["the handoff", OPENING_HANDOFF_SCRIPT], ["the layout", readFileSync("src/app/layout.tsx", "utf8")]] as const) assert.ok(!/data-tally|dareful\.tally/.test(text), `${name} carries no switch`);
   // The launch images: one per iPhone in both sets, each the flat ground at the device's full pixel size.
   for (const d of LAUNCH_DEVICES) {
     for (const scheme of ["dark", "light"] as const) {
@@ -112,28 +113,6 @@ test("there is one handoff: the design's, called once on the frame after the she
   assert.equal(OPENING_ELEMENT, `<div id="opening" aria-hidden="true">${OPENING_MARK}</div>`);
   assert.match(layout, /<html [^>]*suppressHydrationWarning>/, "what the head's scripts and the handoff set on html is theirs");
   assert.equal(layout.split("OPENING_HANDOFF_SCRIPT }").length - 1, 1, "exactly one handoff");
-});
-
-test("the instrument reads a cold start with the count and without it, and says what it never saw", () => {
-  assert.equal(TALLY_OFF_CSS, 'html[data-tally="off"] #opening .s { animation: none; }');
-  assert.ok(OPENING_STYLE.endsWith(TALLY_OFF_CSS), "after the design's style, and outside it");
-  assert.ok(TALLY_SWITCH_SCRIPT.includes('localStorage.getItem("dareful.tally")==="off"') && TALLY_SWITCH_SCRIPT.includes('setAttribute("data-tally","off")') && TALLY_SWITCH_SCRIPT.includes("catch"));
-  assert.deepEqual(serverTimes("session:45,now:612"), { session: 45, now: 612 });
-  assert.equal(serverTimes("session:45"), null);
-  assert.equal(serverTimes(null), null);
-  const rows = coldStartRows({ counted: true, firstByte: 118.4, firstPaint: 302, shell: 310.6, content: 911, live: null, sdk: null, server: { session: 45, now: 612 } });
-  assert.deepEqual(rows, [
-    ["opening", "counted"],
-    ["first byte", "118ms"],
-    ["first paint", "302ms"],
-    ["shell painted, fades begin", "311ms"],
-    ["content arrived", "911ms"],
-    ["screen answers", "not seen"],
-    ["sign-in ready", "not seen"],
-    ["server: account, then Now", "45ms, 612ms"],
-    ["content after shell", "600ms"],
-  ]);
-  assert.deepEqual(coldStartRows({ counted: false, firstByte: null, firstPaint: null, shell: null, content: null, live: null, sdk: null, server: null })[0], ["opening", "without the count"]);
 });
 
 test("Now's shell is decided from the cookie alone: the + and Got a code? for someone signed in, neither on an empty Now, and what the content says outranks what the phone remembers", () => {

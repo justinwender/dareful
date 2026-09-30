@@ -5,7 +5,7 @@ import { useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { TypedDataDomain } from "viem";
 import { AvatarStack } from "@/components/ledger/avatar";
-import { Chip } from "@/components/ledger/chip";
+import { Chip, chipPress } from "@/components/ledger/chip";
 import { ProblemSummary } from "@/components/ledger/problem";
 import { Screen } from "@/components/ledger/screen";
 import { TeamStamp } from "@/components/ledger/team-stamp";
@@ -112,8 +112,8 @@ export function StartGame({ game, menu, sets, people, chrome, signing, mode, clo
   const unitChip = (u: Unit, label: string, key: string) => {
     const selected = u.kind === unit.kind && (u.kind === "usd" || (u.kind === "existing" && unit.kind === "existing" && u.id === unit.id) || (u.kind === "new" && unit.kind === "new" && u.template === unit.template));
     return (
-      <button key={key} type="button" onClick={() => setUnit(u)} className="rounded-pill">
-        <Chip size={36} selected={selected}>
+      <button key={key} type="button" onClick={() => setUnit(u)} {...chipPress(selected)}>
+        <Chip size={36} selected={selected} choice>
           {label}
         </Chip>
       </button>

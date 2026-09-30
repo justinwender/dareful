@@ -16,8 +16,9 @@ import { SendPending, submit } from "@/lib/chain/relayer";
 import { isProvisional, settleProvisional } from "@/lib/ledger/provisional";
 import { bufferToHex } from "@/lib/ledger/ids";
 import { draftFromTemplate, marketById, MarketError, mirrorSettlement, positionsOf, reconcileFromIndexer, settlementFromReceipt, stateOf, toChainOutcome, VOID_OUTCOME, type DareRow } from "@/lib/ledger/markets";
-import { membersOfGroups, setLabel } from "@/lib/ledger/groups";
+import { membersOfGroups, setFacts, setLabel, type SetFacts } from "@/lib/ledger/groups";
 import { balldontlie } from "./balldontlie";
+import { onePerQuestion, setsOnGames } from "./cards";
 import { espn, espnPlays, resultOf } from "./espn";
 import { AGREE_AFTER_MS, ALONE_AFTER_MS, backstopDecision, CONFIRM_AFTER_MS, driveBackstopDecision, driveOutcome, outcomeFor, scoreLine, type Backstop, type FeedEnding } from "./results";
 import { expectedEnd, gameName, templatesFor, type TemplateKey } from "./templates";
@@ -494,7 +495,7 @@ export async function gameUseCounts(gameIds: string[]): Promise<Map<string, numb
 
 // ------------------------------------------------------------------------------------------- the tab's data
 
-export type ListedGame = { game: GameRow; templates: TemplateRow[]; /** The count once ten groups are on it; null below the floor (3.32). */ asked: number | null; /** The sets of people this viewer is in that have started anything on it, most recent first, with a label for the row. */ yours: Array<{ groupId: string; label: string; lastAt: Date }> };
+export type ListedGame = { game: GameRow; templates: TemplateRow[]; /** The count once ten groups are on it; null below the floor (3.32). */ asked: number | null; /** The sets of people this viewer is in that have started anything on it, most recent first, with the chip's label and the set's own facts, which a sentence is written from. */ yours: Array<{ groupId: string; label: string; set: SetFacts; lastAt: Date }> };
 export type WhatsOn = {
   mostAsked: ListedGame[];
   /** The schedule by day in the viewer's zone, soonest first, each day's games in start order. */
@@ -513,26 +514,24 @@ async function upcomingGames(now: Date): Promise<GameRow[]> {
     .limit(120);
 }
 
-/** The games this viewer is on, by game: the sets of people among theirs with anything started on it, most recent first. */
+/** The games this viewer is on, by game: the sets of people among theirs with anything started on it, most recent first. A called-off question counts for nothing (3.15: it never happened). */
 async function yoursOnGames(gameIds: string[], viewerId: string, viewerName: string): Promise<Map<string, ListedGame["yours"]>> {
   const out = new Map<string, ListedGame["yours"]>();
   if (gameIds.length === 0) return out;
   const mine = await db.select({ groupId: schema.groupMembers.groupId }).from(schema.groupMembers).where(and(eq(schema.groupMembers.userId, viewerId), isNull(schema.groupMembers.leftAt)));
   if (mine.length === 0) return out;
   const rows = await db
-    .select({ gameId: schema.publicQuestions.gameId, groupId: schema.dares.groupId, lastAt: sql<Date>`max(${schema.dares.createdAt})` })
+    .select({ gameId: schema.publicQuestions.gameId, groupId: schema.dares.groupId, createdAt: schema.dares.createdAt, resolvedBy: schema.dares.resolvedBy })
     .from(schema.dares)
     .innerJoin(schema.publicQuestions, eq(schema.publicQuestions.id, schema.dares.templateId))
-    .where(and(inArray(schema.publicQuestions.gameId, gameIds), inArray(schema.dares.groupId, mine.map((m) => m.groupId)), isNotNull(schema.dares.creatorSignature)))
-    .groupBy(schema.publicQuestions.gameId, schema.dares.groupId);
-  const groupIds = Array.from(new Set(rows.map((r) => r.groupId)));
+    .where(and(inArray(schema.publicQuestions.gameId, gameIds), inArray(schema.dares.groupId, mine.map((m) => m.groupId)), isNotNull(schema.dares.creatorSignature)));
+  const on = setsOnGames(rows);
+  const groupIds = Array.from(new Set(Array.from(on.values()).flatMap((list) => list.map((x) => x.groupId))));
   const [groups, members] = await Promise.all([groupIds.length ? db.select().from(schema.groups).where(inArray(schema.groups.id, groupIds)) : Promise.resolve([]), membersOfGroups(groupIds)]);
   const labelOf = new Map(groups.map((g) => [g.id, setLabel({ name: g.name, isDyad: g.isDyad, memberNames: (members.get(g.id) ?? []).filter((m) => m.userId).map((m) => m.displayName), viewerName })]));
-  for (const r of rows) {
-    const at = r.lastAt instanceof Date ? r.lastAt : new Date(String(r.lastAt));
-    out.set(r.gameId, [...(out.get(r.gameId) ?? []), { groupId: r.groupId, label: labelOf.get(r.groupId) ?? "your friends", lastAt: at }]);
-  }
-  for (const list of out.values()) list.sort((a, b) => b.lastAt.getTime() - a.lastAt.getTime());
+  // The set's own facts beside the chip's label: a sentence is written from these (`setInSentence`), never from the label.
+  const factsOf = new Map(groups.map((g) => [g.id, setFacts(g.name, members.get(g.id) ?? [])]));
+  for (const [gameId, list] of on) out.set(gameId, list.map((x) => ({ groupId: x.groupId, label: labelOf.get(x.groupId) ?? "your friends", set: factsOf.get(x.groupId) ?? { name: null, members: [] }, lastAt: x.lastAt })));
   return out;
 }
 
@@ -581,14 +580,14 @@ export async function gameById(id: string): Promise<{ game: GameRow; templates: 
 }
 
 /** The sets of people this viewer is in with anything started on a game, most recent first: whose page it is (3.33). */
-export async function gameGroupsFor(gameId: string, viewer: { id: string; displayName: string }): Promise<Array<{ groupId: string; label: string; unnamed: boolean; lastAt: Date }>> {
+export async function gameGroupsFor(gameId: string, viewer: { id: string; displayName: string }): Promise<Array<{ groupId: string; label: string; set: SetFacts; unnamed: boolean; lastAt: Date }>> {
   const yours = (await yoursOnGames([gameId], viewer.id, viewer.displayName)).get(gameId) ?? [];
   if (yours.length === 0) return [];
   const groups = await db.select({ id: schema.groups.id, name: schema.groups.name, isDyad: schema.groups.isDyad }).from(schema.groups).where(inArray(schema.groups.id, yours.map((y) => y.groupId)));
   return yours.map((y) => ({ ...y, unnamed: ((g) => g !== undefined && g.name === null && !g.isDyad)(groups.find((g) => g.id === y.groupId)) }));
 }
 
-/** The questions one set of people is running on a game, in the menu's order, with their templates. */
+/** The questions one set of people is running on a game, in the menu's order, with their templates: one per question, and never one that was called off (`onePerQuestion`). */
 export async function gameMarkets(gameId: string, groupId: string): Promise<Array<{ dare: DareRow; template: TemplateRow }>> {
   const rows = await db
     .select({ dare: schema.dares, template: schema.publicQuestions })
@@ -596,14 +595,7 @@ export async function gameMarkets(gameId: string, groupId: string): Promise<Arra
     .innerJoin(schema.publicQuestions, eq(schema.publicQuestions.id, schema.dares.templateId))
     .where(and(eq(schema.publicQuestions.gameId, gameId), eq(schema.dares.groupId, groupId)))
     .orderBy(asc(schema.publicQuestions.sort), desc(schema.dares.createdAt));
-  // One per question: the latest opened one, and a draft only beside nothing opened for that key.
-  const out: Array<{ dare: DareRow; template: TemplateRow }> = [];
-  for (const r of rows) {
-    const have = out.find((x) => x.template.key === r.template.key);
-    if (!have) out.push(r);
-    else if (!have.dare.creatorSignature && r.dare.creatorSignature) out[out.indexOf(have)] = r;
-  }
-  return out;
+  return onePerQuestion(rows);
 }
 
 /**

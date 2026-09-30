@@ -1,6 +1,7 @@
 "use client";
 
 import { Avatar } from "@/components/ledger/avatar";
+import { ScrimChip } from "@/components/ledger/scrim-chip";
 import { firstName } from "@/lib/ui/copy";
 import { usePhotoAdding } from "./photo-adding";
 
@@ -16,15 +17,15 @@ export function EmptySlot() {
   if (pending > 0) {
     return (
       <div className="relative w-full overflow-hidden rounded-card bg-surface motion-safe:motion-loop-pulse" style={{ height: 200, backgroundImage: "repeating-linear-gradient(135deg, var(--field) 0 10px, var(--surface) 10px 20px)" }} aria-busy="true" aria-label="Your photo is going up">
-        <span className="absolute bottom-2 left-2 inline-flex h-7 items-center gap-[6px] rounded-pill bg-scrim pr-3 pl-1 text-label text-ink">
+        <ScrimChip className="absolute bottom-2 left-2 h-7 gap-[6px] pr-3 pl-1 text-label">
           <Avatar name={viewer.name} hue={viewer.hue} size={20} />
           <span>{firstName(viewer.name)}</span>
-        </span>
+        </ScrimChip>
       </div>
     );
   }
   return (
-    <button type="button" onClick={pick} aria-label={`Add the first photo from ${night}`} data-empty-slot="" className="flex h-[120px] w-full flex-col items-center justify-center gap-2 rounded-card border-[1.5px] border-dashed border-line-strong text-body-strong text-ink">
+    <button type="button" onClick={pick} aria-label={`Add the first photo from ${night}`} data-empty-slot="" data-press="line" className="flex h-[120px] w-full flex-col items-center justify-center gap-2 rounded-card border-[1.5px] border-dashed border-line-strong text-body-strong text-ink press-line">
       <span aria-hidden="true" className="flex h-11 w-11 items-center justify-center rounded-pill border-[1.5px] border-ink">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
           <path d="M12 5v14M5 12h14" />

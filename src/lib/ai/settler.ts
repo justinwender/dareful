@@ -82,6 +82,8 @@ export async function triage(input: { line: string }): Promise<Triage> {
     },
     shape: Triage,
     timeoutMs: 15_000,
+    // The ruling model thinks before it answers, and its thinking counts toward the limit: the default ran out mid-answer, which read as no triage.
+    maxTokens: 2500,
   });
 }
 

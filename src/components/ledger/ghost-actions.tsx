@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Chip } from "@/components/ledger/chip";
+import { Chip, chipPress } from "@/components/ledger/chip";
 import { InviteShare } from "@/components/ledger/invite-share";
 import { Button } from "@/components/ui/button";
 import { createClaimLinkAction, dismissGhostAction, mergeGhostAction } from "@/lib/actions/claims";
@@ -90,7 +90,7 @@ export function GhostActions({ claimId, name, mergeOptions }: { claimId: string;
           <p className="text-body-sm text-ink-2">Who is {name}, really? Everything here moves over to them.</p>
           <div className="flex flex-wrap gap-2">
             {mergeOptions.map((o) => (
-              <button key={o.kind === "user" ? o.userId : o.claimId} type="button" onClick={() => merge(o)} disabled={pending} className="rounded-pill">
+              <button key={o.kind === "user" ? o.userId : o.claimId} type="button" onClick={() => merge(o)} disabled={pending} {...chipPress(false)}>
                 <Chip size={36}>{o.displayName}</Chip>
               </button>
             ))}

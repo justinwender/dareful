@@ -1,22 +1,20 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 
-/** Every share goes out through the user's own composer (Web Share, then sms:), never from Dareful. */
-export function InviteShare({ url, text, compact = false, primary = false, label, onShared, trailing }: { url: string; text: string; compact?: boolean; primary?: boolean; label?: string; onShared?: () => void; /** A control at the end of the row: the camera beside "Send it to the chat" while a market is open (3.39). */ trailing?: ReactNode }) {
+/** Every share goes out through the user's own composer (Web Share, then sms:), never from Dareful. The nudge's relay and a ghost's link use it; a market is shared from the who's-in row (3.42), which retired the chalk this once drew. */
+export function InviteShare({ url, text }: { url: string; text: string }) {
   const [copied, setCopied] = useState(false);
   async function share() {
     if (typeof navigator !== "undefined" && "share" in navigator) {
       try {
         await navigator.share({ text: `${text} ${url}` });
-        onShared?.();
         return;
       } catch {
         // fall through to sms:
       }
     }
-    onShared?.();
     window.location.href = `sms:?&body=${encodeURIComponent(`${text} ${url}`)}`;
   }
   async function copy() {
@@ -30,13 +28,12 @@ export function InviteShare({ url, text, compact = false, primary = false, label
   }
   return (
     <div className="flex gap-2">
-      <Button variant={primary ? "primary" : compact ? "tertiary" : "secondary"} onClick={share} className={primary ? "flex-1" : undefined}>
-        {label ?? (primary ? "Send it to the chat" : compact ? "Send" : "Send the link")}
+      <Button variant="secondary" onClick={share}>
+        Send the link
       </Button>
       <Button variant="tertiary" onClick={copy}>
         {copied ? "Copied" : "Copy"}
       </Button>
-      {trailing}
     </div>
   );
 }

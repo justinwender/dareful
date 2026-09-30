@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Chip } from "@/components/ledger/chip";
+import { Chip, chipPress } from "@/components/ledger/chip";
 import { UnitGlyph } from "@/components/ledger/glyphs";
 import { MarkStamp } from "@/components/ledger/mark-stamp";
 import { ObligationToken } from "@/components/ledger/obligation-token";
@@ -92,13 +92,13 @@ export function CoverSheet({ person, units, recent, viewer }: { person: { id: st
   }
 
   const chip = (on: boolean, onClick: () => void, children: React.ReactNode, key: string) => (
-    <button key={key} type="button" aria-pressed={on} onClick={onClick} className="rounded-pill">
-      <Chip size={36} selected={on}>
+    <button key={key} type="button" aria-pressed={on} onClick={onClick} {...chipPress(on)}>
+      <Chip size={36} selected={on} choice>
         {children}
       </Chip>
     </button>
   );
-  const rowClass = (on: boolean) => cn("flex min-h-14 w-full items-center justify-between gap-3 rounded-button border px-3 py-2 text-left", on ? "border-ink bg-surface" : "border-line");
+  const rowClass = (on: boolean) => cn("flex min-h-14 w-full items-center justify-between gap-3 rounded-button border px-3 py-2 text-left", on ? "border-ink bg-surface press-fill" : "border-line press-line");
 
   return (
     <PinnedSheet
@@ -157,7 +157,7 @@ export function CoverSheet({ person, units, recent, viewer }: { person: { id: st
               </div>
             ) : quantifiable ? (
               <div className="flex items-center gap-3">
-                <button type="button" aria-label="One fewer" disabled={count <= 1} onClick={() => setCount((c) => Math.max(1, c - 1))} className="flex h-12 w-12 items-center justify-center rounded-button border border-line-strong text-ink-2 disabled:border-line disabled:text-ink-3">
+                <button type="button" aria-label="One fewer" disabled={count <= 1} onClick={() => setCount((c) => Math.max(1, c - 1))} data-press="line" className="flex h-12 w-12 items-center justify-center rounded-button border border-line-strong text-ink-2 press-line disabled:border-line disabled:text-ink-3">
                   <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                     <path d="M4 10h12" />
                   </svg>
@@ -165,7 +165,7 @@ export function CoverSheet({ person, units, recent, viewer }: { person: { id: st
                 <span className="min-w-0 flex-1 text-center text-body-strong text-ink" data-cover-count={count}>
                   {count} {count === 1 ? denomination.label : denomination.pluralLabel}
                 </span>
-                <button type="button" aria-label="One more" disabled={count >= 20} onClick={() => setCount((c) => Math.min(20, c + 1))} className="flex h-12 w-12 items-center justify-center rounded-button border border-line-strong text-ink-2 disabled:border-line disabled:text-ink-3">
+                <button type="button" aria-label="One more" disabled={count >= 20} onClick={() => setCount((c) => Math.min(20, c + 1))} data-press="line" className="flex h-12 w-12 items-center justify-center rounded-button border border-line-strong text-ink-2 press-line disabled:border-line disabled:text-ink-3">
                   <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                     <path d="M4 10h12M10 4v12" />
                   </svg>
@@ -178,12 +178,12 @@ export function CoverSheet({ person, units, recent, viewer }: { person: { id: st
 
           <section className="flex flex-col gap-2" role="radiogroup" aria-label="Who picks up next">
             <h3 className="text-label text-ink-3">Who picks up next</h3>
-            <button type="button" role="radio" aria-checked={payback} onClick={() => setPayback(true)} className={rowClass(payback)}>
+            <button type="button" role="radio" aria-checked={payback} onClick={() => setPayback(true)} data-press={payback ? "fill" : "line"} className={rowClass(payback)}>
               <span className="text-body-sm text-ink-2">{first} picks up next</span>
               {/* The token it will make (3.2), exactly as it will appear on both pages; with "$" and no amount typed yet there is no token to show. */}
               {quantity > 0n ? <ObligationToken owner={{ id: person.id, displayName: person.displayName, hue: person.ghost ? "stone" : person.hue, ghost: person.ghost }} other={{ id: viewer.id, displayName: viewer.displayName }} viewerId={viewer.id} denomination={denomination} quantity={quantity} pending /> : <span className="text-caption text-ink-3">The amount, once typed</span>}
             </button>
-            <button type="button" role="radio" aria-checked={!payback} onClick={() => setPayback(false)} className={rowClass(!payback)}>
+            <button type="button" role="radio" aria-checked={!payback} onClick={() => setPayback(false)} data-press={payback ? "line" : "fill"} className={rowClass(!payback)}>
               <span className="flex items-center gap-2 text-body-sm text-ink-2">
                 <span aria-hidden="true" className="inline-block h-2 w-2 rounded-pill" style={{ background: hueVar(viewer.hue) }} />
                 Nobody’s paying it back

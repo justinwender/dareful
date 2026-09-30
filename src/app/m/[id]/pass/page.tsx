@@ -10,6 +10,7 @@ import { db, schema } from "@/db";
 import { eq } from "drizzle-orm";
 import { currentUser } from "@/lib/auth/session";
 import { denominationById } from "@/lib/ledger/denominations";
+import { askerLine } from "@/lib/ledger/groups";
 import { canHandOver, handOverCandidates } from "@/lib/ledger/hand-over";
 import { answersOf, marketById, positionsOf, stateOf, unitOf } from "@/lib/ledger/markets";
 import { participantsOf, pidOf } from "@/lib/ledger/participants";
@@ -76,7 +77,8 @@ export default async function HandOverPage({ params }: { params: Promise<{ id: s
       </div>
       <h1 className="text-serif-l text-ink">{d.title}</h1>
       <p className="text-caption text-ink-2">
-        {first(d.creatorId)} asked{group?.name ? ` ${group.name}` : ""}
+        {/* A named set as a sentence names it (3.17, 3.38); nothing of the host's, so never "You", and no names for a set nobody named. */}
+        {askerLine({ id: d.creatorId, displayName: person.get(d.creatorId)?.displayName ?? "Someone" }, { name: group?.name ?? null, members: [] }, null)}
       </p>
     </section>
   );

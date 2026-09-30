@@ -10,6 +10,7 @@ import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { frameOnMarkets } from "@/lib/media";
 import { denominationsByIds, type DenominationRow } from "./denominations";
+import { membersOfGroups, setFacts, type SetFacts } from "./groups";
 import { participantsOf, pidOf } from "./participants";
 import { inkOf, type InkName } from "@/lib/ui/ink";
 import { answersOf, stateOf, unitOf, VOID_OUTCOME, type DareRow, type MarketState, type PositionRow, type Unit } from "./markets";
@@ -25,6 +26,8 @@ export type MarketCardData = {
   viewerIn: boolean;
   at: Date;
   groupName: string | null;
+  /** The set it was asked of, as facts: its real name and its account-holders. A sentence about the set is written from these (`askerLine`); `groupName` may carry the chip's label. */
+  set: SetFacts;
   groupSize: number;
   denomination: DenominationRow;
   /** Percents on a yes-or-no question; on a number question `percent` is null and `number` carries the entry, as text; on a pick-one question `pick` is the answer's index. All null when numbers may not be shown. */
@@ -78,7 +81,8 @@ export async function marketCards(input: { viewerId: string; groupId?: string; w
     db.select({ dareId: schema.dareVotes.dareId, userId: schema.dareVotes.userId }).from(schema.dareVotes).where(inArray(schema.dareVotes.dareId, ids)),
     db.select().from(schema.obligations).where(and(eq(schema.obligations.origin, "dare"), inArray(schema.obligations.originId, ids))),
     db.select({ id: schema.groups.id, name: schema.groups.name }).from(schema.groups).where(inArray(schema.groups.id, groupIds)),
-    db.select({ groupId: schema.groupMembers.groupId, userId: schema.groupMembers.userId }).from(schema.groupMembers).where(and(inArray(schema.groupMembers.groupId, groupIds), isNotNull(schema.groupMembers.userId), isNull(schema.groupMembers.leftAt))),
+    // The seats, with their names and in one order everywhere (`membersOfGroups`): the account-holders are the set a sentence names.
+    membersOfGroups(groupIds),
     db.select({ dareId: schema.dareStatements.dareId, userId: schema.dareStatements.userId }).from(schema.dareStatements).where(and(inArray(schema.dareStatements.dareId, ids), eq(schema.dareStatements.kind, "update"))).orderBy(schema.dareStatements.statedAt),
   ]);
   // Every participant, account-holder or ghost: a ghost's number counts and draws like anyone's.
@@ -115,7 +119,8 @@ export async function marketCards(input: { viewerId: string; groupId?: string; w
       viewerIn: iAmIn,
       at: d.resolvedAt ?? d.lockedAt ?? d.createdAt,
       groupName: groups.find((g) => g.id === d.groupId)?.name ?? null,
-      groupSize: seats.filter((s) => s.groupId === d.groupId).length,
+      set: setFacts(groups.find((g) => g.id === d.groupId)?.name ?? null, seats.get(d.groupId) ?? []),
+      groupSize: (seats.get(d.groupId) ?? []).filter((s) => s.userId !== null).length,
       denomination,
       people: ps.map((p) => ({ id: pidOf(p), name: nameOf.get(pidOf(p)) ?? "Someone", ghost: ghost(pidOf(p)), percent: show && !unit && !answers ? percentOf(p) : null, number: show && unit ? p.value.toString() : null, pick: show && answers ? Number(p.value) : null })),
       outcome: state === "resolved" && !unit && !answers && d.resolvedOutcome !== null && d.resolvedOutcome !== VOID_OUTCOME ? (Number(d.resolvedOutcome) as 0 | 1) : null,

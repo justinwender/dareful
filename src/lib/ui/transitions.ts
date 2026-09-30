@@ -1,6 +1,8 @@
 "use client";
 
 import { flushSync } from "react-dom";
+import { landingByTraversal } from "./traversal";
+import { dropKeyboard } from "./viewport";
 
 /**
  * View transitions (docs/design.md 9.3, 9.7, 9.8): the steps of asking, opening a market and going back use
@@ -9,7 +11,8 @@ import { flushSync } from "react-dom";
  * state synchronously and returns; it never awaits a fetch, since the old snapshot is held on screen while it
  * runs. A tap during a transition finishes it first. Where the API is missing (iOS before 18) there is no
  * transition: the update is simply applied. Direction travels as a class on `html` (`back`), never as
- * view-transition classes or types, which arrived only in Safari 18.2.
+ * view-transition classes or types, which arrived only in Safari 18.2. A screen landing from a traversal (the
+ * phone's swipe from the edge, which the phone animates itself) takes no transition either (`traversal.ts`).
  */
 type Transition = { finished: Promise<void>; skipTransition: () => void };
 type Doc = Document & { startViewTransition?: (update: () => void | Promise<void>) => Transition };
@@ -32,7 +35,9 @@ export function skipCurrentTransition(): void {
  */
 export function withViewTransition(update: () => void, opts: { back?: boolean } = {}): void {
   const doc = document as Doc;
-  if (!doc.startViewTransition) {
+  // A step or a screen changing takes its fields with it: the keyboard leaves first, by a blur (viewport.ts).
+  dropKeyboard();
+  if (!doc.startViewTransition || landingByTraversal(location.pathname)) {
     update();
     return;
   }
@@ -66,7 +71,8 @@ function settle(vt: Transition, doc: Doc): void {
  */
 export function withLandingTransition(update: () => void, landed: Promise<void>, opts: { back?: boolean; timeoutMs?: number } = {}): void {
   const doc = document as Doc;
-  if (!doc.startViewTransition) {
+  dropKeyboard();
+  if (!doc.startViewTransition || landingByTraversal(location.pathname)) {
     update();
     return;
   }

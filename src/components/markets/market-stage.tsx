@@ -4,7 +4,7 @@ import { useEffect, useId, useState } from "react";
 import { useDynamicContext } from "@dynamic-labs/sdk-react-core";
 import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/ledger/avatar";
-import { Chip } from "@/components/ledger/chip";
+import { Chip, chipPress } from "@/components/ledger/chip";
 import { FIELD_PROBLEM_CLASS, Problem, ProblemSummary } from "@/components/ledger/problem";
 import { signingProblem, useSigner } from "@/components/ledger/use-signer";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,8 @@ import { Sheet } from "@/components/ui/sheet";
 import { SignInButton } from "@/components/auth/sign-in-button";
 import { withdrawHostedEntryAction } from "@/lib/actions/hand-over";
 import { PinnedSheet } from "@/components/ui/pinned-sheet";
-import { enterAsGhostAction, enterMarketAction, openMarketAction, suggestGhostNamesAction } from "@/lib/actions/markets";
+import { enterAsGhostAction, enterMarketAction, openMarketAction, suggestGhostNamesAction, forgetGhostAction } from "@/lib/actions/markets";
+import { isIdentifier } from "@/lib/auth/login";
 import { daresTypes } from "@/lib/chain/typed-data";
 import type { Hue } from "@/lib/ui/hue";
 import { OddsHeader, OddsLine } from "./odds-line";
@@ -26,6 +27,8 @@ import { PickOneEntry } from "./pick-one-entry";
 import { numberAxis, serialiseAxis, unitPhrase, withSeparators, type NumberLineAxis } from "@/lib/ledger/number-axis";
 import type { Signing, StakeUnit } from "./market-actions";
 import { defaultStake, StakeChips } from "./stake-chips";
+import { sheetPresent } from "@/lib/ui/stage";
+import { dropKeyboard } from "@/lib/ui/viewport";
 
 export type StagePicture =
   | {
@@ -39,18 +42,16 @@ export type StagePicture =
   /** A pick-one market's bars (3.31): what is riding on each answer, and the caption only when one stake is more than half. */
   | { kind: "picks"; bars: PickOneBar[]; entries: number; caption: string | null };
 
-/** How long the entering moment runs before the sheet becomes the next state's (3.13): the columns grow, then the move changes. */
-const ENTERING_MS = 1800;
-
 /**
  * The market screen's stage (docs/design.md 3.13, 3.22, 3.24): the odds line in the pinned sheet until you are
  * in, then the entry line and the weight line in the screen and no sheet at all, since once you're in nothing
  * is your move (3.24): the icons end the who's-in row (3.42) and the photo slot sits last on the screen (3.39).
  * One object in two states: the ten segments of the odds line are the ten buckets the weight line grows into.
  *
- * Entering is a moment, not a navigation. Confirming lowers the sheet, the columns grow from the segments, your
- * share fills in your hue, your avatar rises, the group's marker draws last, and about two seconds later the
- * sheet goes. No toast. What confirms it is the entry line, which is still there next visit.
+ * Entering is a moment, not a navigation. The sheet goes in the render the entry line arrives in (`sheetPresent`;
+ * 3.13, amended 2026-09-29: the two were 1.8 seconds apart), and in the page the columns grow from the segments,
+ * your share fills in your hue, your avatar rises and the group's marker draws last. No toast. What confirms it
+ * is the entry line, which is still there next visit.
  *
  * A pick-one market's sheet opens raised, since picking is the move, and lowers to one bar ("Pick one" and the
  * count of answers, or your pick) so the terms behind six answers can be read (3.30). A touch on the bar raises it.
@@ -95,6 +96,8 @@ export function MarketStage(props: {
     otherSays: { name: string; side: "yes" | "no" } | null;
   } | null;
   lockedLine: string | null;
+  /** Voting has opened (3.38): the claim card or the source card stands where the entry line stood, so the entry line leaves and the picture alone remains. */
+  claimed?: boolean;
   /** "until 10:40pm": how long a number is this person's to change. */
   changeUntil: string;
   /**
@@ -175,16 +178,6 @@ export function MarketStage(props: {
     stake: string;
     stakeWords: string;
   } | null>(null);
-  const [phase, setPhase] = useState<"entering" | "in">("in");
-  useEffect(() => {
-    if (phase !== "entering") return;
-    const reduced =
-      typeof window !== "undefined" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const t = setTimeout(() => setPhase("in"), reduced ? 0 : ENTERING_MS);
-    return () => clearTimeout(t);
-  }, [phase]);
-
   const shown = mine ?? justIn;
   const reading = shown !== null && state !== "draft";
   const unsigned = mine?.unsigned === true && justIn === null;
@@ -212,6 +205,8 @@ export function MarketStage(props: {
   const farOff = (n: bigint | null) => numberUnit !== null && props.farOff !== null && props.farOff !== undefined && n !== null && n >= BigInt(props.farOff.threshold);
   const blocked = farBlocked && farOff(number);
   async function submit() {
+    // The keyboard leaves by a blur before the sheet that holds its field goes (viewport.ts).
+    dropKeyboard();
     if (!picked) return;
     setProblem(null);
     if (farOff(number)) {
@@ -248,6 +243,7 @@ export function MarketStage(props: {
       // No signature: who they are goes in, with a number if they give one, and the browser keeps a token for the ghost (3.17). A picked name needs the number it joined with.
       setPhoneProblem(null);
       if (!ghost.known && !ghostName.trim()) return setProblem("Say what your friends call you.");
+      if (!ghost.known && isIdentifier(ghostName)) return setProblem("Say what your friends call you.");
       if (!ghost.known && ghostMember && !ghostPhone.trim()) return setPhoneProblem("A picked name needs the number it joined with.");
       setStep("sending");
       const r = await enterAsGhostAction(dareId, position, { name: ghost.known ? "" : ghostName.trim(), ...(!ghost.known && ghostPhone.trim() ? { phone: ghostPhone.trim() } : {}), ...(!ghost.known && ghostMember ? { memberClaimId: ghostMember } : {}) });
@@ -261,7 +257,6 @@ export function MarketStage(props: {
       setChanging(false);
       setRaised(false);
       setStep("idle");
-      setPhase("entering");
       router.refresh();
       return;
     }
@@ -338,7 +333,6 @@ export function MarketStage(props: {
       setChanging(false);
       setRaised(false);
       setStep("idle");
-      setPhase("entering");
       router.refresh();
     } catch (err) {
       setProblem(signingProblem(err));
@@ -367,6 +361,7 @@ export function MarketStage(props: {
         className="flex flex-col gap-5"
         aria-label="Where the stake sits"
       >
+        {props.claimed ? null : (
         <div className="flex items-center gap-3">
           <Avatar name={me.name} hue={me.hue} size={36} ghost={me.ghost} />
           <div className="flex min-w-0 flex-1 flex-col">
@@ -409,6 +404,7 @@ export function MarketStage(props: {
             </Button>
           ) : null}
         </div>
+        )}
         {pickOne ? (
           <PickOneBars
             answers={pickOne.answers}
@@ -456,7 +452,7 @@ export function MarketStage(props: {
 
   if (state === "locked") return stage;
 
-  const entering = !reading || changing || phase === "entering";
+  const entering = sheetPresent(reading, changing);
   /** The answer picked on a pick-one sheet, for the lowered bar (3.30). */
   const pickedAnswer: PickOneAnswer | null = pickOne && pick !== null ? (pickOne.answers.find((a) => a.index === pick) ?? null) : null;
   const foot = (
@@ -526,7 +522,7 @@ export function MarketStage(props: {
               onClick={submit}
               loading={step !== "idle"}
               // On the who's-joining step the chalk waits for the name alone, and for the number too only when a name was picked (3.17, amended).
-              disabled={!picked || blocked || (phase === "entering" && reading) || (whoStep && (!ghostName.trim() || (ghostMember !== null && !ghostPhone.trim())))}
+              disabled={!picked || blocked || (whoStep && (!ghostName.trim() || (ghostMember !== null && !ghostPhone.trim())))}
               data-join-primary={whoStep ? "who" : undefined}
             >
               {!picked
@@ -553,12 +549,12 @@ export function MarketStage(props: {
               <SignInButton variant="tertiary" label="Have an account? Sign in" />
             </div>
           ) : null}
-          {props.signedInAs && !reading && !changing && state === "open" ? (
-            // Signed in, on a link (3.17, frame 7): who this phone will join as, and the way to join as somebody else.
+          {(props.signedInAs || ghost?.known) && !reading && !changing && state === "open" ? (
+            // Signed in, on a link (3.17, frame 7): who this phone will join as, and the way to join as somebody else. A phone that remembers a ghost joins as them the same way, since the entry goes to the ghost it remembers whatever name is typed.
             <p className="flex items-center gap-1 text-caption text-ink-3" data-joining-as="">
-              <span>Joining as {props.signedInAs}</span>
+              <span>Joining as {props.signedInAs ?? ghost?.known?.name}</span>
               <span aria-hidden="true">·</span>
-              <button type="button" onClick={() => setNotYou(true)} className="link-tertiary">
+              <button type="button" onClick={() => setNotYou(true)} data-press="line" className="link-tertiary press-line">
                 Not you?
               </button>
             </p>
@@ -601,7 +597,6 @@ export function MarketStage(props: {
                   reach={teams?.reach ?? 35}
                   unit={numberUnit}
                   hue={me.hue}
-                  disabled={phase === "entering" && !changing && reading}
                   onChange={(v) => {
                     const signed = BigInt(v) < -shift ? -shift : BigInt(v);
                     setNumber(signed + shift);
@@ -615,7 +610,6 @@ export function MarketStage(props: {
                 unit={numberUnit}
                 hue={me.hue}
                 problem={blocked}
-                disabled={phase === "entering" && !changing && reading}
                 onChange={(v) => {
                   setNumber(v);
                   if (!raised && v !== null) setRaised(true);
@@ -654,10 +648,14 @@ export function MarketStage(props: {
                     key={v}
                     type="button"
                     aria-pressed={value === v}
-                    onClick={() => setValue(v)}
-                    className="rounded-pill"
+                    // Taking a side is the first touch on an argument's sheet (3.21): it raises the sheet, as the line does, so the stake and the primary come into view.
+                    onClick={() => {
+                      setValue(v);
+                      if (!raised) setRaised(true);
+                    }}
+                    {...chipPress(value === v)}
                   >
-                    <Chip size={44} selected={value === v} className="w-full">
+                    <Chip size={44} selected={value === v} className="w-full" choice>
                       {v === 100 ? "Yes, all the way" : "No, all the way"}
                     </Chip>
                   </button>
@@ -672,7 +670,6 @@ export function MarketStage(props: {
             away={teams.away}
             home={teams.home}
             hue={me.hue}
-            disabled={phase === "entering" && !changing && reading}
             onChange={(v) => {
               setValue(v);
               if (!raised) setRaised(true);
@@ -683,7 +680,6 @@ export function MarketStage(props: {
             value={value}
             mark={mark}
             hue={me.hue}
-            disabled={phase === "entering" && !changing && reading}
             onChange={(v) => {
               setValue(v);
               if (!raised) setRaised(true);
@@ -699,7 +695,6 @@ export function MarketStage(props: {
               answers={pickOne.answers}
               value={pick}
               hue={me.hue}
-              disabled={phase === "entering" && !changing && reading}
               onChange={(i) => {
                 setPick(i);
                 if (!raised) setRaised(true);
@@ -741,7 +736,7 @@ export function MarketStage(props: {
                   <p className="text-label text-ink-3">Is one of these you?</p>
                   <div className="flex flex-wrap gap-2">
                     {shownSuggestions.map((m) => (
-                      <button key={m.claimId} type="button" onClick={() => (setGhostMember(m.claimId), setGhostName(m.name), setSuggestions([]))} className="rounded-pill">
+                      <button key={m.claimId} type="button" onClick={() => (setGhostMember(m.claimId), setGhostName(m.name), setSuggestions([]))} {...chipPress(false)}>
                         <Chip size={40} selected={false}>
                           <Avatar name={m.name} hue="stone" size={24} ghost />
                           {m.name}
@@ -776,20 +771,24 @@ export function MarketStage(props: {
       {/* "Not you?" (3.17, frame 7): a modal over the raised sheet, since signing this phone out is a moment worth a pause. */}
       <Sheet open={notYou} onClose={() => setNotYou(false)} labelledBy={`${stageId}-not-you`}>
         <h2 id={`${stageId}-not-you`} className="text-body-strong text-ink">
-          Not {props.signedInAs}?
+          Not {props.signedInAs ?? ghost?.known?.name}?
         </h2>
-        <p className="text-body-sm text-ink-2">Sign out of this phone, and join as yourself from the link.</p>
+        <p className="text-body-sm text-ink-2">{props.signedInAs ? "Sign out of this phone, and join as yourself from the link." : "This phone forgets them, and you join as yourself from the link."}</p>
         <div className="flex flex-col gap-1">
           <Button
             variant="primary"
             data-autofocus
             onClick={async () => {
-              await fetch("/api/session", { method: "DELETE" });
-              await handleLogOut().catch(() => undefined);
+              if (props.signedInAs) {
+                await fetch("/api/session", { method: "DELETE" });
+                await handleLogOut().catch(() => undefined);
+              } else {
+                await forgetGhostAction();
+              }
               window.location.reload();
             }}
           >
-            Sign out
+            {props.signedInAs ? "Sign out" : "Forget them"}
           </Button>
           <Button variant="tertiary" onClick={() => setNotYou(false)}>
             Never mind

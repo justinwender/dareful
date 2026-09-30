@@ -7,6 +7,7 @@ import type { Hue } from "@/lib/ui/hue";
 import { cn } from "@/lib/utils";
 import { Avatar } from "./avatar";
 import { PhotoView } from "./photo-view";
+import { ScrimChip } from "./scrim-chip";
 import { usePhotoAdding } from "@/components/markets/photo-adding";
 import { withViewTransition } from "@/lib/ui/transitions";
 import type { CSSProperties } from "react";
@@ -57,7 +58,7 @@ export function MediaFrame({ items, height, interactive = true, inset = false, a
           />
         ) : null}
         {interactive && s === "ok" ? (
-          <button type="button" aria-label={`Open photo ${current + 1} of ${items.length}`} onClick={() => withViewTransition(() => setViewing(true))} className="absolute inset-0 rounded-none" />
+          <button type="button" aria-label={`Open photo ${current + 1} of ${items.length}`} onClick={() => withViewTransition(() => setViewing(true))} data-press="fill" className="absolute inset-0 rounded-none press-fill" />
         ) : null}
         {s === "failed" ? (
           <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-ink-2">
@@ -69,7 +70,8 @@ export function MediaFrame({ items, height, interactive = true, inset = false, a
             {interactive ? (
               <button
                 type="button"
-                className="inline-flex h-11 items-center rounded-button px-3 text-body-sm font-semibold text-ink"
+                data-press="line"
+                className="inline-flex h-11 items-center rounded-button px-3 text-body-sm font-semibold text-ink press-line"
                 onClick={() => {
                   setTries((t) => ({ ...t, [shown.id]: (t[shown.id] ?? 0) + 1 }));
                   setState((x) => ({ ...x, [shown.id]: "loading" }));
@@ -81,13 +83,13 @@ export function MediaFrame({ items, height, interactive = true, inset = false, a
           </div>
         ) : null}
         <figcaption className="pointer-events-none absolute inset-x-2 bottom-2 flex items-center justify-between gap-2">
-          <span className="inline-flex h-7 items-center gap-[6px] rounded-pill bg-scrim pr-3 pl-1 text-label text-ink">
+          <ScrimChip className="h-7 gap-[6px] pr-3 pl-1 text-label">
             <Avatar name={shown.author.name} hue={shown.author.hue} size={20} />
             <span className="truncate">{firstName(shown.author.name)}</span>
-          </span>
-          <span className="inline-flex h-7 items-center rounded-pill bg-scrim px-3 text-caption tabular-nums text-ink" data-media-counter="">
+          </ScrimChip>
+          <ScrimChip className="h-7 px-3 text-caption tabular-nums" data-media-counter="">
             {current + 1} / {items.length}
-          </span>
+          </ScrimChip>
         </figcaption>
       </div>
       {viewing ? <PhotoView items={items.map((item, i) => ({ id: item.id, alt: `Photo ${i + 1} of ${items.length}, added by ${firstName(item.author.name)}`, removable: item.removable === true }))} index={Math.min(current, items.length - 1)} onClose={() => setViewing(false)} stickers={stickers} /> : null}
@@ -100,7 +102,7 @@ export function MediaFrame({ items, height, interactive = true, inset = false, a
               <img src={`/api/media/${item.id}?size=thumb`} alt={interactive ? "" : `Photo ${index + 1} of ${items.length}, added by ${firstName(item.author.name)}`} width={60} height={60} loading="lazy" className="h-[60px] w-[60px] rounded-button bg-surface-2 object-cover" />
             );
             return interactive ? (
-              <button key={item.id} type="button" aria-label={`Show photo ${index + 1} of ${items.length}`} onClick={() => setCurrent(index)} className="shrink-0 rounded-button">
+              <button key={item.id} type="button" aria-label={`Show photo ${index + 1} of ${items.length}`} onClick={() => setCurrent(index)} data-press="fill" className="shrink-0 rounded-button press-fill">
                 {square}
               </button>
             ) : (
@@ -111,7 +113,7 @@ export function MediaFrame({ items, height, interactive = true, inset = false, a
           })}
           {more > 0 ? (
             interactive ? (
-              <button type="button" aria-label={`Show ${more} more`} onClick={() => setShowAll(true)} className="flex h-[60px] w-[60px] shrink-0 items-center justify-center rounded-button bg-surface-2 text-label text-ink">
+              <button type="button" aria-label={`Show ${more} more`} onClick={() => setShowAll(true)} data-press="fill" className="flex h-[60px] w-[60px] shrink-0 items-center justify-center rounded-button bg-surface-2 text-label text-ink press-fill">
                 +{more}
               </button>
             ) : (
@@ -133,7 +135,7 @@ export function MediaFrame({ items, height, interactive = true, inset = false, a
 function AddTile({ night }: { night: string }) {
   const { pick, pending } = usePhotoAdding();
   return (
-    <button type="button" onClick={pick} aria-label={`Add photos from ${night}`} aria-busy={pending > 0 || undefined} data-add-tile="" className="relative flex h-[60px] w-[60px] shrink-0 items-center justify-center overflow-hidden rounded-button border-[1.5px] border-dashed border-line-strong text-ink aria-busy:opacity-[0.88]">
+    <button type="button" onClick={pick} aria-label={`Add photos from ${night}`} aria-busy={pending > 0 || undefined} data-add-tile="" data-press="line" className="relative flex h-[60px] w-[60px] shrink-0 items-center justify-center overflow-hidden rounded-button border-[1.5px] border-dashed border-line-strong text-ink press-line aria-busy:opacity-[0.88]">
       <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
         <path d="M12 5v14M5 12h14" />
       </svg>

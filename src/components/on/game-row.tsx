@@ -15,8 +15,8 @@ export type GameRowData = {
   start: string;
   /** "Asked in 214 groups", once ten are on it; null below the floor (3.32). */
   asked: string | null;
-  /** This viewer's own use, in place of both: "You're on this with the Friday crew", with the you're-in mark, opening that group's page. */
-  yours: { label: string; groupId: string } | null;
+  /** This viewer's own use, in place of both, with the you're-in mark, opening that group's page: the line as a sentence names the set (`onThisLine`), "You’re on this with the Friday crew". */
+  yours: { line: string; groupId: string } | null;
 };
 
 /**
@@ -37,7 +37,7 @@ export function GameRow({ game, viewerHue, divider = false }: { game: GameRowDat
           {game.yours ? (
             <>
               <StateMark state="in" hue={viewerHue} size={14} />
-              <span className="truncate">You’re on this with {game.yours.label}</span>
+              <span className="truncate">{game.yours.line}</span>
             </>
           ) : (
             <span className="truncate">
@@ -65,6 +65,6 @@ export function startLabel(at: Date, zone: string): string {
 export const askedLabel = (n: number): string => `Asked in ${n} groups`;
 
 /** A game row's data from a game row in the database and what the tab knows about it. */
-export function rowData(g: { id: string; name: string; startsAt: Date; homeAbbr: string; homeShort: string; homeColor: string | null; awayAbbr: string; awayShort: string; awayColor: string | null }, zone: string, asked: number | null, yours: { label: string; groupId: string } | null): GameRowData {
+export function rowData(g: { id: string; name: string; startsAt: Date; homeAbbr: string; homeShort: string; homeColor: string | null; awayAbbr: string; awayShort: string; awayColor: string | null }, zone: string, asked: number | null, yours: { line: string; groupId: string } | null): GameRowData {
   return { id: g.id, name: g.name, away: { abbr: g.awayAbbr, name: g.awayShort, color: g.awayColor }, home: { abbr: g.homeAbbr, name: g.homeShort, color: g.homeColor }, start: startLabel(g.startsAt, zone), asked: asked === null ? null : askedLabel(asked), yours };
 }

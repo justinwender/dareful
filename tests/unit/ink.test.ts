@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { drawable, EMOJI_INK_COUNT, emojiInk, normaliseMark } from "@/lib/ui/emoji-ink";
-import { balanceInk, hashInk, hueDistance, INK_NAMES, INKS, inkFor, inkOf, inkVars, nearestInk } from "@/lib/ui/ink";
+import { balanceInk, hashInk, hueDistance, INK_NAMES, INKS, INKS_LIGHT, inkFor, inkOf, inkRoomStyleText, inkStyleText, nearestInk } from "@/lib/ui/ink";
 
 test("a hue snaps to the nearest of the eight inks, the short way round the wheel", () => {
   assert.equal(nearestInk(85), "ochre");
@@ -74,11 +74,18 @@ test("balance: a collision moves the newcomer to the nearest free ink, and stops
   assert.equal(inkFor({ markInk: emojiInk("🍺"), id: "x", takenInGroup: ["ochre"] }).ink, "olive", "beer no longer turns every Friday market Ochre");
 });
 
-test("a market's own screen swaps ground, surface, line and field for its layers and nothing else", () => {
-  const v = inkVars("sea");
-  assert.deepEqual(Object.keys(v).sort(), ["--field", "--ground", "--line", "--market-ink", "--market-ink-hi", "--market-wash", "--surface"]);
-  assert.equal(v["--ground"], INKS.sea.ground);
-  assert.equal(v["--field"], INKS.sea.field);
-  assert.equal("--ink" in v, false, "type colours are never tinted");
-  assert.equal("--chalk" in v, false, "the chalk button is never tinted");
+test("a market's own screen swaps ground, surface, line and field for its layers and nothing else, in both themes, and so does the room of a question being asked", () => {
+  const names = (css: string) => [...new Set([...css.matchAll(/(--[a-z-]+):/g)].map((m) => m[1] as string))].sort();
+  for (const css of [inkStyleText("sea"), inkRoomStyleText("sea")]) {
+    assert.deepEqual(names(css), ["--field", "--ground", "--line", "--market-ink", "--market-ink-hi", "--market-wash", "--surface"]);
+    assert.ok(!/--ink:|--chalk:/.test(css), "type colours and the chalk are never tinted");
+    // Both themes, always: the dark layers, the light ones for a light choice, and the light ones for a light phone with no choice made (8.4, 8.8).
+    assert.ok(css.includes(`--ground:${INKS.sea.ground}`) && css.includes(`--field:${INKS.sea.field}`), "the dark layers");
+    assert.equal(css.split(`--ground:${INKS_LIGHT.sea.ground}`).length - 1, 2, "the light layers, for a choice and for the phone");
+    assert.ok(/html\[data-theme="light"\]/.test(css) && /@media \(prefers-color-scheme: light\)\{html:not\(\[data-theme="dark"\]\)/.test(css));
+  }
+  // The room's ink is the room's alone: every rule is scoped to it, so the root held under the steps of asking keeps its own ground.
+  const room = inkRoomStyleText("rose");
+  for (const rule of room.replace(/@media[^{]+\{/, "").split("}").filter((r) => r.includes("{"))) assert.ok(/\[data-ink-room="rose"\]\s*\{/.test(rule.trim() + "{") || rule.includes('[data-ink-room="rose"]'), `scoped: ${rule.slice(0, 60)}`);
+  assert.ok(!/(^|\})html\{/.test(room), "never on html");
 });

@@ -142,8 +142,8 @@ export function CloseObligation({ obligationId, card, children, sentence, what, 
           </div>
         )
       ) : (
-        <button type="button" onClick={() => setOpen(true)} aria-label={`${sentence}. Settle it, or call it even`} className={card ? "block w-full rounded-card text-left" : "block w-full rounded-button text-left"}>
-          {card ? <CoveredCard {...card} /> : children}
+        <button type="button" onClick={() => setOpen(true)} aria-label={`${sentence}. Settle it, or call it even`} data-press={card ? undefined : "row"} className={card ? "block w-full rounded-card text-left" : "block w-full rounded-button text-left press-row"}>
+          {card ? <CoveredCard {...card} control /> : children}
         </button>
       )}
       <Sheet open={open} onClose={() => (phase === "idle" ? setOpen(false) : undefined)} labelledBy={titleId}>

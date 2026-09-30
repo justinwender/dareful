@@ -9,7 +9,7 @@ export const INFO_ICON_ON = true;
 
 /** A sheet's entry (10.6): a term of five words at most, one sentence of at most 90 characters, and an optional qualifier. */
 export type InfoEntry = { term: string; description: string; qualifier?: string; /** An icon's own glyph, drawn before its name (10.4). */ glyph?: InfoGlyph };
-export type InfoGlyph = "more" | "share" | "copy" | "code" | "pass" | "camera" | "back" | "close" | "chevron" | "check" | "remove" | "save" | "sticker" | "plus" | "info";
+export type InfoGlyph = "more" | "share" | "copy" | "code" | "pass" | "camera" | "back" | "close" | "down" | "chevron" | "check" | "remove" | "save" | "sticker" | "plus" | "info";
 export type InfoGroup = "Gestures" | "Icons" | "Rules and timing" | "Everything else";
 export const INFO_GROUPS: readonly InfoGroup[] = ["Gestures", "Icons", "Rules and timing", "Everything else"];
 export type InfoSheet = { /** The screen's name, five words at most, sentence case. */ name: string; groups: Partial<Record<InfoGroup, InfoEntry[]>> };

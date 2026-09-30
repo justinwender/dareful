@@ -20,7 +20,7 @@ export function ClaimGone(props: { state: "expired"; signedIn: boolean } | { sta
           <>
             <h1 className="text-serif-l text-ink">This is the link you made for {props.name}.</h1>
             <p className="text-body text-ink-2">Send it to them from your own messages. It does nothing for you.</p>
-            <Link prefetch={false} href={`/p/c/${props.claimId}`} className="link-tertiary">
+            <Link prefetch={false} href={`/p/c/${props.claimId}`} data-press="line" className="link-tertiary press-line">
               Back to {props.name}
             </Link>
           </>
@@ -29,7 +29,7 @@ export function ClaimGone(props: { state: "expired"; signedIn: boolean } | { sta
             <h1 className="text-serif-l text-ink">Someone already said this was them.</h1>
             <p className="text-body text-ink-2">If that was you, sign in and it’s all there. If it wasn’t, tell {props.creatorName}.</p>
             {props.signedIn ? (
-              <Link prefetch={false} href="/" className="link-tertiary">
+              <Link prefetch={false} href="/" data-press="line" className="link-tertiary press-line">
                 Go home
               </Link>
             ) : null}

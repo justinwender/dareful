@@ -16,7 +16,7 @@ export type NetLine = {
   denomId: string;
   /** "the two beers": what cancels, in words. */
   cancels: string;
-  /** "You've got Gabe three beers and Gabe's got you two, in Friday dinners." */
+  /** "You’ve got Gabe three beers. Gabe’s got you two." (two sentences, naming no set) */
   both: string;
   /** "After this, you've got Gabe one beer." or "After this you two are even on beers." */
   after: string;

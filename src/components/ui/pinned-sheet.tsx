@@ -1,8 +1,10 @@
 "use client";
 
 import { useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { FixedLayer, InFlowSheets } from "./layers";
+import { FixedLayer, InFlowSheets, useLayersHost } from "./layers";
+import { HANDLE_ROW } from "./handle";
 import { MOTION, overscroll, settleDuration } from "@/lib/ui/motion";
+import { CONTROLS, tapCounts } from "@/lib/ui/taps";
 import { cn } from "@/lib/utils";
 
 /**
@@ -20,7 +22,11 @@ import { cn } from "@/lib/utils";
  * The grabber and the header row under it are the drag handle, and only they: the move itself (a slider, a
  * field, a button) keeps its own gestures. While a finger drags, the sheet follows it with no transition; past
  * either height it moves a third of the finger's travel, 16px at most; on release it settles over base if less
- * than half the distance is left and over travel otherwise, on the move curve, from wherever it is.
+ * than half the distance is left and over travel otherwise, on the move curve, from wherever it is. When the
+ * screen raises or lowers it (a touch on the move, Change, Never mind), it travels the same way, over travel.
+ * A drag that starts on the handle row is the sheet's alone (`HANDLE_ROW`): the page never moves under it and
+ * a pull to re-read never starts there. The box the sheet is laid out in takes no touches of its own, so the
+ * page above a lowered sheet is still the page's.
  *
  * It is not modal: nothing behind it is dimmed, the page still scrolls, and it never locks anything. A moment
  * that binds other people still gets the modal `Sheet` on top of it. It never counts down: clocks live in the
@@ -62,6 +68,8 @@ export function PinnedSheet({
   };
   const panel = useRef<HTMLDivElement>(null);
   const more = useRef<HTMLDivElement>(null);
+  /** The layers host: null until hydration has moved the sheet into it, at which point its nodes are new ones. */
+  const host = useLayersHost();
   const raisedRef = useRef(isRaised);
   useEffect(() => {
     raisedRef.current = isRaised;
@@ -74,7 +82,7 @@ export function PinnedSheet({
     const ro = new ResizeObserver(() => setHidden(el.offsetHeight));
     ro.observe(el);
     return () => ro.disconnect();
-  }, [high, foot]);
+  }, [high, foot, host]);
   // The resting height, measured, becomes the screen's bottom padding (`--sheet-room`), changed when the sheet
   // settles and never frame by frame, so the content behind always scrolls clear of the sheet.
   useEffect(() => {
@@ -93,7 +101,26 @@ export function PinnedSheet({
       ro.disconnect();
       root.style.removeProperty("--sheet-room");
     };
-  }, [leaving, inFlow]);
+    // The host is a dependency: after a hard load the sheet moves into the layers host, and the nodes measured before that are gone.
+  }, [leaving, inFlow, host]);
+
+  // A tap counts only on the control it began on (`taps.ts`): the sheet moves under a finger, and a control that
+  // rises into the spot where the finger went down must not take its click.
+  const pressed = useRef<EventTarget | null>(null);
+  useEffect(() => {
+    const down = (e: PointerEvent) => {
+      pressed.current = e.target;
+    };
+    document.addEventListener("pointerdown", down, true);
+    return () => document.removeEventListener("pointerdown", down, true);
+  }, []);
+  const onClickCapture = (e: React.MouseEvent<HTMLElement>) => {
+    const control = e.target instanceof Element ? e.target.closest(CONTROLS) : null;
+    const began = pressed.current instanceof Node ? pressed.current : null;
+    if (tapCounts(began, { control, byPointer: e.detail > 0 })) return;
+    e.stopPropagation();
+    e.preventDefault();
+  };
 
   const startY = useRef<number | null>(null);
   const pulled = useRef(0);
@@ -102,11 +129,19 @@ export function PinnedSheet({
   const [dy, setDy] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [settle, setSettle] = useState<number | null>(null);
+  // A raise or a lower the screen asked for travels like one the finger made (9.9): the change of height and its
+  // transition have to land in the same render, so the duration is set while rendering, before anything is drawn.
+  const [wasRaised, setWasRaised] = useState(isRaised);
+  if (wasRaised !== isRaised) {
+    setWasRaised(isRaised);
+    if (settle === null && !dragging) setSettle(MOTION.travel);
+  }
   const handleProps = high
     ? {
         onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => {
           startY.current = e.clientY;
           pulled.current = 0;
+          tapped.current = false;
           setSettle(null);
           setDragging(true);
           // Once the pointer is captured, later events report this row as their target, so where the touch
@@ -168,15 +203,18 @@ export function PinnedSheet({
   };
 
   const section = (
-      <section aria-label={label} data-pinned-sheet={isRaised ? "raised" : "low"} className={inFlow ? "sticky bottom-0 z-30 mt-auto flex justify-center" : "fixed inset-x-0 bottom-0 z-30 flex justify-center"} style={inFlow ? ({ viewTransitionName: "ask-action" } as CSSProperties) : undefined}>
+      <section aria-label={label} data-pinned-sheet={isRaised ? "raised" : "low"} data-fixed={inFlow ? undefined : "bottom"} onClickCapture={onClickCapture} className={inFlow ? "pointer-events-none sticky bottom-0 z-30 -mx-5 mt-auto flex justify-center" : "pointer-events-none fixed inset-x-0 bottom-0 z-30 flex justify-center"} style={inFlow ? ({ viewTransitionName: "ask-action" } as CSSProperties) : undefined}>
         <div
           ref={panel}
           style={style}
-          onTransitionEnd={() => setSettle(null)}
-          className={cn("w-full max-w-[430px] rounded-t-card border-t border-line bg-surface px-4 pb-[calc(24px+env(safe-area-inset-bottom))]", arrive && "motion-rise", className)}
+          onTransitionEnd={(e) => {
+            // Only the sheet's own travel ending: a press fading out inside it bubbles here too.
+            if (e.target === e.currentTarget && e.propertyName === "transform") setSettle(null);
+          }}
+          className={cn("pointer-events-auto w-full max-w-[430px] rounded-t-card border-t border-line bg-surface px-4 pb-[calc(24px+env(safe-area-inset-bottom))]", arrive && "motion-rise", className)}
         >
           {high ? (
-            <div className="-mx-4 flex select-none touch-none flex-col px-4" {...handleProps}>
+            <div {...HANDLE_ROW} className="-mx-4 flex select-none touch-none flex-col px-4" {...handleProps}>
               <button
                 type="button"
                 aria-expanded={isRaised}

@@ -4,7 +4,9 @@
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { setLabel } from "@/lib/ledger/groups";
+import { askerLine, forWhomLine, onThisLine, setInSentence, setLabel, type SetFacts } from "@/lib/ledger/groups";
+import type { MarketCardData } from "@/lib/ledger/market-view";
+import { shellOf } from "@/lib/ledger/shell-data";
 import { needFromMarket, orderNeeds, runningCaption, squareSentence } from "@/lib/ledger/home";
 import { rootFor } from "@/lib/ui/root";
 import { filterByContext, sharedContexts, type TimelineEvent } from "@/lib/ledger/person";
@@ -49,6 +51,69 @@ test("a set of people nobody named is described by first names and you, and neve
   assert.equal(label(["Priya"], "Friday crew"), "Friday crew");
   assert.equal(label(["Gabe"], null, true), "Just you two");
   for (const l of [label(["Priya"]), label([]), label(["a", "b", "c", "d"])]) assert.equal(/unnamed|untitled|no name/i.test(l), false, l);
+});
+
+test("a set inside a sentence is its people around whoever the sentence is about, and never the chip's label", () => {
+  const who = (id: string, displayName: string) => ({ id, displayName });
+  const sam = who("sam", "Sam Okafor"), priya = who("priya", "Priya Shah"), gabe = who("gabe", "Gabe"), john = who("john", "John Li"), jp = who("jp", "JP Moreau"), theo = who("theo", "Theo");
+  const set = (name: string | null, ...members: Array<{ id: string; displayName: string }>): SetFacts => ({ name, members });
+  // Sam is looking, every time.
+  const line = (asker: { id: string; displayName: string }, s: SetFacts) => askerLine(asker, s, "sam");
+  assert.equal(line(sam, set(null, sam)), "You asked", "a set of only the asker: nothing after asked, and never Just you");
+  assert.equal(line(jp, set(null, jp, sam)), "JP asked you", "two people, the other one asking");
+  assert.equal(line(sam, set(null, jp, sam)), "You asked JP", "two people, the viewer asking: never You asked you");
+  assert.equal(line(sam, set("Friday crew", sam, priya)), "You asked the Friday crew");
+  assert.equal(line(priya, set("Friday crew", sam, priya)), "Priya asked the Friday crew");
+  assert.equal(line(theo, set("Papa’s birthday", theo, sam)), "Theo asked · Papa’s birthday", "a possessive can't take the");
+  assert.equal(line(theo, set("Papa's birthday", theo, sam)), "Theo asked · Papa's birthday", "with either apostrophe");
+  assert.equal(line(theo, set("The regulars", theo, sam)), "Theo asked · The regulars", "nor can a name that starts with it");
+  assert.equal(line(priya, set(null, priya, gabe, john, sam)), "Priya asked Gabe, John and you", "the asker is never inside her own list, and the viewer is last, as you");
+  assert.equal(line(sam, set(null, sam, priya, gabe, john)), "You asked Priya, Gabe and John", "the viewer asking is never in the list as well");
+  assert.equal(line(priya, set(null, priya, gabe, john)), "Priya asked Gabe and John", "a set the viewer is not in names nobody as you");
+  const five = [who("a", "A a"), who("b", "B b"), who("c", "C c"), who("d", "D d"), who("e", "E e")];
+  assert.equal(line(sam, set(null, sam, ...five)), "You asked A, B, C and 2 others");
+  assert.equal(line(priya, set(null, priya, sam, ...five)), "Priya asked A, B, C and 3 others", "past three names the rest are counted, the viewer among them");
+  assert.equal(line(sam, set(null, sam, ...five.slice(0, 4))), "You asked A, B, C and 1 other", "one left over is singular");
+  assert.equal(onThisLine(set(null, sam, ...five.slice(0, 4)), "sam"), "You’re on this with A, B, C and 1 other");
+  assert.equal(forWhomLine(set(null, sam, ...five.slice(0, 4)), "sam"), "For A, B, C and 1 other");
+  // With nobody looking (a link's visitor), the asker is a first name and a set nobody named says nothing.
+  assert.equal(askerLine(priya, set("Friday crew"), null), "Priya asked the Friday crew");
+  assert.equal(askerLine(priya, set(null), null), "Priya asked");
+  // The same set in the other sentences.
+  assert.equal(onThisLine(set("Friday crew", sam, priya), "sam"), "You’re on this with the Friday crew");
+  assert.equal(onThisLine(set("Papa’s birthday", sam, theo), "sam"), "You’re on this · Papa’s birthday");
+  assert.equal(onThisLine(set(null, sam), "sam"), "You’re on this", "a set of only the viewer");
+  assert.equal(onThisLine(set(null, sam, jp), "sam"), "You’re on this with JP");
+  assert.equal(onThisLine(set(null, priya, gabe, john, sam), "sam"), "You’re on this with Priya, Gabe and John");
+  assert.equal(forWhomLine(set("Friday crew", sam, priya), "sam"), "For the Friday crew");
+  assert.equal(forWhomLine(set(null, sam, jp), "sam"), "For JP");
+  assert.equal(forWhomLine(set(null, sam), "sam"), null, "a draft for nobody yet keeps the band's own words");
+  assert.deepEqual(setInSentence(set(null, sam), "sam", "sam"), null);
+  // The chip's words never reach a sentence, whoever asks and whoever looks.
+  const sets = [set(null, sam), set(null, sam, jp), set(null, priya, gabe, john, sam), set(null, sam, ...five), set("Friday crew", sam, priya)];
+  for (const s of sets) {
+    for (const asker of [sam, ...s.members.filter((m) => m.id !== "sam").slice(0, 1)]) {
+      const l = line(asker, s);
+      assert.equal(/Just you|\d+ more$/.test(l), false, l);
+      if (asker.id === "sam") assert.equal(/asked you$| and you$/.test(l), false, l);
+      assert.equal(new RegExp(`asked .*\\b${asker.displayName.split(" ")[0]}\\b`).test(l), false, l);
+    }
+  }
+});
+
+test("a row's shell says the asker line the screen will say: from the set's facts, whatever label the card carries", () => {
+  const now = new Date("2026-09-29T18:00:00Z");
+  const card = (over: Partial<MarketCardData>): MarketCardData => ({ dare: { id: "d1", creatorId: "sam", title: "Does he fall asleep?", markKind: null, markValue: null, resolvesBy: null, resolvedAt: null, resolvedBy: null }, state: "open", ink: "plum", viewerIn: true, votesCast: 0, people: [{ id: "sam", name: "Sam Okafor", ghost: false, percent: null, number: null, pick: null }], groupName: null, set: { name: null, members: [] }, groupSize: 2, unit: null, pickOne: null, ...over }) as unknown as MarketCardData;
+  const two = { name: null, members: [{ id: "sam", displayName: "Sam Okafor" }, { id: "jp", displayName: "JP Moreau" }] };
+  // Now and the person view put the chip's label where the set's name was: the shell never reads it.
+  assert.equal(shellOf(card({ groupName: "Just you two", set: two }), "sam", now, "UTC").asker?.line, "You asked JP");
+  assert.equal(shellOf(card({ groupName: "Just you two", set: two }), "jp", now, "UTC").asker?.line, "Sam asked you");
+  assert.equal(shellOf(card({ groupName: "Priya, Gabe and you", set: { name: null, members: [{ id: "sam", displayName: "Sam Okafor" }, { id: "priya", displayName: "Priya Shah" }, { id: "gabe", displayName: "Gabe" }] } }), "sam", now, "UTC").asker?.line, "You asked Priya and Gabe");
+  assert.equal(shellOf(card({ groupName: "Friday crew", set: { name: "Friday crew", members: two.members } }), "jp", now, "UTC").asker?.line, "Sam asked the Friday crew");
+  assert.equal(shellOf(card({ groupName: "Just you", set: { name: null, members: [{ id: "sam", displayName: "Sam Okafor" }] } }), "sam", now, "UTC").asker?.line, "You asked");
+  // A game's asker starts out in nothing: the asker is found among the set's seats.
+  assert.equal(shellOf(card({ people: [], viewerIn: false, set: two }), "jp", now, "UTC").asker?.line, "Sam asked you");
+  assert.equal(shellOf(card({ people: [], viewerIn: false, set: { name: null, members: [] } }), "jp", now, "UTC").asker, null, "held empty when the card does not know who asked");
 });
 
 test("the caption under a set carries the difference: last time for the top row, then when, then how many and which month", () => {
@@ -123,12 +188,13 @@ test("a question someone is already in needs nothing more from them", () => {
 });
 
 test("the creator is asked to lock when time is up, and not before, and nobody else is", () => {
-  const past = { dare: { resolvesBy: new Date(t0.getTime() - 1000) } };
+  // Two in: the close can be finished (the QA round: with fewer the close is refused, so no row; tests/unit/sheets-true.test.ts).
+  const past = { dare: { resolvesBy: new Date(t0.getTime() - 1000) }, people: [{ id: "creator", name: "C", percent: null }, { id: "viewer", name: "V", percent: null }] };
   assert.equal(needFromMarket(market(past), "creator", false, t0, closes)?.kind, "lock");
   // The verb is the word of the close (4.6: "Lock it in" is a sportsbook phrase; the asker closes it).
   assert.equal(needFromMarket(market(past), "creator", false, t0, closes)?.verb, "Close");
   assert.equal(needFromMarket(market({}), "creator", false, t0, closes), null);
-  assert.equal(needFromMarket(market({ ...past, people: [{ id: "creator", name: "C", percent: null }, { id: "viewer", name: "V", percent: null }] }), "viewer", false, t0, closes), null);
+  assert.equal(needFromMarket(market(past), "viewer", false, t0, closes), null);
 });
 
 test("a locked question needs a call from whoever has not made one, and links to the ballot", () => {
@@ -171,7 +237,7 @@ const base = { voterName: "Gabe", title: "Can Theo clear the fence?", quorum: 5,
 test("a vote notice names who voted, the count, and whether the reader's could decide it", () => {
   const early = voteRequest({ ...base, cast: 1, leading: 1 });
   assert.equal(early.title, "Gabe called “Can Theo clear the fence”");
-  assert.equal(early.body, "1 of 5 have, and yours wouldn't decide it yet.");
+  assert.equal(early.body, "1 of 5 has, and yours wouldn't decide it yet.");
   assert.equal(voteRequest({ ...base, cast: 2, leading: 2 }).body, "2 of 5 have, and yours could decide it.");
   assert.equal(voteRequest({ ...base, cast: 2, leading: 1 }).body, "2 of 5 have, and yours wouldn't decide it yet.");
 });

@@ -11,6 +11,8 @@
 export const CUT_PHRASES: ReadonlyArray<{ phrase: RegExp; said: string; why: string }> = [
   { phrase: /\bput(?:s|ting)? your numbers? on it\b/i, said: "Put your number on it", why: "cut everywhere, since it reads awkwardly and a pick-one question has no number (4.9)" },
   { phrase: /\bvote is signed\b/i, said: "Your vote is signed", why: "out, since the copy rules keep signing's vocabulary off every screen (4.6): a vote only ever comes from your own phone" },
+  { phrase: /\bsend it to the chat\b/i, said: "Send it to the chat", why: "retired with the chalk it labelled (3.42): a market is shared from the icons at the end of the who's-in row, and a game from its row" },
+  { phrase: /\bthe dares, the rounds\b/i, said: "The dares, the rounds", why: "superseded on 2026-09-29 by the owner's line (ABOUT in src/lib/ui/copy.ts), which the signed-out screen, the plain card and the two descriptions read" },
 ];
 
 export const DESIGN_WORDS: ReadonlyArray<{ word: RegExp; said: string }> = [

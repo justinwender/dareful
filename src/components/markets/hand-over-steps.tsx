@@ -30,7 +30,7 @@ export function WhosJoining({ candidates, words, onPick, onScan }: { candidates:
           <ul className="flex flex-col">
             {candidates.map((c) => (
               <li key={c.id}>
-                <button type="button" disabled={!c.ready} onClick={() => onPick(c)} data-candidate={c.ready ? "ready" : "not-set-up"} className={cn("flex min-h-14 w-full items-center gap-3 rounded-button text-left", !c.ready && "opacity-45")}>
+                <button type="button" disabled={!c.ready} onClick={() => onPick(c)} data-candidate={c.ready ? "ready" : "not-set-up"} data-press="row" className={cn("flex min-h-14 w-full items-center gap-3 rounded-button text-left press-row", !c.ready && "opacity-45")}>
                   <Avatar name={c.name} hue={c.hue} size={36} />
                   <span className="flex min-w-0 flex-1 flex-col">
                     <span className="truncate text-body-strong text-ink">{c.name}</span>
@@ -80,7 +80,7 @@ export function PinStep({ friend, pin, problem, sending, onKey }: { friend: Hand
               k === "" ? (
                 <span key={i} />
               ) : (
-                <button key={i} type="button" disabled={sending} aria-label={k === "back" ? "Delete" : k} onClick={() => onKey(k)} data-type-exempt="" data-pin-key={k} className="flex h-14 items-center justify-center rounded-button bg-field text-body-strong text-ink">
+                <button key={i} type="button" disabled={sending} aria-label={k === "back" ? "Delete" : k} onClick={() => onKey(k)} data-press="fill" data-type-exempt="" data-pin-key={k} className="flex h-14 items-center justify-center rounded-button bg-field text-body-strong text-ink press-fill">
                   {k === "back" ? (
                     <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M9 5h11a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H9l-6-7z" />

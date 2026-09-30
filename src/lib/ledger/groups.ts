@@ -315,22 +315,6 @@ export async function nameGroup(groupId: string, userId: string, rawName: string
  * anywhere says unnamed or untitled, because most sets will never be named. (This replaces the 2B rule that an
  * unnamed group was called by its latest question; docs/decisions.md 2026-09-20.)
  */
-/**
- * The asker line on a market (docs/design.md 3.38): a named set as "Priya asked the Friday crew"; a name that can't
- * take "the", such as a possessive or one that already starts with it, as "Theo asked · Papa's birthday"; an
- * unnamed set by its people, as `setLabel` writes them ("Priya asked Gabe, John and you"), with "and 3 others"
- * past three; two people as "Priya asked you"; and nothing after "asked" while nobody has been named.
- */
-export function askerLine(first: string, setName: string | null, isDyad: boolean): string {
-  if (!setName) return `${first} asked`;
-  if (isDyad || setName === "Just you two") return `${first} asked you`;
-  if (setName === "Just you") return `${first} asked`;
-  const people = / and you$/.test(setName) || / and \d+ more$/.test(setName);
-  if (people) return `${first} asked ${setName.replace(/ and (\d+) more$/, " and $1 others")}`;
-  if (/[’']s\b/.test(setName) || /^the\b/i.test(setName)) return `${first} asked · ${setName}`;
-  return `${first} asked the ${setName}`;
-}
-
 export function setLabel(input: { name: string | null; isDyad: boolean; memberNames: string[]; viewerName: string }): string {
   if (input.name) return input.name;
   if (input.isDyad) return "Just you two";
@@ -338,6 +322,62 @@ export function setLabel(input: { name: string | null; isDyad: boolean; memberNa
   if (others.length === 0) return "Just you";
   if (others.length <= 3) return `${others.join(", ")} and you`;
   return `${others.slice(0, 3).join(", ")} and ${others.length - 3} more`;
+}
+
+/** A set of people as facts, for a sentence: its real name, and its account-holders in the order `membersOfGroups` reads them. Never the chip's label. */
+export type SetFacts = { name: string | null; members: Array<{ id: string; displayName: string }> };
+
+/** The facts of a set from its row's name and its members: the account-holders, in the order they were read. */
+export function setFacts(name: string | null, members: Array<{ userId: string | null; displayName: string }>): SetFacts {
+  return { name, members: members.flatMap((m) => (m.userId ? [{ id: m.userId, displayName: m.displayName }] : [])) };
+}
+
+/**
+ * A set of people as the object of a sentence (docs/design.md 3.38, 4.6), from its facts and never from the chip's
+ * label, which is written to stand alone. A named set is "the Friday crew"; a name that can't take "the" (a
+ * possessive, or one that already starts with it) keeps its own words and is set `apart`, for the caller to write
+ * after a middle dot. An unnamed set is its people around whoever the sentence is about: first names, up to
+ * three, then "and 3 others", with the viewer last as "you". Null when nobody is left to name.
+ */
+export function setInSentence(set: SetFacts, viewerId: string | null, aboutId: string | null): { words: string; apart: boolean } | null {
+  const name = set.name?.trim() ?? "";
+  if (name) return /[’']s\b/.test(name) || /^the\b/i.test(name) ? { words: name, apart: true } : { words: `the ${name}`, apart: false };
+  const others = set.members.filter((m) => m.id !== aboutId);
+  const you = others.some((m) => m.id === viewerId);
+  const names = others.filter((m) => m.id !== viewerId).map((m) => m.displayName.trim().split(/\s+/)[0] ?? m.displayName);
+  if (names.length === 0) return you ? { words: "you", apart: false } : null;
+  const list = (xs: string[]) => (xs.length === 1 ? (xs[0] as string) : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
+  if (names.length <= 3) return { words: list(you ? [...names, "you"] : names), apart: false };
+  // Past three names the rest are counted, the viewer among them: "and 3 others" is everyone asked who was not named, and one left over is "1 other".
+  const rest = names.length - 3 + (you ? 1 : 0);
+  return { words: `${names.slice(0, 3).join(", ")} and ${rest} ${rest === 1 ? "other" : "others"}`, apart: false };
+}
+
+/**
+ * The asker line on a market (docs/design.md 3.38): a named set as "Priya asked the Friday crew"; a name that can't
+ * take "the", such as a possessive or one that already starts with it, as "Theo asked · Papa's birthday"; an
+ * unnamed set by its people around the asker ("Priya asked Gabe, John and you", "You asked Priya, Gabe and John"),
+ * with "and 3 others" past three; two people as "Priya asked you" and "You asked Priya"; and nothing after
+ * "asked" while the set is only the asker. With no viewer (a link's visitor) the asker is always a first name.
+ */
+export function askerLine(asker: { id: string; displayName: string }, set: SetFacts, viewerId: string | null): string {
+  const first = asker.id === viewerId ? "You" : (asker.displayName.trim().split(/\s+/)[0] ?? asker.displayName);
+  const whom = setInSentence(set, viewerId, asker.id);
+  if (!whom) return `${first} asked`;
+  return whom.apart ? `${first} asked · ${whom.words}` : `${first} asked ${whom.words}`;
+}
+
+/** What's on's row for a game this person is on (3.32): "You’re on this with the Friday crew", a name that can't take "the" after the dot, and the words alone while the set is only them. */
+export function onThisLine(set: SetFacts, viewerId: string): string {
+  const whom = setInSentence(set, viewerId, viewerId);
+  if (!whom) return "You’re on this";
+  return whom.apart ? `You’re on this · ${whom.words}` : `You’re on this with ${whom.words}`;
+}
+
+/** A draft's band (3.25): "For the Friday crew", "For Priya, Gabe and John"; nothing while the set is only the asker, so the band keeps its own words for that. */
+export function forWhomLine(set: SetFacts, askerId: string): string | null {
+  const whom = setInSentence(set, askerId, askerId);
+  return whom ? `For ${whom.words}` : null;
 }
 
 export type PeopleSet = {

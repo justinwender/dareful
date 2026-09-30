@@ -133,7 +133,7 @@ export async function notifyJoined(dareId: string, joinerId: string): Promise<vo
     const order = positions.findIndex((p) => p.userId === joinerId);
     if (order < 0) return;
     const id = await claimNotice(d.creatorId, dareId, "joined", order + 1, joinerId);
-    if (id) await deliver(d.creatorId, id, joinedNotice({ joinerName: await nameOf(joinerId), title: d.title, inCount: positions.length, marketId: d.id, appUrl: APP_URL() }));
+    if (id) await deliver(d.creatorId, id, joinedNotice({ joinerName: await nameOf(joinerId), title: d.title, inCount: positions.length, askerIn: positions.some((p) => p.userId === d.creatorId), marketId: d.id, appUrl: APP_URL() }));
   } catch (err) {
     console.error("notifying that someone joined failed", { dareId, err });
   }

@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { ABOUT_FIRST } from "@/lib/ui/copy";
 import type { ReactNode } from "react";
 import { Hanken_Grotesk, Young_Serif } from "next/font/google";
 import "./globals.css";
@@ -6,7 +7,7 @@ import { Providers } from "@/components/providers";
 import { LayersRoot } from "@/components/ui/layers";
 import { Presses } from "@/components/ui/press";
 import { sessionFacts } from "@/lib/auth/session-facts";
-import { GROUND_DARK, GROUND_LIGHT, launchImageLinks, OPENING_ELEMENT, OPENING_HANDOFF_SCRIPT, OPENING_STYLE, TALLY_SWITCH_SCRIPT } from "@/lib/ui/opening";
+import { GROUND_DARK, GROUND_LIGHT, launchImageLinks, OPENING_ELEMENT, OPENING_HANDOFF_SCRIPT, OPENING_STYLE } from "@/lib/ui/opening";
 import { THEME_SCRIPT } from "@/lib/ui/theme";
 
 const hanken = Hanken_Grotesk({
@@ -28,7 +29,7 @@ export const metadata: Metadata = {
   // and a messaging app's preview bot will not fetch it, so a pasted link renders as bare text.
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "https://dareful.app"),
   title: "Dareful",
-  description: "A social ledger for friend groups, built around the friendly dare.",
+  description: ABOUT_FIRST,
   // The link preview for the app itself (LOGO.md): the lockup on the dark ground. A market, a cover and a game carry their own tile.
   openGraph: { siteName: "Dareful", type: "website", images: [{ url: "/og-image.png", width: 1200, height: 630, alt: "dareful" }] },
   // The logo's own files, placed by scripts/opening.mjs (LOGO.md, "In the head"): the .ico holds the favicon drawn
@@ -64,13 +65,11 @@ export default function RootLayout({ children, ask }: { children: ReactNode; /**
   // and whatever needs the session's facts waits where it is used.
   const facts = sessionFacts();
   return (
-    // The scripts in the head and the handoff set attributes on `html` before the app is running (the appearance, the instrument's switch, dressed, arriving); they are theirs, and hydration leaves them be.
+    // The scripts in the head and the handoff set attributes on `html` before the app is running (the appearance, dressed, arriving); they are theirs, and hydration leaves them be.
     <html lang="en" className={`${hanken.variable} ${youngSerif.variable} dark h-full antialiased`} suppressHydrationWarning>
       <head>
         {/* The opening (11.4): the first frame's style, in the head before anything else, so it paints with nothing to fetch. */}
         <style dangerouslySetInnerHTML={{ __html: OPENING_STYLE }} />
-        {/* The instrument's switch (docs/testing.md, the logo round): a cold start without the count, to time against one with it. */}
-        <script dangerouslySetInnerHTML={{ __html: TALLY_SWITCH_SCRIPT }} />
         {/* Appearance (8.1): the stored choice onto `html` before anything paints. */}
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>

@@ -115,7 +115,7 @@ export function WhosInRow({ people, holdouts = [], count, share, code, chalk = f
           </>
         );
         return list ? (
-          <button type="button" onClick={() => setListOpen(true)} aria-haspopup="dialog" aria-expanded={listOpen} aria-label={`Who’s in: ${count}`} data-whos-in-list="" data-still-out={list.out?.length ?? 0} className="flex min-w-0 flex-col items-start gap-1 rounded-button text-left">
+          <button type="button" onClick={() => setListOpen(true)} aria-haspopup="dialog" aria-expanded={listOpen} aria-label={`Who’s in: ${count}`} data-whos-in-list="" data-still-out={list.out?.length ?? 0} data-press="line" className="press-line flex min-w-0 flex-col items-start gap-1 rounded-button text-left">
             {stack}
           </button>
         ) : (
@@ -124,13 +124,13 @@ export function WhosInRow({ people, holdouts = [], count, share, code, chalk = f
       })()}
       {share ? (
         <div className="-mr-[11px] flex shrink-0 items-center gap-[2px]" role="group" aria-label="Share it">
-          <button type="button" aria-label="Share" data-share="" onClick={send} className={cn("flex h-11 w-11 items-center justify-center rounded-pill transition-opacity duration-(--motion-quick) ease-fade active:opacity-[0.88]", chalk ? "bg-chalk text-on-chalk" : "text-ink")}>
+          <button type="button" aria-label="Share" data-share="" onClick={send} data-press={chalk ? "fill" : "line"} className={cn("relative flex h-11 w-11 items-center justify-center rounded-pill", chalk ? "bg-chalk text-on-chalk press-fill" : "text-ink press-line")}>
             <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 3v12M7.5 7.5 12 3l4.5 4.5" />
               <path d="M5 13v5.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V13" />
             </svg>
           </button>
-          <button type="button" aria-label={copied ? "Link copied" : "Copy the link"} data-copy={copied ? "copied" : ""} onClick={copy} className="flex h-11 w-11 items-center justify-center rounded-pill text-ink transition-opacity duration-(--motion-quick) ease-fade active:opacity-[0.88]">
+          <button type="button" aria-label={copied ? "Link copied" : "Copy the link"} data-copy={copied ? "copied" : ""} onClick={copy} data-press="line" className="relative flex h-11 w-11 items-center justify-center rounded-pill text-ink press-line">
             {copied ? (
               <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M5 12.5l4.5 4.5L19 7.5" />
@@ -143,7 +143,7 @@ export function WhosInRow({ people, holdouts = [], count, share, code, chalk = f
             )}
           </button>
           {code ? (
-            <button type="button" aria-label="Show a code to scan" aria-haspopup="dialog" aria-expanded={codeOpen} data-code="" onClick={() => setCodeOpen(true)} className="flex h-11 w-11 items-center justify-center rounded-pill text-ink transition-opacity duration-(--motion-quick) ease-fade active:opacity-[0.88]">
+            <button type="button" aria-label="Show a code to scan" aria-haspopup="dialog" aria-expanded={codeOpen} data-code="" onClick={() => setCodeOpen(true)} data-press="line" className="relative flex h-11 w-11 items-center justify-center rounded-pill text-ink press-line">
               <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="4" y="4" width="6" height="6" rx="1" />
                 <rect x="14" y="4" width="6" height="6" rx="1" />
@@ -154,7 +154,7 @@ export function WhosInRow({ people, holdouts = [], count, share, code, chalk = f
           ) : null}
           {pass ? (
             // Pass the phone (3.45): the fourth icon, a phone with an arrow each way; the first tap explains it once, then it goes straight to the friend's entry.
-            <button type="button" aria-label="Pass the phone" aria-haspopup={pass.explained ? undefined : "dialog"} data-pass-phone="" onClick={() => (pass.explained ? router.replace(`/m/${pass.dareId}/pass`) : setPassOpen(true))} className="flex h-11 w-11 items-center justify-center rounded-pill text-ink transition-opacity duration-(--motion-quick) ease-fade active:opacity-[0.88]">
+            <button type="button" aria-label="Pass the phone" aria-haspopup={pass.explained ? undefined : "dialog"} data-pass-phone="" onClick={() => (pass.explained ? router.replace(`/m/${pass.dareId}/pass`) : setPassOpen(true))} data-press="line" className="relative flex h-11 w-11 items-center justify-center rounded-pill text-ink press-line">
               <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="7" y="2.5" width="10" height="19" rx="2" />
                 <path d="M11 18h2" />

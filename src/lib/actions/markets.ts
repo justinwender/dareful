@@ -24,7 +24,7 @@ import { viewerZone } from "@/lib/ui/zone";
 import { currentUser, requireUser } from "@/lib/auth/session";
 import { headers } from "next/headers";
 import { regionFromHeaders, tryHashPhone } from "@/lib/auth/phone";
-import { addClaimToken, readClaimTokens } from "@/lib/auth/claim-cookie";
+import { addClaimToken, clearClaimTokens, readClaimTokens } from "@/lib/auth/claim-cookie";
 import { enterAsGhost, removeGhostEntry, suggestGhostNames } from "@/lib/ledger/ghost-entry";
 import { leaveEntry } from "@/lib/ledger/claims";
 import { archiveMarkets, removeMarkets, SWIPE_AT_MOST } from "@/lib/ledger/now-swipes";
@@ -32,7 +32,7 @@ import { db, schema } from "@/db";
 import { and, asc, eq } from "drizzle-orm";
 import { denominationById, ensureUnitInGroup, ensureUsd } from "@/lib/ledger/denominations";
 import { createOccasionGroup, isMember, setForPeople } from "@/lib/ledger/groups";
-import { answersOf, callToOutcome, castVote, draftFromTemplate, draftMarket, enterMarket, lockMarket, MarketError, marketById, openMarket, sayWhatHappened, stateOf, unitOf, VOID_OUTCOME, pickInk } from "@/lib/ledger/markets";
+import { answersOf, callToOutcome, castVote, draftAlreadySaved, draftFromTemplate, draftMarket, enterMarket, lockMarket, MarketError, marketById, openMarket, sayWhatHappened, stateOf, unitOf, VOID_OUTCOME, pickInk } from "@/lib/ledger/markets";
 import { MAX_ANSWER_LENGTH, MAX_ANSWERS, MIN_ANSWERS } from "@/lib/ledger/pick-one";
 
 const uuid = z.string().uuid();
@@ -116,6 +116,12 @@ export async function draftMarketAction(input: z.infer<typeof Draft>): Promise<{
   if (!parsed.success) return { error: "Something in that is off." };
   const d = parsed.data;
   try {
+    // A second tap on "Send it" carries the id the first one saved under: the draft is already there.
+    if (d.id) {
+      const saved = draftAlreadySaved(await marketById(d.id), user.id);
+      if (saved === "saved") return { id: d.id };
+      if (saved === "taken") return { error: "That one’s already sent. Ask it again from the start." };
+    }
     if (d.argument?.tier === "contestable" && !d.argument.criterion) return { error: "Pick how it's being decided first." };
     if (d.answers && (d.argument || d.number)) return { error: "Something in that is off." };
     if (d.who.kind === "set" && !(await isMember(d.who.groupId, user.id))) return { error: "You're not one of those people." };
@@ -165,6 +171,7 @@ export async function draftMarketAction(input: z.infer<typeof Draft>): Promise<{
     });
     return { id: row.id };
   } catch (err) {
+    if (!(err instanceof MarketError)) console.error("draft failed", err);
     return { error: say(err, "Couldn't save that.") };
   }
 }
@@ -180,6 +187,11 @@ export async function draftFromTemplateAction(input: { templateId: string; who: 
   if (!parsed.success) return { error: "Something in that is off." };
   const d = parsed.data;
   try {
+    if (d.id) {
+      const saved = draftAlreadySaved(await marketById(d.id), user.id);
+      if (saved === "saved") return { id: d.id };
+      if (saved === "taken") return { error: "That one’s already sent. Ask it again from the start." };
+    }
     if (d.who.kind === "set" && !(await isMember(d.who.groupId, user.id))) return { error: "You're not one of those people." };
     if (d.who.kind !== "set" && d.unit.kind === "existing") return { error: "That unit isn't around any more. Pick another." };
     const groupId = d.who.kind === "set" ? d.who.groupId : d.who.kind === "people" ? (await setForPeople(user.id, d.who.userIds)).id : (await createOccasionGroup(user.id)).id;
@@ -189,6 +201,7 @@ export async function draftFromTemplateAction(input: { templateId: string; who: 
     if (d.blind) await db.update(schema.dares).set({ revealMode: "blind" }).where(and(eq(schema.dares.id, row.id), eq(schema.dares.creatorId, user.id)));
     return { id: row.id };
   } catch (err) {
+    if (!(err instanceof MarketError)) console.error("draft from a game's question failed", err);
     return { error: say(err, "Couldn't save that.") };
   }
 }
@@ -246,6 +259,16 @@ export async function enterMarketAction(rawId: string, rawPosition: z.infer<type
 
 /** Who a ghost says they are: a name, their own number (hashed here and never kept), or one of the group's ghosts. */
 const GhostWho = z.object({ name: z.string().trim().max(40).default(""), phone: z.string().trim().max(40).optional(), memberClaimId: z.string().uuid().optional() });
+
+/**
+ * "Not you?" for a phone that remembers a ghost (3.17, frame 7, as a ghost meets it; the QA round): the browser
+ * forgets its tokens, so the next entry from it is somebody new. The entries already made stay under the name
+ * they were made in, and find their owner again at a login with the number.
+ */
+export async function forgetGhostAction(): Promise<{ ok: true }> {
+  await clearClaimTokens();
+  return { ok: true };
+}
 
 /**
  * Entering without an account (PLANNING.md section 4; docs/design.md 3.17): no session, no signature. The

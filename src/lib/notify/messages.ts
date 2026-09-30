@@ -28,7 +28,7 @@ export function voteRequest(input: { voterName: string; title: string; cast: num
   const decides = input.leading + 1 >= input.threshold;
   return {
     title: `${input.voterName} called “${short(input.title)}”`,
-    body: `${input.cast} of ${input.quorum} have, and ${decides ? "yours could decide it" : "yours wouldn't decide it yet"}.`,
+    body: `${input.cast} of ${input.quorum} ${input.cast === 1 ? "has" : "have"}, and ${decides ? "yours could decide it" : "yours wouldn't decide it yet"}.`,
     url: `${input.appUrl}/m/${input.marketId}#ballot`,
   };
 }
@@ -62,9 +62,14 @@ export function openedNotice(input: { askerName: string; title: string; marketId
   return { title: `${input.askerName} asked something`, body: `“${short(input.title)}?”`, url: `${input.appUrl}/m/${input.marketId}` };
 }
 
-/** To the person who asked, when someone gets in. Who, and how many are in now; never their number. */
-export function joinedNotice(input: { joinerName: string; title: string; inCount: number; marketId: string; appUrl: string }): Notice {
-  return { title: `${input.joinerName} is in`, body: `“${short(input.title)}?” ${input.inCount === 2 ? "That's two of you." : `That's ${input.inCount} in.`}`, url: `${input.appUrl}/m/${input.marketId}` };
+/**
+ * To the person who asked, when someone gets in. Who, and how many are in now; never their number. The count is left
+ * out while the joiner is the only one in (a game's question opens with nobody in, the asker included), and "two of
+ * you" is said only when the asker is one of the two (`askerIn`); without it the count is said plainly.
+ */
+export function joinedNotice(input: { joinerName: string; title: string; inCount: number; askerIn?: boolean; marketId: string; appUrl: string }): Notice {
+  const count = input.inCount <= 1 ? "" : input.inCount === 2 && input.askerIn ? " That's two of you." : ` That's ${input.inCount} in.`;
+  return { title: `${input.joinerName} is in`, body: `“${short(input.title)}?”${count}`, url: `${input.appUrl}/m/${input.marketId}` };
 }
 
 /** One tap from someone waiting: "we're waiting on you". A person acting, by name, on demand (Round B, restored: the only way someone in a market reaches the people not in or not voted). */

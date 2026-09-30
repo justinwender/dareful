@@ -22,7 +22,9 @@ const Body = z.object({
  * and made two more wallets each time (docs/decisions.md 2026-09-19).
  *
  * The answer is one of: a session; `need: "wallets"` (a new person whose login vouches for fewer than two);
- * or `need: "name"` (a new person, or one still carrying the placeholder, who has not said what to call them).
+ * or `need: "name"` (a new person, or one whose stored name is the placeholder or an identifier, who has not said
+ * what to call them; `refused: true` when what they typed this time was an identifier, so the step stays up with
+ * the refusal at the field and nothing is stored under it).
  * First login fixes the pairing (ledger, governance) for life; later logins must still vouch for that pair.
  */
 export async function POST(req: Request): Promise<Response> {
@@ -50,7 +52,7 @@ export async function POST(req: Request): Promise<Response> {
     return NextResponse.json({ error: "This sign-in doesn’t match the account it was made with. Sign in the way you did the first time." }, { status: 409 });
   }
   if (decision.kind === "need-wallets") return NextResponse.json({ need: "wallets", have: decision.have });
-  if (decision.kind === "need-name") return NextResponse.json({ need: "name", suggested: suggestedNameOf(claims) ?? "" });
+  if (decision.kind === "need-name") return NextResponse.json({ need: "name", suggested: suggestedNameOf(claims) ?? "", ...(decision.refused ? { refused: true } : {}) });
 
   let user = existing;
   if (decision.kind === "create") {

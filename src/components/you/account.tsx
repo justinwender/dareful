@@ -16,6 +16,24 @@ import { AppearanceRow } from "./appearance";
 export type UnitRow = { id: string; label: string; pluralLabel: string; glyph: GlyphKey | null; monetary: boolean; emoji: string | null };
 
 /**
+ * Sign out is two sign-outs, and one failing never keeps the other. The sign-in library's own login goes first,
+ * because it is what signs the app back in on the next load (WalletBootstrap issues a session for any login it
+ * finds), so a throw there is tried once more before the app's session goes; then the app's session. Whatever
+ * failed is logged, never said (5.4): the screen re-reads either way, and nothing new is drawn. Pure over its two
+ * steps, so the order and the catches have a test.
+ */
+export async function signOutBoth(logOut: () => Promise<void>, endSession: () => Promise<unknown>): Promise<void> {
+  const say = (what: string) => (err: unknown) => console.error(what, err instanceof Error ? err.message : err);
+  try {
+    await logOut();
+  } catch (err) {
+    say("sign out: the sign-in library's logout failed; trying once more")(err);
+    await logOut().catch(say("sign out: the sign-in library's logout failed again"));
+  }
+  await endSession().catch(say("sign out: ending the app's session failed"));
+}
+
+/**
  * Account (docs/design.md 3.34): one card of rows, each `body` 600 over a `caption`, with a chevron: "Your units",
  * "Your marks", "Your number" and "Sign out", which is the one way to leave the product and lives only here (4.7).
  * Sign out asks once in a sheet (3.12, destructive). The unit editor and the marks list behind the rows are not
@@ -32,8 +50,7 @@ export function AccountRows({ units, marks, unitsCaption, marksCaption, passTheP
   async function signOut() {
     setLeaving(true);
     try {
-      await fetch("/api/session", { method: "DELETE" });
-      await handleLogOut();
+      await signOutBoth(handleLogOut, () => fetch("/api/session", { method: "DELETE" }));
       router.refresh();
     } finally {
       setLeaving(false);
@@ -119,7 +136,7 @@ function Row({ title, caption, onClick, children, ...rest }: { title: string; ca
     </>
   );
   return onClick ? (
-    <button type="button" onClick={onClick} className="flex min-h-14 w-full items-center gap-3 border-t border-line px-4 py-3 text-left first:border-t-0" {...rest}>
+    <button type="button" onClick={onClick} data-press="row" className="press-row flex min-h-14 w-full items-center gap-3 border-t border-line px-4 py-3 text-left first:border-t-0" {...rest}>
       {body}
     </button>
   ) : (

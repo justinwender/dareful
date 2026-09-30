@@ -2,9 +2,10 @@
 
 import { useId, useRef, useState } from "react";
 import { TeamStamp } from "@/components/ledger/team-stamp";
-import { hueVar, type Hue } from "@/lib/ui/hue";
+import { hueStrokeVar, hueVar, type Hue } from "@/lib/ui/hue";
 import { leanBand, leanPill, sliderStamps, type TeamFace } from "@/lib/ui/team";
 import { withSeparators } from "@/lib/ledger/number-axis";
+import { dropKeyboard } from "@/lib/ui/viewport";
 
 /** The thumb travels from 12px to the width minus 12px, as on the odds line (3.13). */
 const thumbLeft = (t: number) => `calc(12px + (100% - 24px) * ${t})`;
@@ -119,14 +120,15 @@ export function TeamLine({ mode, value, onChange, away, home, hue, disabled = fa
                 disabled={disabled || mode === "wins"}
                 aria-label={mode === "margin" ? `${pill}. Tap to type a margin` : pill}
                 onPointerDown={(e) => e.stopPropagation()}
+                data-press="line"
                 onClick={() => {
                   if (mode !== "margin") return;
                   setTypedSide(value !== null && value < 0 ? "away" : "home");
                   setTyped(value === null ? "" : String(Math.abs(value)));
                   setTyping(true);
                 }}
-                className="absolute top-0 flex h-7 -translate-x-1/2 items-center whitespace-nowrap rounded-pill bg-ground px-2 text-numeral font-bold text-ink tabular-nums"
-                style={{ left: `clamp(48px, ${thumbLeft(t)}, calc(100% - 48px))`, boxShadow: `inset 0 0 0 1.5px ${hueVar(hue)}` }}
+                className="absolute top-0 flex h-7 -translate-x-1/2 items-center whitespace-nowrap rounded-pill bg-ground px-2 text-numeral font-bold text-ink tabular-nums press-line"
+                style={{ left: `clamp(48px, ${thumbLeft(t)}, calc(100% - 48px))`, boxShadow: `inset 0 0 0 1.5px ${hueStrokeVar(hue)}` }}
               >
                 {pill}
               </button>
@@ -158,7 +160,7 @@ export function TeamLine({ mode, value, onChange, away, home, hue, disabled = fa
           <div className="flex flex-col gap-2" data-margin-typed="">
             <div className="grid grid-cols-2 gap-2" role="group" aria-label="Which team">
               {(["away", "home"] as const).map((side) => (
-                <button key={side} type="button" aria-pressed={typedSide === side} onClick={() => setTypedSide(side)} className={`flex h-11 items-center justify-center gap-2 rounded-button border text-[15px] font-semibold ${typedSide === side ? "border-ink bg-ink text-ground" : "border-line-strong text-ink-2"}`}>
+                <button key={side} type="button" aria-pressed={typedSide === side} onClick={() => setTypedSide(side)} data-press={typedSide === side ? "fill" : "line"} className={`relative flex h-11 items-center justify-center gap-2 rounded-button border text-[15px] font-semibold ${typedSide === side ? "border-ink bg-ink text-ground press-fill" : "border-line-strong text-ink-2 press-line"}`}>
                   <TeamStamp team={side === "away" ? away : home} size={20} />
                   {side === "away" ? away.name : home.name} by
                 </button>
@@ -180,14 +182,25 @@ export function TeamLine({ mode, value, onChange, away, home, hue, disabled = fa
                 onClick={() => {
                   const n = typedNumber();
                   if (n === null) return;
+                  // The keyboard leaves by a blur before its field is taken away (viewport.ts).
+                  dropKeyboard();
                   onChange(n);
                   setTyping(false);
                 }}
-                className="h-12 rounded-button bg-chalk px-5 text-[15px] font-bold text-on-chalk disabled:border disabled:border-line disabled:bg-transparent disabled:text-ink-3"
+                data-press="fill"
+                className="relative h-12 rounded-button bg-chalk px-5 text-[15px] font-bold text-on-chalk press-fill disabled:border disabled:border-line disabled:bg-transparent disabled:text-ink-3"
               >
                 Use it
               </button>
-              <button type="button" onClick={() => setTyping(false)} className="h-12 px-2 text-[15px] font-semibold text-ink-2">
+              <button
+                type="button"
+                onClick={() => {
+                  dropKeyboard();
+                  setTyping(false);
+                }}
+                data-press="line"
+                className="relative h-12 rounded-button px-2 text-[15px] font-semibold text-ink-2 press-line"
+              >
                 Never mind
               </button>
             </div>

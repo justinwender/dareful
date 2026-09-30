@@ -1,27 +1,20 @@
 "use client";
 
 import { useEffect } from "react";
-import { useDynamicContext } from "@dynamic-labs/sdk-react-core";
-import { COLD_MARKS } from "@/lib/ui/cold-start";
-
-function markOnce(name: string): void {
-  try {
-    if (performance.getEntriesByName(name).length === 0) performance.mark(name);
-  } catch {
-    // An engine without the timeline: the instrument reads "not seen".
-  }
-}
 
 /**
- * The instrument's two marks that only the running app can make (src/lib/ui/cold-start.ts): when the scripts
- * had loaded and the screen began answering to a touch, and when the sign-in's own code had finished starting.
- * Each is made once per load and draws nothing.
+ * One mark on the performance timeline, made once per load and drawing nothing: when the app's scripts had
+ * loaded and the screen began answering to a touch. The http suite's watch over the opening reads it
+ * (`scripts/dev/opening-check.ts`): that the app started after the opening had left is what proves the opening
+ * stays gone (docs/decisions.md 2026-09-29).
  */
 export function ColdMarks() {
-  const { sdkHasLoaded } = useDynamicContext();
-  useEffect(() => markOnce(COLD_MARKS.live), []);
   useEffect(() => {
-    if (sdkHasLoaded) markOnce(COLD_MARKS.sdk);
-  }, [sdkHasLoaded]);
+    try {
+      if (performance.getEntriesByName("dareful:live").length === 0) performance.mark("dareful:live");
+    } catch {
+      // An engine without the timeline: the watch reads "not seen".
+    }
+  }, []);
   return null;
 }

@@ -154,5 +154,6 @@ test("a tie is not a failure: everyone picks the answer that happens, it resolve
   const onchain = (await relayer().publicClient.readContract({ address: dares.address, abi: dares.abi, functionName: "dareOf", args: [bufferToHex(done.onchainId as Buffer) as Hex] })) as { status: number; outcome: bigint };
   assert.deepEqual([onchain.status, onchain.outcome], [1, 0n], "Resolved on the chain, with the answer recorded");
   assert.deepEqual(await cleanResolution(theo.user.id), { ended: 1, clean: 1 }, "counted as clean: no toll for a tie");
-  assert.deepEqual((await calibrationFor(maya.user.id)).pickOne, { resolved: 1, called: 1 });
+  // Maya's record across this file: the dissent above, where she picked wrong, and this tie, where everyone was right.
+  assert.deepEqual((await calibrationFor(maya.user.id)).pickOne, { resolved: 2, called: 1 });
 });

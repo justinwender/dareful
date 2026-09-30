@@ -94,7 +94,7 @@ export function CodeJoinCompact({ label = "Someone read you a code?" }: { label?
         <label htmlFor={id} className="text-label text-ink-2">
           {label}
         </label>
-        <Link prefetch href="/join" className="relative -my-3 inline-flex h-11 items-center text-label text-ink-2">
+        <Link prefetch href="/join" data-press="line" className="relative -my-3 inline-flex h-11 items-center text-label text-ink-2 press-line">
           <LinkPending />
           Got a link?
         </Link>

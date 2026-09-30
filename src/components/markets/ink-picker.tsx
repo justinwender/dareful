@@ -38,7 +38,8 @@ export function InkPicker({ dareId, current }: { dareId: string; current: InkNam
                   router.refresh();
                 })
               }
-              className="flex h-11 w-11 items-center justify-center rounded-pill"
+              data-press="fill"
+              className="flex h-11 w-11 items-center justify-center rounded-pill press-fill"
             >
               <span aria-hidden="true" className="block h-7 w-7 rounded-pill" style={{ background: inkColorVar(name), boxShadow: on ? "0 0 0 2px var(--ground), 0 0 0 3.5px var(--ink)" : undefined }} />
             </button>

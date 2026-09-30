@@ -18,12 +18,14 @@ import { marginEnds, numberAxis, ruler, unitPhrase } from "@/lib/ledger/number-a
 import { backstopMoment, cleanResolutionOf } from "@/lib/ledger/settle";
 import { backstopResultNotice, backstopWarningNotice, clockWithDay, pushElseEmail, warningSendTime } from "@/lib/notify/messages";
 import { BDL_PATHS, finalFrom, gamesUrl, parseGames, sameTeam } from "@/lib/sports/balldontlie";
-import { cardMeta, lineT, yourEntry } from "@/lib/sports/cards";
+import { cardMeta, gameWhosIn, lineT, onePerQuestion, setsOnGames, yourEntry } from "@/lib/sports/cards";
 import { driveAnswer, gameOf, parseScoreboard, parseSummary, resultOf, scoreboardUrl, statusOf, summaryUrl } from "@/lib/sports/espn";
 import { AGREE_AFTER_MS, ALONE_AFTER_MS, backstopDecision, driveBackstopDecision, driveOutcome, fromStored, marginWords, outcomeFor, scoreLine, toStored, warnAt, WARN_BEFORE_MS } from "@/lib/sports/results";
-import { BOTH_CONSENT, CONSENT, consentFor, DRIVE_CONSENT, expectedEnd, marginShift, offersFirstDrive, SCALES, SLIDER_REACH, templatesFor, TIE_VOID, UNCLEAR_BY_SCORE, UNIT } from "@/lib/sports/templates";
-import { dayOf, DRIVE_ANSWERS, FeedError, parseColor, parseScore } from "@/lib/sports/types";
+import { askerName } from "@/lib/ledger/share";
+import { BOTH_CONSENT, CONSENT, consentFor, DRIVE_CONSENT, expectedEnd, marginShift, menuName, offersFirstDrive, SCALES, SLIDER_REACH, templatesFor, TIE_VOID, UNCLEAR_BY_SCORE, UNIT } from "@/lib/sports/templates";
+import { dayOf, DRIVE_ANSWERS, FeedError, parseColor, parseScore, SPORTS } from "@/lib/sports/types";
 import { leanBand, leanPill, saidLean, sliderStamps, stampGlyph, stampInk } from "@/lib/ui/team";
+import { GAME_TILE, gameNameLines, gameNameSize, gameTileHeight, tileSize } from "@/lib/ui/tiles";
 
 const fixture = (name: string): unknown => JSON.parse(readFileSync(new URL(`../fixtures/sports/${name}.json`, import.meta.url), "utf8"));
 
@@ -356,6 +358,44 @@ test("the game page's cards say where each question stands, with no number until
   assert.equal(lineT({ key: "margin", value: 0n, shift: 14n, reach: 5 }), 0, "past the reach sits on the end");
 });
 
+test("the game page's who's-in row counts everyone in on any question out of the set's seats, says nobody's in before the first entry, and makes share the chalk while its asker is alone (3.42)", () => {
+  const row = (inIds: string[], seats: number, startedBy: string | null = "me") => gameWhosIn({ inIds, seats, viewerId: "me", startedBy });
+  assert.deepEqual(row([], 1), { count: "Nobody’s in yet", chalk: true }, "a game's asker starts out in nothing: never 0 of 1 in, and sending it is the only move");
+  assert.deepEqual(row([], 6), { count: "Nobody’s in yet", chalk: true });
+  assert.deepEqual(row(["me"], 1), { count: "Just you so far", chalk: true }, "nobody was named and only the asker is in");
+  assert.deepEqual(row(["me"], 6), { count: "1 of 6 in", chalk: true }, "people were named: the holdouts rule from the first entry, and share still the chalk");
+  assert.deepEqual(row(["me", "gabe", "me", "gabe"], 6), { count: "2 of 6 in", chalk: false }, "someone in on two questions is one person in");
+  assert.deepEqual(row(["gabe"], 6), { count: "1 of 6 in", chalk: false }, "somebody else is in: share is an icon again");
+  assert.deepEqual(row(["me", "gabe", "john"], 3), { count: "3 of you in", chalk: false });
+  assert.deepEqual(row(["me", "gabe", "a-ghost"], 2), { count: "3 of you in", chalk: false }, "someone in from the link counts like anyone, and the count is never out of fewer than are in");
+  assert.deepEqual(row(["me"], 6, "gabe"), { count: "1 of 6 in", chalk: false }, "the chalk is the asker's: someone else started this game");
+  assert.deepEqual(row([], 6, "gabe"), { count: "Nobody’s in yet", chalk: false });
+});
+
+test("a called-off question never happened: it leaves the game page, frees its place on the menu, and makes no set one of the game's (3.15)", () => {
+  const q = (id: string, key: string, signed: boolean, resolvedBy: string | null = null) => ({ dare: { id, creatorSignature: signed ? "0x01" : null, resolvedBy }, template: { key } });
+  const ids = (rows: Array<ReturnType<typeof q>>) => onePerQuestion(rows).map((r) => r.dare.id);
+  // Rows arrive in the menu's order, latest first within a question.
+  assert.deepEqual(ids([q("w2", "home_wins", true), q("w1", "home_wins", true), q("m1", "margin", true)]), ["w2", "m1"], "one per question, the latest opened one");
+  assert.deepEqual(ids([q("w-draft", "home_wins", false), q("w1", "home_wins", true)]), ["w1"], "a draft only beside nothing opened for that question");
+  assert.deepEqual(ids([q("w-draft", "home_wins", false)]), ["w-draft"]);
+  assert.deepEqual(ids([q("w-off", "home_wins", true, "removed"), q("m1", "margin", true)]), ["m1"], "called off: not a card, and Who wins can be asked again");
+  assert.deepEqual(ids([q("w-off", "home_wins", true, "removed"), q("w1", "home_wins", true)]), ["w1"], "the one asked before it still stands");
+  assert.deepEqual(ids([q("w-void", "home_wins", true, "quorum"), q("t-exp", "total", true, "expired")]), ["w-void", "t-exp"], "a void the people called, or an expiry, happened and stays");
+  const at = (h: number) => new Date(Date.UTC(2026, 8, 29, h));
+  const on = setsOnGames([
+    { gameId: "g1", groupId: "crew", createdAt: at(10), resolvedBy: null },
+    { gameId: "g1", groupId: "crew", createdAt: at(12), resolvedBy: null },
+    { gameId: "g1", groupId: "two", createdAt: at(11), resolvedBy: null },
+    { gameId: "g1", groupId: "one", createdAt: at(13), resolvedBy: "removed" },
+    { gameId: "g2", groupId: "two", createdAt: at(9), resolvedBy: "removed" },
+    { gameId: "g2", groupId: "two", createdAt: at(8), resolvedBy: "feed" },
+  ]);
+  assert.deepEqual(on.get("g1"), [{ groupId: "crew", lastAt: at(12) }, { groupId: "two", lastAt: at(11) }], "most recent first; the set whose only question was called off is not on the game");
+  assert.deepEqual(on.get("g2"), [{ groupId: "two", lastAt: at(8) }], "a called-off question is not what a set was last asked");
+  assert.equal(setsOnGames([{ gameId: "g3", groupId: "one", createdAt: at(1), resolvedBy: "removed" }]).has("g3"), false, "nothing but a called-off question: the game has nobody's page, so it opens as the start");
+});
+
 test("a game with more than one question in the same set of people is one row on Now, in its most pressing question's section (4.7)", () => {
   const away = { abbr: "KC", name: "Chiefs", color: null };
   const home = { abbr: "BUF", name: "Bills", color: null };
@@ -399,6 +439,47 @@ test("a game's row on Now swipes as one (3.15, ruled 2026-09-27): removable only
   // Over: the game's finished questions ride the Just happened row, to archive together.
   const over = collapseGames({ needs: [], running: [], over: [{ dare: { id: "c", groupId: "s1" }, at: t, state: "resolved" }, { dare: { id: "a", groupId: "s1" }, at: t, state: "resolved" }] }, games);
   assert.deepEqual(over.happened[0]?.ids, ["c", "a"], "both questions, for the archive");
+});
+
+test("the menu's short names are written once: menuName says the four, the total in the sport's unit, every template reads its name from it, and none is the question itself", () => {
+  assert.deepEqual([menuName("home_wins", "nfl"), menuName("margin", "nfl"), menuName("total", "nfl"), menuName("first_drive", "nfl")], ["Who wins", "By how much", "Total points", "The first drive"], "3.33's first column");
+  assert.deepEqual([menuName("total", "mlb"), menuName("total", "nba"), menuName("total", "nhl")], ["Total runs", "Total points", "Total goals"], "the total says what the sport counts");
+  const game = { home: { short: "Giants" }, away: { short: "Titans" }, seasonType: 2 };
+  for (const sport of SPORTS) {
+    const templates = templatesFor({ ...game, sport });
+    assert.ok(templates.length >= 3);
+    for (const t of templates) {
+      assert.equal(t.name, menuName(t.key, sport), `${sport} ${t.key}: the menu row and the tile read one name`);
+      assert.ok(!t.name.includes("?") && !t.name.includes("Giants") && !t.name.includes("Titans") && t.name !== t.title, `${sport} ${t.key}: a short name, never the question (3.27: the rows are the menu's names, never the full questions)`);
+      assert.ok(t.name.length <= 15, `${sport} ${t.key}: "${t.name}" is short enough to stand as one row of the tile at 40px`);
+    }
+  }
+});
+
+test("a game's tile fits the picture: every height a constant, two to four rows inside the 48px bands, the name on two lines broken after at, and its size stepping with the longest line", () => {
+  // The column is centred in the 630px square; inside the two bands means at most 534 tall, whatever the game.
+  for (const n of [2, 3, 4]) assert.ok(gameTileHeight(n, true) <= tileSize.height - 2 * GAME_TILE.band, `${n} rows with the close time: ${gameTileHeight(n, true)}px is inside the bands`);
+  assert.deepEqual([gameTileHeight(2, true), gameTileHeight(3, true), gameTileHeight(4, true)], [416, 470, 524], "the hand figures: 316 plus 46n plus 8(n - 1)");
+  assert.equal(gameTileHeight(2, false), 340, "once the game has started the close time and its gap are gone");
+  assert.equal(gameTileHeight(6, true), gameTileHeight(4, true), "never more than four rows, whatever was asked");
+  assert.equal(GAME_TILE.stamp + GAME_TILE.stampGap + GAME_TILE.nameBox + GAME_TILE.stampGap + GAME_TILE.stamp, 630, "the game row adds up to the square: a stamp at each edge, the name box between");
+  assert.equal(2 * GAME_TILE.nameLine, GAME_TILE.name, "two lines fill the game row exactly");
+  assert.deepEqual(gameNameLines("Red Sox", "Yankees"), ["Red Sox at", "Yankees"], "broken after at, the away side first (3.40)");
+  assert.equal(gameNameSize("Red Sox", "Yankees"), 52, "both lines within 11 characters: 3.27's 52px");
+  assert.equal(gameNameSize("Chiefs", "Bills"), 52);
+  assert.equal(gameNameSize("Golden Knights", "Blue Jackets"), 44, "a line past 11 steps down to 44");
+  assert.equal(gameNameSize("Trail Blazers", "Timberwolves"), 44);
+  assert.equal(gameNameSize("Something Longer", "Anything"), 36, "a line past 17 steps down again, so nothing ever wraps or overruns the box");
+});
+
+test("who asked on a tile is a first name and nothing else, and an account with no name reads A friend whole, never its first word", () => {
+  assert.equal(askerName("Priya Raman"), "Priya");
+  assert.equal(askerName("Dev"), "Dev");
+  assert.equal(askerName(undefined), "A friend", "no account row: A friend asks, never A asks");
+  assert.equal(askerName(null), "A friend");
+  assert.equal(askerName(""), "A friend");
+  assert.equal(askerName("   "), "A friend", "a name that is only spaces is no name");
+  assert.ok(askerName("Bartholomew-Alexander Fitzgerald").length <= 18, "clipped as every name on a card is");
 });
 
 test("the consent line on a game's terms step is true for every question chosen: the score's alone, the play-by-play's alone, and both in one line with the first drive among them", () => {

@@ -10,10 +10,11 @@
  */
 import { and, count, eq, gt, ilike, isNotNull, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { isIdentifier } from "@/lib/auth/login";
 import { claimsForBrowserTokens } from "./claims";
 import { denominationById } from "./denominations";
 import { groupsNumberBps } from "./weight";
-import { confidenceFor, marketById, MarketError, MAX_POSITIONS, positionsOf, stateOf, valueAllowed, type PositionRow } from "./markets";
+import { confidenceFor, marketById, MarketError, MAX_POSITIONS, pastItsClose, positionsOf, stateOf, valueAllowed, type PositionRow } from "./markets";
 import { pidOf } from "./participants";
 import { hashToken, newToken } from "./tokens";
 
@@ -76,6 +77,8 @@ async function claimFor(d: { id: string; groupId: string; creatorId: string }, w
   }
   const name = who.name.trim().slice(0, 40);
   if (!name) throw new MarketError("Say what your friends call you.", "bad_input");
+  // An address, a tag, a number or a handle is not a name here either (the same rule as the sign-up step), and it would be printed on every card the ghost is on.
+  if (isIdentifier(name)) throw new MarketError("Say what your friends call you.", "bad_input");
   if (who.phoneHash) {
     const [mine] = await db
       .select({ id: schema.participantClaims.id })
@@ -94,6 +97,8 @@ export async function enterAsGhost(input: { dareId: string; who: GhostWho; token
   if (!d) throw new MarketError("That one doesn't exist.", "not_found");
   const state = stateOf(d);
   if (state !== "open") throw new MarketError(state === "draft" ? "It isn't open yet." : "Numbers are locked.", "wrong_state");
+  // The close is a hard cutoff for a ghost as for anyone (`pastItsClose`): past its time, nobody gets in or changes, locked yet or not.
+  if (pastItsClose(d, new Date())) throw new MarketError("Numbers are locked.", "wrong_state");
   if (!valueAllowed(d.kind, input.value, d.outcomeLabels.length)) throw new MarketError(d.kind === "numeric" ? "Any whole number, up to nine digits." : d.kind === "categorical" ? "Pick one of the answers." : "A number from 0 to 100.", "bad_input");
   const denom = await denominationById(d.denomId);
   if (!denom) throw new MarketError("unknown unit", "not_found");

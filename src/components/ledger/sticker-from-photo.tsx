@@ -1,10 +1,19 @@
 "use client";
 
-import { useId } from "react";
+import { useId, type CSSProperties } from "react";
 import { ProblemSummary } from "@/components/ledger/problem";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Sheet } from "@/components/ui/sheet";
 import { stickerSrc } from "@/lib/ui/mark";
+import { CREAM, CREAM_2, GRAPHITE } from "@/lib/ui/palette";
+
+/**
+ * The full-screen photo is black in both themes (docs/design.md 3.38, 10.2), and the sticker result stands in its
+ * place: the dark theme's ground, its chalk and its second ink, as the palette's literals, on the viewer's root,
+ * so the close, the controls and the words under them hold the dark column whatever the theme. The sheets over
+ * it are the app's own layers and follow the theme.
+ */
+export const PHOTO_ROOM = { "--ground": GRAPHITE, "--ink-2": CREAM_2, "--chalk": CREAM, "--on-chalk": GRAPHITE } as CSSProperties;
 
 /**
  * Making a sticker from a photo (docs/design.md 3.28, frames 2 and 3; 3.38, the full-screen photo). The owner
@@ -97,9 +106,9 @@ export function CutSheet({ open, busy, cut, problem, timing, onKeep, onStartOver
 /** The result (3.28, frame 3), in the viewer's place: the sticker on the field, "In your stickers", the chalk to ask with it, and Done. */
 export function StickerMade({ id, onDone, onClose }: { id: string; onDone: () => void; onClose: () => void }) {
   return (
-    <div role="dialog" aria-modal="true" aria-label="Your new sticker" data-sticker-made={id} className="fixed inset-0 z-40 flex flex-col bg-ground pt-[env(safe-area-inset-top)]">
+    <div role="dialog" aria-modal="true" aria-label="Your new sticker" data-sticker-made={id} data-fixed="top" className="fixed inset-0 z-40 flex flex-col bg-ground pt-[env(safe-area-inset-top)]" style={PHOTO_ROOM}>
       <div className="flex h-14 shrink-0 items-center justify-end px-2">
-        <button type="button" aria-label="Close" onClick={onClose} className="inline-flex h-12 w-12 items-center justify-center rounded-pill text-ink">
+        <button type="button" aria-label="Close" onClick={onClose} data-press="line" className="inline-flex h-12 w-12 items-center justify-center rounded-pill press-line" style={{ color: CREAM }}>
           <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <path d="M6 6l12 12M18 6L6 18" />
           </svg>
@@ -110,7 +119,7 @@ export function StickerMade({ id, onDone, onClose }: { id: string; onDone: () =>
           {/* eslint-disable-next-line @next/next/no-img-element -- behind the mark's own door, a signed URL that expires */}
           <img src={stickerSrc(id, 256)} alt="" width={176} height={176} className="h-44 w-44 object-contain" />
         </div>
-        <p className="text-body-strong text-ink">In your stickers</p>
+        <p className="text-body-strong" style={{ color: CREAM }}>In your stickers</p>
       </div>
       <div className="mx-auto flex w-full max-w-[430px] shrink-0 flex-col gap-1 px-5 pt-4 pb-[calc(16px+env(safe-area-inset-bottom))]">
         <ButtonLink href={`/m/new?sticker=${id}`} variant="primary" data-ask-with-sticker="">

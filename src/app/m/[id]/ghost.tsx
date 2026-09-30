@@ -5,6 +5,7 @@ import { Screen, TopBar } from "@/components/ledger/screen";
 import { LiveDot, StateMark, type MarketMark } from "@/components/ledger/state-mark";
 import { When } from "@/components/ledger/when";
 import { MarketStage, type StagePicture } from "@/components/markets/market-stage";
+import { VotePoll } from "@/components/markets/vote-poll";
 import { WhosInRow } from "@/components/markets/whos-in-row";
 import { DeadLink } from "@/components/markets/dead-link";
 import type { StakeUnit } from "@/components/markets/market-actions";
@@ -14,28 +15,30 @@ import { db, schema } from "@/db";
 import { eq } from "drizzle-orm";
 import { readClaimTokens } from "@/lib/auth/claim-cookie";
 import { denominationById } from "@/lib/ledger/denominations";
+import { claimsForBrowserTokens } from "@/lib/ledger/claims";
 import { ghostPositionFor } from "@/lib/ledger/ghost-entry";
-import { answersOf, marketById, positionsOf, stateOf, unitOf } from "@/lib/ledger/markets";
+import { askerLine } from "@/lib/ledger/groups";
+import { answersOf, marketById, positionsOf, stateOf, unitOf, VOID_OUTCOME } from "@/lib/ledger/markets";
 import { numbersVisible } from "@/lib/ledger/market-view";
 import { numberAxis, serialiseAxis, unitPhrase } from "@/lib/ledger/number-axis";
 import { participantsOf, pidOf } from "@/lib/ledger/participants";
 import { pickOneCaption } from "@/lib/ledger/pick-one";
+import { pulseFor } from "@/lib/ledger/pulse";
 import { farOffThreshold } from "@/lib/ledger/scale";
 import { buckets, groupsNumberBps, numberCaption, percentOf, showsMarker, weightCaption } from "@/lib/ledger/weight";
 import { templateOfMarket } from "@/lib/sports";
 import { CONSENT, DRIVE_CONSENT, SLIDER_REACH } from "@/lib/sports/templates";
 import type { Sport } from "@/lib/sports/types";
-import { clockOf, closesLabel, firstName, untilLabel } from "@/lib/ui/copy";
+import { clockOf, firstName, friendsIn, lockedLabel, untilLabel } from "@/lib/ui/copy";
+import { bandClock as bandClockWords } from "@/lib/ui/band";
 import { hueFor } from "@/lib/ui/hue";
 import { inkOf } from "@/lib/ui/ink";
 import { InkRoot } from "@/components/ledger/ink-root";
 import { markRefOf } from "@/lib/ui/mark";
 import type { TeamFace } from "@/lib/ui/team";
+import { outcomeLine } from "@/lib/ui/outcome-words";
 import { formatMoney, unitWords } from "@/lib/ui/units";
 import type { viewerClock } from "@/lib/ui/zone";
-
-const COUNT = ["", "One friend is in", "Two friends are in", "Three friends are in", "Four friends are in", "Five friends are in", "Six friends are in", "Seven friends are in", "Eight friends are in"];
-const friendsIn = (n: number) => (n === 0 ? "Nobody’s in yet" : (COUNT[n] ?? "A lot of friends are in"));
 
 /**
  * Arriving from a link with no account (docs/design.md 3.17; PLANNING.md section 4): the market's own screen in
@@ -57,6 +60,10 @@ export async function GhostMarketPage({ id, clock }: { id: string; clock: Awaite
   const [positions, group, denomination, tokens, fromTemplate] = await Promise.all([positionsOf(d.id), db.select({ name: schema.groups.name }).from(schema.groups).where(eq(schema.groups.id, d.groupId)).limit(1).then((r) => r[0] ?? null), denominationById(d.denomId), readClaimTokens(), templateOfMarket(d)]);
   if (!denomination) return null;
   const ghostMine = await ghostPositionFor(d.id, tokens);
+  // A phone that remembers a ghost joins as them (`claimFor` takes the browser's token before any typed name), so the sheet says so rather than ask a name it would not use.
+  const remembered = ghostMine ? null : ((await claimsForBrowserTokens(tokens))[0] ?? null);
+  // While it is being called, a ghost who is in follows the vote as a member does (the poll, Phase 5).
+  const pulse = state === "locked" && ghostMine ? await pulseFor(d.id) : null;
   const answers = answersOf(d);
   const person = await participantsOf([d.creatorId, ...positions.map((p) => pidOf(p)), ...(answers?.flatMap((a) => (a.userId ? [a.userId] : [])) ?? [])]);
   const viewerId = ghostMine?.claimId ?? "";
@@ -93,20 +100,38 @@ export async function GhostMarketPage({ id, clock }: { id: string; clock: Awaite
           : null;
 
   const bandState: MarketMark = state === "open" ? (mine ? "in" : "open") : state === "locked" ? "locked" : state;
-  const bandClock = state === "open" && d.resolvesBy ? `Closes ${closesLabel(d.resolvesBy, now, clock.zone)}` : null;
+  // The band's clock as the member's screen has it (`bandClock`): a visitor never sees votes, so a locked one reads as resolving.
+  const bandClock = bandClockWords({ state, resolvesBy: d.resolvesBy, resolvedAt: d.resolvedAt, resolvedBy: d.resolvedBy, votes: 0, now, zone: clock.zone });
   const howItWorks = d.pace === "argument" ? "Two sides. Whoever’s right has got the other." : pickAnswers ? "Everyone picks one. The right pick does best." : numberUnit ? "Everyone puts in a number. Closest does best." : "Everyone puts in their odds. Closest does best.";
   const until = d.resolvesBy ? untilLabel(d.resolvesBy, now, clock.zone) : "until it closes";
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://dareful.app";
   const stack = positions.map((p) => ({ name: firstName(person.get(pidOf(p))?.displayName ?? "?"), hue: hueFor(pidOf(p)), ghost: person.get(pidOf(p))?.ghost === true }));
 
+  // Once in, the market as anyone in sees it (3.17, frame 6): open, and locked with the clock alone on the entry line. The
+  // "Closed" sheet is for a visitor who never got in.
+  const ended = state === "resolved" || state === "voided" || state === "expired";
+  // How it ended, for a ghost who was in (the member's settled line, 3.37): the outcome in the question's words, the number, the pick, or the ending.
+  const endedLine = !ended
+    ? null
+    : state === "expired"
+      ? "Never settled."
+      : state === "voided" || d.resolvedOutcome === null || d.resolvedOutcome === VOID_OUTCOME
+        ? d.resolvedBy === "removed"
+          ? "Called off."
+          : "Nobody could tell."
+        : pickAnswers
+          ? `${pickAnswers.find((a) => a.index === Number(d.resolvedOutcome))?.text ?? "Decided"}.`
+          : numberUnit
+            ? `${unitPhrase(d.resolvedOutcome, numberUnit)}.`
+            : outcomeLine(d, d.resolvedOutcome === 1n);
   const stage =
-    state === "open" ? (
+    state === "open" || (state === "locked" && mine) ? (
       <MarketStage
         dareId={d.id}
         signing={null}
-        ghost={{ known: ghostMine ? { name: ghostMine.displayName } : null }}
+        ghost={{ known: ghostMine ? { name: ghostMine.displayName } : remembered ? { name: remembered.displayName } : null }}
         unit={unit}
-        state="open"
+        state={state === "locked" ? "locked" : "open"}
         me={{ name: ghostMine?.displayName ?? "You", hue: "stone", ghost: true }}
         mine={mine ? { percent: numberUnit || pickAnswers ? 0 : Number(mine.value) / 100, ...(numberUnit ? { number: mine.value.toString() } : {}), ...(pickAnswers ? { pick: Number(mine.value) } : {}), stake: mine.stake.toString(), stakeWords: stakeWords(mine.stake), final: d.revealMode === "blind" } : null}
         blind={d.revealMode === "blind"}
@@ -117,7 +142,7 @@ export async function GhostMarketPage({ id, clock }: { id: string; clock: Awaite
         pickOne={pickAnswers ? { answers: pickAnswers } : null}
         mark={d.markKind === "emoji" ? d.markValue : null}
         argument={d.pace === "argument" ? { defaultPercent: positions[0] ? (positions[0].value >= 5000n ? 0 : 100) : 100, otherSays: positions[0] ? { name: first(pidOf(positions[0])), side: positions[0].value >= 5000n ? "yes" : "no" } : null } : null}
-        lockedLine={null}
+        lockedLine={d.lockedAt ? lockedLabel(d.lockedAt, now, clock.zone) : null}
         changeUntil={until}
         farOff={numberUnit && farOffThreshold(d) !== null ? { threshold: (farOffThreshold(d) as bigint).toString(), scale: d.rangeSource === "asker" && d.range !== null ? d.range.toString() : null } : null}
       />
@@ -146,10 +171,15 @@ export async function GhostMarketPage({ id, clock }: { id: string; clock: Awaite
             <p className="flex items-center gap-2 text-caption text-ink-2">
               <Avatar name={firstName(person.get(d.creatorId)?.displayName ?? "?")} hue={hueFor(d.creatorId)} size={22} />
               <span>
-                {firstName(person.get(d.creatorId)?.displayName ?? "Someone")} asked{group?.name ? ` ${group.name}` : ""}
+                {/* A named set as a sentence names it (3.17, 3.38); one nobody named says nothing after "asked", since a visitor may see no names. */}
+                {askerLine({ id: d.creatorId, displayName: person.get(d.creatorId)?.displayName ?? "Someone" }, { name: group?.name ?? null, members: [] }, null)}
               </span>
             </p>
           </section>
+          {/* In (3.17, frame 6): the entry line and the picture first, as anyone in sees them, then who's in and the facts. */}
+          {pulse ? <VotePoll dareId={d.id} pulse={pulse.pulse} /> : null}
+          {mine && endedLine ? <p className="text-serif-l text-ink">{endedLine}</p> : null}
+          {mine && (state === "open" || state === "locked") ? stage : null}
           {mine ? (
             // In (3.17, frame 6): the who's-in row with its icons. The code is the asker's to make, so share and copy alone here.
             <WhosInRow people={stack} count={positions.length === 1 ? "Just you so far" : `${positions.length} of you in`} share={{ url: `${appUrl}/m/${d.id}`, title: d.title }} code={null} />
@@ -157,7 +187,7 @@ export async function GhostMarketPage({ id, clock }: { id: string; clock: Awaite
             <section className="flex items-center gap-3" data-friends-in="">
               {/* The avatars carry initials, and their accessible names are first names: the asker's is the only name on this screen (3.17). */}
               {positions.length > 0 ? <AvatarStack people={stack} size={28} ring="var(--ground)" /> : null}
-              <p className="text-caption text-ink-2">{friendsIn(positions.length)}</p>
+              <p className="text-caption text-ink-2">{friendsIn(positions.length, "words")}</p>
             </section>
           )}
           <dl className="grid grid-cols-[96px_minmax(0,1fr)] gap-x-3 gap-y-2 rounded-card border border-line bg-surface px-4 py-[14px]">
@@ -183,7 +213,7 @@ export async function GhostMarketPage({ id, clock }: { id: string; clock: Awaite
             </div>
           ) : null}
         </div>
-        {stage}
+        {mine ? null : stage}
       </Screen>
     </div>
   );

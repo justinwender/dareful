@@ -47,7 +47,7 @@ test("the captions count: the calls since when, pick one called of those in, the
   assert.equal(pickOneCaption({ resolved: 1, called: 0 }), "Pick one: you didn’t call the one you were in.");
   assert.equal(pickOneCaption({ resolved: 0, called: 0 }), null);
   assert.equal(numbersHeadline(1500), "On numbers, you land 15% of the range away.");
-  assert.equal(numbersCaption(7), "7 number markets. The band is the middle half of them; the cream line is your average.");
+  assert.equal(numbersCaption(7), "7 number markets. The band is the middle half of them; the line is your average.");
   assert.equal(numbersEarly(2, 5), "Numbers draw at 5 number markets. 2 so far.");
 });
 

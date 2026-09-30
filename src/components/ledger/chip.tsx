@@ -24,3 +24,11 @@ export function Chip({ children, selected = false, disabled = false, size = 24, 
     </span>
   );
 }
+
+/**
+ * The press a chip's wrapper takes (9.4), spread onto the button around the chip: a selected chip has a fill and
+ * dims to 0.88, an unselected one is a line and a word and dims to 0.5.
+ */
+export function chipPress(selected: boolean): { "data-press": "fill" | "line"; className: string } {
+  return selected ? { "data-press": "fill", className: "rounded-pill press-fill" } : { "data-press": "line", className: "rounded-pill press-line" };
+}

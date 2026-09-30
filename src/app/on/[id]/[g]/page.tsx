@@ -4,7 +4,7 @@ import { gameById } from "@/lib/sports";
 
 export const dynamic = "force-dynamic";
 
-/** The link sent to the chat when a game is started with more than one question (3.27, 3.33): the game page for one set of people, with its own tile. */
+/** The link sent to the chat when a game is started with more than one question (3.27, 3.33): the game page for one set of people, with its own tile. To someone not in that set, signed in or not, it is the set's questions, each opening its own screen, where they get in (3.17). */
 export async function generateMetadata({ params }: { params: Promise<{ id: string; g: string }> }): Promise<Metadata> {
   const { id } = await params;
   const found = /^[0-9a-f-]{36}$/i.test(id) ? await gameById(id).catch(() => null) : null;

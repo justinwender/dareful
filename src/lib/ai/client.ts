@@ -16,6 +16,14 @@ export const MODELS = {
   drafting: process.env.AI_MODEL_DRAFTING || "claude-sonnet-5",
 } as const;
 
+/** Models that refused a forced tool choice in this process: asked plainly from then on, so the refusal is paid for once and not on every call. */
+const asksPlainly = new Set<string>();
+
+/** Whether a call opens by forcing the tool: every model does until it has refused once. Pure but for the set it reads. */
+export function forcesTool(model: string, refused: ReadonlySet<string> = asksPlainly): boolean {
+  return !refused.has(model);
+}
+
 let client: Anthropic | undefined;
 function anthropic(): Anthropic {
   if (typeof window !== "undefined") throw new Error("model calls are server-only");
@@ -46,11 +54,15 @@ export async function structured<T>(req: { label: string; model: string; system:
       { timeout: req.timeoutMs },
     );
   const res = await timed(`ai ${req.label}`, async () => {
+    if (!forcesTool(req.model)) return ask(false);
     try {
       return await ask(true);
     } catch (err) {
       // Some models refuse a forced tool choice. They are asked instead; the parse below enforces the shape.
-      if (err instanceof Anthropic.BadRequestError && /tool_choice/.test(err.message)) return ask(false);
+      if (err instanceof Anthropic.BadRequestError && /tool_choice/.test(err.message)) {
+        asksPlainly.add(req.model);
+        return ask(false);
+      }
       throw err;
     }
   });

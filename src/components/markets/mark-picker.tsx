@@ -4,7 +4,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Sheet } from "@/components/ui/sheet";
 import { addStickerAction } from "@/lib/actions/media";
 import { emojiInk, normaliseMark } from "@/lib/ui/emoji-ink";
-import { hueVar, type Hue } from "@/lib/ui/hue";
+import { hueStrokeVar, type Hue } from "@/lib/ui/hue";
 import type { InkName } from "@/lib/ui/ink";
 import { imageFromClipboard, imageFromPaste, NotACutoutHere, prepareCutout } from "@/lib/ui/cutout-clipboard";
 import { stickerSrc, type PickedMark } from "@/lib/ui/mark";
@@ -145,7 +145,7 @@ export function MarkPicker({ open, onClose, value, onPick, hue, preview = true, 
     if (press.current) clearTimeout(press.current);
     press.current = null;
   }
-  const ring = (on: boolean) => (on ? { boxShadow: `inset 0 0 0 1.5px ${hueVar(hue)}` } : undefined);
+  const ring = (on: boolean) => (on ? { boxShadow: `inset 0 0 0 1.5px ${hueStrokeVar(hue)}` } : undefined);
 
   const cell = (row: Row, key: string) => {
     const glyph = toned(row);
@@ -173,7 +173,8 @@ export function MarkPicker({ open, onClose, value, onPick, hue, preview = true, 
           }
           pick(glyph, row[1]);
         }}
-        className={cn("flex aspect-square h-11 w-full items-center justify-center rounded-stamp-28 text-[28px] leading-none", on && "bg-field")}
+        data-press={on ? "fill" : "line"}
+        className={cn("flex aspect-square h-11 w-full items-center justify-center rounded-stamp-28 text-[28px] leading-none", on ? "bg-field press-fill" : "press-line")}
         style={ring(on)}
       >
         {glyph}
@@ -201,7 +202,7 @@ export function MarkPicker({ open, onClose, value, onPick, hue, preview = true, 
           <p className="text-label text-ink-3">Your stickers</p>
           <div className="grid grid-cols-8 gap-[2px]">
             {canPaste ? (
-              <button type="button" aria-label="Paste a cutout" aria-busy={pasting || undefined} disabled={pasting} onClick={() => void askClipboard()} className="flex aspect-square h-11 w-full items-center justify-center rounded-stamp-28 border-[1.5px] border-dashed border-line-strong text-ink-2">
+              <button type="button" aria-label="Paste a cutout" aria-busy={pasting || undefined} disabled={pasting} onClick={() => void askClipboard()} data-press="line" className="flex aspect-square h-11 w-full items-center justify-center rounded-stamp-28 border-[1.5px] border-dashed border-line-strong text-ink-2 press-line">
                 <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="6" y="5" width="12" height="16" rx="2" />
                   <path d="M9 5V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1M12 10v6M9 13h6" />
@@ -211,7 +212,7 @@ export function MarkPicker({ open, onClose, value, onPick, hue, preview = true, 
             {mine.map((s) => {
               const on = value?.kind === "sticker" && value.id === s.id;
               return (
-                <button key={s.id} type="button" aria-label="One of your stickers" aria-pressed={on} onClick={() => onPick({ kind: "sticker", id: s.id, ink: s.ink })} className={cn("flex aspect-square h-11 w-full items-center justify-center rounded-stamp-28", on && "bg-field")} style={ring(on)}>
+                <button key={s.id} type="button" aria-label="One of your stickers" aria-pressed={on} onClick={() => onPick({ kind: "sticker", id: s.id, ink: s.ink })} data-press={on ? "fill" : "line"} className={cn("flex aspect-square h-11 w-full items-center justify-center rounded-stamp-28", on ? "bg-field press-fill" : "press-line")} style={ring(on)}>
                   {/* eslint-disable-next-line @next/next/no-img-element -- behind the mark's own door */}
                   <img src={stickerSrc(s.id, 44)} alt="" width={35} height={35} className="h-[35px] w-[35px] object-contain" />
                 </button>
@@ -225,7 +226,7 @@ export function MarkPicker({ open, onClose, value, onPick, hue, preview = true, 
         <div className="flex flex-col gap-2">
           <p className="text-label text-ink-3">Recent</p>
           <div className="grid grid-cols-8 gap-[2px]">
-            <button type="button" aria-label="No mark" aria-pressed={value === null} onClick={() => pick(null)} className={cn("flex aspect-square h-11 w-full items-center justify-center rounded-stamp-28 border-[1.5px] border-dashed border-line-strong text-label text-ink-3", value === null && "bg-field")} style={ring(value === null)} data-no-mark="">
+            <button type="button" aria-label="No mark" aria-pressed={value === null} onClick={() => pick(null)} data-press={value === null ? "fill" : "line"} className={cn("flex aspect-square h-11 w-full items-center justify-center rounded-stamp-28 border-[1.5px] border-dashed border-line-strong text-label text-ink-3", value === null ? "bg-field press-fill" : "press-line")} style={ring(value === null)} data-no-mark="">
               None
             </button>
             {recent.map((g) => {
@@ -238,7 +239,7 @@ export function MarkPicker({ open, onClose, value, onPick, hue, preview = true, 
       {!query.trim() ? (
         <div role="tablist" aria-label="Categories" className="-mx-4 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none]">
           {CATEGORIES.map((c) => (
-            <button key={c.group} type="button" role="tab" aria-selected={group === c.group} onClick={() => setGroup(c.group)} className={cn("inline-flex h-9 shrink-0 items-center rounded-pill border px-3 chip-text", group === c.group ? "border-ink-3 bg-surface-2 text-ink" : "border-line-strong text-ink-2")}>
+            <button key={c.group} type="button" role="tab" aria-selected={group === c.group} onClick={() => setGroup(c.group)} data-press={group === c.group ? "fill" : "line"} className={cn("inline-flex h-9 shrink-0 items-center rounded-pill border px-3 chip-text", group === c.group ? "border-ink-3 bg-surface-2 text-ink press-fill" : "border-line-strong text-ink-2 press-line")}>
               {c.label}
             </button>
           ))}
@@ -255,7 +256,7 @@ export function MarkPicker({ open, onClose, value, onPick, hue, preview = true, 
         )}
       </div>
       {toneFor ? (
-        <div role="dialog" aria-label={`Skin tone for ${toneFor[1]}`} className="fixed inset-x-4 bottom-[max(1.5rem,env(safe-area-inset-bottom))] z-[60] mx-auto flex max-w-[398px] items-center justify-between gap-1 rounded-card border border-line-strong bg-surface p-2">
+        <div role="dialog" aria-label={`Skin tone for ${toneFor[1]}`} data-fixed="bottom" className="fixed inset-x-4 bottom-[max(1.5rem,env(safe-area-inset-bottom))] z-[60] mx-auto flex max-w-[398px] items-center justify-between gap-1 rounded-card border border-line-strong bg-surface p-2">
           {[toneFor[0], ...(toneFor[4] || [])].map((g, i) => (
             <button
               key={g}
@@ -267,7 +268,8 @@ export function MarkPicker({ open, onClose, value, onPick, hue, preview = true, 
                 pick(g, toneFor[1]);
                 setToneFor(null);
               }}
-              className="flex h-11 w-11 items-center justify-center rounded-stamp-28 text-[28px] leading-none"
+              data-press="line"
+              className="flex h-11 w-11 items-center justify-center rounded-stamp-28 text-[28px] leading-none press-line"
             >
               {g}
             </button>

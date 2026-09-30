@@ -17,6 +17,8 @@ import { stampFill, stampGlyph, stampInk, stampRadius, type TeamFace } from "./t
 
 export const tileSize = { width: 1200, height: 630 };
 const SAFE = { x: 285, w: 630 };
+/** The space between a tile's rows in the safe square. */
+const GAP = 30;
 const CREAM = "#F2EDE3";
 const CREAM_2 = "#C4BCAE";
 const ON_HUE = "#121110";
@@ -47,17 +49,45 @@ export type AskTile = {
   /** Between two teams (3.40): the two stamps at 88px at the ends of the empty line, each with its name under it; the margin's line carries a tie tick at the middle. */
   teams?: { away: TeamFace; home: TeamFace; margin: boolean } | null;
 };
-/** A game's asking tile (3.27): "Priya asks", the two stamps either side of the game in serif, the chosen questions as rows, and the close time. */
+/** A game's asking tile (3.27): "Priya asks", the two stamps either side of the game's name in serif (drawn from the two teams, on two lines), the chosen questions as rows by the menu's short names, and the close time. */
 export type GameTile = {
   kind: "game";
   asker: { name: string; hue: Hue };
   ink: InkName;
   away: TeamFace;
   home: TeamFace;
-  name: string;
+  /** The menu's short names (3.33), at most four, never the questions themselves and never clipped. */
   questions: string[];
   closes: string | null;
 };
+
+/**
+ * The game tile's geometry (3.27, amended 2026-09-29): every height a constant and nothing wrapping, so the column
+ * can never outgrow the picture. The asker row, the game row (a stamp at each end of the square with the name on two
+ * lines between them), up to four rows of the menu's short names, and the close time, GAP apart, centred in the
+ * square with a band kept clear at the top and bottom. The test reads these same constants.
+ */
+export const GAME_TILE = { asker: 64, gap: GAP, name: 116, nameLine: 58, stamp: 88, stampGap: 18, nameBox: SAFE.w - 2 * 88 - 2 * 18, row: 46, rowGap: 8, closes: 46, band: 48, maxRows: 4 } as const;
+
+/** How tall the game tile's column is with this many question rows (four at most), with or without the close time. */
+export function gameTileHeight(rows: number, closes: boolean): number {
+  const n = Math.min(Math.max(rows, 0), GAME_TILE.maxRows);
+  const questions = n > 0 ? n * GAME_TILE.row + (n - 1) * GAME_TILE.rowGap : 0;
+  return GAME_TILE.asker + GAME_TILE.gap + GAME_TILE.name + (n > 0 ? GAME_TILE.gap + questions : 0) + (closes ? GAME_TILE.gap + GAME_TILE.closes : 0);
+}
+
+/** The game's name on two lines, broken after "at": "Red Sox at" over "Yankees" (3.27, amended: one line does not fit most pairings between the stamps). */
+export const gameNameLines = (away: string, home: string): [string, string] => [`${away} at`, home];
+
+/**
+ * The serif size for the game's name: 52 when both lines are 11 characters or fewer, 44 otherwise, and 36 once a line
+ * passes 17. Checked against every short name in the four leagues: the widest line is 359px at 52 and 396px at 44,
+ * inside the box between the stamps.
+ */
+export function gameNameSize(away: string, home: string): 52 | 44 | 36 {
+  const longest = Math.max(...gameNameLines(away, home).map((line) => line.length));
+  return longest <= 11 ? 52 : longest <= 17 ? 44 : 36;
+}
 /** An answer on a tile: the words, and the person with their avatar where it is a person. */
 export type TileAnswer = { text: string; person: { name: string; hue: Hue } | null };
 /** A pick-one question's result tile (3.27): the answer as its outcome, the rows with the pickers' avatars and the called answer washed, and who called it. Never a share. */
@@ -100,10 +130,10 @@ export type NumberTile = {
 };
 export type Tile = AskTile | CalledTile | NumberTile | PickTile | GameTile;
 
-/** A team stamp on a tile (1.7): the abbreviation on the team's colour, the inset ring, a quarter radius; never a logo. */
+/** A team stamp on a tile (1.7): the abbreviation on the team's colour, the inset ring, a quarter radius; never a logo. It never shrinks: the renderer lets any box that holds text give way when its row is over, and a stamp stays square. */
 function teamStamp(team: TeamFace, size: number) {
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: size, height: size, borderRadius: stampRadius(size), background: team.color ? stampFill(team.color) : "#121110", color: stampInk(team.color), fontSize: stampGlyph(size, team.abbr), fontWeight: 600, boxShadow: "inset 0 0 0 2px rgba(242, 237, 227, 0.16)", textTransform: "uppercase", letterSpacing: 1 }}>
+    <div style={{ display: "flex", flexShrink: 0, alignItems: "center", justifyContent: "center", width: size, height: size, borderRadius: stampRadius(size), background: team.color ? stampFill(team.color) : "#121110", color: stampInk(team.color), fontSize: stampGlyph(size, team.abbr), fontWeight: 600, boxShadow: "inset 0 0 0 2px rgba(242, 237, 227, 0.16)", textTransform: "uppercase", letterSpacing: 1 }}>
       {team.abbr}
     </div>
   );
@@ -145,9 +175,11 @@ function bareMark(t: { mark: string | null; markImage: string | null }, size: nu
 }
 
 function avatar(name: string, hue: Hue, size: number, ring?: string) {
-  // The renderer refuses a style key set to undefined, so the ring is added only when there is one.
+  // The renderer refuses a style key set to undefined, so the ring is added only when there is one. It holds text, so it
+  // would give way when its row is over: an avatar stays round.
   const style: Record<string, string | number> = {
     display: "flex",
+    flexShrink: 0,
     alignItems: "center",
     justifyContent: "center",
     width: size,
@@ -197,7 +229,7 @@ function frame(ink: InkName, rows: React.ReactNode[]) {
         }}
       >
         {rows.map((row, i) => (
-          <div key={i} style={{ display: "flex", marginTop: i === 0 ? 0 : 30 }}>
+          <div key={i} style={{ display: "flex", marginTop: i === 0 ? 0 : GAP }}>
             {row}
           </div>
         ))}
@@ -570,27 +602,37 @@ function numberTile(t: NumberTile) {
   ]);
 }
 
-/** A game's asking tile (3.27): "Priya asks", the two stamps at 88px either side of the game in serif at 52px, the chosen questions as up to four rows at 40px 600, and the close time. */
+/**
+ * A game's asking tile (3.27, amended 2026-09-29): "Priya asks"; the away stamp at the left end of the square and the
+ * home stamp at the right (3.40), each 88px and square, with the game's name in serif on two lines between them,
+ * broken after "at"; the chosen questions as up to four rows at 40px 600, each the menu's short name; and the close
+ * time. Every box takes its height and width from GAME_TILE and no text wraps, so the column is gameTileHeight() tall
+ * and sits inside the band.
+ */
 function gameTile(t: GameTile) {
   const layers = INKS[t.ink];
+  const G = GAME_TILE;
+  const size = gameNameSize(t.away.name, t.home.name);
   return frame(t.ink, [
-    <div key="asker" style={{ display: "flex", alignItems: "center", gap: 20 }}>
-      {avatar(t.asker.name, t.asker.hue, 64)}
-      <div style={{ display: "flex", fontSize: 48, fontWeight: 600 }}>{t.asker.name} asks</div>
+    <div key="asker" style={{ display: "flex", alignItems: "center", gap: 18, height: G.asker }}>
+      {avatar(t.asker.name, t.asker.hue, G.asker)}
+      <div style={{ display: "flex", alignItems: "center", height: G.asker, fontSize: 48, fontWeight: 600, lineHeight: 1, whiteSpace: "nowrap" }}>{t.asker.name} asks</div>
     </div>,
-    <div key="game" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 24, width: SAFE.w }}>
-      {teamStamp(t.away, 88)}
-      <div style={{ display: "flex", fontFamily: "Young Serif", fontSize: 52, textAlign: "center" }}>{t.name}</div>
-      {teamStamp(t.home, 88)}
+    <div key="game" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: SAFE.w, height: G.name }}>
+      {teamStamp(t.away, G.stamp)}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", width: G.nameBox, height: G.name, fontFamily: "Young Serif", fontSize: size, color: CREAM }}>
+        {gameNameLines(t.away.name, t.home.name).map((line, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "center", height: G.nameLine, lineHeight: 1, whiteSpace: "nowrap" }}>{line}</div>
+        ))}
+      </div>
+      {teamStamp(t.home, G.stamp)}
     </div>,
-    <div key="questions" style={{ display: "flex", flexDirection: "column", width: 480, gap: 4 }}>
-      {t.questions.slice(0, 4).map((q, i) => (
-        <div key={i} style={{ display: "flex", fontSize: 40, fontWeight: 600, color: CREAM, lineHeight: 1.2 }}>
-          {q}
-        </div>
+    <div key="questions" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: G.rowGap, width: SAFE.w }}>
+      {t.questions.slice(0, G.maxRows).map((q, i) => (
+        <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "center", height: G.row, fontSize: 40, fontWeight: 600, lineHeight: 1, color: CREAM, whiteSpace: "nowrap" }}>{q}</div>
       ))}
     </div>,
-    ...(t.closes ? [<div key="closes" style={{ display: "flex", fontSize: 40, fontWeight: 600, color: layers.hi }}>{t.closes}</div>] : []),
+    ...(t.closes ? [<div key="closes" style={{ display: "flex", alignItems: "center", height: G.closes, fontSize: 40, fontWeight: 600, lineHeight: 1, color: layers.hi, whiteSpace: "nowrap" }}>{t.closes}</div>] : []),
   ]);
 }
 

@@ -8,6 +8,8 @@ import { LinkPending } from "./link-pending";
 import { ROOT_KEY, ROOTS, rootFor, type RootPath } from "@/lib/ui/root";
 import { rootMounted } from "@/lib/ui/roots-store";
 import { cn } from "@/lib/utils";
+import { dropKeyboard } from "@/lib/ui/viewport";
+import type { Prefetch } from "@/lib/ui/touch-fetch";
 
 /**
  * The shell (docs/design.md section 6): four destinations and one button. The bar renders on the four roots and
@@ -64,17 +66,34 @@ export function TabBar({ active, start }: { active: RootPath; start: boolean }) 
   /** The tab pressed and not yet arrived, so the bar shows the destination selected from the touch (9.6). */
   const [going, setGoing] = useState<RootPath | null>(null);
   useEffect(() => {
+    // The root itself, never the address: the bar stays mounted under the ask layer, whose address is no root, and back from the question just sent lands on the tab it was asked from.
     try {
-      sessionStorage.setItem(ROOT_KEY, path);
+      sessionStorage.setItem(ROOT_KEY, active);
     } catch {
       // Storage blocked (a private window): back lands on Now, which is always right enough.
     }
-  }, [path]);
-  // The root's scroll position, restored on arrival and remembered as it moves.
+  }, [active, path]);
+  // The root's scroll position, restored on arrival and remembered as it moves. Restored to the top as well:
+  // a root is arrived at with the scroll left alone, so one last seen at its top used to open wherever the
+  // screen before it had been, its header under the status band.
   useEffect(() => {
     const y = rememberedScroll(active);
-    if (y > 0) window.scrollTo({ top: y, behavior: "instant" });
+    let touched = false;
+    const restore = () => {
+      if (!touched && Math.abs(window.scrollY - y) >= 1) window.scrollTo({ top: y, behavior: "instant" });
+    };
+    restore();
     rootMounted(active);
+    // Now's content arrives after its shell (11.5), so the page may not yet be tall enough to be where it was: it is put there as it grows, until a finger says otherwise.
+    const grown = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(restore);
+    grown?.observe(document.body);
+    const settle = setTimeout(() => grown?.disconnect(), 3000);
+    const hands = () => {
+      touched = true;
+      grown?.disconnect();
+    };
+    window.addEventListener("touchstart", hands, { passive: true, once: true });
+    window.addEventListener("wheel", hands, { passive: true, once: true });
     let frame = 0;
     const onScroll = () => {
       cancelAnimationFrame(frame);
@@ -83,6 +102,10 @@ export function TabBar({ active, start }: { active: RootPath; start: boolean }) 
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => {
       cancelAnimationFrame(frame);
+      clearTimeout(settle);
+      grown?.disconnect();
+      window.removeEventListener("touchstart", hands);
+      window.removeEventListener("wheel", hands);
       window.removeEventListener("scroll", onScroll);
     };
   }, [active]);
@@ -92,7 +115,7 @@ export function TabBar({ active, start }: { active: RootPath; start: boolean }) 
     const idle = typeof requestIdleCallback === "function" ? requestIdleCallback : (cb: () => void) => setTimeout(cb, 1500);
     const cancel = typeof cancelIdleCallback === "function" ? cancelIdleCallback : clearTimeout;
     const handle = idle(() => {
-      for (const t of TABS) if (t.href !== "/") (router.prefetch as (href: string, options?: { kind: "auto" | "full" }) => void)(t.href, { kind: "full" });
+      for (const t of TABS) if (t.href !== "/") (router.prefetch as Prefetch)(t.href, { kind: "full" });
     });
     return () => cancel(handle as number);
   }, [active, router]);
@@ -104,6 +127,7 @@ export function TabBar({ active, start }: { active: RootPath; start: boolean }) 
       window.scrollTo({ top: 0, behavior: reduce ? "instant" : "smooth" });
       return;
     }
+    dropKeyboard();
     setGoing(href);
     rememberScroll(active, window.scrollY);
     startNav(() => router.push(href, { scroll: false }));
@@ -117,7 +141,7 @@ export function TabBar({ active, start }: { active: RootPath; start: boolean }) 
       {start ? <StartButton /> : null}
       <FixedLayer name="tab-bar">
         {/* At the viewport's bottom edge. The installed app on iOS lays a page that fits the screen out short of it and pins this above the real edge, so every root is at least tall enough to scroll (`Screen root`, docs/decisions.md 2026-09-27, "The band, properly this time"). */}
-        <nav aria-label="Main" data-tab-bar="" className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)]">
+        <nav aria-label="Main" data-tab-bar="" data-fixed="bottom" className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)]">
           <div className="mx-auto grid w-full max-w-[430px] grid-cols-4" style={{ height: TAB_BAR_HEIGHT }}>
             {TABS.map((t) => {
               const on = t.href === selected;
@@ -157,7 +181,7 @@ export function TabBar({ active, start }: { active: RootPath; start: boolean }) 
 export function StartButton() {
   return (
     <FixedLayer name="start">
-      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-[430px]">
+      <div data-fixed="bottom" className="pointer-events-none fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-[430px]">
         <Link prefetch href="/m/new" aria-label="Ask something" data-press="fill" data-start="" className="pointer-events-auto absolute right-5 bottom-[calc(80px+env(safe-area-inset-bottom))] flex h-14 w-14 items-center justify-center overflow-hidden rounded-pill bg-primary text-primary-foreground press-fill">
           <LinkPending look="control" />
           <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">

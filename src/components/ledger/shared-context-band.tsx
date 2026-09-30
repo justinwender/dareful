@@ -30,7 +30,8 @@ export function SharedContextBand({ personId, contexts, selectedId }: { personId
               scroll={false}
               href={selected ? `/p/${personId}` : `/p/${personId}?c=${c.groupId}`}
               aria-current={selected ? "true" : undefined}
-              className={cn("relative -my-1 inline-flex h-11 max-w-full items-center")}
+              data-press={selected ? "fill" : "line"}
+              className={cn("relative -my-1 inline-flex h-11 max-w-full items-center", selected ? "press-fill" : "press-line")}
             >
               <LinkPending />
               <span className={cn("inline-flex h-9 max-w-full items-center gap-1.5 rounded-pill border px-[14px] chip-context text-ink-2", selected ? "border-ink-3 bg-surface-2" : "border-line-strong", c.unnamed && !selected && "border-dashed")}>
@@ -42,7 +43,7 @@ export function SharedContextBand({ personId, contexts, selectedId }: { personId
         })}
         {more > 0 ? <span className="inline-flex h-9 items-center rounded-pill border border-line px-[14px] chip-context text-ink-3">and {more} more</span> : null}
         {selectedId ? (
-          <Link prefetch={false} scroll={false} href={`/p/${personId}`} className="relative inline-flex h-11 items-center px-2 link-tertiary">
+          <Link prefetch={false} scroll={false} href={`/p/${personId}`} data-press="line" className="relative inline-flex h-11 items-center px-2 link-tertiary press-line">
             <LinkPending />
             Clear
           </Link>

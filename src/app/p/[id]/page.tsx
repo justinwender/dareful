@@ -39,12 +39,12 @@ function unitForCard(d: NettableLine["denomination"]) {
 function netLines(view: { nettable: NettableLine[] }, meName: string, themName: string): NetLine[] {
   return view.nettable.map((n) => {
     const left = n.meOwes - n.theyOwe;
-    const where = n.groupLabel ? `, in ${n.groupLabel}` : "";
     return {
       groupId: n.groupId,
       denomId: n.denomId,
       cancels: words(n.denomination, n.cancels),
-      both: `You've got ${themName} ${words(n.denomination, n.meOwes)} and ${possessive(themName)} got you ${words(n.denomination, n.theyOwe)}${where}.`,
+      // What each has of the other, as two sentences and with no set named (docs/design.md 3.10, Cancelling out): "You’ve got Gabe $25. Gabe’s got you $10."
+      both: `You’ve got ${themName} ${words(n.denomination, n.meOwes)}. ${possessive(themName).replace(/'(s?)$/, "’$1")} got you ${words(n.denomination, n.theyOwe)}.`,
       after: left === 0n ? `After this you two are even on these.` : left > 0n ? `After this, you've got ${themName} ${words(n.denomination, left)}.` : `After this, ${possessive(themName)} got you ${words(n.denomination, -left)}.`,
     };
   });

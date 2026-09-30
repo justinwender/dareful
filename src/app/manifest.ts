@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { ABOUT_FIRST } from "@/lib/ui/copy";
 import { GROUND_DARK } from "@/lib/ui/opening";
 
 /** Installable as a PWA (PLANNING.md: web plus PWA install, no native app). On iOS, installing is what makes Web Push possible at all. */
@@ -6,7 +7,8 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "Dareful",
     short_name: "Dareful",
-    description: "A social ledger for friend groups, built around the friendly dare.",
+    // The first sentence of what the app is, the same one the plain card and the app's own description say (src/lib/ui/copy.ts).
+    description: ABOUT_FIRST,
     start_url: "/",
     scope: "/",
     display: "standalone",

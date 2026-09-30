@@ -1,6 +1,6 @@
 import type { NumericRecord } from "@/lib/ledger/calibration";
 import { NUMBERS_FLOOR, numbersCaption, numbersEarly, numbersHeadline } from "@/lib/ledger/you";
-import { hueVar, type Hue } from "@/lib/ui/hue";
+import { hueStrokeVar, type Hue } from "@/lib/ui/hue";
 
 /**
  * Numbers (docs/design.md 3.34): the average distance from the answer as a fraction of each market's scoring
@@ -23,7 +23,7 @@ export function NumbersSection({ record, hue }: { record: NumericRecord; hue: Hu
             <div className="flex flex-col gap-1">
               <div className="relative h-8" role="img" aria-label={`Your average distance is ${Math.round(record.meanMissBps / 100)}% of the range; guessing the middle would land at 25%`}>
                 <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-line-strong" />
-                {record.band ? <div className="absolute top-1/2 h-[6px] -translate-y-1/2 rounded-pill" style={{ left: at(record.band[0]), width: `calc(${at(record.band[1])} - ${at(record.band[0])})`, background: hueVar(hue), opacity: 0.45 }} data-numbers-band="" /> : null}
+                {record.band ? <div className="absolute top-1/2 h-[6px] -translate-y-1/2 rounded-pill" style={{ left: at(record.band[0]), width: `calc(${at(record.band[1])} - ${at(record.band[0])})`, background: hueStrokeVar(hue), opacity: 0.45 }} data-numbers-band="" /> : null}
                 <div className="absolute top-1/2 h-4 w-0 -translate-y-1/2 border-l border-dashed border-line-strong" style={{ left: "50%" }} aria-hidden="true" />
                 <div className="absolute top-1/2 h-5 w-[3px] -translate-x-1/2 -translate-y-1/2 rounded-[1.5px] bg-chalk" style={{ left: at(record.meanMissBps) }} data-numbers-mean="" />
               </div>

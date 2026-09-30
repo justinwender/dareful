@@ -135,27 +135,17 @@ export function dressedOnly(css: string): string {
   return css.replace(/(^|\n)([ \t]*)html, body\b/g, "$1$2html:not([data-dressed]), html:not([data-dressed]) body");
 }
 
-/**
- * The instrument's switch (docs/testing.md, the logo round): with `data-tally="off"` on `html` the strokes are
- * never drawn and the bare ground holds until the handoff, so a cold start can be timed with the count and
- * without it. It is the app's, after the design's style and outside it.
- */
-export const TALLY_OFF_CSS = `html[data-tally="off"] #opening .s { animation: none; }`;
-
-/** The switch itself, read before the first frame: kept on the phone like the Appearance choice, set only from "Measure the screen". */
-export const TALLY_SWITCH_SCRIPT = `(function(){try{if(localStorage.getItem("dareful.tally")==="off"){document.documentElement.setAttribute("data-tally","off")}}catch(e){}})();`;
-
-/** The first frame's inline style: the design's, with the ground handed to the tokens at the handoff. */
-export const OPENING_STYLE = `${dressedOnly(OPENING_CSS)}\n${TALLY_OFF_CSS}`;
+/** The first frame's inline style: the design's, with the ground handed to the tokens at the handoff, and nothing else. */
+export const OPENING_STYLE = dressedOnly(OPENING_CSS);
 
 /**
  * The one handoff (11.5): the design's two functions, called once, on the frame after the first screen's shell has
  * painted. On that same frame the document is marked dressed (Round D). Before any of it, the document is marked
  * as one whose content is still arriving, so what streams into the shell fades in (9.4). It never waits for data.
- * The two marks on the performance timeline are the instrument's (`src/lib/ui/cold-start.ts`): when the shell
- * had painted, and when Now's content began to fade in.
+ * The one mark on the performance timeline, when the shell had painted, is read by the http suite's watch over
+ * the opening and draws nothing.
  */
-export const OPENING_HANDOFF_SCRIPT = `(function(){var d=document.documentElement;d.setAttribute("data-arriving","");var mark=function(n){try{performance.mark(n)}catch(e){}};document.addEventListener("animationstart",function(e){var t=e.target;if(t&&t.hasAttribute&&t.hasAttribute("data-now"))mark("dareful:content")},true);\n${HANDOFF_JS}\nafterFirstPaint(function(){d.setAttribute("data-dressed","");mark("dareful:shell");handOffOpening();});})();`;
+export const OPENING_HANDOFF_SCRIPT = `(function(){var d=document.documentElement;d.setAttribute("data-arriving","");var mark=function(n){try{performance.mark(n)}catch(e){}};\n${HANDOFF_JS}\nafterFirstPaint(function(){d.setAttribute("data-dressed","");mark("dareful:shell");handOffOpening();});})();`;
 
 /** The four values the count is tuned by, read out of a style in milliseconds (the curve as written). Pure. */
 export function tallyOf(css: string): { beat: number; stroke: number; pace: number; curve: string; complete: number } | null {

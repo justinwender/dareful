@@ -35,7 +35,7 @@ export function FirstRun({ games = [], viewerHue = "stone" }: { games?: GameRowD
               <GameRow key={g.id} game={g} viewerHue={viewerHue} divider={i > 0} />
             ))}
           </div>
-          <Link prefetch={false} href="/on" className="relative self-start link-tertiary">
+          <Link prefetch={false} href="/on" data-press="line" className="relative self-start link-tertiary press-line">
             <LinkPending />
             See everything on What’s on
           </Link>
@@ -46,7 +46,7 @@ export function FirstRun({ games = [], viewerHue = "stone" }: { games?: GameRowD
           <ul className="flex flex-col gap-1.5">
             {STARTERS.map((line) => (
               <li key={line}>
-                <Link prefetch={false} href={`/m/new?line=${encodeURIComponent(line)}`} className="relative flex min-h-14 items-center rounded-button bg-surface px-4 py-3 text-body-strong text-ink">
+                <Link prefetch={false} href={`/m/new?line=${encodeURIComponent(line)}`} data-press="row" className="press-row relative flex min-h-14 items-center rounded-button bg-surface px-4 py-3 text-body-strong text-ink">
                   <LinkPending />
                   {line}
                 </Link>

@@ -47,6 +47,22 @@ Round D), following the phone's setting, with an Appearance row on You.
 
 ### What changed in this revision
 
+(Amended 2026-09-29, the QA round: a walk through the whole app on the simulator's installed app
+and Safari and in the real sessions, with the owner's findings first. Where a finding and this
+document disagreed the finding won, and each amendment is dated where it stands: the entry sheet
+going as the entry lands (3.13); the information sheet reaching the top with nothing in it pinned,
+and its icon part of the page (10.4, 10.5); a touch on a sheet being the sheet's (5.5, 9.9); what
+the drift of the fixed layers really is, and the guard for it (9.3); the phone's own swipe back and
+what the app does not add to it (6.4, 9.7); fetching on the touch and the history's entry at the
+tap (9.4); the steps of asking standing only at their own address (9.5); the room of a question
+being asked in both themes (8.8); "Measure the screen" gone (3.34, 11.5); the game page joining
+its asker's people, sharing by the icons, and its sentences (3.33, 3.38, 3.42); the game's link
+tile (3.27); a tap counting only on the control it began on, a side raising an argument's sheet,
+and the claim card replacing the entry line (3.24); a ghost's screen through every state and a
+phone that remembers a ghost (3.17); the Decided chips as days in the asker's zone (3.29); every
+server-drawn clock in the viewer's zone from the first screen (4.6). The decisions, each with what
+was rejected, are in docs/decisions.md, "The QA round".)
+
 (Amended 2026-09-29, the logo round: the logo arrived, with its own note, `docs/design/reference/LOGO.md`,
 which wins on anything visual about the logo. The placeholder of 11.2 is the mark, a tally of four
 strokes and a fifth crossing them; the launch images are the bare ground and the first frame counts
@@ -948,6 +964,15 @@ the full weight line under it and the icons at the end of the who's-in row (3.42
 navigation. With `prefers-reduced-motion`, the resting state renders at once. The growth is the
 reveal as well as the receipt: other people's weight is never visible before you are in.
 
+(Amended 2026-09-29, the QA round, the owner's finding: the sheet goes in the same moment the entry
+line appears, not 1.8 seconds after it. As built the entry line was on the screen at once and the
+entry sheet stayed beside it, lowered, with a slider that took no touch, until the clock ran out: a
+hold left from when the sheet then turned into "Send it to the chat", which 3.42 removed. The
+columns still grow in the page, which is the receipt. The header of 3.38's entering moment, "You're
+in at 70%" in the sheet, is not built and is not needed: the entry line says it. 9.9's leaving
+motion for a sheet that loses its move is not drawn either; the sheet is simply gone, as it was at
+1.8 seconds.)
+
 ### 3.14 Empty and first-run states
 
 - **Now, before anything** (`FirstRun`): today's date as a label, the `serif-xl` headline
@@ -1089,7 +1114,11 @@ outlives the chat it was sent to. Neither says what anyone picked or what it cou
   the sheet one step further instead of sending: "Who's joining?" in `body` 600 with the entry's
   summary on the right in `caption` ("70% · 2 beers"), then two fields, each a `label` over an
   empty 48px field, "Your name" and "Your phone number". Under them one `caption`: "Nothing gets
-  sent to it. Sign in with this number later and your entries are waiting." Then the chalk,
+  sent to it. Sign in with this number later and your entries are waiting." (Amended 2026-09-29,
+  the QA round: "Your name" refuses an address, a tag, a phone number or a handle with dots or
+  underscores inside it, in the field's own sentence, "Say what your friends call you.", the same
+  way an empty name is refused; the sign-up step "What do your friends call you?", not drawn and
+  in place since 2026-09-19, refuses the same with the sentence under the field.) Then the chalk,
   which names who was typed ("Join as Alex") and stays disabled until both fields are filled,
   and a 44px tertiary "Have an account? Sign in".
 - **Is one of these you?** (frame 4). Someone who joined this group before without an account
@@ -1113,6 +1142,20 @@ outlives the chat it was sent to. Neither says what anyone picked or what it cou
   stranger.
 - **Signed in** (frame 7): the raised sheet holds the stake chips and "I'm in at 70%, 2 beers",
   with "Joining as Sam · Not you?" under it, and nothing after it.
+
+(Amended 2026-09-29, the QA round. **A phone that remembers a ghost** meets frame 7 the same way:
+the entry goes to the ghost the browser holds a token for, whatever name is typed (one phone,
+one ghost, PLANNING.md section 4), so the sheet does not ask a name; it says "Joining as Wisp ·
+Not you?", and "Not you?" opens the same sheet with "This phone forgets them, and you join as
+yourself from the link." and "Forget them", which clears the browser's tokens. The entries
+already made stay under their name. **Once in, through every state:** frame 6 holds while it is
+open and once it is locked (the entry line with the clock alone, "Where everyone landed", who's
+in, the two facts, Sign in; the poll on the page while it is being called, since the pulse admits
+a ghost whose token names a position), and once it has ended the outcome line in the question's
+own words, or the ending ("Nobody could tell.", "Called off.", "Never settled."), stands where
+the entry line stood, over who's in and the facts. The "Closed" and "Finished" sheets are for a
+visitor who never got in. Production showed the ghost who's in row and facts first, the Closed
+sheet over their entry once locked, and "This one's finished." once settled.)
 
 **The number, and signing in later.** No code is texted, because texting isn't set up. The
 number isn't checked when someone joins; it is how their entries find them. When they sign in
@@ -1378,7 +1421,9 @@ at midnight from a beer you could confirm next week.
 Words beside a mark: a clock, when the state has one ("Voting ends at midnight", "Closes
 tonight", "Resolving tonight"), or, on a needs-you row, the reason the row exists: who said what
 happened, or how many are in ("Priya says yes", "4 of 6 in"). Any other sentence about state is
-what the mark is replacing. Every mark carries an `aria-label` with the state name, because a
+what the mark is replacing. (Amended 2026-09-29, the QA round: the asker's Close row gives the
+count as its reason, "6 of 6 in", never "Everyone's in"; a count of one takes the singular, "1 of
+5 has called it".) Every mark carries an `aria-label` with the state name, because a
 screen reader cannot see a dashed ring.
 
 ### 3.24 The sheet
@@ -1480,6 +1525,18 @@ there is one), "Yep, all 6 are right" on the claimant screen.
 
 It never counts down at you. Clocks live in the question band. Citron appears only when a vote
 has a deadline and you have not said. No badges, no timers in the sheet.
+
+(Amended 2026-09-29, the QA round. **A tap counts only on the control it began on.** The sheet
+moves under a finger: a touch on the odds line raises it, and the primary rises into the spot
+where the line was. On a phone the click is dispatched to whatever is under the finger when it
+lifts, so on production one 60ms tap on the line went down on the line and came up on "I'm in
+at 77%, $5", and entered the person. The sheet keeps the target the pointer went down on and
+refuses a click on a control that does not contain it (`taps.ts`); a keyboard's, a screen
+reader's or a script's click carries no pointer and always counts, and a press on something
+since redrawn cannot be judged and counts. Under Reduce Motion the sheet jumps, which is the
+case that made the rule certain. **Taking a side on an argument** raises the sheet as the line
+does, so the stake and the primary come into view. **Once voting opens** the claim card replaces
+the entry line (3.38), on the claimant's screen and the voter's alike; the picture stays.)
 
 ### 3.25 The question band and the market screen
 
@@ -1686,7 +1743,16 @@ centred on a tie, the real margin as the cream tick. Stamps on tiles follow 1.7,
 never a logo. When a game is started with more than one question, the link sent is the game
 page's, and its asking tile puts the game where the question would be: "Priya asks", the two
 stamps at 88px either side of "Chiefs at Bills" in serif at 52px, the chosen questions as up to
-four rows at 40px 600, and the close time.
+four rows at 40px 600, and the close time. (Amended 2026-09-29, the QA round, from the build: the
+game tile could not be drawn as written for most games ("Red Sox at Yankees" at 52px is 515px
+between two 88px stamps in a 630px square, and the questions as 3.33 words them run to 878px at
+40px 600). It is now "Priya asks" (a 64px avatar and 48px 600); the away stamp at the left edge
+of the square and the home stamp at the right, 88px each, square, with the game's name in serif
+between them on two lines broken after "at" ("Red Sox at" over "Yankees"; 52px when both lines
+are eleven characters or fewer, 44px otherwise); the chosen questions as the menu's short names
+(Who wins, By how much, Total points, the first drive) in up to four rows at 40px 600; and the
+close time. Every height is a constant (`GAME_TILE`), nothing wraps, and the 48px band stays
+clear. A missing name reads "A friend".)
 
 Rendering: server-side (Satori or equivalent) with Noto Color Emoji loaded for emoji marks and a
 sticker's 256px derivative read from the bucket on the server. Both fail silently when
@@ -1800,7 +1866,14 @@ never again.
 say how the answer is counted and the write-up differs by kind. The chips show only for a dare:
 an argument is always yes or no. The pace and mode chips the step already has (dare or argument,
 quick or careful) sit under the band above these, as built. A number market's unit is proposed
-by the model with the terms and is editable on the terms step. "Pick one" opens the answers
+by the model with the terms and is editable on the terms step.
+(Amended 2026-09-29, the QA round: **the Decided chips on the terms step** are Tonight,
+Tomorrow, This week and This month, and each chip's word is the word the screen reads back.
+Tonight and Tomorrow are a minute before midnight of that day in the asker's own zone, whatever
+the hour; the week and the month are seven and thirty days from now, since their words are never
+read back as a day. They were fixed hour counts, so "Tomorrow" asked at 8:26pm read "Closes
+Thursday" and "Tonight" asked after four read "Closes tomorrow". Tonight chosen after eleven
+closes within the hour, which is listed for the owner.) "Pick one" opens the answers
 editor (`PickOneEntry`, frame 1):
 
 - "The answers" in `label`, then one 44px row per answer on the market's surface, radius 10, 1px
@@ -2064,12 +2137,27 @@ with. From What's on, a game you are on with one group opens that group's page; 
 more, the most recent, with the groups as context chips (3.19) under the header to switch
 between; with none, the start below.
 
+(Amended 2026-09-29, the QA round, the owner's finding. An address that names a set the person
+is not in is that set's link, signed in or not: the header, "Everything closes at kickoff."
+("Everything closed at kickoff." once it has started), and the set's questions as plain rows,
+each opening its own screen, where the usual arriving-from-a-link step (3.17) seats them in the
+asker's set. Signed in it has Back and nothing about signing in. It is never the start and never
+the page of another set of theirs, and nothing joins by opening it: the join is a tap on the
+question they open. The start stays what someone sees with no set named and none of their own
+on the game.)
+
 **The header** is a band on `--surface-2`, since the page is the neutral room and each question
 keeps its own ink (7, step 5): the two 44px team stamps on the left, the start time in `label`
 `--ink-2` on the right ("Sun 4:25pm"), the game in `serif-l` ("Chiefs at Bills"), and one
 `caption` saying who asked and when everything closes ("You asked the Friday crew. Everything
 closes at kickoff."). Controls: back, and More once the game has been started. The questions in
-the cards are `body` 600, because the title takes the screen's serif (1.2).
+the cards are `body` 600, because the title takes the screen's serif (1.2). (Amended 2026-09-29,
+the QA round, the owner's finding: the caption names the set as a sentence does (3.38), never as
+its chip does: "You asked the Friday crew.", "JP asked you.", "You asked JP.", "You asked." for a
+set of only the asker, "Theo asked · Papa's birthday." The chips that switch sets are a group
+named "Who you're on this with". While the game is ahead the who's-in row (3.42) is the last
+thing on the page, in place of "Send it to the chat" and "Copy". A question that was called off
+(3.15) is not on the page, makes no set one of the game's, and can be added again.)
 
 **Starting a game** (frame A). Groups have no admins, and that stays: whoever starts a game from
 What's on is its asker, and the asker already chooses the question, so they choose which
@@ -2195,7 +2283,9 @@ with anyone else.
   mark, the middle half of your distances is a 6px band in your hue at 0.45, and a dashed
   reference at 25% is labelled "guessing the middle". That is the average distance of a guess at
   the centre of every range, if answers fell anywhere in it. The caption reads "7 number
-  markets. The band is the middle half of them; the cream line is your average."
+  markets. The band is the middle half of them; the cream line is your average." (Amended
+  2026-09-29, the QA round: "the line is your average". The line is the chalk, cream in dark and
+  graphite in light (section 8), so the caption names no colour.)
 - The floor is 5 resolved number markets. Under that, one line ("Numbers draw at 5 number
   markets. 2 so far."); with none at all, the section is not rendered.
 
@@ -2225,7 +2315,10 @@ else sees it."), "One tap" ("Settling, calling it even, saying yep, getting in. 
 asks.") with a switch where the chevron would be (3.41), and "Sign out" with no caption, which
 asks once in a sheet (3.12, destructive). Sign out is the one way to leave the product, and it
 lives only here (4.7). While the build is still finding the cause of the installed app's bottom
-band, a tertiary "Measure the screen" sits under the card; it leaves with the cause. After
+band, a tertiary "Measure the screen" sits under the card; it leaves with the cause. (Amended
+2026-09-29, the QA round: it has left, from You and from Now, with the cold start's readings and
+the switch that opened without the count; the band was read gone on People and on You in the
+installed app first, with nothing open.) After
 submission, an "Appearance" row joins the card (8.1). When pass the phone is built (3.45, the
 round after this one), "Your PIN for a friend's phone" joins it under One tap; until then it is
 not drawn on `You`.
@@ -2512,7 +2605,10 @@ screen (3.37). There is no story that opens in place: tapping the card opens tha
 **Who's in** (`Ask`, 3.20). The band holds the 44px stamp, "Your question" in `label` `--ink-2`
 and a 44px tertiary "Edit" on the right that returns to the question step, then the question in
 `serif-l`. Under it, "Who's in?" in `body` 600 and one `caption` `--ink-3`: "Everyone you pick
-gets the link. Nobody needs an account to look." Then the rows of 3.20, the naming prompt under
+gets the link. Nobody needs an account to look." (Amended 2026-09-29, the QA round: for an
+argument the heading is "Who's on the other side?" and the line under it "An argument is between
+two of you. Everyone else you're on this with can watch, and helps call it." A screen names the
+people; "the set" is this document's word.) Then the rows of 3.20, the naming prompt under
 the selected row when it applies, and last the dashed "Someone else" row, whose caption is "Pick
 people, or just send the link around". The sheet: the chalk "Set the terms" alone.
 
@@ -2555,13 +2651,24 @@ when things were logged under their name before they had an account.
 **The market screen, before and after you're in** (`MarketDock`, `JoinLink`, `BlindSlow`). The
 participant stack under the band is 28px avatars and one `caption`. Before you're in: "3 friends
 are in. Where they landed shows once you are.", with a 20px lock glyph in `--ink-3` on the
-right. After: "4 of you in", the row moves under the picture, the count goes under the stack,
+right. (Amended 2026-09-29, the QA round: with nobody in, which is how a game opens every
+question, the line is "Nobody's in yet." alone, with no second sentence, on the member's screen
+and the link page alike; one is "One friend is in"; the two screens read one function, words on
+the link page and digits on the member's screen.) After: "4 of you in", the row moves under the picture, the count goes under the stack,
 and the icons end it (3.42). While some of the people asked are still out, on any market: "4 of
 6 in", with them as dashed avatars. From a link, signed out: "4 friends are in". While the
 entering moment runs (3.13), the sheet's header reads "You're in at 70%" on the left and the
 stake on the right. The asker line names a set as "Priya asked the Friday crew"; a set whose
 name can't take "the", such as a possessive, reads "Theo asked · Papa's birthday"; an unnamed
-set names its people ("Priya asked Gabe, John and you", three names and then "and 3 others"). A
+set names its people ("Priya asked Gabe, John and you", three names and then "and 3 others").
+(Amended 2026-09-29, the QA round: the line is written from the set's name and its people, never
+from the chip's label. Two people read "JP asked you" and, to the asker, "You asked JP". A set
+of only the asker reads "You asked" with nothing after it. An unnamed set names its people
+around the asker, who is never in her own list, with the viewer last as "you": "Priya asked
+Gabe, John and you", "You asked Priya, Gabe and John". Past three names the rest are counted,
+the viewer among them, "and 1 other" in the singular. The same rule writes every sentence that
+names a set: "You're on this with the Friday crew" (3.32), "For the Friday crew" (3.25) and the
+claimant screen's line.) A
 slow market's time series is headed "The group's number since Tuesday" in `label`, with its days
 under it in `caption` ("Tue", "Thu", "now") and the current value in 13px 600 at the right end.
 
@@ -3274,7 +3381,12 @@ else. A line opens with a number only when the number is what the line is about:
 the count is the subject ("3 of 6 say Priya.", "3 friends are in.", "40 yes-or-no calls since
 March."), or a number the person just typed, said back to them ("2,400 shirts is past the limit
 here."). Everywhere else, words come first. Times are relative for the last week inside the app
-("Sat, Sep 12" after that) and always absolute on a link tile. No exclamation marks in system
+("Sat, Sep 12" after that) and always absolute on a link tile.
+(Amended 2026-09-29, the QA round: every clock the server draws is in the viewer's zone from the
+first screen, not only the relative ones. The zone reaches the server in one cookie, written from
+the root on every screen once per browser (`ZoneReporter`), and the one screen drawn before it
+was known is asked for again. It used to be written only by a relative timestamp, so a new
+account and a friend from a link read "Decided tomorrow" for a Thursday close.) No exclamation marks in system
 copy. The app never thanks the user for settling something and never congratulates anyone for
 winning.
 
@@ -3691,6 +3803,12 @@ arrive, with "Still writing." and "The terms stopped partway." as their words. A
 block draws "Try again" for a failure a retry could put right (5.1), never for a refusal at a
 field. Round C part 2's ten-second step under a control is this rule's first half.)
 
+(Amended 2026-09-29, the QA round: "Try again" under a control that has not come back is the same
+tap again, whatever the control is. Under a control that submits a form it did nothing, since such
+a control has no handler of its own; the form is now submitted again. And an answer lands only
+where it was asked: one that arrives after the person has gone on, or changed what they typed,
+moves nothing.)
+
 **On its way, and didn't go through** (`OnItsWay`). Pending covers the wait for the app to have
 the tap. Some taps then take longer to go through, because what they change is recorded
 underneath: settling, calling it even, saying yep, getting in, a vote. The screen does not wait
@@ -3746,7 +3864,9 @@ Pulling only helps someone who thinks to pull, so there are three pieces.
   travels 72px re-reads what is on screen, one server render and never a reload. A 2px line
   under the status band fills with the pull and runs while the read is on, in `--ink`, the same
   runner a working button carries (5.2). No spinner. A touch inside a modal sheet belongs to the
-  sheet.
+  sheet. (Amended 2026-09-29, the QA round: a touch that starts on a sheet, pinned or modal, or
+  in the steps of asking belongs to it. A drag down on the pinned sheet's handle with the page at
+  its top used to fill the line and re-read the screen as the sheet lowered.)
 - **A re-read on return** to the foreground after more than two seconds away, which covers
   switching to Messages and back, and on a page restored from the back-forward cache.
 - **A light poll on a locked market**, from lock until it settles: every six seconds while the
@@ -3861,7 +3981,11 @@ it. Groups are not a destination for the reasons in 4.7.
   controls sit where the bar would be, under a one-line consequence ("Two more and it settles").
 - Every non-root screen has a 48px back control at its top left, and back lands on the root it
   came from. The app is installed with no browser chrome, so this is the only way home. A market
-  screen reached from a link while signed out shows the wordmark instead.
+  screen reached from a link while signed out shows the wordmark instead. (Amended 2026-09-29,
+  the QA round: the installed app on an iPhone does have one more way, the phone's own swipe from
+  the left edge, which walks the history and which the phone animates itself. The app adds nothing
+  of its own on top of it, 9.7. What that swipe lands on after the back control has been used is
+  not ruled: the control adds to the history and does not walk it.)
 - For the hackathon, the top-right corner of every screen is the information icon (10). A
   screen's own control from that corner (More, "Got a code?") sits directly left of it, and the
   full-screen photo's close moves to the top left (10.3).
@@ -4073,7 +4197,10 @@ and nothing else depends on the grain.
 `globals.css` gains a `[data-theme="light"]` block, and the same values under `@media
 (prefers-color-scheme: light)` for `:root:not([data-theme="dark"])`, holding 1.1's Light column,
 `--live-edge`, and the light layers of the eight inks, which `inkVars` reads for the current
-theme. The component changes are the four drawn rules: the citron's edge, the person-hue variant
+theme. (Amended 2026-09-29, the QA round: `inkVars` is gone. It read the dark table alone and set
+it inline on the steps of asking, so a question with a mark turned its room dark inside a light
+app, under light type; an argument was only where the owner met it. The room wears its ink as the
+market's own screen does, one style element with both themes' layers, scoped to the room.) The component changes are the four drawn rules: the citron's edge, the person-hue variant
 for strokes and washes, the avatar's edge, and the light grain tile. Everything else is the
 swap, which is why `LightScreens` could be made from the dark boards by the values plus those
 four rules and nothing more. `data-theme` is read by the inline script in the head (8.1) and by
@@ -4183,6 +4310,29 @@ in the browser check. A fixed layer renders in place on the server, so the first
 is portalled to the host once hydrated. The grain and the band behind the status bar are layers of
 the shell too, painted from `--ground` on `html`, which a market's own screen swaps for its ink.)
 
+(Amended 2026-09-29, the QA round: the drift outlived the layers. In the owner's two pictures every
+fixed box is off its place by exactly the page's scroll, the grain and the band behind the status
+bar among them, and no ancestor of those two can capture them: they are the app root's own
+children. So the sentence above names a cause the phone never confirmed. What the pictures fit is
+the phone's own viewport left out of step after a keyboard: a browser lays fixed boxes against its
+layout viewport and shows the visual one, and with the two apart every fixed box rides with the
+page. Read on the simulator with the keyboard up, the same picture exactly; the simulator's own
+system puts the two back when the keyboard goes, and the owner's phone does not. The rule of this
+section stands, since a captured layer would drift the same way, and three things are added. The
+keyboard leaves by a blur before the field that holds it is taken off the page (a step changing,
+an entry landing, a sheet closing). After a keyboard, the page is put back where it was before the
+phone moved it, which is also a request to read the viewport again. And while the phone still
+reports the two apart with nothing typing, a guard writes the two distances on `html` and each
+fixed box moves itself by them, by a `translate` on the box, the ones pinned to the top by one
+distance and the ones pinned to the bottom by the other; nothing that contains a layer ever moves.
+Every fixed box says which edge it is pinned to (`data-fixed`). A task screen that fits the screen
+is laid out short by the installed app as a root was (3.24's sheet sat 62 points above the real
+edge on the simulator), so every screen that is the document's own is a pixel taller than the large
+viewport, not the roots alone. The names on the fixed layers are on wrappers that draw no box, so
+as built the tab bar, the Start button and the sheet ride inside the page's snapshot in a
+transition and the fades this section gives them do not run; that is left as it is, for the
+owner, since named fixed boxes are a new thing for a phone to place while a page is scrolled.)
+
 A transform is on an element only while its motion runs. At the end it is removed (`transform:
 none`, never left at `translateY(0)`), and a motion that is interrupted, by a tap or a route
 change, removes it too, so no transform outlives its motion.
@@ -4272,6 +4422,14 @@ client from what it holds, never by a route-level streamed loading state, so rou
 answering with real status codes (5.3). (Amended 2026-09-29: at a cold start there is no client
 yet, so Now's shell is the one the server sends first, 5.3 and 11.5.)
 
+(Amended 2026-09-29, the QA round, the owner's finding. A market's screen is asked for when the
+finger lands on its row, so it has usually arrived by the time the opening has run; the row still
+opens on release. One request a touch: the whole screen while the router knows the route, its shape
+alone otherwise, which is cheap and makes the next touch a whole one. A game's row does the same.
+And the history gains its entry at the tap, before the shell is drawn: the phone keeps a picture of
+the screen being left at the moment an entry is added and shows it under its own swipe back, and
+with the shell already up that picture was the market's band over the list.)
+
 ### 9.5 Starting to ask
 
 The + opens the ask layer: fixed, full screen, a sibling of the tab bar, holding the steps of
@@ -4292,6 +4450,10 @@ something" on an empty Now opens it the same way. Boards: `AskSteps` (interactiv
   and the root is live again as it was.
 - Nothing on the question step waits on the server, so nothing about its arrival waits either.
   The saved groups that who's in will show are fetched when it opens.
+- (Amended 2026-09-29, the QA round.) The layer stands only while the address is asking's own. A
+  question just sent opens at its own address, and the layer used to stay up over it with the terms
+  step still showing, so a second tap on "Send it" sent the same question again and was refused. A
+  question is sent once: the second tap opens the draft the first one made.
 
 With Reduce Motion, the layer fades in over base and fades out over base.
 
@@ -4380,6 +4542,17 @@ the root the router holds.)
 
 With Reduce Motion nothing travels: the market fades in over the list, which holds, over base,
 and back is the same the other way.
+
+(Amended 2026-09-29, the QA round, the owner's finding. **A traversal**, a move through the history
+that the app did not make by a tap of its own, above all the phone's swipe from the left edge: the
+phone has already brought the screen in, so none of the app's motion runs on top of it. No view
+transition, no arrival, no fade of what arrives, no layer rising; a shell that was up is dropped at
+once. It is told from a tap by the browser's own word on the event (`hasUAVisualTransition`, read
+true on the simulator's installed app), and where that is missing by a touch that began within 30px
+of a side edge and was never released to the page. On Back by the app's own control the list fades
+in from 0, as this section says, where the build waited the opening's 120ms. On a game page the
+header and the tapped card both wore `market-ink`, so the phone found two and skipped the
+transition; the name is now one element's at a time, as 9.3's second rule says.)
 
 ### 9.8 The steps of asking
 
@@ -4476,6 +4649,16 @@ page's padding changes at the end.
 leave curve. A drag on the handle row follows the finger; on release the sheet closes if it has
 gone a third of its height or was flicked down, and otherwise returns over base on the move
 curve. The page behind holds still and does not dim (1.5).
+
+(Amended 2026-09-29, the QA round, the owner's finding: a drag that starts on a sheet's handle row
+moves the sheet and nothing else. The row claims the drag twice, by `touch-action: none` and by
+cancelling the touch's moves, and a pull to re-read never starts on a sheet, 5.5. As built the
+modal sheet did not follow the finger at all: its rise stayed on it and outranked its own
+transform, so the class is now dropped once the rise has run. Its close sits beside the handle row,
+not in it. Its handle row and close stay where they are while what is under them scrolls. A modal
+sheet whose content fits takes no pan, so the page behind cannot be moved from inside it. The
+pinned sheet travels when the screen raises or lowers it, as it does under a finger, and the box it
+is laid out in takes no touches of its own, so the page above a lowered sheet is still the page's.)
 
 **Swipe rows** on Now (3.15) follow the finger; on release a row opens to 76px or closes over
 base on the move curve, and after a remove or an archive it collapses over base, as 3.15 already
@@ -4682,6 +4865,13 @@ The sheet is 16px in from each side, as every sheet is, and its type is 13, 15 a
 header row, with its icon, stays in view above it; past that the content scrolls under the
 pinned header row.
 
+(Amended 2026-09-29, the QA round, the owner's ruling. The sheet is as tall as its content and may
+reach the top of the screen, stopping under the status bar, so a long one covers the screen's
+header row and its icon. The screen's name and the fixed line are not pinned: they scroll with the
+entries, since pinned they stood as a banner with the entries showing above it as they passed
+behind. The grabber and the close are the sheet's own and stay where they are. This replaces the
+88% cap and the pinned header row of item 1.)
+
 In light, the sheet is the light surface with the light line, and the glyphs, terms and
 descriptions take the light `--ink`, `--ink-2` and `--ink-3`. Nothing else changes.
 
@@ -4694,6 +4884,13 @@ above it and toggles it. The page behind holds still. The layer that moves is `m
 `translateY` on the sheet itself (9.3). With Reduce Motion it fades in over base and out over
 quick (9.11). Opening it does not change the screen's scroll position, and closing it returns
 focus to the icon.
+
+(Amended 2026-09-29, the QA round: the icon is part of its page and never stands above a layer, so
+the sheet, the steps of asking, a shell and the full-screen photo each cover the icon of the page
+under them. Standing above them all, a root's icon showed through the steps of asking as a second
+icon inside the question card, and moved as the root moved. The sheet closes from its close and
+from a drag down on its handle row; where a short sheet leaves the icon in view, a tap there closes
+the sheet like any tap outside it.)
 
 ### 10.6 Writing a sheet
 
@@ -4953,6 +5150,11 @@ seen only when the first frame is on the screen and the shell is not yet, which 
 slow network and little else. What comes before the page's first byte, the phone starting the app
 and the server waking, is the launch image's to cover. The scheduler asks for Now's address once a
 minute, as nobody, so the server that answers for Now stays awake.)
+
+(Amended 2026-09-29, the QA round: the instrument that read the cold start on a phone, and its
+switch that opened without the count, left with "Measure the screen". Production's own record
+shows the visit to Now's address arriving with every tick, once a minute, and Now's first byte at
+0.11 to 0.25 seconds where a sleeping server took 2.9.)
 
 The opening runs on a cold start only. Coming back to the app from the background shows it as it
 was, and 5.5's re-read keeps it current.

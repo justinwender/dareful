@@ -87,6 +87,25 @@ export function useWaitStage(waiting: boolean): WaitStage {
   return block ? waitStage(true, TRY_AGAIN_MS) : still ? waitStage(true, STILL_GOING_MS) : held ? waitStage(true, RUNNER_MS) : "none";
 }
 
+/** The form a control submits: the one named on it, else the one it sits in. */
+function formOf(props: { form?: string }, last: React.MouseEvent<HTMLButtonElement> | null): HTMLFormElement | null {
+  if (typeof document === "undefined") return null;
+  const named = props.form ? document.getElementById(props.form) : null;
+  if (named instanceof HTMLFormElement) return named;
+  const el = last?.currentTarget;
+  return el instanceof HTMLButtonElement ? el.form : null;
+}
+
+/**
+ * What "Try again" does under a control that has not come back (5.2): the same tap again. A control with its own
+ * handler runs it; a control that submits a form has no handler of its own, so its form is submitted again. Pure
+ * but for the two calls it makes, so a test can hold which one it picks.
+ */
+export function retryOf(control: { type?: string; form: Pick<HTMLFormElement, "requestSubmit"> | null; click: (() => void) | null }): void {
+  if (control.click) return control.click();
+  if (control.type === "submit" && control.form) control.form.requestSubmit();
+}
+
 export function Button({ className, variant = "secondary", size, loading, disabled, children, onClick, type, ...props }: ButtonProps) {
   const stage = useWaitStage(Boolean(loading));
   const pending = stage === "pending" || stage === "still";
@@ -105,6 +124,8 @@ export function Button({ className, variant = "secondary", size, loading, disabl
           busy
             ? undefined
             : (e) => {
+                // Kept for "Try again": React reuses nothing of the event, and only its target is read later.
+                e.persist?.();
                 lastClick.current = e;
                 onClick?.(e);
               }
@@ -120,7 +141,7 @@ export function Button({ className, variant = "secondary", size, loading, disabl
         ) : null}
       </button>
       {long ? <span className="text-center text-caption text-ink-3">Still going.</span> : null}
-      {stage === "block" ? <ProblemSummary messages={[NOTHING_CAME_BACK]} retry={() => (lastClick.current ? onClick?.(lastClick.current) : undefined)} /> : null}
+      {stage === "block" ? <ProblemSummary messages={[NOTHING_CAME_BACK]} retry={() => retryOf({ type, form: formOf(props, lastClick.current), click: lastClick.current && onClick ? () => onClick(lastClick.current as React.MouseEvent<HTMLButtonElement>) : null })} /> : null}
     </>
   );
 }

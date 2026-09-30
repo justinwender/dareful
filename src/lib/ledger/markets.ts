@@ -116,6 +116,16 @@ export function stateOf(d: DareRow): MarketState {
 
 // ------------------------------------------------------------------------------------------------ reading
 
+/**
+ * Whether this id is already this person's own draft (docs/decisions.md 2026-09-29): the ask flow makes the id
+ * on the question step, so a second tap on "Send it" carries the id the first one saved under. The draft it made
+ * is the answer, never a second insert; an id that belongs to anything else is refused.
+ */
+export function draftAlreadySaved(existing: Pick<DareRow, "creatorId" | "creatorSignature"> | null, creatorId: string): "new" | "saved" | "taken" {
+  if (!existing) return "new";
+  return existing.creatorId === creatorId && existing.creatorSignature === null ? "saved" : "taken";
+}
+
 export async function marketById(id: string): Promise<DareRow | null> {
   const [row] = await db.select().from(schema.dares).where(eq(schema.dares.id, id)).limit(1);
   return row ?? null;
@@ -388,10 +398,23 @@ export async function withdrewHostedEntry(dareId: string, userId: string): Promi
   return Boolean(row);
 }
 
+/**
+ * The close is a hard cutoff (CLAUDE.md; docs/design.md 3.33 for a game, which closes at kickoff): once a
+ * question's own time has passed nobody gets in or changes, whether or not the tick has locked it yet, since the
+ * outcome may already be knowable. The tick locks at the time only with two in, so without this a question with
+ * one person in stayed enterable after its close. An argument has no time until its second entry, and locks the
+ * moment it does, so it is never past its time here. Pure, and shared with the entry made without an account.
+ */
+export function pastItsClose(d: Pick<DareRow, "pace" | "resolvesBy">, now: Date): boolean {
+  return d.pace !== "argument" && d.resolvesBy !== null && d.resolvesBy.getTime() <= now.getTime();
+}
+
 export async function enterMarket(input: { dareId: string; userId: string; stake: bigint; value: bigint; signature: Hex; /** The host, when the entry was made on a friend's phone (3.45); the person themselves otherwise. */ enteredBy?: string }): Promise<PositionRow> {
   const d = await marketById(input.dareId);
   if (!d) throw new MarketError("That one doesn't exist.", "not_found");
   if (stateOf(d) !== "open") throw new MarketError(stateOf(d) === "draft" ? "It isn't open yet." : "Numbers are locked.", "wrong_state");
+  // Past its time and not yet locked: the same refusal as after the lock, since to the person it is the same fact.
+  if (pastItsClose(d, new Date())) throw new MarketError("Numbers are locked.", "wrong_state");
   if (!(await isMember(d.groupId, input.userId))) throw new MarketError("This one is for the people in its group.", "not_member");
   if (!valueAllowed(d.kind, input.value, d.outcomeLabels.length)) throw new MarketError(d.kind === "numeric" ? "Any whole number, up to nine digits." : d.kind === "categorical" ? "Pick one of the answers." : "A number from 0 to 100.", "bad_input");
   const denom = await denominationById(d.denomId);

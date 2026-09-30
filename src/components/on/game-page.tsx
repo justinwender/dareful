@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { SignInButton } from "@/components/auth/sign-in-button";
-import { InviteShare } from "@/components/ledger/invite-share";
 import { MarkRefStamp } from "@/components/ledger/mark-stamp";
 import { MediaFrame } from "@/components/ledger/media-frame";
 import { Screen, SectionLabel, TopBar } from "@/components/ledger/screen";
@@ -11,7 +10,9 @@ import { LiveDot, StateMark } from "@/components/ledger/state-mark";
 import { TeamStamp } from "@/components/ledger/team-stamp";
 import { WhoHasWho } from "@/components/markets/leaderboard";
 import { PhotoAdding } from "@/components/markets/photo-adding";
+import { PhotoProblem } from "@/components/markets/photo-problem";
 import { SetupSheet } from "@/components/markets/setup-sheet";
+import { WhosInRow } from "@/components/markets/whos-in-row";
 import { LinkPending } from "@/components/ui/link-pending";
 import { GameHeader, StartGame, type MenuItem } from "@/components/on/start-game";
 import { EmptySlot } from "@/components/markets/empty-slot";
@@ -19,15 +20,17 @@ import { currentUser } from "@/lib/auth/session";
 import { contracts } from "@/lib/chain/contracts";
 import { daresDomain } from "@/lib/chain/typed-data";
 import { denominationsByIds, denominationsForGroup } from "@/lib/ledger/denominations";
-import { peopleForUser, peopleSetsFor } from "@/lib/ledger/groups";
+import { askerLine, peopleForUser, peopleSetsFor } from "@/lib/ledger/groups";
 import { marketCards, numbersVisible } from "@/lib/ledger/market-view";
 import { answersOf, openInksByGroup, positionsOf, recentCompanions, stateOf, unitOf, VOID_OUTCOME } from "@/lib/ledger/markets";
 import { nightHeading, restOfThatNight } from "@/lib/ledger/night";
+import { participantsOf, pidOf } from "@/lib/ledger/participants";
 import { groupsNumberBps, percentOf } from "@/lib/ledger/weight";
 import { unitPhrase, weightedMedian } from "@/lib/ledger/number-axis";
 import { frameOnMarkets } from "@/lib/media";
 import { storageConfigured } from "@/lib/media/storage";
-import { cardMeta, lineT, type CardInput } from "@/lib/sports/cards";
+import { cardMeta, gameWhosIn, lineT, type CardInput } from "@/lib/sports/cards";
+import { nightPhotoTarget } from "@/lib/sports/night-photo";
 import { gameById, gameGroupsFor, gameMarkets } from "@/lib/sports";
 import { scoreLine } from "@/lib/sports/results";
 import { SLIDER_REACH, templatesFor, type TemplateKey } from "@/lib/sports/templates";
@@ -45,11 +48,43 @@ import type { TeamFace } from "@/lib/ui/team";
 import { viewerClock } from "@/lib/ui/zone";
 
 /**
+ * A game's link, for someone not in its set (docs/design.md 3.17, 3.33): the game, and the questions the link's own
+ * set asked on it, each opening its own screen, where they get in. Nothing about who is on it (3.32). Signed out it
+ * has the wordmark and the way to sign in; signed in it has Back, and nothing about signing in.
+ */
+function LinkedGame({ header, asked, ahead, signedIn }: { header: { id: string; name: string; away: TeamFace; home: TeamFace; start: string }; asked: Awaited<ReturnType<typeof gameMarkets>>; ahead: boolean; signedIn: boolean }) {
+  return (
+    <Screen>
+      {signedIn ? <TopBar back info="game-link" /> : <TopBar wordmark info="game-link" />}
+      <div className={signedIn ? "flex flex-col gap-7 py-2" : "flex flex-col gap-6 py-6"} data-game-link="">
+        <GameHeader game={header} caption={ahead ? "Everything closes at kickoff." : "Everything closed at kickoff."} />
+        {asked.length > 0 ? (
+          <div className="overflow-hidden rounded-card border border-line bg-surface" data-game-questions="">
+            {asked.map((r, i) => (
+              <Link prefetch={false} key={r.dare.id} href={`/m/${r.dare.id}`} className={`relative flex items-center justify-between gap-3 px-4 py-[14px] ${i > 0 ? "border-t border-line" : ""}`}>
+                <LinkPending />
+                <span className="text-body-strong text-ink">{r.dare.title}</span>
+                <span className="link-row">Open</span>
+              </Link>
+            ))}
+          </div>
+        ) : signedIn ? null : (
+          <p className="text-body text-ink-2">Sign in to get in on it.</p>
+        )}
+        {signedIn ? null : <SignInButton label="Sign in" variant={asked.length > 0 ? "tertiary" : "primary"} />}
+      </div>
+    </Screen>
+  );
+}
+
+/**
  * The game page (docs/design.md 3.33): an index, never a new kind of market screen. A header with the two teams
  * and the time, then one collapsed card per question the group is running, each opening its ordinary market
  * screen. It belongs to one set of people: from What's on, a game you are on with one group opens that group's
  * page; with two or more, the most recent, with the groups as context chips to switch; with none, the start.
  * "Add another" rows offer the rest of the menu until kickoff. Once the game is over, the page is the night (3.37).
+ * An address that names a set this person is not in is that set's link (3.17): its questions, each opening its own
+ * screen, where joining seats them in the asker's set. It is never the start, and never another set's page.
  */
 export async function GamePage({ id, g, add, start }: { id: string; g: string | null; add: string | null; start: boolean }) {
   const clock = await viewerClock();
@@ -61,36 +96,22 @@ export async function GamePage({ id, g, add, start }: { id: string; g: string | 
   const away: TeamFace = { abbr: game.awayAbbr, name: game.awayShort, color: game.awayColor };
   const home: TeamFace = { abbr: game.homeAbbr, name: game.homeShort, color: game.homeColor };
   const header = { id: game.id, name: game.name, away, home, start: startLabel(game.startsAt, clock.zone) };
+  const ahead = game.startsAt.getTime() > now.getTime() && game.status !== "postponed" && game.status !== "canceled";
+  // The set an address names, from the link's path or from `g`.
+  const linked = g && /^[0-9a-f-]{36}$/i.test(g) ? g : null;
   if (!me) {
     // A pasted link: the game, and the questions the link's own set asked on it, each opening its market screen, where
     // someone without an account can put a number on it (docs/design.md 3.17). Nothing about any other group (3.32).
-    const asked = g && /^[0-9a-f-]{36}$/i.test(g) ? (await gameMarkets(game.id, g)).filter((r) => r.dare.creatorSignature) : [];
-    return (
-      <Screen>
-        <TopBar wordmark info="game-link" />
-        <div className="flex flex-col gap-6 py-6">
-          <GameHeader game={header} caption="Everything closes at kickoff." />
-          {asked.length > 0 ? (
-            <div className="overflow-hidden rounded-card border border-line bg-surface" data-game-questions="">
-              {asked.map((r, i) => (
-                <Link prefetch={false} key={r.dare.id} href={`/m/${r.dare.id}`} className={`relative flex items-center justify-between gap-3 px-4 py-[14px] ${i > 0 ? "border-t border-line" : ""}`}>
-                  <LinkPending />
-                  <span className="text-body-strong text-ink">{r.dare.title}</span>
-                  <span className="link-row">Open</span>
-                </Link>
-              ))}
-            </div>
-          ) : (
-            <p className="text-body text-ink-2">Sign in to get in on it.</p>
-          )}
-          <SignInButton label="Sign in" variant={asked.length > 0 ? "tertiary" : "primary"} />
-        </div>
-      </Screen>
-    );
+    const asked = linked ? (await gameMarkets(game.id, linked)).filter((r) => r.dare.creatorSignature) : [];
+    return <LinkedGame header={header} asked={asked} ahead={ahead} signedIn={false} />;
   }
   const groups = await gameGroupsFor(game.id, me);
+  // A link to a set this person is not in, with anything opened on this game (3.33, 3.17): that set's questions, never the start and never a set of their own. Nothing joins on the way in: the join is a tap on the question they open.
+  if (!start && linked && !groups.some((x) => x.groupId === linked)) {
+    const asked = (await gameMarkets(game.id, linked)).filter((r) => r.dare.creatorSignature);
+    if (asked.length > 0) return <LinkedGame header={header} asked={asked} ahead={ahead} signedIn />;
+  }
   const chosen = (g && groups.find((x) => x.groupId === g)) || groups[0] || null;
-  const ahead = game.startsAt.getTime() > now.getTime() && game.status !== "postponed" && game.status !== "canceled";
   const menu = templatesFor({ sport: game.sport as Sport, home: { short: game.homeShort }, away: { short: game.awayShort }, seasonType: game.seasonType });
   const menuItems: MenuItem[] = menu.map((m) => ({ key: m.key, name: m.name, kindLabel: m.kindLabel, title: m.title, rows: m.rows }));
   const closes = `${game.startsAt.toLocaleDateString("en-US", { timeZone: clock.zone, weekday: "short" })} ${clockOf(game.startsAt, clock.zone)}`;
@@ -153,12 +174,14 @@ export async function GamePage({ id, g, add, start }: { id: string; g: string | 
   ]);
   const cardOf = new Map(cards.map((c) => [c.dare.id, c]));
   const positionsOfMarket = new Map(ids.map((d, i) => [d, positionsAll[i] ?? []]));
-  const userIds = Array.from(new Set([...positionsAll.flat().map((p) => p.userId as string), ...running.map((r) => r.dare.creatorId)]));
-  const users = userIds.length ? await db.select({ id: schema.users.id, displayName: schema.users.displayName }).from(schema.users).where(inArray(schema.users.id, userIds)) : [];
-  const nameOf = (uid: string) => (uid === me.id ? "You" : firstName(users.find((u) => u.id === uid)?.displayName ?? "Someone"));
+  // Everyone on the page by participant id, account-holder or ghost (PLANNING.md section 4): whoever is in on any question, in the order they got in, whoever asked, and the set's seats.
+  const inIds = Array.from(new Set(positionsAll.flat().sort((a, b) => a.enteredAt.getTime() - b.enteredAt.getTime()).map((p) => pidOf(p))));
+  const people = await participantsOf([...inIds, ...running.map((r) => r.dare.creatorId), ...seats.flatMap((x) => (x.userId ? [x.userId] : []))]);
+  const nameOf = (pid: string) => (pid === me.id ? "You" : firstName(people.get(pid)?.displayName ?? "Someone"));
   const reach = SLIDER_REACH[game.sport as Sport] ?? 35;
   const first = [...running].filter((r) => r.dare.creatorSignature).sort((a, b) => a.dare.createdAt.getTime() - b.dare.createdAt.getTime())[0] ?? running[0];
-  const askerLine = first ? `${first.dare.creatorId === me.id ? "You" : nameOf(first.dare.creatorId)} asked ${chosen.label}.` : "";
+  // Who asked, as a sentence names the set (3.33, 3.38): from the set's facts, never the chip's label.
+  const whoAsked = first ? `${askerLine({ id: first.dare.creatorId, displayName: people.get(first.dare.creatorId)?.displayName ?? "Someone" }, chosen.set, me.id)}.` : "";
   const feedFinal = game.finalSeenAt && game.homeScore !== null && game.awayScore !== null ? { home: game.homeScore, away: game.awayScore } : null;
   const over = !ahead && (game.completed || running.every((r) => ["resolved", "voided", "expired"].includes(stateOf(r.dare))));
 
@@ -175,7 +198,7 @@ export async function GamePage({ id, g, add, start }: { id: string; g: string | 
     const best = resolved ? positions.reduce<(typeof positions)[number] | null>((m, p) => (p.score !== null && (m === null || (m.score ?? -1) < p.score) ? p : m), null) : null;
     const off = best && unit && dare.resolvedOutcome !== null ? (best.value > dare.resolvedOutcome ? best.value - dare.resolvedOutcome : dare.resolvedOutcome - best.value).toString() : null;
     const callers = answers && resolved ? positions.filter((p) => Number(p.value) === Number(dare.resolvedOutcome)) : [];
-    const closest = answers ? (callers.length ? { name: callers.some((p) => p.userId === me.id) ? "You" : nameOf(callers[0]!.userId as string), off: null } : null) : best ? { name: nameOf(best.userId as string), off } : null;
+    const closest = answers ? (callers.length ? { name: callers.some((p) => p.userId === me.id) ? "You" : nameOf(pidOf(callers[0]!)), off: null } : null) : best ? { name: nameOf(pidOf(best)), off } : null;
     const votingEnds = state === "locked" && game.finalSeenAt ? clockWithDay(new Date(game.finalSeenAt.getTime() + 24 * 3_600_000), now, clock.zone).replace(/^at /, "") : null;
     const input: CardInput = {
       key: template.key as TemplateKey,
@@ -201,18 +224,21 @@ export async function GamePage({ id, g, add, start }: { id: string; g: string | 
     const slider = template.key === "home_wins" || template.key === "margin";
     const show = numbersVisible(dare, mine !== null);
     const myT = mine && slider ? lineT({ key: template.key as TemplateKey, value: mine.value, shift: template.shift, reach }) : null;
-    const groupValue = slider && show && mine && positions.length >= 3 ? (template.key === "home_wins" ? ((n) => (n === null ? null : BigInt(percentOf(n)) * 100n))(groupsNumberBps(positions.map((p) => ({ id: p.userId as string, stake: p.stake, valueBps: p.value })))) : weightedMedian(positions.map((p) => ({ stake: p.stake, value: p.value })))) : null;
+    const groupValue = slider && show && mine && positions.length >= 3 ? (template.key === "home_wins" ? ((n) => (n === null ? null : BigInt(percentOf(n)) * 100n))(groupsNumberBps(positions.map((p) => ({ id: pidOf(p), stake: p.stake, valueBps: p.value })))) : weightedMedian(positions.map((p) => ({ stake: p.stake, value: p.value })))) : null;
     const groupT = groupValue === null ? null : lineT({ key: template.key as TemplateKey, value: groupValue, shift: template.shift, reach });
-    return { dare, template, meta, slider, myT, groupT, ink: inkOf(dare), state, mine };
+    return { dare, template, meta, slider, myT, groupT, ink: inkOf(dare), state, mine, kind: answers ? ("categorical" as const) : unit ? ("numeric" as const) : ("binary" as const) };
   });
   const firstOpenNotIn = cardRows.find((c) => c.state === "open" && !c.mine)?.dare.id ?? null;
   const toAdd = ahead ? menu.filter((m) => !runningKeys.has(m.key)) : [];
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://dareful.app";
   const shareUrl = `${appUrl}/on/${game.id}/${chosen.groupId}`;
+  // Who's in on the game, and who of the set is in none of its questions yet (3.42, holdouts).
+  const stillOut = seats.flatMap((x) => (x.userId && !inIds.includes(x.userId) ? [x.userId] : []));
+  const whosIn = gameWhosIn({ inIds, seats: seats.length, viewerId: me.id, startedBy: first?.dare.creatorId ?? null });
 
   const chips =
     groups.length > 1 ? (
-      <div className="flex flex-wrap items-center gap-2" aria-label="Which set of people">
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Who you’re on this with">
         {groups.map((x) => {
           const on = x.groupId === chosen.groupId;
           return (
@@ -232,7 +258,7 @@ export async function GamePage({ id, g, add, start }: { id: string; g: string | 
       {cardRows.map((c) => {
         const live = c.dare.id === firstOpenNotIn && ahead;
         return (
-          <Link key={c.dare.id} prefetch={false} href={`/m/${c.dare.id}`} data-press="row" data-shell={serialiseShell({ kind: "market", id: c.dare.id, ink: c.ink, mark: markRefOf(c.dare), state: c.meta.mark, clock: bandClock({ state: c.state, resolvesBy: c.dare.resolvesBy, resolvedAt: c.dare.resolvedAt, resolvedBy: c.dare.resolvedBy, votes: c.meta.mark === "voting" ? 1 : 0, now, zone: clock.zone }), question: c.dare.title, asker: null, sheet: shellSheet(c.meta.mark, c.meta.mark === "in") })} data-shell-id={c.dare.id} className="press-row relative flex flex-col gap-2 rounded-card border border-line bg-surface px-3 py-3" data-game-card={c.template.key} data-card-state={c.state}>
+          <Link key={c.dare.id} prefetch={false} href={`/m/${c.dare.id}`} data-press="row" data-shell={serialiseShell({ kind: "market", id: c.dare.id, ink: c.ink, mark: markRefOf(c.dare), state: c.meta.mark, clock: bandClock({ state: c.state, resolvesBy: c.dare.resolvesBy, resolvedAt: c.dare.resolvedAt, resolvedBy: c.dare.resolvedBy, votes: c.meta.mark === "voting" ? 1 : 0, now, zone: clock.zone }), question: c.dare.title, asker: null, sheet: shellSheet(c.meta.mark, c.meta.mark === "in", c.kind) })} data-shell-id={c.dare.id} className="press-row relative flex flex-col gap-2 rounded-card border border-line bg-surface px-3 py-3" data-game-card={c.template.key} data-card-state={c.state}>
             <LinkPending />
             <span className="grid grid-cols-[40px_minmax(0,1fr)_18px] items-center gap-3">
               {markRefOf(c.dare) ? <MarkRefStamp mark={markRefOf(c.dare)} size={40} ink={c.ink} /> : <span />}
@@ -282,14 +308,15 @@ export async function GamePage({ id, g, add, start }: { id: string; g: string | 
     }
     const byDenom = new Map<string, Array<{ fromId: string; toId: string; quantity: bigint }>>();
     for (const s of summed.values()) byDenom.set(s.denomId, [...(byDenom.get(s.denomId) ?? []), { fromId: s.fromId, toId: s.toId, quantity: s.quantity }]);
-    const participants = Array.from(new Set(positionsAll.flat().map((p) => p.userId as string)));
-    const people = new Map(users.map((u) => [u.id, u]));
-    const inAny = participants.includes(me.id);
+    const participants = inIds;
+    // A photo from the night goes on the earliest question this person is in (`nightPhotoTarget`), since the server admits it only from someone in that question; the strip reads every question either way. Nobody in none of them gets a plus.
+    const photoTarget = nightPhotoTarget(running, positionsOfMarket, me.id);
+    const canAddPhoto = photoTarget !== null && storageConfigured();
     const endedAt = running.map((r) => r.dare.resolvedAt ?? r.dare.lockedAt ?? r.dare.createdAt).sort((a, b) => b.getTime() - a.getTime())[0] ?? game.startsAt;
     const rest = await restOfThatNight({ dareId: first?.dare.id ?? ids[0] ?? "", excludeIds: ids, groupIds: [chosen.groupId], people: participants, viewerId: me.id, closedAt: game.startsAt, endedAt }).catch(() => []);
     const night = fromThatNight(endedAt, now, clock.zone);
     return (
-      <PhotoAdding dareId={first?.dare.id ?? ids[0] ?? ""} night={night} canAdd={inAny && storageConfigured() && Boolean(first)} capture={false} viewer={{ name: me.displayName, hue: hueFor(me.id) }}>
+      <PhotoAdding dareId={photoTarget?.dare.id ?? ids[0] ?? ""} night={night} canAdd={canAddPhoto} capture={false} viewer={{ name: me.displayName, hue: hueFor(me.id) }}>
         <Screen>
           <TopBar back info="game-night" />
           <div className="flex flex-col gap-7 py-2">
@@ -302,10 +329,12 @@ export async function GamePage({ id, g, add, start }: { id: string; g: string | 
                 <span className="text-label text-ink-2">{dateLabel(endedAt, clock.zone)}</span>
               </div>
               <h1 className="text-serif-l text-ink">{feedFinal ? `${scoreLine(feedFinal, game.homeShort, game.awayShort)}.` : game.name}</h1>
-              <p className="text-caption text-ink-2">{askerLine}</p>
+              <p className="text-caption text-ink-2">{whoAsked}</p>
             </section>
             {chips}
-            {items.length > 0 ? <MediaFrame items={items} height={260} inset add={inAny && storageConfigured() && first ? { night } : null} stickers={storageConfigured()} /> : inAny && storageConfigured() && first ? <EmptySlot /> : null}
+            {items.length > 0 ? <MediaFrame items={items} height={260} inset add={canAddPhoto ? { night } : null} stickers={storageConfigured()} /> : canAddPhoto ? <EmptySlot /> : null}
+            {/* A photo that did not go up is said under the photos (3.8, Principle 9), with the failed ones sent again from Try again. */}
+            {canAddPhoto ? <PhotoProblem /> : null}
             <section className="flex flex-col gap-[10px]">
               <SectionLabel>Questions</SectionLabel>
               {cardsList}
@@ -368,7 +397,7 @@ export async function GamePage({ id, g, add, start }: { id: string; g: string | 
     <Screen>
       <TopBar back right={more} info="game" />
       <div className="flex flex-col gap-7 py-2">
-        <GameHeader game={header} caption={`${askerLine} ${ahead ? "Everything closes at kickoff." : "Everything closed at kickoff."}`.trim()} right={ahead ? undefined : feedFinal ? scoreLine(feedFinal, game.homeShort, game.awayShort) : "Started"} />
+        <GameHeader game={header} caption={`${whoAsked} ${ahead ? "Everything closes at kickoff." : "Everything closed at kickoff."}`.trim()} right={ahead ? undefined : feedFinal ? scoreLine(feedFinal, game.homeShort, game.awayShort) : "Started"} />
         {chips}
         <section className="flex flex-col gap-[10px]">
           <SectionLabel>Questions</SectionLabel>
@@ -395,8 +424,8 @@ export async function GamePage({ id, g, add, start }: { id: string; g: string | 
           </section>
         ) : null}
         {ahead ? (
-          // The link sent to the chat is the game page's when more than one question runs (3.33); someone arriving from it lands here and enters each question from its card.
-          <InviteShare url={shareUrl} text={game.name} label="Send it to the chat" />
+          // The who's-in row with the game as the unit (3.42): everyone in on any of its questions, the rest of the set's people dashed, and the one place the game is shared from. The link is the game page's (3.33); a code is one question's, so there is none here.
+          <WhosInRow people={inIds.map((pid) => ({ name: people.get(pid)?.displayName ?? "Someone", hue: hueFor(pid), ghost: people.get(pid)?.ghost === true }))} holdouts={stillOut.map((uid) => ({ name: people.get(uid)?.displayName ?? "Someone", hue: hueFor(uid) }))} count={whosIn.count} share={{ url: shareUrl, title: game.name }} code={null} chalk={whosIn.chalk} />
         ) : null}
       </div>
     </Screen>

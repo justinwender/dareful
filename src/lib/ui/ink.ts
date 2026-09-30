@@ -105,24 +105,6 @@ export function inkOf(d: { id: string; ink: string | null }): InkName {
   return isInkName(d.ink) ? d.ink : hashInk(d.id);
 }
 
-/**
- * The CSS custom properties a market's own screen sets on its root, so every `bg-ground`, `bg-surface` and
- * `border-line` inside it reads the market's layers without knowing they did (1.1, 1.8). Type colours, the
- * chalk button, the citron dot and person hues are never tinted, and none of them read these.
- */
-export function inkVars(name: InkName): Record<string, string> {
-  const ink = INKS[name];
-  return {
-    "--ground": ink.ground,
-    "--surface": ink.surface,
-    "--line": ink.line,
-    "--field": ink.field,
-    "--market-ink": ink.ink,
-    "--market-ink-hi": ink.hi,
-    "--market-wash": `rgba(${ink.inkRgb.replace(/,/g, ", ")}, 0.40)`,
-  };
-}
-
 /** The light theme's layers for the eight inks (docs/design.md 8.4): each hue unchanged, matched in OKLCH like the dark set. */
 export const INKS_LIGHT: Record<InkName, InkLayers> = {
   clay: { hue: 45, ground: "#F9EDE9", surface: "#FEF9F7", field: "#F4D9CD", line: "#E0CAC1", ink: "#A26448", hi: "#6E412D", inkRgb: "162,100,72" },
@@ -153,4 +135,23 @@ export function inkStyleText(name: InkName): string {
   const dark = declarations(INKS[name]);
   const light = declarations(INKS_LIGHT[name]);
   return `html{${dark}}html[data-theme="light"]{${light}}@media (prefers-color-scheme: light){html:not([data-theme="dark"]){${light}}}`;
+}
+
+/** The mark on a room that wears an ink of its own inside a screen that does not (the steps of asking, 3.29). */
+export const INK_ROOM_ATTR = "data-ink-room";
+
+/**
+ * The same layers for a room inside a screen (docs/design.md 3.29, 8.4): the steps of asking wear the ink the
+ * question will have while the root held under them keeps its own, so the ink is set on the room and not on
+ * `html`. One style element with both themes, scoped to the room by the ink's name: the dark layers, then the
+ * light ones for a light choice and for a light phone with no choice made, the same three cases the
+ * stylesheet's own tokens answer to. Every `bg-ground`, `bg-surface` and `border-line` inside the room reads
+ * the ink's layers without knowing they did (1.1, 1.8); type colours, the chalk, the citron dot and person hues
+ * are never tinted. There is no way to set an ink's layers that carries one theme alone.
+ */
+export function inkRoomStyleText(name: InkName): string {
+  const room = `[${INK_ROOM_ATTR}="${name}"]`;
+  const dark = declarations(INKS[name]);
+  const light = declarations(INKS_LIGHT[name]);
+  return `${room}{${dark}}html[data-theme="light"] ${room}{${light}}@media (prefers-color-scheme: light){html:not([data-theme="dark"]) ${room}{${light}}}`;
 }

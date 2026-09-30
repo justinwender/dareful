@@ -80,3 +80,47 @@ export function lineT(input: { key: TemplateKey; value: bigint; shift: bigint | 
   const signed = Number(input.value - (input.shift ?? 0n));
   return Math.min(1, Math.max(0, (signed + input.reach) / (2 * input.reach)));
 }
+
+/** A called-off question (the asker's swipe on Now, 3.15) never happened: it is on no game page, makes no set one of a game's, and blocks nothing from being asked again. */
+export const calledOff = (d: { resolvedBy: string | null }): boolean => d.resolvedBy === "removed";
+
+/** The questions one set is running on a game, from its rows in the menu's order and latest first within a question: one per question, the latest opened one, a draft only beside nothing opened for that key, and never one that was called off. */
+export function onePerQuestion<T extends { dare: { creatorSignature: unknown; resolvedBy: string | null }; template: { key: string } }>(rows: T[]): T[] {
+  const out: T[] = [];
+  for (const r of rows) {
+    if (calledOff(r.dare)) continue;
+    const have = out.find((x) => x.template.key === r.template.key);
+    if (!have) out.push(r);
+    else if (!have.dare.creatorSignature && r.dare.creatorSignature) out[out.indexOf(have)] = r;
+  }
+  return out;
+}
+
+/** The sets with anything started on each game, most recent first, from the opened questions' rows: a set whose every question was called off is not on the game. */
+export function setsOnGames(rows: Array<{ gameId: string; groupId: string; createdAt: Date; resolvedBy: string | null }>): Map<string, Array<{ groupId: string; lastAt: Date }>> {
+  const out = new Map<string, Array<{ groupId: string; lastAt: Date }>>();
+  for (const r of rows) {
+    if (calledOff(r)) continue;
+    const list = out.get(r.gameId) ?? [];
+    const have = list.find((x) => x.groupId === r.groupId);
+    if (!have) list.push({ groupId: r.groupId, lastAt: r.createdAt });
+    else if (r.createdAt.getTime() > have.lastAt.getTime()) have.lastAt = r.createdAt;
+    out.set(r.gameId, list);
+  }
+  for (const list of out.values()) list.sort((a, b) => b.lastAt.getTime() - a.lastAt.getTime());
+  return out;
+}
+
+/**
+ * The who's-in row on a game page (docs/design.md 3.42, with the game as the unit): everyone in on any of its
+ * questions, out of the set's seats so the count agrees with the cards under it. "Nobody’s in yet" before the
+ * first entry, since a game's asker starts out in nothing; then 3.42's words. Share is the chalk while the viewer
+ * started the game and nobody else is in.
+ */
+export function gameWhosIn(input: { /** Everyone in on any of the game's questions, by participant id. */ inIds: string[]; /** The set's seats. */ seats: number; viewerId: string; /** Who started the game: the asker of its first question. */ startedBy: string | null }): { count: string; chalk: boolean } {
+  const n = new Set(input.inIds).size;
+  const of = Math.max(input.seats, n);
+  const nobodyElse = input.inIds.every((id) => id === input.viewerId);
+  const count = n === 0 ? "Nobody’s in yet" : of > n ? `${n} of ${of} in` : nobodyElse ? "Just you so far" : `${n} of you in`;
+  return { count, chalk: input.startedBy === input.viewerId && nobodyElse };
+}

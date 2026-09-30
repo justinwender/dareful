@@ -189,6 +189,9 @@ test("names are suggested only after two letters, from ghosts with a number who 
   await ghost({ name: "Dante", phoneHash: hashPhone(fictionalPhone()) }, [], 6000n);
   await ghost({ name: "Danny", phoneHash: hashPhone(fictionalPhone()) }, [], 5000n);
   await ghost({ name: "Maya", phoneHash: hashPhone(fictionalPhone()) }, [], 4000n);
+  // The only name under these letters joined without a number: with three of five "Da" names shown in no promised order, "Dan" alone could be left out by chance.
+  await ghost({ name: "Quinn", phoneHash: null }, [], 3000n);
+  assert.deepEqual(await suggestGhostNames(g, "Qu"), [], "a name that joined without a number is never suggested, even as the only match");
   assert.deepEqual(await suggestGhostNames(g, "D"), [], "nothing before the first letters: nobody's name is shown to someone who hasn't started typing their own (3.17)");
   assert.deepEqual(await suggestGhostNames(g, ""), []);
   const d2 = await suggestGhostNames(g, "Da");
@@ -216,6 +219,20 @@ test("on a blind question a ghost's entry is final once made, as anyone's is", a
   assert.equal(await codeOf(() => ghost({ name: "Gabe" }, [gabe.browserToken as string], 4000n)), "wrong_state", "the same browser cannot change it");
   assert.equal((await markets.positionsOf(d.id)).find((p) => p.claimId === gabe.claimId)?.value, 9000n);
   assert.equal(await codeOf(() => enter(ana, 6000n)), "wrong_state", "nor can the asker change theirs");
+});
+
+test("a ghost's name is never an address or a handle", async () => {
+  const { d, enter, ghost } = await question([ana]);
+  await enter(ana, 7000n);
+  for (const typed of ["justin.wender", "sam@example.com", "jane+dynamic_test", "5550142"]) {
+    const refused = await ghost({ name: typed }, [], 9000n).catch((e: unknown) => e);
+    assert.ok(refused instanceof markets.MarketError && refused.code === "bad_input" && refused.message === "Say what your friends call you.", `${typed}: refused at the field, in the field's own sentence`);
+    const rows = await db.select({ id: schema.participantClaims.id }).from(schema.participantClaims).where(and(eq(schema.participantClaims.createdBy, ana.user.id), eq(schema.participantClaims.displayName, typed)));
+    assert.equal(rows.length, 0, `${typed}: no ghost was made under it`);
+  }
+  assert.equal((await markets.positionsOf(d.id)).length, 1, "nothing entered");
+  const alex = await ghost({ name: "Alex" }, [], 9000n);
+  assert.deepEqual([(await markets.positionsOf(d.id)).length, (await ghostPositionFor(d.id, [alex.browserToken as string]))?.displayName], [2, "Alex"], "a name still enters");
 });
 
 test("at sign-in an entry made from a link is listed by the name it was typed under, and one left out goes back to a fresh ghost in stone that no login binds again", async () => {

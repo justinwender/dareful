@@ -22,6 +22,8 @@ import { ruler, unitPhrase, withSeparators } from "./number-axis";
 import { answersOf } from "./markets";
 import { calledItLine } from "./pick-one";
 import { leanPill, type TeamFace } from "@/lib/ui/team";
+import { menuName, type TemplateKey } from "@/lib/sports/templates";
+import type { Sport } from "@/lib/sports/types";
 
 /** What a share route shows a visitor with no session: the card, and the text metadata beside it. */
 export type ProposalShare = {
@@ -202,7 +204,7 @@ export async function marketTile(rawId: string): Promise<Tile | null> {
     return {
       kind: "ask",
       asker: {
-        name: clip(firstName(creator?.displayName ?? "A friend"), 18),
+        name: askerName(creator?.displayName),
         hue: hueFor(d.creatorId),
       },
       frame:
@@ -315,10 +317,19 @@ export async function marketTile(rawId: string): Promise<Tile | null> {
 }
 
 /**
- * A game's asking tile (docs/design.md 3.27): the link sent to the chat when a game is started with more than one
- * question is the game page's, and its tile puts the game where the question would be: whoever started it, the
- * two stamps either side of "Chiefs at Bills", the chosen questions as rows, and the close time. Never who is in.
- * A game nobody has started with these people, or an id that matches nothing, gets nothing (the plain card).
+ * Who asked, on a tile: a first name and nothing else (docs/design.md 3.27), clipped as every name on a card is. An
+ * account with no name reads "A friend" whole, never its first word ("A asks").
+ */
+export function askerName(displayName: string | null | undefined): string {
+  return clip(firstName(displayName ?? "") || "A friend", 18);
+}
+
+/**
+ * A game's asking tile (docs/design.md 3.27, amended 2026-09-29): the link sent to the chat when a game is started
+ * with more than one question is the game page's, and its tile puts the game where the question would be: whoever
+ * started it, the two stamps either side of the game's name, the chosen questions as rows by the menu's short names
+ * (3.33: "Who wins", "By how much", never the question itself and never clipped), and the close time. Never who is
+ * in. A game nobody has started with these people, or an id that matches nothing, gets nothing (the plain card).
  */
 export async function gameTile(rawId: string, rawGroupId: string | null): Promise<Tile | null> {
   const id = z.string().uuid().safeParse(rawId);
@@ -327,7 +338,7 @@ export async function gameTile(rawId: string, rawGroupId: string | null): Promis
   const [game] = await db.select().from(schema.sportsGames).where(eq(schema.sportsGames.id, id.data)).limit(1).catch(() => []);
   if (!game) return null;
   const rows = await db
-    .select({ id: schema.dares.id, title: schema.dares.title, creatorId: schema.dares.creatorId, ink: schema.dares.ink, zone: schema.dares.zone, createdAt: schema.dares.createdAt, sort: schema.publicQuestions.sort })
+    .select({ id: schema.dares.id, key: schema.publicQuestions.key, creatorId: schema.dares.creatorId, ink: schema.dares.ink, zone: schema.dares.zone, createdAt: schema.dares.createdAt, sort: schema.publicQuestions.sort })
     .from(schema.dares)
     .innerJoin(schema.publicQuestions, eq(schema.publicQuestions.id, schema.dares.templateId))
     .where(and(eq(schema.publicQuestions.gameId, id.data), eq(schema.dares.groupId, groupId.data), isNotNull(schema.dares.creatorSignature)))
@@ -338,12 +349,12 @@ export async function gameTile(rawId: string, rawGroupId: string | null): Promis
   const [creator] = await db.select({ displayName: schema.users.displayName }).from(schema.users).where(eq(schema.users.id, first.creatorId)).limit(1);
   return {
     kind: "game",
-    asker: { name: clip(firstName(creator?.displayName ?? "A friend"), 18), hue: hueFor(first.creatorId) },
+    asker: { name: askerName(creator?.displayName), hue: hueFor(first.creatorId) },
     ink: inkOf(first),
     away: { abbr: game.awayAbbr, name: game.awayShort, color: game.awayColor },
     home: { abbr: game.homeAbbr, name: game.homeShort, color: game.homeColor },
-    name: game.name,
-    questions: rows.map((r) => clip(r.title, 40)),
+    // The key and the sport are held to their four values by the database (public_questions_key_known, sports_games_sport_known).
+    questions: rows.map((r) => menuName(r.key as TemplateKey, game.sport as Sport)).slice(0, 4),
     closes: game.startsAt.getTime() > Date.now() ? closesAbsolute(game.startsAt, first.zone) : null,
   };
 }

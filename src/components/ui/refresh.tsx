@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { pullStartsHere } from "./handle";
 
 /** How far a finger has to pull from the top before letting go re-reads the screen. */
 export const PULL_TO_REFRESH_PX = 72;
@@ -18,7 +19,9 @@ const RETURN_AFTER_MS = 2_000;
  *      switching to Messages and back, and a page restored from the back-forward cache.
  *
  * Both re-read the current screen through the router, which is one server render of exactly what is shown and
- * never a reload. A touch that starts inside a modal sheet or the ask layer belongs to it.
+ * never a reload. A touch that starts on a sheet, pinned or modal, or in the ask layer belongs to it
+ * (`pullStartsHere`; 5.5 as amended 2026-09-29): a drag down on a sheet's handle at the top of a page used to
+ * fill the line and re-read the screen as the sheet lowered.
  */
 export function Refresh() {
   const router = useRouter();
@@ -34,9 +37,9 @@ export function Refresh() {
   };
 
   useEffect(() => {
-    const inLayer = (t: EventTarget | null) => t instanceof Element && t.closest("[role=dialog], [data-layer=ask]") !== null;
+    const onPage = (t: EventTarget | null) => !(t instanceof Element) || pullStartsHere(t.closest("[data-layer]")?.getAttribute("data-layer") ?? null, t.closest("[role=dialog]") !== null);
     const onStart = (e: TouchEvent) => {
-      startY.current = window.scrollY <= 0 && e.touches.length === 1 && !inLayer(e.target) ? (e.touches[0]?.clientY ?? null) : null;
+      startY.current = window.scrollY <= 0 && e.touches.length === 1 && onPage(e.target) ? (e.touches[0]?.clientY ?? null) : null;
     };
     const onMove = (e: TouchEvent) => {
       if (startY.current === null) return;
@@ -95,7 +98,7 @@ export function Refresh() {
 /** The 2px line under the status band (5.5, 9.4): filling with a pull, or running while something is being read. */
 export function TopRunner({ state, pull = 1 }: { state: "running" | "pulling"; pull?: number }) {
   return (
-    <div aria-hidden="true" data-refresh={state} className="pointer-events-none fixed inset-x-0 top-[env(safe-area-inset-top)] z-40 h-[2px] overflow-hidden">
+    <div aria-hidden="true" data-refresh={state} data-fixed="top" className="pointer-events-none fixed inset-x-0 top-[env(safe-area-inset-top)] z-40 h-[2px] overflow-hidden">
       {state === "running" ? <span className="absolute inset-y-0 w-1/3 bg-ink motion-loop-runner" /> : <span className="absolute inset-y-0 left-1/2 -translate-x-1/2 bg-ink" style={{ width: `${Math.round(pull * 100)}%` }} />}
     </div>
   );

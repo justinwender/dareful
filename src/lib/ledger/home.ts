@@ -90,13 +90,18 @@ export function needFromMarket(m: Pick<MarketCardData, "dare" | "state" | "peopl
   if (m.state === "open") {
     const everyone = m.people.length >= m.groupSize && m.groupSize > 1;
     const timesUp = d.resolvesBy !== null && d.resolvesBy.getTime() <= now.getTime();
-    if (d.creatorId === viewerId && iAmIn && (everyone || timesUp)) return { ...base, kind: "lock", href: `/m/${d.id}`, verb: "Close", context: everyone ? "Everyone's in" : "Time's up on this one", deadline: d.resolvesBy, since: d.createdAt };
-    if (!iAmIn) return { ...base, kind: "enter", href: `/m/${d.id}`, verb: "Enter", context: `${d.resolvesBy ? `Closes ${closes(d.resolvesBy)} · ` : ""}${m.people.length} of ${m.groupSize} in`, deadline: d.resolvesBy, since: d.createdAt };
+    // Needs you holds only what this person can finish now (4.7). The close refuses fewer than two in (`lockMarket`), so the asker's
+    // Close on time's up is offered only with two or more in: a question only the asker is in stays in Running, where it swipes
+    // to Remove (3.15). The reason beside the mark is the count (3.23: how many are in), never the state as a sentence: "6 of 6 in".
+    if (d.creatorId === viewerId && iAmIn && (everyone || (timesUp && m.people.length >= 2))) return { ...base, kind: "lock", href: `/m/${d.id}`, verb: "Close", context: everyone ? `${m.people.length} of ${m.groupSize} in` : "Time’s up on this one", deadline: d.resolvesBy, since: d.createdAt };
+    // Past its time nobody gets in (the close is a hard cutoff: `pastItsClose` refuses the entry), so there is no Enter row to finish.
+    if (!iAmIn && !timesUp) return { ...base, kind: "enter", href: `/m/${d.id}`, verb: "Enter", context: `${d.resolvesBy ? `Closes ${closes(d.resolvesBy)} · ` : ""}${m.people.length} of ${m.groupSize} in`, deadline: d.resolvesBy, since: d.createdAt };
     return null;
   }
   if (m.state === "locked" && !voted) {
     // The mark says it is in voting (3.23); the words beside it are who spoke and the count, never the state again.
-    const context = m.saidBy ? `${m.saidBy} says what happened · ${m.votesCast} of ${m.groupSize} have called it` : m.votesCast > 0 ? `${word(m.votesCast)} of ${m.groupSize} have called it` : `${d.resolvesBy ? `Voting ends ${closes(d.resolvesBy)}` : "Nobody has called it yet"}`;
+    const called = m.votesCast === 1 ? "has called it" : "have called it";
+    const context = m.saidBy ? `${m.saidBy} says what happened · ${m.votesCast} of ${m.groupSize} ${called}` : m.votesCast > 0 ? `${word(m.votesCast)} of ${m.groupSize} ${called}` : `${d.resolvesBy ? `Voting ends ${closes(d.resolvesBy)}` : "Nobody has called it yet"}`;
     return { ...base, kind: "vote", href: `/m/${d.id}#ballot`, verb: "Vote", context, deadline: d.resolvesBy, since: d.lockedAt ?? d.createdAt };
   }
   return null;
@@ -224,6 +229,19 @@ export function collapseGames<N extends { kind: NeedRow["kind"]; key: string; co
   }
   return { needs, running, over, happened };
 }
+/**
+ * Which of Now's three lists a question is on, once what it needs from this person is known (docs/design.md 4.7):
+ * Needs you when it needs them; Running is what they have acted on (an open question they are in, or any locked
+ * one, since a lock is the group's act); Just happened is what has ended (settled, voided or expired, 3.15). An
+ * open question this person is not in and can no longer get into (past its close, so `needFromMarket` offers no
+ * Enter) is on no list at all: it has not ended, and it is nothing they did. Pure, so the rule has a test.
+ */
+export function listOf(m: Pick<MarketCardData, "state" | "viewerIn">, needed: boolean): "needs" | "running" | "over" | null {
+  if (needed) return "needs";
+  if ((m.state === "open" && m.viewerIn) || m.state === "locked") return "running";
+  return m.state === "open" ? null : "over";
+}
+
 /** Every question this person can see, sorted into what needs them, what is running, and what is over. */
 async function questionsFor(me: { id: string }, opts: { now: Date; closes: (at: Date) => string; zone: string }): Promise<{ needs: NeedRow[]; running: RunningRow[]; over: MarketCardData[]; gamesOver: Array<Extract<HomeData["happened"][number], { kind: "game" }>> }> {
   const [cards, myVotes] = await Promise.all([marketCards({ viewerId: me.id, limit: 40 }), db.select({ dareId: schema.dareVotes.dareId }).from(schema.dareVotes).where(eq(schema.dareVotes.userId, me.id))]);
@@ -234,10 +252,11 @@ async function questionsFor(me: { id: string }, opts: { now: Date; closes: (at: 
   for (const m of cards) {
     const n = needFromMarket(m, me.id, voted.has(m.dare.id), opts.now, opts.closes);
     const shell = shellOf(m, me.id, opts.now, opts.zone);
-    if (n) needs.push({ ...n, groupId: m.dare.groupId, shell } as NeedRow);
-    else if (m.state === "open" || m.state === "locked") {
+    const list = listOf(m, n !== null);
+    if (n && list === "needs") needs.push({ ...n, groupId: m.dare.groupId, shell } as NeedRow);
+    else if (list === "running") {
       running.push({ id: m.dare.id, title: m.dare.title, shell, mark: markRefOf(m.dare), ink: m.ink, state: m.state === "locked" ? (m.votesCast > 0 ? "voting" : "locked") : "in", caption: runningCaption(m, opts.closes, me.id), groupId: m.dare.groupId, ...(m.state === "open" && m.dare.creatorId === me.id && m.people.length === 1 && m.viewerIn ? { removable: true as const } : {}) });
-    } else over.push(m);
+    } else if (list === "over") over.push(m);
   }
   // A game with more than one question in the same set is one row (4.7).
   const fromGames = cards.filter((c) => c.dare.templateId);

@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { withSeparators } from "@/lib/ledger/number-axis";
-import { hueVar, type Hue } from "@/lib/ui/hue";
+import { hueStrokeVar, type Hue } from "@/lib/ui/hue";
 
 /** Whole numbers from 0 to 999,999,999 (docs/design.md 3.26). */
 export const MAX_DIGITS = 9;
@@ -17,9 +17,11 @@ export function numeralSize(digits: number): { px: number; unitBelow: boolean } 
 
 /**
  * Number entry (docs/design.md 3.26): a 48px stepper, an 84px field and a 48px stepper, in the sheet. The field
- * is the market's ground with a 1.5px inset ring in your hue and the number in `numeral-hero`, the unit beside
- * it, baseline-aligned. A text input with `inputmode="numeric"`, never `type="number"`, which accepts decimals
- * and exponents and changes value under a scroll wheel. Nothing is prefilled, for the reason the odds line has
+ * is the market's ground with a 1.5px inset ring in your hue (the stroke variant, 8.7) and the number in
+ * `numeral-hero`, the unit beside it, baseline-aligned. Focus is the box's (5.1): the 2px ink outline sits 2px
+ * outside the drawn field, not around the bare input inside it, so the input carries none of its own. A text
+ * input with `inputmode="numeric"`, never `type="number"`, which accepts decimals and exponents and changes
+ * value under a scroll wheel. Nothing is prefilled, for the reason the odds line has
  * no thumb until it is touched: before any input the field shows a cream caret and no number, minus is
  * disabled, and plus from empty starts at 1. Holding a stepper repeats after 400ms, ten steps a second.
  *
@@ -82,7 +84,8 @@ export function NumberEntry({ value, onChange, unit, hue, disabled = false, head
           step(by);
         }
       }}
-      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-button border border-line-strong text-ink-2 disabled:border-line disabled:text-ink-3"
+      data-press="line"
+      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-button border border-line-strong text-ink-2 press-line disabled:border-line disabled:text-ink-3"
     >
       <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
         <path d="M4 10h12" />
@@ -100,7 +103,7 @@ export function NumberEntry({ value, onChange, unit, hue, disabled = false, head
       ) : null}
       <div className="flex items-center gap-3">
         {stepper(-1n)}
-        <div className={`flex min-h-[84px] min-w-0 flex-1 items-baseline gap-2 rounded-button bg-ground px-4 py-3 ${unitBelow ? "flex-col gap-0" : ""}`} style={{ boxShadow: `inset 0 0 0 1.5px ${problem ? "var(--ink)" : hueVar(hue)}` }} data-problem={problem || undefined}>
+        <div className={`flex min-h-[84px] min-w-0 flex-1 items-baseline gap-2 rounded-button bg-ground px-4 py-3 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ink ${unitBelow ? "flex-col gap-0" : ""}`} style={{ boxShadow: `inset 0 0 0 1.5px ${problem ? "var(--ink)" : hueStrokeVar(hue)}` }} data-problem={problem || undefined} data-number-field="">
           <div className="relative min-w-0 flex-1">
             {/* What is seen: the number with its separators. The input beneath carries the digits and the caret. */}
             <span aria-hidden="true" className="pointer-events-none block truncate font-serif tabular-nums text-ink" style={{ fontSize: px, lineHeight: 1, minHeight: px }}>
@@ -121,7 +124,7 @@ export function NumberEntry({ value, onChange, unit, hue, disabled = false, head
                 setText(t);
                 onChange(t === "" ? null : BigInt(t));
               }}
-              className="absolute inset-0 w-full rounded-button bg-transparent font-serif tabular-nums text-transparent caret-ink"
+              className="absolute inset-0 w-full rounded-button bg-transparent font-serif tabular-nums text-transparent caret-ink focus-visible:outline-none"
               style={{ fontSize: px, lineHeight: 1, caretColor: "var(--ink)" }}
             />
           </div>

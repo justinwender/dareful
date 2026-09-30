@@ -1,7 +1,7 @@
 import { MarkRefStamp } from "@/components/ledger/mark-stamp";
 import { MIN_CALIBRATION, type CalibrationRecord } from "@/lib/ledger/calibration";
 import { callLine, callsCaption, callsHeadline, earlyTitle, pickOneCaption, plotDots } from "@/lib/ledger/you";
-import { hueVar, type Hue } from "@/lib/ui/hue";
+import { hueStrokeVar, hueVar, type Hue } from "@/lib/ui/hue";
 
 /** The plot's box (docs/design.md 3.34): 318 by 236 inside its card, with room on the left for the y labels and under it for the x ticks. */
 const W = 318;
@@ -50,7 +50,7 @@ export function CallsSection({ record, hue, now, zone }: { record: CalibrationRe
             </text>
             {dots.map((d) => (
               <g key={d.bucket} data-bin={d.bucket} data-count={d.count}>
-                <line x1={px(d.x)} x2={px(d.x)} y1={py(d.low)} y2={py(d.high)} stroke={hueVar(hue)} strokeWidth="2" opacity="0.45" strokeLinecap="round" />
+                <line x1={px(d.x)} x2={px(d.x)} y1={py(d.low)} y2={py(d.high)} stroke={hueStrokeVar(hue)} strokeWidth="2" opacity="0.45" strokeLinecap="round" />
                 <circle cx={px(d.x)} cy={py(d.y)} r={d.r} fill={hueVar(hue)} stroke="var(--surface)" strokeWidth="2" />
               </g>
             ))}

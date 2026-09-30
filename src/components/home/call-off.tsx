@@ -72,7 +72,7 @@ export function CallOff({ kind, dareId, ids, game = false, children }: { kind: "
   const name = kind === "remove" ? "Remove" : "Archive";
   return (
     <div className="relative overflow-hidden motion-safe:transition-[max-height,opacity] duration-(--motion-base) ease-move" style={gone ? { maxHeight: 0, opacity: 0 } : { maxHeight: 200 }} data-call-off={kind} data-call-off-game={game ? "" : undefined} data-call-off-open={dx < 0 ? "" : undefined}>
-      <button type="button" aria-label={name} onClick={() => setOpen(true)} className={`absolute inset-y-0 right-0 flex items-center justify-center ${kind === "remove" ? "bg-remove text-chalk" : "bg-archive text-on-chalk"}`} style={{ width: REVEAL }} data-call-off-square="" tabIndex={dx < 0 ? 0 : -1}>
+      <button type="button" aria-label={name} onClick={() => setOpen(true)} data-press="fill" className={`absolute inset-y-0 right-0 flex items-center justify-center press-fill ${kind === "remove" ? "bg-remove text-chalk" : "bg-archive text-on-chalk"}`} style={{ width: REVEAL }} data-call-off-square="" tabIndex={dx < 0 ? 0 : -1}>
         {kind === "remove" ? (
           <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />

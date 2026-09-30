@@ -5,6 +5,14 @@
  */
 export type Person = { id: string; displayName: string };
 
+/**
+ * What the app is, in the owner's words (2026-09-29, superseding Round C's line). The signed-out screen says both
+ * sentences under "Who's got the next one?"; the plain card's footer, the description on a dead link, the app's own
+ * description and the manifest's say the first alone. One constant, read everywhere, so the four cannot drift.
+ */
+export const ABOUT_FIRST = "Ask your friends what’ll happen, from who falls asleep first to who wins on Sunday.";
+export const ABOUT = `${ABOUT_FIRST} Everyone makes their call, and Dareful keeps track of who’s got who.`;
+
 /** `owner` picks up next (the debtor); `other` is who they have got (the creditor). */
 export function gotSentence(owner: Person, other: Person, viewerId: string): string {
   if (owner.id === viewerId) return `You've got ${other.displayName}`;
@@ -96,9 +104,18 @@ export function dayLabel(at: Date, timeZone: string): string {
   return at.toLocaleDateString("en-US", { timeZone, month: "short", day: "numeric" });
 }
 
-/** A share card and its metadata carry a first name only, never a full display name. */
+/**
+ * A share card and its metadata carry a first name only, never a full display name. A first word with no capital
+ * in it that reads like part of an address or a handle ("justin.wender", "sam@example.com", the names the first
+ * build stored) is cut before its first separator, less trailing digits, and capitalised: that is what friends
+ * read until the person answers the name step. "J.R.", "Mary-Jane", "D’Arcy" and "sam" stand as they are, and a
+ * word with nothing before its separator stands too.
+ */
 export function firstName(displayName: string): string {
-  return displayName.trim().split(/\s+/)[0] ?? "";
+  const word = displayName.trim().split(/\s+/)[0] ?? "";
+  if (/\p{Lu}/u.test(word) || !/[._+@]/.test(word)) return word;
+  const piece = (word.split(/[._+@]/)[0] ?? "").replace(/\d+$/, "");
+  return piece ? piece.charAt(0).toUpperCase() + piece.slice(1) : word;
 }
 
 export function firstInitial(name: string): string {
@@ -107,6 +124,20 @@ export function firstInitial(name: string): string {
 }
 
 const SIZE_WORDS = ["", "", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve"];
+
+/**
+ * How many are in, before you are (docs/design.md 3.14, 3.17, 3.38): "Nobody’s in yet" at zero, since a count of
+ * zero is never rendered; "One friend is in" at one; then "Three friends are in" in words on the link page (3.17)
+ * or "3 friends are in" in digits on a member's screen (3.38, where the count is the subject), by `style`. One
+ * function, so the screens cannot drift from each other and none of them can say a zero.
+ */
+export function friendsIn(n: number, style: "words" | "digits"): string {
+  if (n <= 0) return "Nobody’s in yet";
+  if (n === 1) return "One friend is in";
+  if (style === "digits") return `${n} friends are in`;
+  const word = SIZE_WORDS[n];
+  return word ? `${word} friends are in` : "A lot of friends are in";
+}
 
 /**
  * The caption under a set of people in "Who's in" (docs/design.md 3.20). It carries the difference between sets,

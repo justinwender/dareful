@@ -10,11 +10,14 @@ import { cn } from "@/lib/utils";
 
 /**
  * One phone layout, 390px reference, 20px gutters, centered on wider viewports (docs/design.md 4.2). The bottom
- * padding grows by `--sheet-room` while a pinned sheet (3.24) is on the screen, so nothing is trapped under it.
- * A root (`root`: Now, What's on, People, You) is at least one pixel taller than the large viewport, so the
- * document always scrolls: the installed app on iOS 26 lays a page that fits the screen out short of it and
- * pins the tab bar above the real edge, and a page that scrolls is laid out right (docs/decisions.md
- * 2026-09-27, "The band, properly this time"; docs/testing.md item 61). This is the `page` layer (9.3): nothing
+ * padding grows by `--sheet-room` while a pinned sheet (3.24) is on the screen, so nothing is trapped under it;
+ * a step inside the ask layer has none, since its action bar is in flow at the layer's foot (9.5).
+ * Every screen that is the document's own (a root and a task screen alike; not a step inside the ask layer,
+ * which scrolls in its own box) is at least one pixel taller than the large viewport, so the document always
+ * scrolls: the installed app on iOS lays a page that fits the screen out short of it and pins whatever is fixed
+ * to the bottom above the real edge, the tab bar on a root and the sheet on a task screen, and a page that
+ * scrolls is laid out right (docs/decisions.md 2026-09-27, "The band, properly this time", and 2026-09-29, where
+ * the simulator showed the same band under a task screen's sheet; docs/testing.md item 61). This is the `page` layer (9.3): nothing
  * inside it is fixed, and the fixed layers it renders portal themselves to the app root. The band behind the
  * status bar and the grain are the shell's (`LayersRoot`), painted from `--ground` on `html`, which a market's
  * own screen swaps for its ink (1.8).
@@ -22,7 +25,7 @@ import { cn } from "@/lib/utils";
 export function Screen({ children, className, root = false, layer, arrive }: { children: ReactNode; className?: string; root?: boolean; /** The layer this screen lives in (the ask layer, 9.5), so the root page under it can be told apart. */ layer?: string; /** How the screen arrives (9.7): a push moves its content 24px and crossfades while its header crossfades ("step", the default off a root); a market fades in under its shell ("fade"); a root and a step in the ask layer arrive at once ("none"). */ arrive?: "step" | "fade" | "none" }) {
   const how = arrive ?? (root || layer ? "none" : "step");
   return (
-    <main data-page={layer ?? ""} data-arrive={how} className={cn("mx-auto flex w-full max-w-[430px] flex-1 flex-col px-5 pb-[calc(max(2rem,env(safe-area-inset-bottom))+1rem+var(--sheet-room,0px))]", how === "step" && "page-arrive", how === "fade" && "motion-arrive", root && "min-h-[calc(100lvh_+_1px)]", className)}>
+    <main data-page={layer ?? ""} data-arrive={how} className={cn("mx-auto flex w-full max-w-[430px] flex-1 flex-col px-5", layer ? "pb-0" : "pb-[calc(max(2rem,env(safe-area-inset-bottom))+1rem+var(--sheet-room,0px))]", how === "step" && "page-arrive", how === "fade" && "motion-arrive", !layer && "min-h-[calc(100lvh_+_1px)]", className)}>
       <Arrived />
       {children}
     </main>

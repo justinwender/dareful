@@ -4,6 +4,7 @@ import { FeedFailed } from "@/components/on/try-again";
 import { RootHeader, Screen, SectionLabel } from "@/components/ledger/screen";
 import { TabBar } from "@/components/ui/tab-bar";
 import { currentUser } from "@/lib/auth/session";
+import { onThisLine } from "@/lib/ledger/groups";
 import { whatsOn } from "@/lib/sports";
 import { clockOf } from "@/lib/ui/copy";
 import { hueFor } from "@/lib/ui/hue";
@@ -26,7 +27,7 @@ export default async function WhatsOnPage() {
   const now = new Date(clock.now);
   const on = await whatsOn(me, now, clock.zone);
   const hue = hueFor(me.id);
-  const row = (g: (typeof on.days)[number]["games"][number]) => rowData(g.game, clock.zone, g.asked, g.yours[0] ? { label: g.yours[0].label, groupId: g.yours[0].groupId } : null);
+  const row = (g: (typeof on.days)[number]["games"][number]) => rowData(g.game, clock.zone, g.asked, g.yours[0] ? { line: onThisLine(g.yours[0].set, me.id), groupId: g.yours[0].groupId } : null);
   const nothing = on.days.length === 0;
   return (
     <Screen root>

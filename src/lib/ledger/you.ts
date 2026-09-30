@@ -164,9 +164,9 @@ export function numbersHeadline(meanMissBps: number): string {
   return `On numbers, you land ${Math.round(meanMissBps / 100)}% of the range away.`;
 }
 
-/** "7 number markets. The band is the middle half of them; the cream line is your average." */
+/** "7 number markets. The band is the middle half of them; the line is your average." The line is the chalk, cream in dark and graphite in light (section 8), so the caption names no colour (ruled 2026-09-29). */
 export function numbersCaption(resolved: number): string {
-  return `${resolved} number markets. The band is the middle half of them; the cream line is your average.`;
+  return `${resolved} number markets. The band is the middle half of them; the line is your average.`;
 }
 
 /** Under the floor: "Numbers draw at 5 number markets. 2 so far." */

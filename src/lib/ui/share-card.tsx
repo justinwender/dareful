@@ -11,6 +11,7 @@
  * disk, and that arrives with the Phase 2 share renderer and its emoji font.
  */
 import { ImageResponse } from "next/og";
+import { ABOUT_FIRST } from "./copy";
 import { LOCKUP } from "./logo";
 
 export const shareCardSize = { width: 1200, height: 630 };
@@ -23,7 +24,8 @@ export type ShareCard = { kicker: string; headline: string; footer: string };
 
 const LOCKUP_HEIGHT = 40;
 
-export const plainCard: ShareCard = { kicker: "Dareful", headline: "Who’s got the next one?", footer: "The dares, the rounds, and the “I got this one” between friends." };
+/** The plain card (a dead, unknown or draft link): the headline the signed-out screen wears, and the first sentence of what the app is (`ABOUT_FIRST`), which is also the description on every such link (share.ts). */
+export const plainCard: ShareCard = { kicker: "Dareful", headline: "Who’s got the next one?", footer: ABOUT_FIRST };
 
 /** Keeps a long group or first name from pushing the headline off the card. */
 export function clip(s: string, max: number): string {

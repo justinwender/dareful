@@ -11,10 +11,10 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { SignJWT } from "jose";
 import { db, schema } from "@/db";
 import * as claims from "@/lib/ledger/claims";
-import { createGroup } from "@/lib/ledger/groups";
+import { createGroup, createOccasionGroup } from "@/lib/ledger/groups";
 import { ensureUsd } from "@/lib/ledger/denominations";
 import * as markets from "@/lib/ledger/markets";
-import { marketTile } from "@/lib/ledger/share";
+import { gameTile, marketTile } from "@/lib/ledger/share";
 import { INKS, inkOf } from "@/lib/ui/ink";
 import { thumbKey } from "@/lib/media";
 import { stickerStampKey } from "@/lib/media/marks";
@@ -24,6 +24,7 @@ import { cleanup, cover, fictionalPhone, ghost, tempSigner, tempUser, track, typ
 import { hashPhone } from "@/lib/auth/phone";
 import { enterAsGhost } from "@/lib/ledger/ghost-entry";
 import { removeMarket } from "@/lib/ledger/now-swipes";
+import { settleProvisional } from "@/lib/ledger/provisional";
 import { readFileSync } from "node:fs";
 import { syncSchedule } from "@/lib/sports";
 import { parseScoreboard } from "@/lib/sports/espn";
@@ -32,8 +33,9 @@ import { FEED_RULING } from "@/lib/sports";
 const BASE = process.env.TEST_BASE_URL ?? "http://localhost:3000";
 
 type Got = { status: number; type: string | null; loc: string | null; setCookie: string | null; html: string; /** The markup alone, without the scripts: Now answers in pieces (11.5), and what the framework carries for the browser repeats the page's words ahead of the markup that draws them. */ dom: string; text: string; bytes: Buffer };
-async function get(path: string, cookie?: string): Promise<Got> {
-  const r = await fetch(BASE + path, { headers: cookie ? { cookie: `dareful_session=${cookie}` } : {}, redirect: "manual" });
+async function get(path: string, cookie?: string, rawCookie?: string): Promise<Got> {
+  const cookies = [cookie ? `dareful_session=${cookie}` : null, rawCookie ?? null].filter(Boolean).join("; ");
+  const r = await fetch(BASE + path, { headers: cookies ? { cookie: cookies } : {}, redirect: "manual" });
   const bytes = Buffer.from(await r.arrayBuffer());
   const html = bytes.toString("utf8");
   const text = html
@@ -561,7 +563,7 @@ test("a shared question answers a preview bot with the question, and nothing abo
   assert.ok(r.text.includes("Does the kettle get descaled by Friday?"));
   // Arriving from a link with no account (docs/design.md 3.17): who asked, by first name, the set's name, a count in words, and the
   // line untouched; never the asker's full name, anyone else's, a number, what is riding, or the terms.
-  assert.ok(r.text.includes("Priya asked Question check"), "who asked, by first name, and which set");
+  assert.ok(r.text.includes("Priya asked the Question check"), "who asked, by first name, and which set, as a sentence names it (3.17: Priya asked the Friday crew)");
   assert.ok(r.text.includes("One friend is in"), "the count in words");
   assert.ok(r.text.includes("Slide to pick your odds"), "the way in, without an account");
   // Distinctive spellings: a bare "83" turns up in script file names, and "$17" is how the page's own serialization writes a reference.
@@ -633,7 +635,7 @@ test("Now holds what needs this person, then what is running, then what just hap
   const start = /<a[^>]*aria-label="Ask something"[^>]*>/.exec(r.html)?.[0] ?? "";
   assert.ok(start.includes('href="/m/new"'), "the Start button only asks: a link to the question step (6.1), no sheet");
   assert.ok(!/focus-visible:(outline-none|ring)/.test(start), "Start takes the global focus outline, 2px outside its edge (5.1), not a ring flush with it");
-  assert.ok(r.text.includes("Measure the screen"), "the instrument for the installed app's band, on Now as well as You (docs/testing.md session 21)");
+  assert.ok(!r.text.includes("Measure the screen") && !/data-probe/.test(r.html), "no instrument on Now: the band's cause is settled, and the probe left with it (3.34, amended 2026-09-29)");
   // "Got a code?" at Now's top right, placed as the question step places it (6.1, amended 2026-09-27): joining by code is one tap from home.
   const codeLink = /<a[^>]*data-got-a-code=""[^>]*>/.exec(r.html)?.[0] ?? "";
   assert.ok(codeLink.includes('href="/join"') && r.text.includes("Got a code?"), "the code link on Now");
@@ -826,7 +828,8 @@ test("the bar is on the four roots and nowhere else, every other screen has a ba
     const r = await get(path, cAsker);
     assert.ok(r.status === 200 || r.loc === "/", `${path}: ${r.status}`);
     // The question step's top-left control is Close, a down chevron, since it rises from the + (9.5); every other task screen has Back.
-    if (r.status === 200) assert.ok((path === "/m/new" ? /aria-label="Close"/.test(r.html) : /aria-label="Back"/.test(r.html)) && !/<nav aria-label="Main"/.test(r.html) && !/aria-label="Ask something"/.test(r.html) && !/min-h-\[calc\(100lvh/.test(r.html), `${path} is a task screen`);
+    // A task screen is the document's own and is at least a pixel taller than the large viewport like a root (the sheet stood above the edge on one that fit; docs/decisions.md 2026-09-29); only a step inside the ask layer is not.
+    if (r.status === 200) assert.ok((path === "/m/new" ? /aria-label="Close"/.test(r.html) : /aria-label="Back"/.test(r.html)) && !/<nav aria-label="Main"/.test(r.html) && !/aria-label="Ask something"/.test(r.html) && /<main[^>]*min-h-\[calc\(100lvh_\+_1px\)\]/.test(r.html), `${path} is a task screen`);
   }
   const out = await get(`/m/${marketId}`);
   assert.ok(!/aria-label="Back"/.test(out.html) && !/<nav aria-label="Main"/.test(out.html) && /<header[^>]*data-top-bar=""[^>]*>(?:(?!<\/header>)[\s\S])*<svg[^>]*aria-label="dareful"[^>]*data-wordmark=""/.test(out.html), "someone signed out has nowhere in the app to go back to: the wordmark, the logo's own outlines, where back would be");
@@ -835,6 +838,8 @@ test("the bar is on the four roots and nowhere else, every other screen has a ba
   if (claimant.status === 200) assert.ok(!/aria-label="Back"/.test(claimant.html) && /data-wordmark=""/.test(claimant.html) && /data-info-icon="claimant"/.test(claimant.html), "the claimant screen's header is the wordmark alone");
   const signedOut = await get("/");
   assert.ok(/data-wordmark=""/.test(signedOut.html) && signedOut.text.includes("Who’s got the next one?") && !/<nav aria-label="Main"/.test(signedOut.html), "signed out on Now: the wordmark and the way in");
+  // The owner's line (2026-09-29), word for word, and Round C's gone with it: the literal, so a change to the constant is seen here.
+  assert.ok(signedOut.text.includes("Ask your friends what’ll happen, from who falls asleep first to who wins on Sunday. Everyone makes their call, and Dareful keeps track of who’s got who.") && !signedOut.text.includes("No spreadsheet") && !signedOut.text.includes("The dares, the rounds"), "signed out on Now: what the app is, in the owner's words");
   // An empty Now (3.14): "Ask something" is the one chalk control, so Start stays hidden, and the bar is still there.
   const empty = await get("/", cA);
   assert.ok(empty.text.includes("Nothing happens here until somebody else is in it.") && empty.text.includes("Ask something"), "the first-run state");
@@ -869,7 +874,9 @@ test("state is a mark with a name, never a sentence: a question to get into is O
   // Inside the row for the question to get into, not anywhere on the page (a game row carries its own mark).
   const enterRow = /<a[^>]*data-need="enter"[^>]*>[\s\S]*?<\/a>/.exec(r.html)?.[0] ?? "";
   assert.ok(enterRow && /<svg role="img" aria-label="Open"/.test(enterRow), "the needs-you row carries the open mark");
-  for (const s of ["Waiting on an answer", "Waiting on how it came out", "Nobody’s in yet", "Everyone’s in", "Squared up", "Called it even"]) assert.ok(!r.text.includes(s), `state prose "${s}" on Now`);
+  // Apostrophes are compared plain: the code types both kinds, and a search for one kind alone could never fail against the other (the "Everyone's in" that stood on the asker's Close row).
+  const plain = r.text.replace(/’/g, "'");
+  for (const s of ["Waiting on an answer", "Waiting on how it came out", "Nobody's in yet", "Everyone's in", "Squared up", "Called it even"]) assert.ok(!plain.includes(s), `state prose "${s}" on Now`);
   const u = await get("/welcome", cU);
   assert.ok(/<svg role="img" aria-label="Proposed"/.test(u.html), "a cover to confirm carries the proposed mark");
 });
@@ -1011,6 +1018,7 @@ test("asking offers a number beside yes or no, and the question step carries the
   assert.ok(!r.text.includes("It picks this market") && !r.html.includes("John falls asleep during the movie"), "the retint shows what a mark does, and no example sits in the question (4.9)");
   assert.equal((r.text.match(/Optional/g) ?? []).length, 1, "Optional is said once, on the row, and never again (3.29)");
   assert.ok(!r.text.includes("Everyone puts their odds on it") && !r.text.includes("closest wins") && !r.text.includes("whoever's right is paid"), "no caption under the kind chips (3.29, 4.9, Round C)");
+  assert.ok(/<span[^>]*border-ink-3 bg-surface-2 text-ink[^>]*>Yes or no<\/span>/.test(r.html), "the selected kind chip is a choice among words, a surface-2 fill and an ink-3 border, never ink on ground (3.3, 3.29)");
   assert.ok(/aria-haspopup="dialog"/.test(r.html), "the mark row opens the picker");
   // Focus outlines (5.1, Round C): the global 2px ink outline, 2px outside the control, on every field; nothing removes it.
   assert.ok(!/outline-none/.test(r.html) && !/focus:border/.test(r.html), "no field on the ask flow removes its focus outline");
@@ -1139,6 +1147,11 @@ test("a photo attached with what happened sits on the claim card and in the shee
   assert.ok(r.text.includes("Priya says the kettle boiled dry"), "the claim in the market's own words (3.25)");
   assert.ok(!r.html.includes("data-media-frame"), "no frame while it is being called: the clip is on the claim card");
   assert.ok(r.text.includes("The screenshot Priya supplied"), "the read names who supplied what");
+  // Once voting opens the entry line leaves (3.38, Voting): the claim card stands where it stood, then where everyone landed.
+  assert.ok(!r.text.includes("You’re in at 30%") && r.text.includes("Where everyone landed"), "the friend's entry line is gone under the claim card, and the picture remains");
+  assert.ok(r.text.indexOf("Priya says the kettle boiled dry") < r.text.indexOf("Where everyone landed"), "the claim card directly under the band, then the picture");
+  const asker = await get(`/m/${evidenceMarketId}`, cAsker);
+  assert.ok(!asker.text.includes("You’re in at 80%") && asker.text.includes("You say the kettle boiled dry"), "the claimant's own entry line leaves too");
 });
 
 test("a sticker mark rides the band behind its own door: seen by its owner and the group, nothing to anyone else", async () => {
@@ -1186,7 +1199,7 @@ test("a timestamp is painted in the zone the browser reported, not the server's"
 
 test("every root and task screen keeps its fixed layers free of a captured ancestor (9.3): the tab bar, the Start button and the sheet, walked in the markup", async () => {
   const { ancestorsInMarkup, capturesAbove } = await import("@/lib/ui/layers");
-  const screens: Array<[string, string | undefined]> = [["/", cAsker], ["/on", cAsker], ["/people", cAsker], ["/you", cAsker], [`/m/${marketId}`, cFriend], [`/m/${marketId}`, cAsker], [`/p/${friend.user.id}`, cAsker], ["/join", cAsker], ["/welcome", cU], ["/m/new", cAsker], [`/on/${feedGameId}?g=${feedGroupId}`, cRae]];
+  const screens: Array<[string, string | undefined]> = [["/", cAsker], ["/on", cAsker], ["/people", cAsker], ["/you", cAsker], [`/m/${marketId}`, cFriend], [`/m/${marketId}`, cAsker], [`/p/${friend.user.id}`, cAsker], ["/join", cAsker], ["/welcome", cU], ["/m/new", cAsker], [`/on/${feedGameId}?g=${nightGroupId}`, cRae]];
   for (const [path, cookie] of screens) {
     const r = await get(path, cookie);
     assert.equal(r.status, 200, path);
@@ -1250,8 +1263,8 @@ test("Now answers in pieces (11.5): the shell's piece has the header row, the ta
   assert.ok(shell !== null, "the handoff arrived");
   assert.ok(/data-root-header=""/.test(shell) && /<nav aria-label="Main"/.test(shell) && /aria-label="Ask something"/.test(shell) && /data-got-a-code=""/.test(shell) && /id="opening"/.test(shell), "the header row, the tab bar, the + and the opening are in the first piece");
   assert.ok(/data-now-waiting=/.test(shell) && /data-now-hint="(full|empty)"/.test(shell), "with nothing standing in for the content, and what the phone remembers of it");
-  assert.ok(!/data-now="(full|empty|out)"/.test(shell) && !/data-server=/.test(shell), "and nothing of Now itself: the shell never waited on the account or on Now");
-  assert.ok(/data-now="full"/.test(html) && /data-server="session:\d+,now:\d+"/.test(html) && html.includes("Needs you"), "the content arrives after, into it");
+  assert.ok(!/data-now="(full|empty|out)"/.test(shell), "and nothing of Now itself: the shell never waited on the account or on Now");
+  assert.ok(/data-now="full"/.test(html) && html.includes("Needs you"), "the content arrives after, into it");
   // Every other screen still answers once, so a missing one is a 404 and not a page that says so (5.3).
   assert.equal((await get(`/m/${draftId}`, cFriend)).status, 404, "someone else's draft");
   const people = await fetch(BASE + "/people", { headers: { cookie: `dareful_session=${cAsker}` } });
@@ -1260,12 +1273,10 @@ test("Now answers in pieces (11.5): the shell's piece has the header row, the ta
 });
 
 test("the opening goes and stays gone when the app starts after the handoff has taken it away, signed out and signed in, and nothing on the page breaks", { skip: chromeIsHere() ? false : "no Chrome on this machine to watch the page in" }, async (t) => {
-  // The reading (docs/testing.md, the logo round): on this machine's own network, when the signed-in shell painted and when Now's content arrived into it, with the count and without.
-  for (const still of [false, true]) {
-    const runs = await watchOpening({ base: BASE, path: "/", session: cAsker, runs: 3, still });
-    t.diagnostic(`signed in, ${still ? "without the count" : "with the count"}: ${JSON.stringify(runs.map((r) => ({ firstByte: r.firstByte, firstPaint: r.firstPaint, shell: r.shell, content: r.content, gone: r.removed, app: r.live })))}`);
-    for (const r of runs) assert.ok(r.shell !== null && !r.opening && r.errors.filter((e) => /Hydration failed|React error #418|NotFoundError/.test(e)).length === 0, "the shell painted and the opening left");
-  }
+  // The reading (docs/testing.md, the logo round): on this machine's own network, when the signed-in shell painted and when the app started.
+  const runs = await watchOpening({ base: BASE, path: "/", session: cAsker, runs: 3 });
+  t.diagnostic(`signed in: ${JSON.stringify(runs.map((r) => ({ firstByte: r.firstByte, firstPaint: r.firstPaint, shell: r.shell, gone: r.removed, app: r.live })))}`);
+  for (const r of runs) assert.ok(r.shell !== null && !r.opening && r.errors.filter((e) => /Hydration failed|React error #418|NotFoundError/.test(e)).length === 0, "the shell painted and the opening left");
   // A phone's network: the scripts arrive long after the first screen's shell has painted and the opening has left the page.
   for (const [who, session] of [["signed out", undefined], ["signed in", cAsker]] as const) {
     const [run] = await watchOpening({ base: BASE, path: "/", latency: 250, mbps: 40, wait: 9000, runs: 1, ...(session ? { session } : {}) });
@@ -1541,7 +1552,7 @@ test("What's on lists the games ahead one row each, with the two stamps and a st
   assert.ok(r.text.includes("What’s on") && !r.text.includes("Things everyone’s watching"), "the header, and no line under it: the games say what the tab is (3.32, 4.9)");
   assert.ok(r.html.includes(`data-game-row="${feedGameId}"`), "the game, one row, whatever it has questions about");
   assert.ok(r.html.includes(`data-team-stamp="${feedAwayAbbr}"`) && !r.html.includes("teamlogos"), "the stamps, never a logo");
-  assert.ok(r.text.includes("You’re on this with"), "the asker's set has started it, so the row says so and opens that page");
+  assert.ok(r.text.includes("You’re on this with the Question check"), "the asker's set has started it, so the row says so, as a sentence names the set (3.32), and opens that page");
   assert.ok(!/\d+%/.test(r.text) && !/most picked|odds|leaning/i.test(r.text), "nothing about what anyone thinks will happen");
   assert.ok(!r.html.includes("data-most-asked"), "one group is below the floor of ten: no Most asked");
   assert.ok(!r.html.includes(`data-game-row="${nightGameId}"`), "a game that has started has left the list");
@@ -1560,6 +1571,18 @@ test("the game page: a header, one collapsed card per question with no number un
   assert.ok(!/<nav aria-label="Main"/.test(friendly.html) && /aria-label="Back"/.test(friendly.html), "a task screen with back, not a root");
   const asker = await get(`/on/${feedGameId}?g=${feedGroupId}`, cAsker);
   assert.ok(asker.text.includes(`You’re in at ${feedHome} 70% · 1 of 2 in`) && asker.text.includes(`You’re in at ${feedHome} by 3`), "your own entry once you are in, in the market's words");
+  // Who asked, as a sentence about the set (3.33), never the chip's label after a verb.
+  assert.ok(asker.text.includes("You asked the Question check. Everything closes at kickoff."), "the header's caption, to the asker");
+  assert.ok(friendly.text.includes("Priya asked the Question check. Everything closes at kickoff."), "and to someone she asked");
+  // The who's-in row (3.42) with the game as the unit, in place of the two buttons: share and copy at its end, no code (a code is one question's), no list and no pass.
+  for (const [who, page] of [["the asker", asker], ["someone not in yet", friendly]] as const) {
+    assert.ok(page.html.includes('data-whos-in=""') && page.html.includes('data-share=""') && page.html.includes("data-copy="), `${who}: the row, with share and copy`);
+    assert.ok(!page.text.includes("Send it to the chat") && !/<button[^>]*>\s*Copy\s*<\/button>/.test(page.html), `${who}: the old row is gone`);
+    assert.ok(!page.html.includes('data-code=""') && !page.html.includes("data-whos-in-list") && !page.html.includes('data-pass-phone=""'), `${who}: no code, no list, no pass`);
+    assert.ok(/data-whos-in-count=""[^>]*>\s*1 of 2 in/.test(page.html) && page.html.includes('data-holdouts="1"'), `${who}: one of the set's two is in on something, the other follows the stack dashed`);
+  }
+  const shareOf = (html: string) => /<button[^>]*data-share=""[^>]*>/.exec(html)?.[0] ?? "";
+  assert.ok(shareOf(asker.html).includes("bg-chalk") && !shareOf(friendly.html).includes("bg-chalk"), "share is the chalk for the asker while nobody else is in, and an icon for everyone else");
   const stranger = await get(`/on/${feedGameId}`, cStranger);
   assert.ok(stranger.html.includes("data-game-menu") && stranger.text.includes("What to ask") && stranger.text.includes("Who wins") && !stranger.text.includes("Your friends see only"), "with none of their sets on it: the start, with the menu and no caption under it (4.9)");
   assert.ok(/role="checkbox" aria-checked="true"/.test(stranger.html), "Who wins is ticked as the page opens");
@@ -1567,6 +1590,112 @@ test("the game page: a header, one collapsed card per question with no number un
   assert.ok(add.html.includes('data-game-terms="total"') && add.html.includes("data-game-stakes") && add.html.includes("data-consent-line") && add.text.includes("At kickoff,"), "adding one: the terms step alone, its rows, the one Stakes card and the consent line");
   const signedOut = await get(`/on/${feedGameId}/${feedGroupId}`);
   assert.ok(signedOut.status === 200 && signedOut.text.includes(`${feedAway} at ${feedHome}`) && !signedOut.text.includes("Question check") && !signedOut.text.includes("70%"), "a pasted link, signed out: the game and nothing about who is on it");
+  assert.ok(signedOut.html.includes('data-game-questions=""') && signedOut.html.includes(`href="/m/${feedOpenId}"`) && signedOut.html.includes(`href="/m/${feedMarginId}"`) && signedOut.text.includes("Sign in"), "with the set's questions, each opening its own screen, and the way to sign in");
+});
+
+test("a game's link tile names who asked by first name, says each question by the menu's short name, and is drawn from the game", async () => {
+  // What the tile is drawn from (3.27, amended 2026-09-29): the asker's first name and nothing else, the two teams, the menu's short
+  // names as rows (never the question itself, never clipped), and the absolute close time. Before the fix the rows were the questions
+  // clipped at 40 characters, two lines each, and the third ended "toge…".
+  const tile = await gameTile(feedGameId, feedGroupId);
+  assert.ok(tile?.kind === "game", "the game tile, not a question's");
+  assert.equal(tile.asker.name, "Priya", "who asked, by first name and nothing else");
+  assert.deepEqual(tile.questions, ["Who wins", "By how much"], "the menu's short names, in the menu's order");
+  for (const q of tile.questions) assert.ok(!q.includes("…") && !q.includes("?") && !q.includes(feedAway) && !q.includes(feedHome), `"${q}" is a row, never the question and never clipped`);
+  assert.deepEqual([tile.away.abbr, tile.home.abbr, tile.away.name, tile.home.name], [feedAwayAbbr, feedHomeAbbr, feedAway, feedHome], "the two stamps, away then home (3.40), with the names the two serif lines are drawn from");
+  assert.ok(tile.closes?.startsWith("Closes "), "an absolute close time while the game is ahead");
+  assert.ok(!("name" in tile), "no name of its own: the two lines are drawn from the teams");
+  // The route: a PNG of the tile's size, and a different picture from the plain card.
+  const r = await get(`/on/${feedGameId}/${feedGroupId}/opengraph-image`);
+  assert.equal(r.status, 200);
+  assert.equal(r.type, "image/png");
+  assert.deepEqual([r.bytes.readUInt32BE(16), r.bytes.readUInt32BE(20)], [1200, 630], "the picture is 1200 by 630, what a chat shows whole");
+  const plain = await get(`/on/00000000-0000-4000-8000-000000000000/00000000-0000-4000-8000-000000000000/opengraph-image`);
+  assert.ok(!r.bytes.equals(plain.bytes) && r.bytes.length > 10_000, "a drawn tile, not the plain card");
+});
+
+test("a game's link opened signed in by someone not in its set is that set's questions, each opening its own screen: never the start, and never another set's page", async () => {
+  // A stranger to the set, on the game with nobody: before the fix this was "Start a game" with Who wins ticked, and three taps made a second set.
+  for (const path of [`/on/${feedGameId}/${feedGroupId}`, `/on/${feedGameId}?g=${feedGroupId}`]) {
+    const r = await get(path, cStranger);
+    assert.equal(r.status, 200, path);
+    assert.ok(r.html.includes('data-game-questions=""') && r.html.includes(`href="/m/${feedOpenId}"`) && r.html.includes(`href="/m/${feedMarginId}"`), `${path}: the link's set's questions, each opening its own screen`);
+    assert.ok(!r.html.includes("data-game-menu") && !r.text.includes("What to ask") && !r.text.includes("Start a game"), `${path}: never the start`);
+    assert.ok(/aria-label="Back"/.test(r.html) && !r.text.includes("Sign in"), `${path}: signed in it has Back, and nothing about signing in`);
+    assert.ok(!/\d+%/.test(r.text) && !r.text.includes("1 of 2 in") && !r.text.includes("Question check") && !r.html.includes('data-whos-in=""') && !r.html.includes("data-add-another"), `${path}: nothing about who is on it or at what, and nothing to add or send before they are in`);
+    assert.ok(r.text.includes("Everything closes at kickoff."), `${path}: the game is ahead`);
+  }
+  assert.equal((await db.select({ groupId: schema.groupMembers.groupId }).from(schema.groupMembers).where(and(eq(schema.groupMembers.groupId, feedGroupId), eq(schema.groupMembers.userId, stranger.user.id)))).length, 0, "opening the link seats nobody: the join is a tap on the question they open");
+  // Someone on the same game with a set of her own: the link is still the link's set, never her own page.
+  const rae = await get(`/on/${feedGameId}/${feedGroupId}`, cRae);
+  assert.ok(rae.html.includes('data-game-questions=""') && rae.html.includes(`href="/m/${feedOpenId}"`), "the link's set's questions");
+  assert.ok(!rae.html.includes(`/m/${feedVotingId}"`) && !rae.html.includes(`/m/${feedSettledId}"`) && !rae.html.includes("data-game-cards"), "and nothing of her own set's page");
+  // Her own set's address is still her own set's page, and with no set named the game opens as it did.
+  const own = await get(`/on/${feedGameId}?g=${nightGroupId}`, cRae);
+  assert.ok(own.html.includes("data-game-cards") && !own.html.includes('data-game-questions=""'), "a set she is in: its page");
+  assert.ok((await get(`/on/${feedGameId}`, cStranger)).html.includes("data-game-menu"), "no set named, on it with nobody: the start");
+});
+
+test("the sets on a game, in sentences: a set of only the asker, a name that can't take the, the chips named for what they switch, and a called-off question gone from the page", async () => {
+  // Someone new with three sets on the recorded game, asked in this order: one whose only question was called off, one nobody else is in yet, and one named with a possessive.
+  const noor = await tempSigner("Noor Haddad");
+  const cNoor = await cookieFor(noor.user.id);
+  const [tpl] = await db.select().from(schema.publicQuestions).where(and(eq(schema.publicQuestions.gameId, feedGameId), eq(schema.publicQuestions.key, "home_wins")));
+  const open = async (groupId: string) => {
+    const usd = await ensureUsd(groupId, noor.user.id);
+    const d0 = await markets.draftFromTemplate({ templateId: (tpl as { id: string }).id, creatorId: noor.user.id, groupId, denomId: usd.id });
+    return markets.openMarket(d0.id, noor.user.id, await noor.ledger.signTypedData(markets.createTypedData(d0)));
+  };
+  const off = await createOccasionGroup(noor.user.id);
+  const alone = await createOccasionGroup(noor.user.id);
+  const named = await createGroup({ name: "Papa’s birthday", createdBy: noor.user.id });
+  for (const g of [off, alone, named]) track.group(g.id);
+  const offId = (await open(off.id)).id;
+  await db.update(schema.dares).set({ lockedAt: new Date(), resolvedAt: new Date(), resolvedBy: "removed", resolvedOutcome: markets.VOID_OUTCOME }).where(eq(schema.dares.id, offId));
+  const aloneId = (await open(alone.id)).id;
+  const namedId = (await open(named.id)).id;
+
+  const one = await get(`/on/${feedGameId}?g=${alone.id}`, cNoor);
+  assert.equal(one.status, 200);
+  assert.ok(one.text.includes("You asked. Everything closes at kickoff.") && !one.text.includes("asked Just you"), "a set of only the asker: nothing after asked, and never the chip's label after the verb");
+  assert.ok(one.html.includes(`href="/m/${aloneId}"`) && /data-whos-in-count=""[^>]*>\s*Nobody’s in yet/.test(one.html), "the asker starts out in nothing: the row says nobody's in yet");
+  // The question's own screen for its asker before anyone is in (a game opens every question with nobody in): never a count of zero (3.14), and no second sentence about where nobody landed.
+  const zero = await get(`/m/${aloneId}`, cNoor);
+  const beforeIn = /<section[^>]*data-friends-in=""[^>]*>[\s\S]*?<\/section>/.exec(zero.html)?.[0] ?? "";
+  assert.ok(zero.status === 200 && beforeIn.includes("Nobody’s in yet.") && !beforeIn.includes("0 friends") && !beforeIn.includes("Where they landed"), "before you're in with nobody in: one sentence, and never a zero");
+  assert.ok((/<button[^>]*data-share=""[^>]*>/.exec(one.html)?.[0] ?? "").includes("bg-chalk"), "and sending it is the chalk");
+  const chips = /<div[^>]*role="group"[^>]*aria-label="Who you’re on this with"[^>]*>([\s\S]*?)<\/div>/.exec(one.html)?.[1] ?? "";
+  assert.ok(chips.includes(`/on/${feedGameId}?g=${alone.id}`) && chips.includes(`/on/${feedGameId}?g=${named.id}`), "the chips that switch sets, in a group with a name a screen reader says");
+  assert.ok(!one.html.includes("Which set of people") && !chips.includes(off.id), "never the design's own word, and no chip for the set whose only question was called off");
+  const poss = await get(`/on/${feedGameId}?g=${named.id}`, cNoor);
+  assert.ok(poss.text.includes("You asked · Papa’s birthday. Everything closes at kickoff.") && !poss.text.includes("the Papa’s"), "a possessive can't take the (3.38)");
+  // Called off: it never happened. Its set's address is not its page, its card is on no page, and What's on names the most recent set that stands.
+  const gone = await get(`/on/${feedGameId}?g=${off.id}`, cNoor);
+  assert.ok(gone.status === 200 && !gone.html.includes(`/m/${offId}"`) && gone.html.includes(`href="/m/${namedId}"`), "the address of the set with nothing standing opens the most recent set that has");
+  const tab = await get("/on", cNoor);
+  assert.ok(tab.text.includes("You’re on this · Papa’s birthday") && !tab.text.includes("You’re on this with Papa"), "the row, for a name that can't take the");
+});
+
+test("the asker line is a sentence about the set on every screen that has one, and a row's shell says what the screen will say", async () => {
+  const { parseShell } = await import("@/lib/ui/shell");
+  const mine = await get(`/m/${marketId}`, cAsker);
+  const theirs = await get(`/m/${marketId}`, cFriend);
+  assert.ok(mine.text.includes("You asked the Question check") && theirs.text.includes("Priya asked the Question check"), "the market's band");
+  // The header is Back, More and the icon (10.3): no context chip, since the band already names the set (3.19).
+  const bar = /<header[^>]*data-top-bar=""[^>]*>[\s\S]*?<\/header>/.exec(mine.html)?.[0] ?? "";
+  assert.ok(bar.length > 0 && !bar.includes("Question check"), "the market's header carries no chip with the set's name");
+  assert.ok((await get(`/m/${draftId}`, cAsker)).text.includes("For the Question check"), "a draft's band (3.25)");
+  assert.ok((await get(`/m/${marketId}/pass`, cAsker)).text.includes("Priya asked the Question check"), "the friend's screen in pass the phone: a first name, never You");
+  // The shell a row on Now draws before the screen arrives (9.4) carries the words the screen then says, whoever is looking and whatever the set.
+  for (const [who, cookie] of [["the asker", cAsker], ["someone she asked", cFriend]] as const) {
+    const now = await get("/", cookie);
+    const shells = (now.html.match(/<a [^>]*data-shell="[^"]*"[^>]*>/g) ?? []).map((a) => parseShell((/data-shell="([^"]*)"/.exec(a)?.[1] ?? "").replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&amp;/g, "&"))).flatMap((x) => (x && x.kind === "market" && x.asker ? [{ id: x.id, line: x.asker.line }] : []));
+    assert.ok(shells.length >= 1, `${who}: a row's shell carries who asked`);
+    for (const x of shells.slice(0, 3)) {
+      assert.ok(!/Just you|asked you two|\d+ more$/.test(x.line), `${who}: never the chip's label: "${x.line}"`);
+      assert.ok((await get(`/m/${x.id}`, cookie)).text.includes(x.line.replace(/'/g, "’")), `${who}: the screen says what the shell said: "${x.line}"`);
+    }
+  }
 });
 
 test("once the game is over its page is the night: the final score as the title, the settled cards, who's got who across the game, and the photo move; Now and a timeline carry a game as one row and one story", async () => {
@@ -1735,6 +1864,48 @@ test("a removed market reads as called off on its own screen, with nobody else g
   assert.ok(friend.status === 200 && friend.text.includes("Called off."), "anyone the link reached sees the same");
   const home = await get("/", cAsker);
   assert.ok(!home.html.includes(`/m/${d.id}`), "never on Now, not in Just happened either");
+});
+
+test("a ghost who is in sees the market as anyone in sees it (3.17, frame 6): their entry and the picture before who's in and the facts; once locked, the entry with its clock, where everyone landed and the poll, whose pulse admits them and nobody else without a session; once settled, how it ended", async () => {
+  const groupOf = (await db.select({ groupId: schema.dares.groupId, denomId: schema.dares.denomId }).from(schema.dares).where(eq(schema.dares.id, marketId)))[0] as { groupId: string; denomId: string };
+  const d0 = await markets.draftMarket({ creatorId: asker.user.id, groupId: groupOf.groupId, denomId: groupOf.denomId, title: "Does the ghost see the whole story?", termsText: "Yes if the screen says so.", resolvesBy: new Date(Date.now() + 86_400_000), outcomeWords: ["It did", "It didn’t", "The ghost saw it all.", "The ghost saw nothing."] });
+  const d = await markets.openMarket(d0.id, asker.user.id, await asker.ledger.signTypedData(markets.createTypedData(d0)));
+  await markets.enterMarket({ dareId: d.id, userId: asker.user.id, stake: 500n, value: 6000n, signature: await asker.ledger.signTypedData(markets.enterTypedData(d, 500n, 6000n)) });
+  const wisp = await enterAsGhost({ dareId: d.id, who: { name: "Wisp", phoneHash: null, memberClaimId: null }, tokens: [], stake: 500n, value: 2600n });
+  assert.ok(wisp.browserToken, "the browser keeps a token for the entry");
+  const jar = `dareful_claims=${wisp.browserToken}`;
+  const open = await get(`/m/${d.id}`, undefined, jar);
+  assert.equal(open.status, 200);
+  assert.ok(open.text.includes("You’re in at 26%") && open.html.includes('data-whos-in=""'), "in: the entry line and the who's-in row");
+  // The same phone on another open question joins as the ghost it remembers, and says so instead of asking a name it would not use.
+  const elsewhere = await get(`/m/${marketId}`, undefined, jar);
+  assert.ok(elsewhere.html.includes('data-joining-as=""') && elsewhere.text.includes("Joining as Wisp") && elsewhere.text.includes("Not you?") && !elsewhere.text.includes("Your name"), "Joining as Wisp · Not you? on a question the ghost is not in yet");
+  assert.ok(open.text.indexOf("You’re in at 26%") < open.text.indexOf("of you in") && open.text.indexOf("of you in") < open.text.indexOf("How it works"), "the entry line, then who's in, then the facts, as a member sees them");
+  assert.ok(!open.text.includes("so you can watch but not enter"), "nothing tells someone who is in that they cannot enter");
+  // Locked: the entry stays, with the clock, and the picture is where everyone landed; the poll is on the page and its door admits the ghost.
+  await markets.lockMarket(d.id, asker.user.id);
+  const locked = await get(`/m/${d.id}`, undefined, jar);
+  assert.ok(locked.text.includes("You’re in at 26%") && /locked at \d/.test(locked.text) && locked.text.includes("Where everyone landed"), "locked: the entry with its clock, and where everyone landed");
+  assert.ok(!locked.text.includes("so you can watch but not enter") && !locked.text.includes("Change"), "no Closed sheet, and nothing to change");
+  const pulse = await fetch(`${BASE}/api/m/${d.id}/pulse`, { headers: { cookie: jar } });
+  assert.equal(pulse.status, 200, "the pulse answers a ghost who is in");
+  assert.equal((await fetch(`${BASE}/api/m/${d.id}/pulse`)).status, 404, "and nobody with no session and no entry");
+  const outsider = await get(`/m/${d.id}`);
+  assert.ok(outsider.text.includes("so you can watch but not enter") && !outsider.text.includes("You’re in at"), "a visitor who never got in still gets the Closed sheet");
+  // Settled by the contract's rule here (a provisional market): how it ended, in the question's own words, and nothing that says finished and no more.
+  await settleProvisional((await markets.marketById(d.id)) as NonNullable<Awaited<ReturnType<typeof markets.marketById>>>, await markets.positionsOf(d.id), 1n, { by: "quorum" });
+  const settled = await get(`/m/${d.id}`, undefined, jar);
+  assert.ok(settled.text.includes("The ghost saw it all.") && !settled.text.includes("This one’s finished."), "the outcome line for the ghost who was in");
+  assert.ok((await get(`/m/${d.id}`)).text.includes("This one’s finished."), "and the plain line for a visitor who was not");
+  // On the asker's settled screen the ghost who has got them wears the stone avatar with its dashed ring, on the "Wisp's got" line and on the token (3.1).
+  const askerSettled = await get(`/m/${d.id}`, cAsker);
+  const section = askerSettled.dom.slice(askerSettled.dom.indexOf("Who’s got who"));
+  const at = section.search(/Wisp(?:’|'|&#x27;)s got/);
+  assert.ok(at > 0, "the ghost lost, so the ghost has got the asker");
+  // The ghost's own line and its tokens, and nothing after them: the who's-in stack further down draws the same ghost dashed, and would answer for these two.
+  const who = section.slice(section.lastIndexOf("<p", at), section.indexOf("</ul>", at));
+  const ghostAvatars = (who.match(/outline-dashed/g) ?? []).length;
+  assert.ok(ghostAvatars >= 2 && /background:\s*var\(--person-stone\)/.test(who), `the line's avatar and the token's both stone and dashed (found ${ghostAvatars})`);
 });
 
 test("at sign-in, an entry made from a link is a row on the claimant screen, pressed by default, with the one chalk counting it", async () => {

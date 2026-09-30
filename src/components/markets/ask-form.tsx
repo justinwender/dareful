@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition, type CSSProperties, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/ledger/avatar";
-import { Chip } from "@/components/ledger/chip";
+import { Chip, chipPress } from "@/components/ledger/chip";
 import { MarkRefStamp } from "@/components/ledger/mark-stamp";
 import { FIELD_PROBLEM_CLASS, Problem, ProblemSummary } from "@/components/ledger/problem";
 import { Screen, TopBar } from "@/components/ledger/screen";
@@ -11,17 +11,19 @@ import { Button, ButtonLink } from "@/components/ui/button";
 import { withViewTransition } from "@/lib/ui/transitions";
 import { streamWriteUp } from "@/lib/ui/write-up-stream";
 import { MOTION, waitStage } from "@/lib/ui/motion";
+import { answerLands } from "@/lib/ui/stage";
 import { PinnedSheet } from "@/components/ui/pinned-sheet";
 import { carefulQuestionsAction, draftFromTemplateAction, draftMarketAction, scopeMarketAction, triageAction, type ScopeResult, type TriageResult } from "@/lib/actions/markets";
 import { emojiInk } from "@/lib/ui/emoji-ink";
 import type { Hue } from "@/lib/ui/hue";
-import { inkFor, inkVars, type InkName } from "@/lib/ui/ink";
+import { inkFor, inkRoomStyleText, type InkName } from "@/lib/ui/ink";
 import { cn } from "@/lib/utils";
 import { MarkPicker, type Sticker } from "./mark-picker";
 import { WhoStep, type Person, type SetOption, type Who } from "./who-step";
 import { refOfPicked, type PickedMark } from "@/lib/ui/mark";
 import { firstName } from "@/lib/ui/copy";
 import { MAX_ANSWER_LENGTH, MAX_ANSWERS, MIN_ANSWERS } from "@/lib/ledger/pick-one";
+import { CLOSINGS, closeMoment, nearestClosing, type Closing } from "@/lib/ledger/closings";
 
 type Unit = { kind: "usd" } | { kind: "existing"; id: string } | { kind: "new"; template: "beer" | "round" | "coffee" | "next_time"; label: string };
 const PRESETS = [
@@ -29,12 +31,6 @@ const PRESETS = [
   { template: "round", label: "rounds" },
   { template: "next_time", label: "a next time" },
 ] as const;
-const WHEN = [
-  { label: "Tonight", hours: 8 },
-  { label: "Tomorrow", hours: 30 },
-  { label: "This week", hours: 24 * 7 },
-  { label: "This month", hours: 24 * 30 },
-];
 
 /**
  * Asking, in three steps: the question, who's in, the terms (PLANNING.md 8a; docs/design.md 3.20 and section 7).
@@ -56,6 +52,8 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
   const router = useRouter();
   type Step = "question" | "declined" | "criterion" | "subject" | "careful" | "who" | "terms";
   const [step, setStepRaw] = useState<Step>(template ? "who" : "question");
+  /** Where the person is and what they typed, as of now, for an answer that arrives late (`answerLands`). */
+  const here = useRef<{ step: Step; line: string }>({ step: template ? "who" : "question", line: initialLine.slice(0, 280) });
   /** Advancing moves the step's content 24px left under a band that holds still; back mirrors it (9.8). */
   const setStep = (next: Step, back = false) => withViewTransition(() => setStepRaw(next), { back });
   const previous: Record<Step, Step | null> = { question: null, declined: "question", criterion: "question", subject: "question", careful: "question", who: template ? null : "question", terms: "who" };
@@ -81,7 +79,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
   const [draftId] = useState(() => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : null));
   const [unitWords, setUnitWords] = useState({ singular: "", plural: "" });
   const [scale, setScale] = useState("");
-  const [mode, setMode] = useState<"quick" | "careful">("quick");
+  const [modeChosen, setMode] = useState<"quick" | "careful">("quick");
   const [verdict, setVerdict] = useState<TriageResult | null>(null);
   const [criterion, setCriterion] = useState<string | null>(null);
   const [side, setSide] = useState<"yes" | "no">("yes");
@@ -92,12 +90,15 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
   const [stalemate, setStalemate] = useState<"arbitrate" | "void">("arbitrate");
   const [thinking, startThinking] = useTransition();
   const [line, setLine] = useState(initialLine.slice(0, 280));
+  useEffect(() => {
+    here.current = { step, line };
+  });
   const [who, setWho] = useState<Who>(sets[0] ? { kind: "set", groupId: sets[0].groupId } : { kind: "link" });
   const [scope, setScope] = useState<ScopeResult | null>(null);
   const scoping = useRef<Promise<void> | null>(null);
   const [title, setTitle] = useState("");
   const [terms, setTerms] = useState("");
-  const [hours, setHours] = useState(30);
+  const [closing, setClosing] = useState<Closing>("tomorrow");
   const [unit, setUnit] = useState<Unit>({ kind: "usd" });
   const [blind, setBlind] = useState(false);
   const [fieldProblem, setFieldProblem] = useState<string | null>(null);
@@ -119,9 +120,13 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
     return () => clearInterval(timer);
   }, [writing]);
   const [saving, startSave] = useTransition();
+  /** The draft is saved and its screen is on its way: "Send it" holds until the address has moved on, so one question is sent once. */
+  const [sent, setSent] = useState(false);
   const selectedSet = who.kind === "set" ? sets.find((s) => s.groupId === who.groupId) : undefined;
   const numeric = pace === "dare" && kind === "numeric";
   const pickOne = pace === "dare" && kind === "categorical";
+  // Careful mode is yes-or-no's alone (its three questions are written for one, and only that write-up reads the answers): a mode chosen before the kind changed cannot send a number or a pick-one question down the careful path.
+  const mode: "quick" | "careful" = numeric || pickOne ? "quick" : modeChosen;
   const filledChoices = choices.filter((c) => c.text.trim().length > 0);
   // The ink this market would get (1.8, 3.29): the mark's from the table, or a hash of the id for a hueless mark, balanced on the
   // who's-in step against the questions still open between the same people. The server computes it again the same way and stores that.
@@ -129,7 +134,6 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
     if (!mark || !draftId) return null;
     return inkFor({ markInk: mark.kind === "emoji" ? emojiInk(mark.value) : mark.ink, id: draftId, takenInGroup: step === "question" ? [] : (selectedSet?.takenInks ?? []) }).ink;
   }, [mark, draftId, step, selectedSet]);
-  const room: CSSProperties | undefined = previewInk ? (inkVars(previewInk) as CSSProperties) : undefined;
 
   /**
    * The write-up starts when the question step's Next is tapped and streams into the terms step as it is written
@@ -158,7 +162,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
       setTitle(r.title);
       setTerms(r.terms);
       if (r.number) setUnitWords(r.number.unit);
-      setHours(WHEN.reduce((best, w) => (Math.abs(w.hours - r.resolvesInHours) < Math.abs(best - r.resolvesInHours) ? w.hours : best), WHEN[0]?.hours ?? 30));
+      setClosing(nearestClosing(r.resolvesInHours));
       setWritten((w) => (w ? { ...w, title: r.title, terms: r.terms, done: true, lastAt: Date.now() } : w));
     })();
   }
@@ -176,7 +180,10 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
     if (pace === "argument") {
       // The triage comes before anything else, and it matters more than the ruling: some things are not the app's to call.
       return startThinking(async () => {
+        const asked = { step: "question", line };
         const t = await triageAction(line);
+        // A second tap, or a slow first one: only the answer to what is on screen, where it was asked, moves anything.
+        if (!answerLands(asked, here.current)) return;
         if ("error" in t) return setFieldProblem(t.error);
         setVerdict(t);
         if (t.kind === "unavailable") return setProblem("The app can’t weigh this one right now, and it won’t guess. Try again in a minute.");
@@ -189,7 +196,9 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
     }
     if (mode === "careful") {
       return startThinking(async () => {
+        const asked = { step: "question", line };
         const q = await carefulQuestionsAction(line);
+        if (!answerLands(asked, here.current)) return;
         if ("error" in q) {
           setProblem(q.error);
           writeUp();
@@ -224,6 +233,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
     startSave(async () => {
       const r = await draftFromTemplateAction({ templateId: template.id, who, unit, blind, id: draftId ?? undefined });
       if ("error" in r) return setProblem(r.error);
+      setSent(true);
       // The new question replaces the ask flow in history: back from it never returns to the flow (docs/decisions.md 2026-09-27).
       router.replace(`/m/${r.id}`);
     });
@@ -252,26 +262,32 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
         outcomeWords: !numeric && !pickOne && !arguing && scope?.outcomes ? scope.outcomes : undefined,
         answers: pickOne ? filledChoices.map((c) => ({ text: c.text.trim(), userId: c.userId })) : undefined,
         number: numeric ? { unit: { singular: unitWords.singular.trim().toLowerCase(), plural: unitWords.plural.trim().toLowerCase() || unitWords.singular.trim().toLowerCase() }, scale: scale.trim(), model: scope?.number?.model ?? null } : undefined,
-        resolvesBy: arguing ? null : new Date(Date.now() + hours * 3_600_000).toISOString(),
+        resolvesBy: arguing ? null : closeMoment(closing, new Date(), Intl.DateTimeFormat().resolvedOptions().timeZone).toISOString(),
         blind: arguing ? false : blind,
         stalemate,
         mode,
         argument: arguing && verdict?.kind === "ok" ? { tier: verdict.tier, criterion } : undefined,
       });
       if ("error" in r) return setProblem(r.error);
+      setSent(true);
       router.replace(arguing ? `/m/${r.id}?side=${side}` : `/m/${r.id}`);
     });
   }
 
   const wrap = (children: ReactNode) => (
-    <div style={room} className={cn("flex flex-1 flex-col", previewInk && "grain retint")}>
+    <div data-ink-room={previewInk ?? undefined} className={cn("flex flex-1 flex-col", previewInk && "grain retint")}>
+      {/* The room's ink in both themes (3.29, 8.4): one style element, as the market's own screen carries its ink, never inline values from one theme's table. */}
+      {previewInk ? <style dangerouslySetInnerHTML={{ __html: inkRoomStyleText(previewInk) }} /> : null}
       <Screen layer={layer ? "ask" : undefined}>
         {previous[step] === null ? (
           <TopBar close title={screenTitle} right={gotCode ? <ButtonLink href="/join" variant="tertiary" data-got-a-code="">Got a code?</ButtonLink> : undefined} info={infoKey} />
         ) : (
           <TopBar onBack={stepBack} title={screenTitle} info={infoKey} />
         )}
-        <div className="py-2" style={{ viewTransitionName: "ask-step" } as CSSProperties}>{children}</div>
+        {/* In the ask layer the step fills the column, so its action bar, in flow, stands at the layer's foot (9.5) and not wherever the step's content happens to end. */}
+        <div className={layer ? "flex flex-1 flex-col pt-2 [&>*]:flex-1" : "py-2"} style={{ viewTransitionName: "ask-step" } as CSSProperties}>
+          {children}
+        </div>
       </Screen>
     </div>
   );
@@ -289,7 +305,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
       >
         {/* The question band (3.29): on the market's field, neutral until a mark is picked. The mark row opens the picker; "Optional" is said once. */}
         <section className="-mx-2 flex flex-col gap-4 rounded-card bg-field p-4 pb-5" style={{ viewTransitionName: "ask-band" } as CSSProperties}>
-          <button type="button" aria-haspopup="dialog" aria-expanded={pickingMark} onClick={() => setPickingMark(true)} className="flex items-center gap-4 rounded-button text-left">
+          <button type="button" aria-haspopup="dialog" aria-expanded={pickingMark} onClick={() => setPickingMark(true)} data-press="row" className="flex items-center gap-4 rounded-button text-left press-row">
             {mark ? (
               <MarkRefStamp mark={refOfPicked(mark)} size={64} onGround />
             ) : (
@@ -322,12 +338,12 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
           onPick={setMark}
         />
         <div role="group" aria-label="What kind of thing" className="flex flex-wrap gap-2">
-          <button type="button" aria-pressed={pace === "dare"} onClick={() => setPace("dare")} className="rounded-pill">
+          <button type="button" aria-pressed={pace === "dare"} onClick={() => setPace("dare")} {...chipPress(pace === "dare")}>
             <Chip size={36} selected={pace === "dare"} choice>
               Something that’ll happen
             </Chip>
           </button>
-          <button type="button" aria-pressed={pace === "argument"} onClick={() => setPace("argument")} className="rounded-pill">
+          <button type="button" aria-pressed={pace === "argument"} onClick={() => setPace("argument")} {...chipPress(pace === "argument")}>
             <Chip size={36} selected={pace === "argument"} choice>
               Settle an argument
             </Chip>
@@ -337,18 +353,18 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
           <div className="flex flex-col gap-2">
             <h2 className="text-label text-ink-3">How people answer</h2>
             <div role="radiogroup" aria-label="How people answer" className="flex flex-wrap gap-2">
-              <button type="button" role="radio" aria-checked={kind === "binary"} onClick={() => setKind("binary")} className="rounded-pill">
-                <Chip size={36} selected={kind === "binary"}>
+              <button type="button" role="radio" aria-checked={kind === "binary"} onClick={() => setKind("binary")} {...chipPress(kind === "binary")}>
+                <Chip size={36} selected={kind === "binary"} choice>
                   Yes or no
                 </Chip>
               </button>
-              <button type="button" role="radio" aria-checked={kind === "numeric"} onClick={() => setKind("numeric")} className="rounded-pill">
-                <Chip size={36} selected={kind === "numeric"}>
+              <button type="button" role="radio" aria-checked={kind === "numeric"} onClick={() => setKind("numeric")} {...chipPress(kind === "numeric")}>
+                <Chip size={36} selected={kind === "numeric"} choice>
                   A number
                 </Chip>
               </button>
-              <button type="button" role="radio" aria-checked={kind === "categorical"} onClick={() => setKind("categorical")} className="rounded-pill">
-                <Chip size={36} selected={kind === "categorical"}>
+              <button type="button" role="radio" aria-checked={kind === "categorical"} onClick={() => setKind("categorical")} {...chipPress(kind === "categorical")}>
+                <Chip size={36} selected={kind === "categorical"} choice>
                   Pick one
                 </Chip>
               </button>
@@ -362,7 +378,8 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
             <h2 className="text-label text-ink-3">The answers</h2>
             <ul className="flex flex-col gap-2">
               {choices.map((c, i) => (
-                <li key={i} className="flex h-11 items-center gap-2 rounded-button border border-line bg-surface pl-2">
+                // The answer's field is the drawn row (5.1): focus outlines the row, 2px outside it, and the bare input inside carries none of its own.
+                <li key={i} className="flex h-11 items-center gap-2 rounded-button border border-line bg-surface pl-2 has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-ink" data-answer-row="">
                   <span className="flex h-7 w-7 shrink-0 items-center justify-center">{c.userId ? <Avatar name={c.userId === me.id ? me.name : c.text} hue={c.userId === me.id ? me.hue : (people.find((p) => p.id === c.userId)?.hue ?? "stone")} size={28} /> : null}</span>
                   <input
                     value={c.text}
@@ -372,9 +389,9 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
                     maxLength={MAX_ANSWER_LENGTH}
                     aria-label={`Answer ${i + 1}`}
                     onChange={(e) => setChoices((cs) => cs.map((x, k) => (k === i ? { text: e.target.value, userId: null } : x)))}
-                    className="h-full min-w-0 flex-1 rounded-button bg-transparent text-body-strong text-ink"
+                    className="h-full min-w-0 flex-1 rounded-button bg-transparent text-body-strong text-ink focus-visible:outline-none"
                   />
-                  <button type="button" aria-label={`Remove answer ${i + 1}`} disabled={choices.length <= MIN_ANSWERS} onClick={() => setChoices((cs) => cs.filter((_, k) => k !== i))} className="flex h-11 w-11 shrink-0 items-center justify-center text-ink-2 disabled:text-ink-3">
+                  <button type="button" aria-label={`Remove answer ${i + 1}`} disabled={choices.length <= MIN_ANSWERS} onClick={() => setChoices((cs) => cs.filter((_, k) => k !== i))} data-press="line" className="flex h-11 w-11 shrink-0 items-center justify-center text-ink-2 press-line disabled:text-ink-3">
                     <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                       <path d="M6 6l12 12M18 6L6 18" />
                     </svg>
@@ -389,7 +406,8 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
                       setAddedAt(choices.length + 1);
                       setChoices((cs) => [...cs, { text: "", userId: null }]);
                     }}
-                    className="flex h-11 w-full items-center gap-3 rounded-button border border-dashed border-line-strong px-3 text-body-sm font-semibold text-ink-2"
+                    data-press="line"
+                    className="flex h-11 w-full items-center gap-3 rounded-button border border-dashed border-line-strong px-3 text-body-sm font-semibold text-ink-2 press-line"
                   >
                     <span aria-hidden="true" className="flex h-7 w-7 items-center justify-center">+</span>
                     Add an answer
@@ -416,7 +434,8 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
                             const next = { text: label, userId: p.id };
                             return empty >= 0 ? cs.map((c, k) => (k === empty ? next : c)) : cs.length < MAX_ANSWERS ? [...cs, next] : cs;
                           })}
-                          className="flex h-11 w-11 items-center justify-center rounded-pill"
+                          data-press="line"
+                          className="flex h-11 w-11 items-center justify-center rounded-pill press-line"
                           style={added ? { opacity: 0.35 } : undefined}
                         >
                           <Avatar name={p.id === me.id ? me.name : p.name} hue={p.hue} size={32} />
@@ -430,24 +449,25 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
             <p className="text-caption text-ink-3">If none of them might happen, add that too.</p>
           </div>
         ) : null}
-        {pace === "dare" ? (
+        {/* Careful mode is offered with Yes or no alone (the QA round): its three questions are written for a yes-or-no question, and only that write-up reads the answers. */}
+        {pace !== "dare" ? (
+          <p className="text-caption text-ink-3">The app says what kind of disagreement it is before anyone puts anything on it. If it’s about one of you rather than about the world, it won’t call it.</p>
+        ) : numeric || pickOne ? null : (
           <div className="flex flex-col gap-2">
             <div role="group" aria-label="How the terms get written" className="flex flex-wrap gap-2">
-              <button type="button" aria-pressed={mode === "quick"} onClick={() => setMode("quick")} className="rounded-pill">
-                <Chip size={36} selected={mode === "quick"}>
+              <button type="button" aria-pressed={mode === "quick"} onClick={() => setMode("quick")} {...chipPress(mode === "quick")}>
+                <Chip size={36} selected={mode === "quick"} choice>
                   Just write it up
                 </Chip>
               </button>
-              <button type="button" aria-pressed={mode === "careful"} onClick={() => setMode("careful")} className="rounded-pill">
-                <Chip size={36} selected={mode === "careful"}>
+              <button type="button" aria-pressed={mode === "careful"} onClick={() => setMode("careful")} {...chipPress(mode === "careful")}>
+                <Chip size={36} selected={mode === "careful"} choice>
                   Ask me three things first
                 </Chip>
               </button>
             </div>
             <p className="text-caption text-ink-3">{mode === "careful" ? "Three yes-or-no questions, about fifteen seconds. For when a lot is riding on it, or it runs for weeks." : "One line in, terms out. Right for anything you’ll know tonight."}</p>
           </div>
-        ) : (
-          <p className="text-caption text-ink-3">The app says what kind of disagreement it is before anyone puts anything on it. If it’s about one of you rather than about the world, it won’t call it.</p>
         )}
         {/* The step's one move, in the sheet (3.24), with the form-level problem above it when there is one. */}
         <PinnedSheet
@@ -563,7 +583,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
               ["pet", "a pet"],
               ["thing", "something else"],
             ] as const).map(([kind, label]) => (
-              <button key={kind} type="button" disabled={thinking} onClick={() => answer(kind)} className="flex h-12 items-center border-t border-line text-left text-body text-ink first:border-t-0 disabled:text-ink-3">
+              <button key={kind} type="button" disabled={thinking} onClick={() => answer(kind)} data-press="row" className="flex h-12 items-center border-t border-line text-left text-body text-ink press-row first:border-t-0 disabled:text-ink-3">
                 {label}
               </button>
             ))}
@@ -601,8 +621,8 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
               </p>
               <div role="group" aria-labelledby={`careful-${i}`} className="flex gap-2">
                 {([true, false] as const).map((v) => (
-                  <button key={String(v)} type="button" aria-pressed={answers[i] === v} onClick={() => setAnswers((a) => ({ ...a, [i]: v }))} className="rounded-pill">
-                    <Chip size={36} selected={answers[i] === v}>
+                  <button key={String(v)} type="button" aria-pressed={answers[i] === v} onClick={() => setAnswers((a) => ({ ...a, [i]: v }))} {...chipPress(answers[i] === v)}>
+                    <Chip size={36} selected={answers[i] === v} choice>
                       {v ? "Yes" : "No"}
                     </Chip>
                   </button>
@@ -668,7 +688,6 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
               <Button variant="primary" onClick={toTerms}>
                 Set the terms
               </Button>
-              <p className="text-caption text-ink-3">You can add anyone else right up until it closes.</p>
             </>
           }
         />
@@ -681,7 +700,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
     const unitChip = (u: Unit, label: string, key: string) => {
       const selected = u.kind === unit.kind && (u.kind === "usd" || (u.kind === "existing" && unit.kind === "existing" && u.id === unit.id) || (u.kind === "new" && unit.kind === "new" && u.template === unit.template));
       return (
-        <button key={key} type="button" onClick={() => setUnit(u)} className="rounded-pill">
+        <button key={key} type="button" onClick={() => setUnit(u)} {...chipPress(selected)}>
           <Chip size={36} selected={selected} choice>
             {label}
           </Chip>
@@ -721,12 +740,12 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
         <div className="flex flex-col gap-3">
           <h2 className="text-label text-ink-3">Where everyone landed</h2>
           <div className="flex flex-wrap gap-2">
-            <button type="button" aria-pressed={!blind} onClick={() => setBlind(false)} className="rounded-pill">
+            <button type="button" aria-pressed={!blind} onClick={() => setBlind(false)} {...chipPress(!blind)}>
               <Chip size={36} selected={!blind} choice>
                 Shows once you’ve picked
               </Chip>
             </button>
-            <button type="button" aria-pressed={blind} onClick={() => setBlind(true)} className="rounded-pill">
+            <button type="button" aria-pressed={blind} onClick={() => setBlind(true)} {...chipPress(blind)}>
               <Chip size={36} selected={blind} choice>
                 Hidden until it’s locked
               </Chip>
@@ -738,7 +757,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
           low={
             <>
               <ProblemSummary messages={[problem]} />
-              <Button variant="primary" onClick={saveFromTemplate} loading={saving}>
+              <Button variant="primary" onClick={saveFromTemplate} loading={saving || sent}>
                 Send it
               </Button>
             </>
@@ -777,7 +796,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
   const unitChip = (u: Unit, label: string, key: string) => {
     const selected = u.kind === unit.kind && (u.kind === "usd" || (u.kind === "existing" && unit.kind === "existing" && u.id === unit.id) || (u.kind === "new" && unit.kind === "new" && u.template === unit.template));
     return (
-      <button key={key} type="button" onClick={() => setUnit(u)} className="rounded-pill">
+      <button key={key} type="button" onClick={() => setUnit(u)} {...chipPress(selected)}>
         <Chip size={36} selected={selected} choice>
           {label}
         </Chip>
@@ -845,7 +864,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
               <>
                 <div role="group" aria-label="Your side" className="flex flex-wrap gap-2">
                   {(["yes", "no"] as const).map((v) => (
-                    <button key={v} type="button" aria-pressed={side === v} onClick={() => setSide(v)} className="rounded-pill">
+                    <button key={v} type="button" aria-pressed={side === v} onClick={() => setSide(v)} {...chipPress(side === v)}>
                       <Chip size={36} selected={side === v} choice>
                         {v === "yes" ? "I say yes" : "I say no"}
                       </Chip>
@@ -858,9 +877,9 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
           : row(
               "Decided",
               <div className="flex flex-wrap gap-2">
-                {WHEN.map((w) => (
-                  <button key={w.label} type="button" onClick={() => setHours(w.hours)} className="rounded-pill">
-                    <Chip size={36} selected={hours === w.hours} choice>
+                {CLOSINGS.map((w) => (
+                  <button key={w.key} type="button" onClick={() => setClosing(w.key)} {...chipPress(closing === w.key)}>
+                    <Chip size={36} selected={closing === w.key} choice>
                       {w.label}
                     </Chip>
                   </button>
@@ -882,12 +901,12 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
           ? row(
               "Where everyone landed",
               <div className="flex flex-wrap gap-2">
-                <button type="button" aria-pressed={!blind} onClick={() => setBlind(false)} className="rounded-pill">
+                <button type="button" aria-pressed={!blind} onClick={() => setBlind(false)} {...chipPress(!blind)}>
                   <Chip size={36} selected={!blind} choice>
                     Shows once you’ve picked
                   </Chip>
                 </button>
-                <button type="button" aria-pressed={blind} onClick={() => setBlind(true)} className="rounded-pill">
+                <button type="button" aria-pressed={blind} onClick={() => setBlind(true)} {...chipPress(blind)}>
                   <Chip size={36} selected={blind} choice>
                     Hidden until it’s locked
                   </Chip>
@@ -899,12 +918,12 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
           "If it’s unclear",
           <>
             <div role="group" aria-label="If you can't agree" className="flex flex-wrap gap-2">
-              <button type="button" aria-pressed={stalemate === "arbitrate"} onClick={() => setStalemate("arbitrate")} className="rounded-pill">
+              <button type="button" aria-pressed={stalemate === "arbitrate"} onClick={() => setStalemate("arbitrate")} {...chipPress(stalemate === "arbitrate")}>
                 <Chip size={36} selected={stalemate === "arbitrate"} choice>
                   A tiebreaker hears both sides and calls it
                 </Chip>
               </button>
-              <button type="button" aria-pressed={stalemate === "void"} onClick={() => setStalemate("void")} className="rounded-pill">
+              <button type="button" aria-pressed={stalemate === "void"} onClick={() => setStalemate("void")} {...chipPress(stalemate === "void")}>
                 <Chip size={36} selected={stalemate === "void"} choice>
                   It just goes unsettled
                 </Chip>
@@ -925,7 +944,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
           <>
             {stage === "block" || written?.failed ? <ProblemSummary messages={[TERMS_STOPPED]} retry={() => writeUp(lastWriteUp.current?.chosen, lastWriteUp.current?.source)} /> : null}
             <ProblemSummary messages={[problem]} />
-            <Button variant="primary" onClick={save} loading={saving} disabled={!scope}>
+            <Button variant="primary" onClick={save} loading={saving || sent} disabled={!scope}>
               Send it
             </Button>
           </>

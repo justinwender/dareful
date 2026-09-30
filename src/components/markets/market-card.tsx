@@ -77,7 +77,7 @@ export function MarketCard(p: MarketCardProps) {
   // The story is the link; its consequences sit under it, outside the link, because one of them may be a control.
   return (
     <article className="flex flex-col rounded-card border border-line bg-surface">
-      <Link prefetch={false} href={`/m/${p.id}`} data-press="row" data-shell={serialiseShell({ kind: "market", id: p.id, ink: p.ink, mark: p.mark, state: mark, clock: p.clockLine ?? null, question: p.title, asker: null, sheet: shellSheet(mark, p.viewerIn) })} data-shell-id={p.id} className="press-row relative flex flex-col gap-3 rounded-card px-4 py-3.5">
+      <Link prefetch={false} href={`/m/${p.id}`} data-press="row" data-shell={serialiseShell({ kind: "market", id: p.id, ink: p.ink, mark: p.mark, state: mark, clock: p.clockLine ?? null, question: p.title, asker: null, sheet: shellSheet(mark, p.viewerIn, p.pickOne ? "categorical" : p.number ? "numeric" : "binary") })} data-shell-id={p.id} className="press-row relative flex flex-col gap-3 rounded-card px-4 py-3.5">
         <LinkPending />
         <div className="flex items-center justify-between gap-2">
           <span className="inline-flex min-w-0 items-center gap-2 text-label text-ink-2">
@@ -154,7 +154,7 @@ export function MarketCard(p: MarketCardProps) {
               return <div key={c.id ?? `${c.from.id}-${c.to.id}`}>{row}</div>;
             })
           )}
-          <Link prefetch={false} href={`/m/${p.id}`} className="relative pt-1 link-tertiary">
+          <Link prefetch={false} href={`/m/${p.id}`} data-press="line" className="relative pt-1 link-tertiary press-line">
             <LinkPending />
             See how everyone did
           </Link>

@@ -9,11 +9,14 @@ import { CREAM } from "@/lib/ui/palette";
 /**
  * The information icon and its sheet (docs/design.md section 10), for the hackathon only. A 22px circled-i in
  * `--ink-2` inside a 48px target at the top right of every screen 10.1 lists, named "What you can do here", which
- * opens a modal sheet on the current place's surface: the screen's name and a close in a pinned header row, the
- * fixed line, then the groups in 10.6's order with their entries. It presses to 0.5 like every control drawn in
- * lines (9.4); nothing about it moves, pulses or marks itself as new. While a modal sheet is open over the screen
- * the icon does nothing, since a sheet never opens another sheet (6.4); the icon over the sheet toggles it (10.5).
- * `INFO_ICON_ON` removes it and returns every corner to its place.
+ * opens a modal sheet on the current place's surface: the screen's name, the fixed line, then the groups in
+ * 10.6's order with their entries, all of it scrolling as one piece under the sheet's own handle row and close
+ * (10.4, amended 2026-09-29: nothing in it is pinned, and it is as tall as its content up to the status bar). It
+ * presses to 0.5 like every control drawn in lines (9.4); nothing about it moves, pulses or marks itself as new.
+ * The icon is part of its page and never stands above a layer (10.5, amended 2026-09-29), so whatever covers a
+ * page covers its icon: the ask layer, a shell, the full-screen photo, a sheet. While a modal sheet is open over
+ * the screen the icon does nothing, since a sheet never opens another sheet (6.4). `INFO_ICON_ON` removes it and
+ * returns every corner to its place.
  */
 export function InfoIcon({ sheet, onPhoto = false }: { sheet: string; /** On the full-screen photo, black in both themes, the icon draws in the dark theme's ink (10.2). */ onPhoto?: boolean }) {
   const [open, setOpen] = useState(false);
@@ -30,11 +33,11 @@ export function InfoIcon({ sheet, onPhoto = false }: { sheet: string; /** On the
         data-press="line"
         data-info-icon={sheet}
         onClick={() => {
-          // A sheet never opens another sheet (6.4): with one open over this screen, the icon does nothing; over its own it toggles.
+          // A sheet never opens another sheet (6.4): with one open over this screen, the icon does nothing.
           if (!open && document.querySelector('[data-sheet="open"]')) return;
           setOpen((o) => !o);
         }}
-        className="relative z-[60] inline-flex h-12 w-12 items-center justify-center rounded-pill press-line"
+        className="inline-flex h-12 w-12 items-center justify-center rounded-pill press-line"
         style={{ color: onPhoto ? CREAM : "var(--ink-2)" }}
       >
         <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
@@ -43,29 +46,36 @@ export function InfoIcon({ sheet, onPhoto = false }: { sheet: string; /** On the
           <circle cx="12" cy="8" r="0.9" fill="currentColor" stroke="none" />
         </svg>
       </button>
-      <Sheet open={open} onClose={() => setOpen(false)} labelledBy={`${id}-name`} tall>
-        <div className="-mx-4 -mt-2 flex flex-col" data-info-sheet={sheet}>
-          <div className="sticky top-0 z-10 flex flex-col gap-1 bg-surface px-4 pt-2 pb-3">
-            <h2 id={`${id}-name`} className="pr-12 text-body-strong text-ink">
-              {content.name}
-            </h2>
-            <p className="text-caption text-ink-3">{INFO_FIXED_LINE}</p>
-          </div>
-          <div className="flex flex-col gap-5 px-4 pb-2">
-            {INFO_GROUPS.filter((g) => (content.groups[g]?.length ?? 0) > 0).map((g) => (
-              <section key={g} className="flex flex-col gap-3">
-                <h3 className="text-label text-ink-3">{g}</h3>
-                <ul className="flex flex-col gap-3">
-                  {(content.groups[g] ?? []).map((e) => (
-                    <Entry key={e.term} entry={e} />
-                  ))}
-                </ul>
-              </section>
-            ))}
-          </div>
-        </div>
-      </Sheet>
+      <InfoSheetView sheet={sheet} open={open} onClose={() => setOpen(false)} labelledBy={`${id}-name`} />
     </>
+  );
+}
+
+/** The sheet itself (10.4), apart from the icon so it can be drawn open: the name and the fixed line go with the entries, and nothing is pinned. */
+export function InfoSheetView({ sheet, open, onClose, labelledBy }: { sheet: string; open: boolean; onClose: () => void; labelledBy: string }) {
+  const content = infoSheet(sheet);
+  if (!content) return null;
+  return (
+    <Sheet open={open} onClose={onClose} labelledBy={labelledBy} full>
+      <div className="flex flex-col gap-5" data-info-sheet={sheet}>
+        <div className="flex flex-col gap-1">
+          <h2 id={labelledBy} className="text-body-strong text-ink">
+            {content.name}
+          </h2>
+          <p className="text-caption text-ink-3">{INFO_FIXED_LINE}</p>
+        </div>
+        {INFO_GROUPS.filter((g) => (content.groups[g]?.length ?? 0) > 0).map((g) => (
+          <section key={g} className="flex flex-col gap-3">
+            <h3 className="text-label text-ink-3">{g}</h3>
+            <ul className="flex flex-col gap-3">
+              {(content.groups[g] ?? []).map((e) => (
+                <Entry key={e.term} entry={e} />
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
+    </Sheet>
   );
 }
 
@@ -143,6 +153,13 @@ export function Glyph({ name }: { name: InfoGlyph }) {
       return (
         <svg {...p}>
           <path d="M6 6l12 12M18 6L6 18" />
+        </svg>
+      );
+    // The close of a screen that rose from below (9.5): the CloseControl's own chevron, so the sheet names the icon a person sees.
+    case "down":
+      return (
+        <svg {...p}>
+          <path d="M5 9l7 7 7-7" />
         </svg>
       );
     case "chevron":

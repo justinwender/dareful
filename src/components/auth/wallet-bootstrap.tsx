@@ -5,15 +5,18 @@ import { useRouter } from "next/navigation";
 import { ChainEnum, getAuthToken, useDynamicContext, useDynamicWaas, useIsLoggedIn, useRefreshUser } from "@dynamic-labs/sdk-react-core";
 import { Button } from "@/components/ui/button";
 import { mark } from "@/lib/ui/timing";
-import { ProblemSummary } from "@/components/ledger/problem";
+import { FIELD_PROBLEM_CLASS, Problem, ProblemSummary } from "@/components/ledger/problem";
 import { useDenyGovernanceDelegation } from "@/components/auth/governance-denied";
+import { isIdentifier } from "@/lib/auth/login";
 
-type Answer = { user: { id: string; governanceWallet: string }; bound: number; created?: boolean } | { need: "wallets"; have: number } | { need: "name"; suggested: string } | { error: string };
+type Answer = { user: { id: string; governanceWallet: string }; bound: number; created?: boolean } | { need: "wallets"; have: number } | { need: "name"; suggested: string; /** What was typed is an identifier, not a name: the step stays up with the refusal at the field. */ refused?: true } | { error: string };
 type Phase = { at: "idle" } | { at: "working"; line: string } | { at: "name"; suggested: string; ready: boolean } | { at: "done" } | { at: "error"; message: string };
 
 /** A sentence written for the person. Anything else that fails here (the SDK, the network) is logged and said in one plain line, never quoted (5.4). */
 class Said extends Error {}
 const GENERIC = "Could not finish setting up your account. Try again.";
+/** The field's one refusal, the same sentence the link page's "Your name" gives (5.1): an address, a tag, a number or a handle is not what friends call anyone. */
+const NOT_A_NAME = "Say what your friends call you.";
 const sayOf = (err: unknown): string => {
   if (err instanceof Said) return err.message;
   console.error("sign-in failed", err instanceof Error ? err.message : err);
@@ -46,9 +49,11 @@ export function WalletBootstrap({ settled, sessionDynamicUserId }: { settled: bo
   const denyGovernance = useDenyGovernanceDelegation();
   const [phase, setPhase] = useState<Phase>({ at: "idle" });
   const [name, setName] = useState("");
+  const [nameProblem, setNameProblem] = useState<string | null>(null);
   const started = useRef(false);
   const walletsReady = useRef<Promise<void> | null>(null);
   const nameSent = useRef(false);
+  const input = useRef<HTMLInputElement>(null);
 
   const ask = useCallback(async (displayName?: string): Promise<Answer> => {
     const token = getAuthToken();
@@ -123,12 +128,27 @@ export function WalletBootstrap({ settled, sessionDynamicUserId }: { settled: bo
   async function submitName() {
     const displayName = name.trim();
     if (!displayName) return;
+    // An address, a tag, a number or a handle is refused here before anything is sent, and by the server with
+    // the same rule: the step stays up, what was typed stays, the refusal sits at the field and focus goes back
+    // to it (5.1). The server's refusal remounts the form, so its autoFocus does the same there.
+    if (isIdentifier(displayName)) {
+      setNameProblem(NOT_A_NAME);
+      input.current?.focus();
+      return;
+    }
     nameSent.current = true;
+    setNameProblem(null);
     setPhase({ at: "working", line: "Almost there…" });
     try {
       await walletsReady.current;
       const a = await ask(displayName);
       if ("user" in a) return finish(a);
+      if ("need" in a && a.need === "name" && a.refused) {
+        nameSent.current = false;
+        setNameProblem(NOT_A_NAME);
+        setPhase({ at: "name", suggested: a.suggested, ready: true });
+        return;
+      }
       throw new Said("error" in a ? a.error : "Setting up your account didn’t finish. Try signing in again.");
     } catch (err) {
       setPhase({ at: "error", message: sayOf(err) });
@@ -143,7 +163,7 @@ export function WalletBootstrap({ settled, sessionDynamicUserId }: { settled: bo
   if (skip || !isLoggedIn || phase.at === "idle" || phase.at === "done") return null;
 
   return (
-    <div role="dialog" aria-modal="true" aria-live="polite" className="fixed inset-0 z-50 flex flex-col justify-center bg-ground px-5 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
+    <div role="dialog" aria-modal="true" aria-live="polite" data-fixed="top" className="fixed inset-0 z-50 flex flex-col justify-center bg-ground px-5 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
       <div className="mx-auto flex w-full max-w-[420px] flex-col gap-6">
         {phase.at === "working" ? (
           <p className="text-serif-l text-ink">{phase.line}</p>
@@ -168,14 +188,21 @@ export function WalletBootstrap({ settled, sessionDynamicUserId }: { settled: bo
             </label>
             <input
               id="display-name"
+              ref={input}
               autoFocus
               autoComplete="given-name"
               enterKeyHint="done"
               maxLength={40}
               value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="h-14 rounded-button border border-line bg-surface px-4 text-body text-ink"
+              onChange={(e) => {
+                setName(e.target.value);
+                setNameProblem(null);
+              }}
+              aria-invalid={nameProblem ? true : undefined}
+              aria-describedby={nameProblem ? "display-name-problem" : undefined}
+              className={`h-14 rounded-button border border-line bg-surface px-4 text-body text-ink${nameProblem ? ` ${FIELD_PROBLEM_CLASS}` : ""}`}
             />
+            <Problem id="display-name-problem" message={nameProblem} />
             <p className="text-body-sm text-ink-2">It goes on anything you send a friend. A first name is plenty.</p>
             <Button type="submit" variant="primary" disabled={!name.trim()}>
               That’s me

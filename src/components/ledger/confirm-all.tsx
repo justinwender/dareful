@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { TypedDataDomain } from "viem";
 import { signingProblem, useSigner } from "@/components/ledger/use-signer";
@@ -15,6 +15,7 @@ import { ObligationToken } from "@/components/ledger/obligation-token";
 import { ProblemSummary } from "@/components/ledger/problem";
 import { StateMark } from "@/components/ledger/state-mark";
 import type { DenominationRow } from "@/lib/ledger/denominations";
+import { stillToSend } from "@/lib/ledger/retry-batch";
 import { possessive } from "@/lib/ui/copy";
 import { hueFor } from "@/lib/ui/hue";
 import type { InkName } from "@/lib/ui/ink";
@@ -30,7 +31,7 @@ export type ConfirmAllPayload = {
   message: { groupIds: Hex[]; denomIds: Hex[]; creditors: Hex[]; qtys: string[]; obligationIds: Hex[]; uniques: boolean[] };
 };
 
-/** A cover logged under this person's name before they had an account (3.38): one claim row, pressed by default. */
+/** A cover logged under this person's name before they had an account (3.38): one claim row, unpressed until this person presses it (the owner's correction, Round D). */
 export type ClaimRow = {
   proposalId: string;
   creditor: { id: string; displayName: string };
@@ -78,7 +79,10 @@ export function ConfirmAll({ payload, entries = [], claims = [], viewer }: { pay
   const [kept, setKept] = useState<Set<string>>(() => new Set(entries.map((e) => e.dareId)));
   // A cover someone recorded against this person starts unpressed (the owner's correction, Round D): an account holder confirms each with a deliberate yep, and an unpressed one stays pending under the name it was logged with. The person's own entries start pressed, since they made them.
   const [keptClaims, setKeptClaims] = useState<Set<string>>(() => new Set());
-  const n = (payload?.proposalIds.length ?? 0) + entries.length;
+  // What earlier taps landed, so Try again after a later failure sends only the rest.
+  const landed = useRef<{ claims: Set<string>; entries: Set<string> }>({ claims: new Set(), entries: new Set() });
+  // The rows on the screen: a row in the batch the page could not draw can never be pressed, so "all" counts what the person sees.
+  const n = claims.length + entries.length;
   const pressedClaims = (payload?.proposalIds ?? []).filter((id) => keptClaims.has(id));
   const pressed = pressedClaims.length + entries.filter((e) => kept.has(e.dareId)).length;
   const toggle = (set: (f: (k: Set<string>) => Set<string>) => void, id: string) =>
@@ -94,13 +98,14 @@ export function ConfirmAll({ payload, entries = [], claims = [], viewer }: { pay
     try {
       setState("signing");
       let batchSignature: Hex | null = null;
-      // The batch is the pressed rows: the message's arrays are index-aligned with the ids, so the kept ones are filtered together and the server rebuilds the same batch from the ids it is sent.
-      const keep = (payload?.proposalIds ?? []).map((id, i) => [id, i] as const).filter(([id]) => keptClaims.has(id)).map(([, i]) => i);
+      // The batch is the pressed rows not yet landed: the message's arrays are index-aligned with the ids, so the kept ones are filtered together and the server rebuilds the same batch from the ids it is sent.
+      const todo = stillToSend({ claims: pressedClaims, entries: entries.filter((e) => kept.has(e.dareId)).map((e) => e.dareId) }, landed.current);
+      const keep = (payload?.proposalIds ?? []).map((id, i) => [id, i] as const).filter(([id]) => todo.claims.includes(id)).map(([, i]) => i);
       const batch = payload && keep.length > 0 ? { ...payload, proposalIds: keep.map((i) => payload.proposalIds[i] as string), message: { groupIds: keep.map((i) => payload.message.groupIds[i] as Hex), denomIds: keep.map((i) => payload.message.denomIds[i] as Hex), creditors: keep.map((i) => payload.message.creditors[i] as Hex), qtys: keep.map((i) => payload.message.qtys[i] as string), obligationIds: keep.map((i) => payload.message.obligationIds[i] as Hex), uniques: keep.map((i) => payload.message.uniques[i] as boolean) } } : null;
       if (batch) batchSignature = await sign(batch.ledgerWallet, { domain: batch.domain, types: ledgerTypes, primaryType: "ConfirmMany", message: { ...batch.message, qtys: batch.message.qtys.map((q) => BigInt(q)) } }, "confirmmany", { action: "confirm_many", proposalIds: batch.proposalIds });
       const entrySignatures: Array<{ entry: LinkEntryRow; signature: Hex }> = [];
       for (const e of entries) {
-        if (!kept.has(e.dareId)) continue;
+        if (!todo.entries.includes(e.dareId)) continue;
         const signature = await sign(e.ledgerWallet, { domain: e.domain, types: daresTypes, primaryType: "Enter", message: { dareId: e.dareOnchainId, stake: BigInt(e.stake), value: BigInt(e.value), confidenceBps: e.confidenceBps, stalemate: e.stalemate } }, "approve number", { action: "enter", dareId: e.dareId, stake: e.stake, value: e.value });
         entrySignatures.push({ entry: e, signature });
       }
@@ -112,6 +117,7 @@ export function ConfirmAll({ payload, entries = [], claims = [], viewer }: { pay
           setState("idle");
           return;
         }
+        for (const id of batch.proposalIds) landed.current.claims.add(id);
       }
       for (const { entry, signature } of entrySignatures) {
         const r = await enterMarketAction(entry.dareId, entry.position, signature);
@@ -120,6 +126,7 @@ export function ConfirmAll({ payload, entries = [], claims = [], viewer }: { pay
           setState("idle");
           return;
         }
+        landed.current.entries.add(entry.dareId);
       }
       const left = entries.filter((e) => !kept.has(e.dareId)).map((e) => e.dareId);
       if (left.length > 0) {
@@ -183,7 +190,7 @@ export function ConfirmAll({ payload, entries = [], claims = [], viewer }: { pay
                     </span>
                   </span>
                   {/* A 44px target holding a 24px chalk circle with the check, unpressed until this person presses it (Round D); the row itself opens nothing. */}
-                  <button type="button" role="checkbox" aria-checked={on} aria-label={`Confirm: ${possessive(first)} got you`} disabled={state !== "idle"} onClick={() => toggle(setKeptClaims, c.proposalId)} className="flex h-11 w-11 items-center justify-center rounded-pill">
+                  <button type="button" role="checkbox" aria-checked={on} aria-label={`Confirm: ${possessive(first)} got you`} disabled={state !== "idle"} onClick={() => toggle(setKeptClaims, c.proposalId)} data-press="line" className="flex h-11 w-11 items-center justify-center rounded-pill press-line">
                     {check(on)}
                   </button>
                 </li>
@@ -213,7 +220,8 @@ export function ConfirmAll({ payload, entries = [], claims = [], viewer }: { pay
                     aria-label={`Keep: ${e.line}`}
                     disabled={state !== "idle"}
                     onClick={() => toggle(setKept, e.dareId)}
-                    className="flex h-11 w-11 items-center justify-center rounded-pill"
+                    data-press="line"
+                    className="flex h-11 w-11 items-center justify-center rounded-pill press-line"
                   >
                     {check(on)}
                   </button>

@@ -7,9 +7,13 @@
  *   npm run test:audit                 every mutant
  *   npm run test:audit -- unit db      only those layers
  *   npm run test:audit -- --only=id    one mutant
+ *   npm run test:audit -- http --from=id   that layer from one mutant on (after a run that stopped)
  *
  * The working tree is restored after every mutant and verified byte-for-byte at the end. HTTP mutants need the
- * dev server running (it recompiles the mutated file on the next request).
+ * dev server running (it recompiles the mutated file on the next request), and the runner asks it before and
+ * after every one: a server that has gone away fails every test, and a test failing for that reason proves
+ * nothing about the mutant (2026-09-30: the dev server's compiler crashed forty-five minutes into a run and
+ * every later http mutant was reported killed). The run stops there and says where to resume.
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -17,6 +21,18 @@ import { MUTANTS, type Mutant } from "./mutants";
 
 const args = process.argv.slice(2);
 const only = args.find((a) => a.startsWith("--only="))?.slice(7);
+const from = args.find((a) => a.startsWith("--from="))?.slice(7);
+const BASE = process.env.TEST_BASE_URL ?? "http://localhost:3000";
+
+/** Whether the app under the http tests answers at all. Synchronous, like the rest of the runner. */
+function serverAnswers(): boolean {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const r = spawnSync("curl", ["-s", "-o", "/dev/null", "-m", "30", "-w", "%{http_code}", `${BASE}/manifest.webmanifest`], { encoding: "utf8" });
+    if (r.status === 0 && /^[1-5]\d\d$/.test(r.stdout.trim())) return true;
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 2000);
+  }
+  return false;
+}
 const layers = args.filter((a) => !a.startsWith("--"));
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -81,7 +97,9 @@ function applyMutant(m: Mutant): () => void {
 }
 
 const sleep = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
-const chosen = MUTANTS.filter((m) => (only ? m.id === only : layers.length === 0 || layers.some((l) => m.suite.includes(`/${l}/`))));
+const inLayers = MUTANTS.filter((m) => (only ? m.id === only : layers.length === 0 || layers.some((l) => m.suite.includes(`/${l}/`))));
+if (from && !inLayers.some((m) => m.id === from)) throw new Error(`--from=${from}: no such mutant in the layers chosen`);
+const chosen = from ? inLayers.slice(inLayers.findIndex((m) => m.id === from)) : inLayers;
 const ids = new Set<string>();
 for (const m of MUTANTS) {
   if (ids.has(m.id)) throw new Error(`duplicate mutant id ${m.id}`);
@@ -99,12 +117,24 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
   });
 }
 
+let serverGone: string | null = null;
 for (const m of chosen) {
   const http = m.suite.includes("/http/");
+  if (http && serverGone) continue;
+  if (http && !serverAnswers()) {
+    serverGone = m.id;
+    continue;
+  }
   try {
     restore = applyMutant(m);
     if (http) sleep(2500);
     const results = runTests(m.suite, m.kills);
+    // A kill counts only if the server was still there to be asked: a dead one fails every test, whatever the mutant did.
+    if (http && !serverAnswers()) {
+      serverGone = m.id;
+      console.log(`VOID      ${m.id}  (the server went away during this one)`);
+      continue;
+    }
     for (const name of m.kills) {
       const passed = results.get(name);
       if (passed === undefined) problems.push(`${m.id}: no test named "${name}" ran in ${m.suite}`);
@@ -124,8 +154,13 @@ for (const m of chosen) {
 }
 
 for (const [file, text] of originals) if (readFileSync(file, "utf8") !== text) problems.push(`${file} was not restored`);
+if (serverGone) {
+  const left = chosen.filter((m) => m.suite.includes("/http/")).length - chosen.filter((m) => m.suite.includes("/http/")).findIndex((m) => m.id === serverGone);
+  problems.push(`nothing answers at ${BASE} since ${serverGone}: ${left} http mutant(s) were not run. Start the app again, then npm run test:audit -- http --from=${serverGone}`);
+}
 
-if (!only) {
+// A run from part-way through, or one the server left, has not seen every mutant: the baseline's "never killed" would accuse tests the missing ones cover.
+if (!only && !from && !serverGone) {
   for (const suite of new Set(chosen.map((m) => m.suite))) {
     const baseline = runTests(suite, null);
     for (const [name, passed] of baseline) {

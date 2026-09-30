@@ -41,7 +41,7 @@ export const NOTHING_CAME_BACK = "That didn’t come back.";
 export function TryAgain({ onClick }: { onClick: () => void }) {
   return (
     <div>
-      <button type="button" onClick={onClick} data-try-again="" className="link-row transition-opacity duration-(--motion-quick) ease-fade active:opacity-[0.88]">
+      <button type="button" onClick={onClick} data-try-again="" data-press="fill" className="link-row press-fill">
         Try again
       </button>
     </div>

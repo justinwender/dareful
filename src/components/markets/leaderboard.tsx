@@ -1,7 +1,7 @@
 import { Avatar } from "@/components/ledger/avatar";
 import { ObligationToken } from "@/components/ledger/obligation-token";
 import type { DenominationRow } from "@/lib/ledger/denominations";
-import { gotSentence, possessive } from "@/lib/ui/copy";
+import { possessive } from "@/lib/ui/copy";
 import { hueBar, hueFor, hueRing, hueVar } from "@/lib/ui/hue";
 import { saidLean } from "@/lib/ui/team";
 
@@ -127,32 +127,6 @@ export function Leaderboard({ standings, outcome, viewerId, ends }: { standings:
 }
 
 /**
- * What changed hands, as obligations read everywhere else: who has got whom, in the owner's hue, never as a
- * column of gains and losses. A market that moved nothing says so.
- */
-export function Transfers({ transfers, people, denomination, viewerId }: { transfers: Transfer[]; people: Map<string, { id: string; displayName: string }>; denomination: DenominationRow; viewerId: string }) {
-  if (transfers.length === 0) return <p className="text-body-sm text-ink-2">Nothing changes hands. Everyone was about as close as everyone else.</p>;
-  // The viewer's own first, then the rest, largest first.
-  const mine = (t: Transfer) => (t.fromId === viewerId || t.toId === viewerId ? 0 : 1);
-  const sorted = [...transfers].sort((a, b) => mine(a) - mine(b) || (b.quantity > a.quantity ? 1 : b.quantity < a.quantity ? -1 : 0));
-  return (
-    <ul className="flex flex-col">
-      {sorted.map((t) => {
-        const from = people.get(t.fromId);
-        const to = people.get(t.toId);
-        if (!from || !to) return null;
-        return (
-          <li key={`${t.fromId}-${t.toId}`} className="flex items-center justify-between gap-3 border-b border-line py-2.5 last:border-b-0">
-            <span className="text-body-sm text-ink-2">{gotSentence(from, to, viewerId)}</span>
-            <ObligationToken owner={{ id: from.id, displayName: from.displayName, hue: hueFor(from.id) }} other={to} viewerId={viewerId} denomination={denomination} quantity={t.quantity} />
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
-/**
  * "Who's got who" (docs/design.md 3.37, item 7): grouped by owner, the person who picks up next. The owner's
  * 28px avatar and "John's got" in `body` 600, then the people they have got as tokens under it, in the owner's
  * hue as everywhere else. Then one caption naming the pairs between whom nothing changed hands ("Called it even:
@@ -170,7 +144,11 @@ export function gotTooLine(ownerFirst: string | "you", names: string[]): string 
   return `${ownerFirst === "you" ? "You’ve" : `${possessive(ownerFirst)}`} got ${list} too.`;
 }
 
-export function WhoHasWho({ transfers, people, participants, denomination, viewerId }: { transfers: Transfer[]; people: Map<string, { id: string; displayName: string }>; participants: string[]; denomination: DenominationRow; viewerId: string }) {
+/** Who someone is on the list: a ghost wears the stone avatar with its dashed ring everywhere (3.1), "Wisp's got" and its tokens included (the QA round). */
+type Who = { id: string; displayName: string; ghost?: boolean };
+const hueOf = (p: Who) => (p.ghost ? "stone" : hueFor(p.id));
+
+export function WhoHasWho({ transfers, people, participants, denomination, viewerId }: { transfers: Transfer[]; people: Map<string, Who>; participants: string[]; denomination: DenominationRow; viewerId: string }) {
   if (transfers.length === 0) return <p className="text-body-sm text-ink-2">Nothing changes hands. Everyone was about as close as everyone else.</p>;
   const first = (id: string) => (id === viewerId ? "you" : (people.get(id)?.displayName ?? "Someone").split(/\s+/)[0] ?? "Someone");
   const owners = Array.from(new Set(transfers.map((t) => t.fromId))).sort((a, b) => (a === viewerId ? -1 : b === viewerId ? 1 : first(a).localeCompare(first(b))));
@@ -189,7 +167,7 @@ export function WhoHasWho({ transfers, people, participants, denomination, viewe
         return (
           <div key={ownerId} className="flex flex-col gap-2">
             <p className="flex items-center gap-2 text-body-strong text-ink">
-              <Avatar name={owner.displayName} hue={hueFor(ownerId)} size={28} />
+              <Avatar name={owner.displayName} hue={hueOf(owner)} size={28} ghost={owner.ghost} />
               {ownerId === viewerId ? "You’ve got" : `${possessive(owner.displayName.split(/\s+/)[0] ?? owner.displayName)} got`}
             </p>
             <ul className="flex flex-wrap gap-2 pl-9">
@@ -197,7 +175,7 @@ export function WhoHasWho({ transfers, people, participants, denomination, viewe
                 const to = people.get(t.toId);
                 return to ? (
                   <li key={t.toId}>
-                    <ObligationToken owner={{ id: owner.id, displayName: owner.displayName, hue: hueFor(owner.id) }} other={to} viewerId={viewerId} denomination={denomination} quantity={t.quantity} />
+                    <ObligationToken owner={{ id: owner.id, displayName: owner.displayName, hue: hueOf(owner), ghost: owner.ghost }} other={to} viewerId={viewerId} denomination={denomination} quantity={t.quantity} />
                   </li>
                 ) : null;
               })}

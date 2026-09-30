@@ -6,17 +6,17 @@
  * 2026-09-29).
  */
 import { cache } from "react";
-import { PLACEHOLDER_NAME } from "@/lib/auth/login";
+import { nameSettled } from "@/lib/auth/login";
 import { currentUser } from "@/lib/auth/session";
 import type { Me } from "@/lib/auth/device";
 import { passThePhoneStatus } from "@/lib/ledger/pass-the-phone";
 
-export type SessionFacts = { /** Someone with a session and a name has nothing to set up, so the login bootstrap stays out of their way. */ settled: boolean; me: Me | null };
+export type SessionFacts = { /** Someone with a session and a name they gave (`nameSettled`: not the placeholder, not an identifier) has nothing to set up, so the login bootstrap stays out of their way. */ settled: boolean; me: Me | null };
 
 export const sessionFacts = cache(async function sessionFacts(): Promise<SessionFacts> {
   const user = await currentUser();
   if (!user) return { settled: false, me: null };
   // Whether the server may sign for this person where the device cannot (3.45): read once per load, so a second device knows without asking.
   const passThePhone = (await passThePhoneStatus(user.id)).on;
-  return { settled: user.displayName !== PLACEHOLDER_NAME, me: { dynamicUserId: user.dynamicUserId, ledgerWallet: user.ledgerWallet, governanceWallet: user.governanceWallet, passThePhone } };
+  return { settled: nameSettled(user.displayName), me: { dynamicUserId: user.dynamicUserId, ledgerWallet: user.ledgerWallet, governanceWallet: user.governanceWallet, passThePhone } };
 });

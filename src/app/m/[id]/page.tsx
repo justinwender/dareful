@@ -8,7 +8,6 @@ import { db, schema } from "@/db";
 import { GhostMarketPage } from "./ghost";
 import { participantsOf, pidOf } from "@/lib/ledger/participants";
 import { Avatar, AvatarStack } from "@/components/ledger/avatar";
-import { Chip } from "@/components/ledger/chip";
 import { MediaFrame } from "@/components/ledger/media-frame";
 import { EmptySlot } from "@/components/markets/empty-slot";
 import { PhotoAdding } from "@/components/markets/photo-adding";
@@ -34,7 +33,7 @@ import { PickOneRows } from "@/components/markets/pick-one-rows";
 import { answerLine as pickAnswerLine, answerShares, calledItLine, pickOneCaption, saidAnswer } from "@/lib/ledger/pick-one";
 import { rulerFor } from "@/components/markets/market-card-from";
 import { VotePoll } from "@/components/markets/vote-poll";
-import { numberAxis, serialiseAxis, unitPhrase, withSeparators } from "@/lib/ledger/number-axis";
+import { numberAxis, serialiseAxis, unitPhrase, weightedMedian, withSeparators } from "@/lib/ledger/number-axis";
 import { pulseOf } from "@/lib/ledger/pulse";
 import { templateOfMarket } from "@/lib/sports";
 import { SAY_YOURSELF_AFTER_MS, scoreLine } from "@/lib/sports/results";
@@ -78,7 +77,7 @@ import { currentUser } from "@/lib/auth/session";
 import { contracts } from "@/lib/chain/contracts";
 import { daresDomain, Stalemate } from "@/lib/chain/typed-data";
 import { denominationById } from "@/lib/ledger/denominations";
-import { askerLine, isMember, setLabel } from "@/lib/ledger/groups";
+import { askerLine, forWhomLine, isMember, membersOfGroups, setFacts } from "@/lib/ledger/groups";
 import { dareOnchainId } from "@/lib/ledger/ids";
 import { numbersVisible } from "@/lib/ledger/market-view";
 import {
@@ -102,6 +101,7 @@ import {
   dayLabel,
   daysBetween,
   firstName,
+  friendsIn,
   fromThatNight,
   lockedLabel,
   untilLabel,
@@ -236,15 +236,6 @@ export default async function MarketPage({
       .where(eq(schema.users.id, d.creatorId))
       .limit(1);
     const inCount = (await positionsOf(d.id)).length;
-    const COUNT = [
-      "",
-      "One friend is in",
-      "Two friends are in",
-      "Three friends are in",
-      "Four friends are in",
-      "Five friends are in",
-      "Six friends are in",
-    ];
     return (
       <Screen>
         <TopBar back />
@@ -263,7 +254,7 @@ export default async function MarketPage({
               countLine:
                 inCount === 0
                   ? null
-                  : (COUNT[inCount] ?? "A lot of friends are in"),
+                  : friendsIn(inCount, "words"),
               decidesLine: d.resolvesBy
                 ? `Decided ${closesLabel(d.resolvesBy, new Date(clock.now), clock.zone)}, by the people in it.`
                 : null,
@@ -405,6 +396,8 @@ export default async function MarketPage({
   }));
   const number = groupsNumberBps(entries);
   const axis = numberUnit && show && mine ? numberAxis(positions.map((p) => ({ id: pidOf(p), stake: p.stake, value: p.value })), numberUnit) : null;
+  // The group's number for the More sheet: the stake-weighted median the marker stands on, said in the unit's words. Never parsed back out of the marker's chip, which on a signed margin is words ("Bills by 7").
+  const median = axis?.marker && numberUnit ? weightedMedian(positions.map((p) => ({ stake: p.stake, value: p.value }))) : null;
   const pickBars: PickOneBar[] = pickAnswers ? pickAnswers.map((a) => ({ stake: positions.filter((p) => Number(p.value) === a.index).reduce((sum, p) => sum + (p.stake > 0n ? p.stake : 0n), 0n).toString(), noStake: positions.filter((p) => Number(p.value) === a.index && p.stake <= 0n).length })) : [];
   const picture: StagePicture | null = !mine
     ? null
@@ -535,6 +528,8 @@ export default async function MarketPage({
       mark={d.markKind === "emoji" ? d.markValue : null}
       argument={argument}
       lockedLine={lockedLine}
+      // Voting has opened (3.38): a claim, or the final score's own card, stands where the entry line stood.
+      claimed={state === "locked" && (votes.length > 0 || (decidedByScore && feedFinal !== null && game !== null))}
       changeUntil={until}
       farOff={
         numberUnit && farOffThreshold(d) !== null
@@ -558,9 +553,9 @@ export default async function MarketPage({
           The group’s number, exactly: {(Number(number) / 100).toFixed(1)}%.
         </p>
       ) : null}
-      {axis?.marker && numberUnit ? (
+      {median !== null && numberUnit ? (
         <p className="text-body-sm text-ink-2">
-          The group’s number is {unitPhrase(BigInt(axis.marker.chip.replace(/,/g, "")), numberUnit)}: half of what’s riding sits at or below it.
+          The group’s number is {unitPhrase(median, numberUnit)}: half of what’s riding sits at or below it.
         </p>
       ) : null}
       {ended && (statements.length > 0 || media.record.length > 0) ? (
@@ -741,9 +736,8 @@ export default async function MarketPage({
     ((state === "open" && !mine) || (state === "locked" && myVote === null));
   // This person's last tap here is sent and still going through (5.2): the lock while open, the resolution the vote decided while locked.
   const onWayHere = state === "open" || state === "locked" ? await onWayFor(me.id, now).then((w) => w.locks.has(d.id) || w.resolves.has(d.id)) : false;
-  // A set with no name is named by its people (4.7, 3.38): the seats beside the asker, on a draft and a live market alike.
-  const seatNames = !group?.name && seats.some((x) => x.userId !== me.id) ? (await db.select({ displayName: schema.users.displayName }).from(schema.users).where(inArray(schema.users.id, seats.map((x) => x.userId).filter((x): x is string => x !== null)))).map((u) => u.displayName) : [];
-  const setName = group?.name ?? (seatNames.length > 1 ? setLabel({ name: null, isDyad: group?.isDyad ?? false, memberNames: seatNames, viewerName: me.displayName }) : null);
+  // The set as facts (4.7, 3.38): its name, or with none its seats, read as every card reads them, so the line a row's shell drew is the line here. A sentence names it from these, never from a chip's label.
+  const askedOf = setFacts(group?.name ?? null, group?.name ? [] : ((await membersOfGroups([d.groupId])).get(d.groupId) ?? []));
   // The band (3.25, 9.4, 9.7): the shared component, so the shell a row draws before this screen arrives is the same geometry.
   const band = (
     <QuestionBand
@@ -754,8 +748,8 @@ export default async function MarketPage({
       draft={state === "draft"}
       mark={markRefOf(d)}
       title={d.title}
-      asker={{ name: person.get(d.creatorId)?.displayName ?? "?", hue: hueFor(d.creatorId), line: askerLine(first(d.creatorId), setName, group?.isDyad ?? false) }}
-      forWhom={setName ? `For ${setName}` : undefined}
+      asker={{ name: person.get(d.creatorId)?.displayName ?? "?", hue: hueFor(d.creatorId), line: askerLine({ id: d.creatorId, displayName: person.get(d.creatorId)?.displayName ?? "Someone" }, askedOf, me.id) }}
+      forWhom={forWhomLine(askedOf, d.creatorId) ?? undefined}
       ink="var(--market-ink)"
       hue={hueFor(me.id)}
     />
@@ -894,7 +888,8 @@ export default async function MarketPage({
         awaitingProposal={d.pace === "argument" && !d.aiProposedAt}
         numberUnit={numberUnit}
         split={
-          d.stalemate === "arbitrate" && mine && counted.length > 1 && !decidedByScore
+          // Never on a question the feed settles (the score, or the play-by-play on the first drive): its tiebreaker is the terms' own, and the request is refused (settle.ts).
+          d.stalemate === "arbitrate" && mine && counted.length > 1 && !decidedByFeed
             ? {
                 cases: cases.map((c) => ({
                   name: nameOf(c.userId),
@@ -972,7 +967,7 @@ export default async function MarketPage({
     );
   const settledOutcome = state === "resolved" && outcome !== null && outcome !== "void";
   const participants = positions.map((p) => pidOf(p));
-  const people = new Map(Array.from(person.values(), (u) => [u.id, { id: u.id, displayName: u.displayName }] as const));
+  const people = new Map(Array.from(person.values(), (u) => [u.id, { id: u.id, displayName: u.displayName, ghost: u.ghost === true }] as const));
   // A provisional market leaves proposals where an onchain one leaves edges (PLANNING.md section 4): the pending ones are shown beside the confirmed.
   const proposed =
     state === "resolved" && d.onchainId === null
@@ -1033,7 +1028,7 @@ export default async function MarketPage({
           <SectionLabel>{nightHeading(d.lockedAt, clock.zone)}</SectionLabel>
           <div className="overflow-hidden rounded-card border border-line bg-surface">
             {restOfNight.map((r, i) => (
-              <Link prefetch={false} key={r.key} href={r.href} className={`relative grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 ${i > 0 ? "border-t border-line" : ""}`}>
+              <Link prefetch={false} key={r.key} href={r.href} data-press="row" className={`press-row relative grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 ${i > 0 ? "border-t border-line" : ""}`}>
                 <LinkPending />
                 <span className="flex min-w-0 flex-col gap-1">
                   <span className="text-label text-ink-3">{r.kindLabel}</span>
@@ -1128,12 +1123,13 @@ export default async function MarketPage({
       <InkRoot ink={ink} />
       <PhotoAdding dareId={d.id} night={night} canAdd={canAdd} capture={state === "open"} viewer={{ name: me.displayName, hue: hueFor(me.id) }}>
       <Screen arrive="fade">
-        <TopBar back right={<>{group?.name ? <Chip>{group.name}</Chip> : null}{mine || state !== "open" ? more : null}</>} info={infoKeyFor(state, memoryView, pickAnswers ? "categorical" : numberUnit ? "numeric" : "binary")} />
+        {/* Back, More and the information icon, and no context chip (10.3, 3.19): the band's asker line already names who was asked. */}
+        <TopBar back right={mine || state !== "open" ? more : null} info={infoKeyFor(state, memoryView, pickAnswers ? "categorical" : numberUnit ? "numeric" : "binary")} />
         <div className="flex flex-col gap-7 py-2">
           {band}
           {game && awayFace && homeFace ? (
             // Part of a game (3.33): one 44px row back to the game page, with the two 20px stamps and a chevron; shown with one question too, since the page is where the rest of the menu waits.
-            <Link prefetch={false} href={`/on/${game.id}?g=${d.groupId}`} className="relative -mt-3 flex h-11 items-center justify-between gap-3 rounded-button border border-line px-3" data-part-of={game.id}>
+            <Link prefetch={false} href={`/on/${game.id}?g=${d.groupId}`} data-press="row" className="press-row relative -mt-3 flex h-11 items-center justify-between gap-3 rounded-button border border-line px-3" data-part-of={game.id}>
               <LinkPending />
               <span className="flex min-w-0 items-center gap-2">
                 <span className="inline-flex items-center gap-1">
@@ -1159,11 +1155,11 @@ export default async function MarketPage({
               {mine ? (
                 whosIn
               ) : (
-                // Before you're in (3.38): who is in and no number, with the lock glyph; where they landed shows once you are.
+                // Before you're in (3.38): who is in and no number, with the lock glyph; where they landed shows once you are. With nobody in (a game opens every question that way) the count is "Nobody's in yet." alone, never a zero (3.14) and no second sentence.
                 <section className="flex items-center justify-between gap-3" data-friends-in="">
                   <div className="flex flex-col gap-1">
                     <AvatarStack people={whosInPeople} size={28} ring="var(--ground)" />
-                    <p className="text-caption text-ink-2">{positions.length === 1 ? "One friend is in. Where they landed shows once you are." : `${positions.length} friends are in. Where they landed shows once you are.`}</p>
+                    <p className="text-caption text-ink-2">{`${friendsIn(positions.length, "digits")}.${positions.length > 0 ? " Where they landed shows once you are." : ""}`}</p>
                   </div>
                   <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-ink-3">
                     <rect x="5" y="11" width="14" height="9" rx="2" />
