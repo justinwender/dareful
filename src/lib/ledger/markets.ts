@@ -38,6 +38,8 @@ import { bufferToHex, bytes16ToUuid, dareOnchainId, denomOnchainId, groupOnchain
 import { ensureDenomOnchain, ensureGroupOnchain } from "./registry";
 import { pidOf } from "./participants";
 import { isProvisional, lockProvisional, provisionalVoters, settleProvisional } from "./provisional";
+import { record } from "@/lib/usage";
+import { settledWord } from "@/lib/usage/events";
 
 export type DareRow = typeof schema.dares.$inferSelect;
 export type PositionRow = typeof schema.darePositions.$inferSelect;
@@ -378,7 +380,16 @@ export async function openMarket(dareId: string, creatorId: string, signature: H
   const ok = await verifyTypedData({ ...createTypedData(d), address: creator.ledgerWallet as Address, signature });
   if (!ok) throw new MarketError("That didn't come from your account.", "bad_signature");
   const [row] = await db.update(schema.dares).set({ creatorSignature: hexToBuffer(signature) }).where(and(eq(schema.dares.id, dareId), isNull(schema.dares.creatorSignature))).returning();
+  // Counted once it is open (the field round): the kind, the pace, where it came from and whether it wears a sticker; never its words.
+  if (row) await record("asked", { kind: kindWord(d.kind), pace: d.pace === "argument" ? "argument" : "dare", source: d.templateId ? "whats_on" : "direct", mark: markWord(d.markKind) }, { userId: creatorId }, { dareId: d.id });
   return row ?? d;
+}
+
+function kindWord(kind: string): "binary" | "numeric" | "categorical" {
+  return kind === "numeric" || kind === "categorical" ? kind : "binary";
+}
+function markWord(markKind: string | null): "none" | "emoji" | "image" | "sticker" {
+  return markKind === "emoji" || markKind === "image" || markKind === "sticker" ? markKind : "none";
 }
 
 // ------------------------------------------------------------------------------------------------ entering
@@ -445,6 +456,8 @@ export async function enterMarket(input: { dareId: string; userId: string; stake
     .onConflictDoUpdate({ target: [schema.darePositions.dareId, schema.darePositions.userId], set: { stake: input.stake, value: input.value, confidenceBps: d.kind === "categorical" ? confidenceFor(d) : null, enterSignature: hexToBuffer(input.signature), enteredBy: input.enteredBy ?? input.userId, dismissedAt: null } })
     .returning();
   if (!row) throw new MarketError("Couldn't save that.", "chain");
+  // Counted as an entry the first time, never on a change (the field round); on a friend's phone it is counted as pass the phone.
+  if (!held) await record("entered", { as: input.enteredBy && input.enteredBy !== input.userId ? "pass_the_phone" : "account" }, { userId: input.userId }, { dareId: d.id });
   // The group's number at this moment, for the line a slow question gets. The aggregate and a headcount only:
   // never whose entry moved it (docs/design.md 3.22). Best effort; a missing point is a gap in a sparkline.
   // A number market's aggregate is not in basis points and the series column is, so it keeps no series yet (docs/decisions.md, Phase 5);
@@ -477,6 +490,7 @@ export async function lockMarket(dareId: string, byUserId: string | null): Promi
   if (positions.length < 2) throw new MarketError("It takes two to close it.", "wrong_state");
   // Nothing goes onchain for a position nobody signed (PLANNING.md section 4): a ghost's number, or one bound to
   // an account but never signed, makes the market provisional. It locks here, and its transfers become proposals.
+  await record("closed", { by: byUserId !== null ? "asker" : d.pace === "argument" ? "both_in" : "time", game: d.templateId !== null }, { userId: byUserId }, { dareId: d.id });
   if (positions.some((p) => !p.userId || !p.enterSignature)) {
     const r = await lockProvisional(d, positions);
     return { txHash: "0x" as Hex, threshold: r.threshold, quorum: [] };
@@ -627,6 +641,7 @@ export async function castVote(input: { dareId: string; userId: string; outcome:
     .insert(schema.dareVotes)
     .values({ dareId: d.id, userId: input.userId, outcome: input.outcome, signature: hexToBuffer(input.signature) })
     .onConflictDoUpdate({ target: [schema.dareVotes.dareId, schema.dareVotes.userId], set: { outcome: input.outcome, signature: hexToBuffer(input.signature), signedAt: new Date() } });
+  await record("voted", { provisional: isProvisional(d) }, { userId: input.userId }, { dareId: d.id });
 
   return resolveFromVotes(d, input.userId);
 }
@@ -761,6 +776,7 @@ export async function mirrorSettlement(d: DareRow, s: Settlement, how: { by: "qu
         .onConflictDoNothing();
     }
   });
+  await record("settled", { by: settledWord(how.by), outcome: voided ? "void" : "decided" }, {}, { dareId: d.id });
 }
 
 /**

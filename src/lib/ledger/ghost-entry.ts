@@ -17,6 +17,7 @@ import { groupsNumberBps } from "./weight";
 import { confidenceFor, marketById, MarketError, MAX_POSITIONS, pastItsClose, positionsOf, stateOf, valueAllowed, type PositionRow } from "./markets";
 import { pidOf } from "./participants";
 import { hashToken, newToken } from "./tokens";
+import { record } from "@/lib/usage";
 
 export const MAX_GHOSTS_PER_MARKET = 10;
 
@@ -152,6 +153,7 @@ export async function enterAsGhost(input: { dareId: string; who: GhostWho; token
     if (tokenHash) await db.insert(schema.claimTokens).values({ tokenHash, claimId });
     else browserToken = null;
   }
+  if (!mine) await record("entered", { as: "guest" }, { claimId }, { dareId: d.id });
   return { claimId, browserToken, position };
 }
 

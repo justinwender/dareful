@@ -81,6 +81,7 @@ export function MarkPicker({ open, onClose, value, onPick, hue, preview = true, 
       const png = await prepareCutout(blob);
       const form = new FormData();
       form.set("cutout", png, "cutout.png");
+      form.set("source", "pasted");
       const r = await addStickerAction(form);
       if ("error" in r) return setPasteProblem(r.error);
       const sticker: Sticker = { id: r.id, ink: r.ink };

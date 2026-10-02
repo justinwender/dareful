@@ -16,6 +16,7 @@ import { isMember } from "@/lib/ledger/groups";
 import { NotAPhoto, processPhoto } from "./pipeline";
 import { evidenceAllowed, evidenceItems, frameItems, memoryAllowed, recordItems, removeAllowed, type MediaRole, type Refusal } from "./roles";
 import { putObject, removeObjects, signedUrl } from "./storage";
+import { record } from "@/lib/usage";
 
 export type MediaRow = typeof schema.media.$inferSelect;
 export type Size = "frame" | "thumb";
@@ -89,6 +90,7 @@ export async function addSettlementPhoto(input: { obligationId: string; authorId
       // One settlement photo per obligation: the update is conditional so two uploads at once cannot both win.
       const [claimed] = await tx.update(schema.obligations).set({ mediaId: row.id }).where(and(eq(schema.obligations.id, o.id), isNull(schema.obligations.mediaId))).returning({ id: schema.obligations.id });
       if (!claimed) throw new MediaError("This one already has its photo.", "already");
+      await record("photo_added", { stage: "settlement", role: "memory" }, { userId: input.authorId });
       return row;
     });
   } catch (err) {
@@ -154,6 +156,7 @@ export async function addMarketPhoto(input: { dareId: string; authorId: string; 
       .values({ id, dareId: d.id, kind: "photo", role: input.role, storageKey: frameKey(id), width: photo.frame.width, height: photo.frame.height, authorId: input.authorId, capturedAt: photo.capturedAt })
       .returning();
     if (!row) throw new Error("media row");
+    await record("photo_added", { stage: state === "open" ? "open" : state === "locked" ? "closed" : "settled", role: input.role === "evidence" ? "evidence" : "memory" }, { userId: input.authorId }, { dareId: d.id });
     return row;
   } catch (err) {
     await removeObjects(keys);

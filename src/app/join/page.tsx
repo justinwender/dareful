@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { Screen, TopBar } from "@/components/ledger/screen";
 import { CodeJoinFocused, LinkJoin } from "@/components/home/code-join";
 import { currentUser } from "@/lib/auth/session";
+import { LinkOpened } from "@/components/ui/usage";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,7 @@ export default async function JoinPage({ searchParams }: { searchParams: Promise
   const sp = await searchParams;
   return (
     <Screen>
+      <LinkOpened link="code" signedIn={Boolean(me)} />
       <TopBar back info="code" />
       <div className="flex flex-col gap-7 py-2">
         <h1 className="text-serif-l text-ink">Got a code?</h1>

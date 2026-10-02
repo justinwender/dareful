@@ -13,6 +13,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { marketById, MarketError, positionsOf, stateOf, VOID_OUTCOME } from "./markets";
 import { ENDED } from "@/lib/media/roles";
+import { record } from "@/lib/usage";
 
 /** A game's questions are one row on Now (4.7) and swipe as one (ruled 2026-09-27): removed only when nobody else is in any of them, archived when it is finished. */
 export const SWIPE_AT_MOST = 12;
@@ -46,6 +47,7 @@ export async function removeMarkets(dareIds: readonly string[], byUserId: string
     .where(and(inArray(schema.dares.id, ids), eq(schema.dares.creatorId, byUserId)))
     .returning({ id: schema.dares.id });
   if (rows.length !== ids.length) throw new MarketError("Couldn't remove it.", "chain");
+  for (const r of rows) await record("settled", { by: "removed", outcome: "void" }, { userId: byUserId }, { dareId: r.id });
 }
 
 export async function archiveMarket(dareId: string, userId: string): Promise<void> {

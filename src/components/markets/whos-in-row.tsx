@@ -14,6 +14,7 @@ import { nudgeAction, removeGhostEntryAction } from "@/lib/actions/markets";
 import type { Hue } from "@/lib/ui/hue";
 import type { MarkRef } from "@/lib/ui/mark";
 import { cn } from "@/lib/utils";
+import { report } from "@/lib/usage/client";
 
 export type WhosInPerson = { name: string; hue: Hue; ghost?: boolean; /** "Asked it", in the who's-in list. */ asked?: boolean; /** A ghost's claim, for the asker's Remove before the lock. */ claimId?: string };
 /** Someone the market was sent to who is not in yet (3.42, holdouts): a dashed avatar after the stack, never named as late. */
@@ -63,6 +64,7 @@ export function WhosInRow({ people, holdouts = [], count, share, code, chalk = f
 
   async function copy() {
     if (!share) return;
+    report("share", { icon: "copy" }, { dareId: list?.dareId ?? code?.dareId ?? null });
     try {
       await navigator.clipboard.writeText(share.url);
     } catch {
@@ -75,6 +77,7 @@ export function WhosInRow({ people, holdouts = [], count, share, code, chalk = f
   }
   async function send() {
     if (!share) return;
+    report("share", { icon: chalk ? "chalk" : "share" }, { dareId: list?.dareId ?? code?.dareId ?? null });
     if (typeof navigator !== "undefined" && "share" in navigator) {
       try {
         // The question rides as the text too, so a chat shows it above the link (docs/decisions.md 2026-09-27).

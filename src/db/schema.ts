@@ -16,6 +16,7 @@ import {
   check,
   customType,
   integer,
+  jsonb,
   numeric,
   pgTable,
   index,
@@ -56,6 +57,12 @@ export const users = pgTable("users", {
   headsUpAnsweredAt: ts("heads_up_answered_at"),
   /** When the one explainer for passing the phone was seen, whichever way it went (docs/design.md 3.42, 3.45): asked once, on the account. */
   handOverExplainedAt: ts("hand_over_explained_at"),
+  /**
+   * Left out of every count (the field round, 2026-10-02): the owner's own accounts, the simulator's and the
+   * localhost sessions, the QA accounts. Set by hand, never by the app; a market counts only when someone counted
+   * is in it.
+   */
+  excludedFromCounts: boolean("excluded_from_counts").notNull().default(false),
   createdAt: ts("created_at").notNull().defaultNow(),
 }).enableRLS();
 
@@ -1255,4 +1262,37 @@ export const dareNumberSeries = pgTable(
     at: ts("at").notNull().defaultNow(),
   },
   (t) => [index("dare_number_series_dare_at").on(t.dareId, t.at), check("dare_number_series_range", sql`${t.valueBps} between 0 and 10000`)],
+).enableRLS();
+
+/**
+ * What people did, counted (the field round, 2026-10-02). Separate from the ledger's own log and append-only: a
+ * row says when, what, who (an account, a guest claim, or neither, with the device that reported it), which market
+ * or game, and a few properties from fixed sets. Written only on the server; the browser reports through one door
+ * (`/api/usage`) that takes names from an allowlist and properties by a schema per name. Never question text, a
+ * name, a phone number, an email address or an amount. `once_key` makes an event count once (a link opened once
+ * per person or device per link): the server composes it and the insert does nothing on a repeat.
+ */
+export const usageEvents = pgTable(
+  "usage_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    at: ts("at").notNull().defaultNow(),
+    name: text("name").notNull(),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+    claimId: uuid("claim_id").references(() => participantClaims.id, { onDelete: "cascade" }),
+    /** The device that reported it, from its own cookie: a random id, nothing else. Null for the server's own rows. */
+    deviceId: uuid("device_id"),
+    dareId: uuid("dare_id").references(() => dares.id, { onDelete: "cascade" }),
+    gameId: uuid("game_id").references(() => sportsGames.id, { onDelete: "cascade" }),
+    /** Small, from fixed sets, per name (src/lib/usage/events.ts). */
+    props: jsonb("props").notNull().default(sql`'{}'::jsonb`),
+    onceKey: text("once_key"),
+  },
+  (t) => [
+    index("usage_events_name_at").on(t.name, t.at),
+    index("usage_events_dare").on(t.dareId),
+    index("usage_events_user").on(t.userId),
+    uniqueIndex("usage_events_once").on(t.onceKey).where(sql`${t.onceKey} is not null`),
+    check("usage_events_name_short", sql`char_length(${t.name}) between 1 and 40`),
+  ],
 ).enableRLS();

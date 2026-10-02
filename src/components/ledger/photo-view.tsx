@@ -62,13 +62,14 @@ export function PhotoView({ items, index = 0, onClose, stickers = false }: { ite
   const id = shown?.id ?? "";
   const alt = shown?.alt ?? "";
   const removable = shown?.removable === true;
-  async function takeCutout(blob: Blob) {
+  async function takeCutout(blob: Blob, source: "pasted" | "cut") {
     setStickerProblem(null);
     setPasting(true);
     try {
       const png = await prepareCutout(blob);
       const form = new FormData();
       form.set("cutout", png, "cutout.png");
+      form.set("source", source);
       const r = await addStickerAction(form);
       if ("error" in r) return setStickerProblem(r.error);
       setMade({ id: r.id });
@@ -154,7 +155,7 @@ export function PhotoView({ items, index = 0, onClose, stickers = false }: { ite
       const file = imageFromPaste(e.clipboardData);
       if (!file) return;
       e.preventDefault();
-      void takeCutout(file);
+      void takeCutout(file, "pasted");
     };
     document.addEventListener("paste", onPaste);
     return () => document.removeEventListener("paste", onPaste);
@@ -164,7 +165,7 @@ export function PhotoView({ items, index = 0, onClose, stickers = false }: { ite
     try {
       const blob = await imageFromClipboard();
       if (!blob) return setStickerProblem("Nothing to paste yet. Hold the photo, tap Copy Subject, then come back.");
-      await takeCutout(blob);
+      await takeCutout(blob, "pasted");
     } catch (err) {
       setStickerProblem(err instanceof NotACutoutHere ? err.message : "Copy the subject first, then paste it here.");
     }
@@ -301,7 +302,7 @@ export function PhotoView({ items, index = 0, onClose, stickers = false }: { ite
           loading={making && !segmenter}
           lift={lift}
           onPaste={() => void askClipboard()}
-          onKeep={() => (cut ? void takeCutout(cut.blob) : undefined)}
+          onKeep={() => (cut ? void takeCutout(cut.blob, "cut") : undefined)}
           onStartOver={() => {
             setCutState(null);
             setStickerProblem(null);

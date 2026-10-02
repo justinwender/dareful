@@ -239,6 +239,13 @@
       "when": 1790635149435,
       "tag": "0033_hand_over_explained",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1790958240253,
+      "tag": "0034_usage_events",
+      "breakpoints": true
     }
   ]
 }

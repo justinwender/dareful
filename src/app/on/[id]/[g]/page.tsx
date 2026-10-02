@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { GamePage } from "@/components/on/game-page";
 import { gameById } from "@/lib/sports";
+import { currentUser } from "@/lib/auth/session";
+import { LinkOpened } from "@/components/ui/usage";
 
 export const dynamic = "force-dynamic";
 
@@ -15,5 +17,11 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 export default async function Page({ params, searchParams }: { params: Promise<{ id: string; g: string }>; searchParams: Promise<{ add?: string }> }) {
   const { id, g } = await params;
   const sp = await searchParams;
-  return <GamePage id={id} g={g} add={sp.add ?? null} start={false} />;
+  const me = await currentUser();
+  return (
+    <>
+      {/^[0-9a-f-]{36}$/i.test(id) ? <LinkOpened link="game" gameId={id} signedIn={Boolean(me)} /> : null}
+      <GamePage id={id} g={g} add={sp.add ?? null} start={false} />
+    </>
+  );
 }

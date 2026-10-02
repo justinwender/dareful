@@ -945,6 +945,20 @@ The stake fact on a phone (102), the ballot before anyone has said (103), the nu
 
 Everything about the installed app: the time from the tap to Now, which only a recording can take from the tap; whether iOS holds the launch image until the page's first frame; the launch images and the icon, which iOS keeps from the moment the app was added; the count on a real network. Items 122 to 133.
 
+## Session 31: the field round, part 0: the counting
+
+**When:** October 2, 2026, after the QA round's push. **Who:** the real localhost session in the development browser; the http suite against the local server; the database suites against the shared database.
+
+### Exercised
+
+- The migration (0034) applied to production through the Supabase MCP before anything else, so the deployed build ran beside the new table and column; the advisors read afterward (nothing new beyond the project's own pattern: RLS with no policies by design, two unindexed foreign keys on the new table like every other table's).
+- In the real localhost session: a market opened from an address carrying `?via=push&n=test-notice` left a `link_opened` row under the account (installed false, signed in true) and a `notification_opened` row with the push channel, and the address lost both parameters at once; the copy icon on an open question left a `share` row with its icon. The two reports a first paint sends at once were given two device ids by the door, so the browser now sends its reports one after another (the fix is in; item 152 reads it on a phone).
+- The unit test over the rules (the client's four names, the properties' sets, the crawlers, a screen's shape, the once-key and the channel on a notice's link), the database test over the real paths (asking, entering as an account and as a guest, a guest bound by its token) and the http test at the door (a fetcher refused, a device's cookie set and honoured, the server's own names refused), each with its mutants.
+
+### What broke
+
+1. **Two reports at once, two devices.** The first page a phone opens sends a link opened and, from a notification, the tap, in the same instant; each arrived without the cookie and each was answered with a device of its own. The browser's reports are now a queue, one request after the previous has been answered.
+
 ## Session 30: the QA round, on the simulator and across four accounts
 
 **When:** September 29, 2026, after the logo round was deployed. **Who:** four accounts. The real sessions on `localhost:3000` (the development browser, whose pane stayed hidden, so it was driven by script and read by script) and `dareful.app`; Xcode's iPhone 18 Pro simulator (iOS 27) with Dareful added to the home screen and signed in to production as one test account, and its Safari signed in as another; a private tab in that Safari as the visitor with no session. The simulator's web views were read and driven through its Web Inspector (a scratch tool over `appium-remote-debugger`), so every reading of a layer, a viewport or a tap is real WebKit's, and every tap is the simulator's own; its screenshots lag a tap by a second or two. The local build could not be run signed in inside the installed app: putting a test session's cookie into the simulator's browser by hand is materialising a credential and was refused, so what a fix changes there is confirmed on the local build in Safari signed out, or in the real localhost session, and listed below as a phone check where the installed app is the only place it shows.
@@ -1177,3 +1191,5 @@ Items the simulator covered are marked in place above (61, 66, 93, 98, 101, 113,
 149. **The name people see** (30): sign up with an email whose local part is an identifier; expect to be asked once what your friends call you, and your first name alone on every card and tile that travels.
 150. **A dead link's first paint, light mode** (30): with the phone in light mode, open a cover link that is not yours (or someone else's draft). Expect the code screen; note whether the screen is white before it, and for how long. The server answers such a `notFound()` with the framework's empty shell and the code screen is drawn once the scripts run (docs/decisions.md 2026-09-29); an address with no screen at all (a mistyped one) paints the code screen at once. The reading decides the owner's call on 5.3 against the flash.
 151. **The ask layer's way out** (30): ask a question and send it; expect its own screen with nothing of asking over it, the same after pulling to refresh; Close from the question step on each of the four roots and from a photo's "Ask something with it"; expect the place it rose from, with nothing of asking left.
+152. **A device counted once** (31): on a phone that has never opened the app, open a question's link from Messages, then open it again. Expect one `link_opened` row for the device (the owner reads the table), with `installed` false in Safari and true from the home screen, and the preview Messages drew to have left no row at all.
+153. **A notification's tap counted** (31): tap a push and an email for the same question. Expect two `notification_opened` rows, one per channel, and the address bar clean of `via` and `n` once the screen is up.

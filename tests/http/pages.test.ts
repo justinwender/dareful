@@ -1929,3 +1929,40 @@ test("at sign-in, an entry made from a link is a row on the claimant screen, pre
   assert.ok(/3 of \d in/.test(m.text), "the entry still counts, under the typed name");
   await db.update(schema.darePositions).set({ dismissedAt: new Date() }).where(and(eq(schema.darePositions.dareId, windowId), isNull(schema.darePositions.userId)));
 });
+
+// ------------------------------------------------------------------------------------------------- the usage door (the field round)
+
+test("the usage door counts a link opened once per device, refuses a link-preview fetcher and every name the browser may not report, and sets the device's cookie", async () => {
+  const U = schema.usageEvents;
+  const body = { name: "link_opened", props: { link: "market", signedIn: false, installed: true }, dareId: marketId };
+  const post = (headers: Record<string, string>, b: unknown = body) => fetch(`${BASE}/api/usage`, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(b), redirect: "manual" });
+  const before = (await db.select({ id: U.id }).from(U).where(eq(U.dareId, marketId))).length;
+  // Messages fetching the preview: a 204 and no row.
+  const bot = await post({ "user-agent": "facebookexternalhit/1.1" });
+  assert.equal(bot.status, 204);
+  assert.equal((await db.select({ id: U.id }).from(U).where(eq(U.dareId, marketId))).length, before, "a fetcher's visit is not a person's");
+  // A phone's first visit: a row with a device id, and the cookie that makes the next visit the same device.
+  const ua = "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1";
+  const first = await post({ "user-agent": ua });
+  assert.equal(first.status, 204);
+  const cookie = /dareful_device=([0-9a-f-]{36})/.exec(first.headers.get("set-cookie") ?? "")?.[1];
+  assert.ok(cookie, "the device's cookie");
+  const rows = await db.select().from(U).where(and(eq(U.dareId, marketId), eq(U.deviceId, cookie as string)));
+  assert.equal(rows.length, 1);
+  assert.deepEqual(rows[0]?.props, { link: "market", signedIn: false, installed: true });
+  assert.equal(rows[0]?.userId, null);
+  // The same device again: no second row. A signed-in person on the same device: their own, once.
+  await post({ "user-agent": ua, cookie: `dareful_device=${cookie}` });
+  assert.equal((await db.select({ id: U.id }).from(U).where(and(eq(U.dareId, marketId), eq(U.deviceId, cookie as string)))).length, 1, "once per device per link");
+  await post({ "user-agent": ua, cookie: `dareful_device=${cookie}; dareful_session=${cFriend}` }, { ...body, props: { ...body.props, signedIn: true } });
+  const mine = await db.select().from(U).where(and(eq(U.dareId, marketId), eq(U.userId, friend.user.id)));
+  assert.equal(mine.length, 1, "the account's own open");
+  assert.equal(mine[0]?.deviceId, cookie);
+  // The server's own names and unknown ones leave nothing, whatever the browser says.
+  for (const b of [{ name: "asked", props: { kind: "binary", pace: "dare", source: "direct", mark: "none" }, dareId: marketId }, { name: "signed_in", props: { method: "phone" } }, { name: "page", props: {} }, { name: "share", props: { icon: "Will John fall asleep?" }, dareId: marketId }]) {
+    assert.equal((await post({ "user-agent": ua, cookie: `dareful_device=${cookie}` }, b)).status, 204);
+  }
+  const all = await db.select({ name: U.name }).from(U).where(and(eq(U.dareId, marketId), eq(U.deviceId, cookie as string), isNull(U.userId)));
+  assert.deepEqual(all.map((r) => r.name), ["link_opened"], "nothing but the one open from this device while nobody was signed in");
+  assert.equal((await db.select({ id: U.id }).from(U).where(eq(U.name, "page"))).length, 0);
+});

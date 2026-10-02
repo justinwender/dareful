@@ -14,6 +14,7 @@ import { currentUser } from "@/lib/auth/session";
 import { claimsForBrowserTokens, pendingForClaim, readClaimLink } from "@/lib/ledger/claims";
 import { denominationsByIds } from "@/lib/ledger/denominations";
 import { viewerClock } from "@/lib/ui/zone";
+import { LinkOpened } from "@/components/ui/usage";
 
 export const dynamic = "force-dynamic";
 
@@ -62,6 +63,7 @@ export default async function ClaimLinkPage({ params }: { params: Promise<{ toke
 
   return (
     <Screen>
+      <LinkOpened link="claim" signedIn={Boolean(me)} />
       <TopBar wordmark back={Boolean(me)} info="claim-landing" />
       <div className="flex flex-col gap-6 py-6">
         <div className="flex items-center gap-4">

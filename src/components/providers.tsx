@@ -13,6 +13,7 @@ import { Shells } from "@/components/ui/shells";
 import { Traversals } from "@/components/ui/traversals";
 import { ViewportGuard } from "@/components/ui/viewport-guard";
 import { ZoneReporter } from "@/components/ui/zone-reporter";
+import { NotificationOpened } from "@/components/ui/usage";
 import { ColdMarks } from "@/components/ui/cold-marks";
 
 const environmentId = process.env.NEXT_PUBLIC_DYNAMIC_ENVIRONMENT_ID ?? "";
@@ -53,6 +54,7 @@ export function Providers({ children, facts }: { children: ReactNode; /** The se
         <Traversals />
         <ViewportGuard />
         <ZoneReporter />
+        <NotificationOpened />
         <Shells />
         {children}
       </MeProvider>

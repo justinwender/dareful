@@ -15,6 +15,7 @@ import { relayer, SendPending, submit } from "@/lib/chain/relayer";
 import { CloseReason, ledgerDomain, ledgerTypes } from "@/lib/chain/typed-data";
 import { obligationsById, type EnvioObligation } from "./envio";
 import { denomOnchainId, groupOnchainId, uuidToBytes16 } from "./ids";
+import { record } from "@/lib/usage";
 
 export type ReasonWord = "settled" | "forgiven";
 
@@ -99,6 +100,7 @@ export async function closeObligation(input: { obligationId: string; creditorUse
     throw new CloseError("That didn’t go through. Try again.", "chain");
   }
   await completeClose(o.id);
+  await record("obligation_closed", { reason: input.reason === "forgiven" ? "forgiven" : "settled" }, { userId: input.creditorUserId });
   return { txHash, qty: state.remaining };
 }
 
@@ -188,6 +190,7 @@ export async function netBetween(input: { signerUserId: string; otherUserId: str
       gas: gasFor.net(),
       write: { kind: "net", subject: { groupId: input.groupId, denomId: input.denomId, a: input.signerUserId, b: input.otherUserId }, actor: input.signerUserId },
     });
+    await record("netted", {}, { userId: input.signerUserId });
     return { txHash: result.hash };
   } catch (err) {
     if (err instanceof SendPending) throw err;

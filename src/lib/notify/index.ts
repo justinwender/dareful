@@ -13,6 +13,7 @@ import { marketById, quorumOf, tally, VOID_OUTCOME, votesOf } from "@/lib/ledger
 import { firstName } from "@/lib/ui/copy";
 import { sendEmail, sendPush } from "./channels";
 import { positionsOf } from "@/lib/ledger/markets";
+import { record } from "@/lib/usage";
 import { backstopResultNotice, backstopWarningNotice, closedNotice, deadlineNotice, enteredFromNotice, rulingNotice, joinedNotice, nettedNotice, nudgeNotice, nudgeSeq, nudgeTargets, openedNotice, pinLockedNotice, pushElseEmail, recipientsAfterVote, resultNotice, voteRequest, type BackstopHow, type Notice, type WarningFlavour } from "./messages";
 
 /** Claims the (person, market, kind, count) slot; false if it was already told. This is what makes a retry silent. */
@@ -41,13 +42,25 @@ export async function claimPairNotice(userId: string, causedBy: string, now: Dat
 async function deliver(userId: string, logId: string, notice: Notice, mode: "every" | "push-else-email" = "every"): Promise<void> {
   let push = false;
   let email = false;
+  // Each channel's link says which it was (`via`) and which notice (`n`), so a tap can be counted by channel; the page takes both off the address at once.
+  const byPush = { ...notice, url: viaChannel(notice.url, "push", logId) };
+  const byEmail = { ...notice, url: viaChannel(notice.url, "email", logId) };
   if (mode === "push-else-email") {
-    ({ push, email } = await pushElseEmail(() => sendPush(userId, notice), () => sendEmail(userId, notice)));
+    ({ push, email } = await pushElseEmail(() => sendPush(userId, byPush), () => sendEmail(userId, byEmail)));
   } else {
-    [push, email] = await Promise.all([sendPush(userId, notice).catch(() => false), sendEmail(userId, notice).catch(() => false)]);
+    [push, email] = await Promise.all([sendPush(userId, byPush).catch(() => false), sendEmail(userId, byEmail).catch(() => false)]);
   }
   const channels = [push ? "push" : null, email ? "email" : null].filter((c): c is string => c !== null);
   if (channels.length > 0) await db.update(schema.notificationLog).set({ channels }).where(eq(schema.notificationLog.id, logId));
+  const [row] = await db.select({ kind: schema.notificationLog.kind, dareId: schema.notificationLog.dareId }).from(schema.notificationLog).where(eq(schema.notificationLog.id, logId)).limit(1);
+  await record("notification_sent", { kind: row?.kind ?? "unknown", channel: push && email ? "both" : push ? "push" : email ? "email" : "none" }, { userId }, { dareId: row?.dareId ?? null });
+}
+
+/** The notice's address with the channel and the notice named in its query, before any fragment. */
+export function viaChannel(url: string, via: "push" | "email", logId: string): string {
+  const [base, hash] = url.split("#", 2);
+  const sep = (base ?? "").includes("?") ? "&" : "?";
+  return `${base}${sep}via=${via}&n=${encodeURIComponent(logId)}${hash ? `#${hash}` : ""}`;
 }
 
 export type VoteCounts = { cast: number; quorum: number; threshold: number; leading: number };
@@ -169,6 +182,7 @@ export async function sendNudge(dareId: string, nudgerId: string, now: Date, onl
       if ((row?.channels.length ?? 0) > 0) reached += 1;
     }),
   );
+  await record("nudge", { stage, told, reached }, { userId: nudgerId }, { dareId });
   return { waitingOn: targets.length, told, reached };
 }
 

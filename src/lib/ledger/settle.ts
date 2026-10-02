@@ -23,6 +23,7 @@ import { bufferToHex } from "./ids";
 import { pidOf, participantsOf } from "./participants";
 import { isProvisional, settleProvisional } from "./provisional";
 import { isMember } from "./groups";
+import { record } from "@/lib/usage";
 import { answersOf, lockMarket, marketById, MarketError, mirrorSettlement, positionsOf, reconcileFromIndexer, resolveFromVotes, settlementFromReceipt, stateOf, tally, toChainOutcome, unitOf, VOID_OUTCOME, votesOf, type DareRow } from "./markets";
 
 /** If nobody presses, the scheduler hears a deadlock this long after the question was due (or locked, if later). */
@@ -187,7 +188,8 @@ export async function expireMarket(dareId: string, now: Date = new Date()): Prom
 
 /** The mirror of an expiry once the chain has it, idempotent: no outcome, nothing minted, the question unsettled. */
 export async function completeExpire(dareId: string, now: Date = new Date()): Promise<boolean> {
-  await db.update(schema.dares).set({ resolvedBy: "expired", resolvedAt: now, resolvedOutcome: null }).where(and(eq(schema.dares.id, dareId), isNull(schema.dares.resolvedAt)));
+  const done = await db.update(schema.dares).set({ resolvedBy: "expired", resolvedAt: now, resolvedOutcome: null }).where(and(eq(schema.dares.id, dareId), isNull(schema.dares.resolvedAt))).returning({ id: schema.dares.id });
+  if (done.length > 0) await record("settled", { by: "expired", outcome: "none" }, {}, { dareId });
   return true;
 }
 

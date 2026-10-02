@@ -13,6 +13,8 @@
 import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { hashToken, newToken } from "./tokens";
+import { record } from "@/lib/usage";
+import { type EventProps } from "@/lib/usage/events";
 
 export type ClaimRow = typeof schema.participantClaims.$inferSelect;
 export type GroupRow = typeof schema.groups.$inferSelect;
@@ -262,8 +264,8 @@ export async function claimsForBrowserTokens(tokens: string[]): Promise<ClaimRow
  * Misbinding is safe on the debtor side, because the person simply declines. On the creditor side the debtor
  * confirms afresh: their signature names the creditor's address, so it can only be made after the bind.
  */
-export async function bindClaimToUser(claimId: string, userId: string): Promise<{ claimId: string; proposalIds: string[] } | null> {
-  return db.transaction(async (tx) => {
+export async function bindClaimToUser(claimId: string, userId: string, via: EventProps<"claim_bound">["via"] = "link"): Promise<{ claimId: string; proposalIds: string[] } | null> {
+  const bound = await db.transaction(async (tx) => {
     const found = await survivor(tx, claimId);
     if (!found) return null;
     const [claim] = await tx.select().from(schema.participantClaims).where(eq(schema.participantClaims.id, found.id)).limit(1).for("update");
@@ -338,6 +340,9 @@ export async function bindClaimToUser(claimId: string, userId: string): Promise<
     const pending = [...asDebtor, ...asCreditor].filter((p) => p.status === "pending").map((p) => p.id);
     return { claimId: claim.id, proposalIds: pending };
   });
+  // Counted once it is bound (the field round): a guest who became an account, by which door.
+  if (bound && bound.claimId) await record("claim_bound", { via }, { userId, claimId: bound.claimId });
+  return bound;
 }
 
 /**
@@ -418,7 +423,7 @@ export async function bindByPhone(userId: string, phoneHash: Buffer): Promise<st
     );
   const bound: string[] = [];
   for (const c of claims) {
-    const r = await bindClaimToUser(c.id, userId);
+    const r = await bindClaimToUser(c.id, userId, "phone");
     if (r) bound.push(r.claimId);
   }
   return bound;
@@ -431,7 +436,7 @@ export async function bindByBrowserTokens(userId: string, tokens: string[]): Pro
   for (const c of claims) {
     if (c.createdBy === userId) continue;
     try {
-      const r = await bindClaimToUser(c.id, userId);
+      const r = await bindClaimToUser(c.id, userId, "token");
       if (r) bound.push(r.claimId);
     } catch (err) {
       if (!(err instanceof ClaimError)) throw err; // someone else got there first: not this login's problem
@@ -459,7 +464,7 @@ export async function mergeGhost(creatorId: string, claimId: string, target: Per
       where a.user_id = ${creatorId} and b.user_id = ${target.userId} and a.left_at is null and b.left_at is null
     `);
     if ((Array.from(shared)[0]?.n ?? 0) === 0) throw new ClaimError("you can only point them at someone you share a group with", "not_allowed");
-    await bindClaimToUser(source.id, target.userId);
+    await bindClaimToUser(source.id, target.userId, "merge");
     return;
   }
 

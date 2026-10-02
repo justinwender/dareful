@@ -75,7 +75,7 @@ export async function thatsMeAction(rawToken: string): Promise<{ bound: true } |
   const me = await currentUser();
   if (me) {
     try {
-      await bindClaimToUser(link.claim.id, me.id);
+      await bindClaimToUser(link.claim.id, me.id, "link");
       return { bound: true };
     } catch (err) {
       return { error: say(err, "That didn't go through. Try again.") };
@@ -96,7 +96,7 @@ export async function acceptSuggestionAction(rawClaimId: string): Promise<{ boun
   const offered = await suggestedGhostsFor(user.id, user.displayName);
   if (!offered.some((o) => o.claimId === id.data)) return { error: "That one isn't yours to take." };
   try {
-    await bindClaimToUser(id.data, user.id);
+    await bindClaimToUser(id.data, user.id, "suggestion");
     return { bound: true };
   } catch (err) {
     return { error: say(err, "That didn't go through. Try again.") };

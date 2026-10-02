@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { ErrorShown } from "@/components/ui/usage";
 
 /**
  * docs/design.md 5.1. There is no red, so colour cannot carry an error. Ink carries it instead, on four channels: position (at the field, and once more above the button), weight, a glyph, and the words.
@@ -25,6 +26,7 @@ export function Problem({ message, id }: { message?: string | null; id?: string 
     <p id={id} className="flex gap-2 text-body-sm text-ink">
       <AlertGlyph />
       <span>{message}</span>
+      <ErrorShown message={message} />
     </p>
   );
 }
@@ -59,6 +61,7 @@ export function ProblemSummary({ messages, children, retry }: { messages: Readon
   const retryable = retry && list.some(isRetryable);
   return (
     <div role="alert" className="flex flex-col gap-2 rounded-button border border-line-strong bg-surface-2 px-[14px] py-3">
+      <ErrorShown message={list[0] ?? null} />
       {list.map((m) => (
         <p key={m} className="flex gap-2 text-body-sm text-ink">
           <AlertGlyph />

@@ -2,13 +2,16 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { report } from "@/lib/usage/client";
 
 /** Every share goes out through the user's own composer (Web Share, then sms:), never from Dareful. The nudge's relay and a ghost's link use it; a market is shared from the who's-in row (3.42), which retired the chalk this once drew. */
 export function InviteShare({ url, text }: { url: string; text: string }) {
+  const dareId = /\/m\/([0-9a-f-]{36})/.exec(url)?.[1] ?? null;
   const [copied, setCopied] = useState(false);
   async function share() {
     if (typeof navigator !== "undefined" && "share" in navigator) {
       try {
+        report("share", { icon: "relay" }, { dareId });
         await navigator.share({ text: `${text} ${url}` });
         return;
       } catch {
@@ -19,6 +22,7 @@ export function InviteShare({ url, text }: { url: string; text: string }) {
   }
   async function copy() {
     try {
+      report("share", { icon: "relay" }, { dareId });
       await navigator.clipboard.writeText(url);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);

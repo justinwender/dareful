@@ -8,6 +8,7 @@ import { dismissNamePrompt, nameGroup } from "@/lib/ledger/groups";
 import { MarketError } from "@/lib/ledger/markets";
 import { readPastedLink } from "@/lib/ledger/room-code";
 import { joinByCode, joinByMarketLink, roomCodeFor } from "@/lib/ledger/rooms";
+import { record } from "@/lib/usage";
 
 const uuid = z.string().uuid();
 type Refusal = { error: string; at: "field" | "form" };
@@ -24,6 +25,7 @@ export async function joinByCodeAction(raw: string): Promise<Refusal> {
   let marketId: string;
   try {
     ({ marketId } = await joinByCode(typed.data, user.id));
+    await record("code_used", {}, { userId: user.id }, { dareId: marketId });
   } catch (err) {
     if (err instanceof MarketError) return { error: err.message, at: err.code === "bad_input" ? "field" : "form" };
     console.error("join by code failed", err);
@@ -70,7 +72,9 @@ export async function roomCodeAction(rawId: string): Promise<{ code: string } | 
   const id = uuid.safeParse(rawId);
   if (!id.success) return { error: "That one doesn't exist." };
   try {
-    return { code: await roomCodeFor(id.data, user.id) };
+    const code = await roomCodeFor(id.data, user.id);
+    await record("code_shown", {}, { userId: user.id }, { dareId: id.data });
+    return { code };
   } catch (err) {
     return { error: err instanceof MarketError ? err.message : "Couldn't make a code. Try again." };
   }

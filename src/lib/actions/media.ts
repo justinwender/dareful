@@ -10,6 +10,7 @@ import { StorageUnavailable } from "@/lib/media/storage";
 import { isUuidLike } from "@/lib/ledger/ids";
 import { viewerZone } from "@/lib/ui/zone";
 import { type InkName } from "@/lib/ui/ink";
+import { record } from "@/lib/usage";
 
 /**
  * The settlement photo, from the phone (Principle 6). The bytes are read here and handed to the pipeline; the
@@ -90,6 +91,7 @@ export async function addStickerAction(form: FormData): Promise<{ ok: true; id: 
   try {
     const bytes = Buffer.from(await file.arrayBuffer());
     const row = await addSticker({ ownerId: user.id, bytes });
+    await record("sticker", { source: form.get("source") === "cut" ? "cut" : "pasted" }, { userId: user.id });
     return { ok: true, id: row.id, ink: (row.ink as InkName | null) ?? null };
   } catch (err) {
     if (err instanceof MarkError) return { error: err.message };

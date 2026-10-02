@@ -8,6 +8,7 @@ import { decideLogin } from "@/lib/auth/login";
 import { hashPhone } from "@/lib/auth/phone";
 import { clearSessionCookie, issueSessionCookie } from "@/lib/auth/session";
 import { bindByBrowserTokens, bindByPhone } from "@/lib/ledger/claims";
+import { record } from "@/lib/usage";
 
 const Body = z.object({
   token: z.string().min(20),
@@ -98,6 +99,7 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   await issueSessionCookie(user.id);
+  await record(decision.kind === "create" ? "signed_up" : "signed_in", { method: phone ? "phone" : claims.email ? "email" : "other" }, { userId: user.id });
   return NextResponse.json({
     user: { id: user.id, displayName: user.displayName, ledgerWallet: user.ledgerWallet, governanceWallet: user.governanceWallet },
     bound,

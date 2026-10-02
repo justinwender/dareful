@@ -109,6 +109,7 @@ import {
 import { hueFor } from "@/lib/ui/hue";
 import { formatMoney, unitWords } from "@/lib/ui/units";
 import { viewerClock } from "@/lib/ui/zone";
+import { LinkOpened } from "@/components/ui/usage";
 
 export const dynamic = "force-dynamic";
 
@@ -238,6 +239,7 @@ export default async function MarketPage({
     const inCount = (await positionsOf(d.id)).length;
     return (
       <Screen>
+        <LinkOpened link="market" dareId={d.id} signedIn />
         <TopBar back />
         <div className="py-2">
           <InvitePreview
@@ -1123,6 +1125,7 @@ export default async function MarketPage({
       <InkRoot ink={ink} />
       <PhotoAdding dareId={d.id} night={night} canAdd={canAdd} capture={state === "open"} viewer={{ name: me.displayName, hue: hueFor(me.id) }}>
       <Screen arrive="fade">
+        <LinkOpened link="market" dareId={d.id} signedIn />
         {/* Back, More and the information icon, and no context chip (10.3, 3.19): the band's asker line already names who was asked. */}
         <TopBar back right={mine || state !== "open" ? more : null} info={infoKeyFor(state, memoryView, pickAnswers ? "categorical" : numberUnit ? "numeric" : "binary")} />
         <div className="flex flex-col gap-7 py-2">

@@ -39,6 +39,7 @@ import type { TeamFace } from "@/lib/ui/team";
 import { outcomeLine } from "@/lib/ui/outcome-words";
 import { formatMoney, unitWords } from "@/lib/ui/units";
 import type { viewerClock } from "@/lib/ui/zone";
+import { LinkOpened } from "@/components/ui/usage";
 
 /**
  * Arriving from a link with no account (docs/design.md 3.17; PLANNING.md section 4): the market's own screen in
@@ -156,6 +157,7 @@ export async function GhostMarketPage({ id, clock }: { id: string; clock: Awaite
     <div className="flex flex-1 flex-col">
       <InkRoot ink={ink} />
       <Screen>
+        <LinkOpened link="market" dareId={d.id} signedIn={false} />
         <TopBar wordmark info="market-link" />
         <div className="flex flex-col gap-7 py-2">
           <section className="-mx-2 flex flex-col gap-3 rounded-card bg-field p-4 pb-[18px]">

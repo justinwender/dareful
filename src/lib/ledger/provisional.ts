@@ -12,6 +12,8 @@ import { db, schema } from "@/db";
 import { denominationById } from "./denominations";
 import { pidOf } from "./participants";
 import { PICK_ONE_CONFIDENCE } from "./pick-one";
+import { record } from "@/lib/usage";
+import { settledWord } from "@/lib/usage/events";
 import { BPS, nets, scoreBinary, scoreCategorical, scoreNumeric, settle, type ScoredPosition } from "./scoring";
 
 type DareRow = typeof schema.dares.$inferSelect;
@@ -104,5 +106,6 @@ export async function settleProvisional(d: DareRow, positions: PositionRow[], ou
       made += 1;
     }
   });
+  await record("settled", { by: settledWord(how.by), outcome: voided ? "void" : "decided" }, {}, { dareId: d.id });
   return { proposals: made };
 }
