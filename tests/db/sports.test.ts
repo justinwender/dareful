@@ -10,12 +10,12 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { after, before, test } from "node:test";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { ensureUsd } from "@/lib/ledger/denominations";
 import { createGroup } from "@/lib/ledger/groups";
 import * as markets from "@/lib/ledger/markets";
-import { arbitrateMarket, cleanResolution, tick } from "@/lib/ledger/settle";
+import { arbitrateMarket, cleanResolution, tick, toArbitrate } from "@/lib/ledger/settle";
 import { notifyBackstopResult } from "@/lib/notify";
 import { DRIVE_RULING, FEED_RULING, feedBackstop, gameMarkets, gameUseCounts, pollFinals, pollSummaries, startGame, syncSchedule, templateById, useCounts, whatsOn } from "@/lib/sports";
 import { parseScoreboard, parseSummary } from "@/lib/sports/espn";
@@ -193,6 +193,7 @@ test("the backstop on the chain: both sources agreeing settles a day on and coun
   while (Date.now() < soon.getTime() + 15_000) await new Promise((r) => setTimeout(r, 1000));
   await db.update(schema.sportsGames).set({ startsAt: new Date(Date.now() - 30 * H), expectedEndAt: new Date(Date.now() - 27 * H) }).where(eq(schema.sportsGames.id, game.id));
   // A question the score decides never gets the model, even asked by hand by someone in it.
+  assert.deepEqual(await toArbitrate(new Date(Date.now() + 72 * H), inArray(schema.dares.id, Object.values(made).map((d) => d.id)), 3), [], "the final score's questions never take the tiebreaker's places, however long they wait");
   assert.equal(await code(() => arbitrateMarket(made.total!.id, asker.user.id)), "wrong_state", "the final score is the tiebreaker everyone agreed to");
   const final = { ...recorded("espn-nfl-final", "nfl")[0]!, sourceId: one[0]!.sourceId, home: one[0]!.home, away: one[0]!.away };
   const seen = new Date(Date.now() - AGREE_AFTER_MS - H);

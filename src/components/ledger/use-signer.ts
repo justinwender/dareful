@@ -6,7 +6,7 @@ import { useUserWallets } from "@dynamic-labs/sdk-react-core";
 import { isEthereumWallet } from "@dynamic-labs/ethereum";
 import type { Hex, TypedDataDomain } from "viem";
 import { useDevice } from "@/components/auth/device";
-import { serverMaySign, type DeviceState, type Me } from "@/lib/auth/device";
+import { serverMaySign, type DeviceState, type Me, signerFailure, signInAbandoned } from "@/lib/auth/device";
 import { signFromThisDeviceAction } from "@/lib/actions/pass-the-phone";
 import type { Via } from "@/lib/ledger/via";
 import { mark } from "@/lib/ui/timing";
@@ -41,11 +41,11 @@ const SIGN_IN_WAIT_MS = 180_000;
  */
 export function useSigner() {
   const wallets = useUserWallets();
-  const { state, signIn, me } = useDevice();
-  const live = useRef<{ wallets: typeof wallets; state: DeviceState; me: Me | null }>({ wallets, state, me });
+  const { state, signIn, me, authOpen } = useDevice();
+  const live = useRef<{ wallets: typeof wallets; state: DeviceState; me: Me | null; authOpen: boolean }>({ wallets, state, me, authOpen });
   useEffect(() => {
-    live.current = { wallets, state, me };
-  }, [wallets, state, me]);
+    live.current = { wallets, state, me, authOpen };
+  }, [wallets, state, me, authOpen]);
 
   return useCallback(
     async (address: string, typed: Typed, label: string, via?: Via): Promise<Hex> => {
@@ -60,17 +60,21 @@ export function useSigner() {
           done();
         }
       }
-      if (live.current.state === "signed-out" || live.current.state === "other-account") await signIn();
-      const deadline = Date.now() + SIGN_IN_WAIT_MS;
-      while (!find() && live.current.state !== "keys-missing" && Date.now() < deadline) await new Promise((r) => setTimeout(r, 250));
-      const wallet = find();
-      if (!wallet || !isEthereumWallet(wallet)) {
-        throw new SignerError(
-          live.current.state === "keys-missing"
-            ? "Something's wrong with your sign-in on this device, and waiting won't fix it. Sign in again from the top of the screen. Nothing was sent."
-            : "This device still needs a code to check it's you. Nothing was sent.",
-        );
+      // A device with no login (a second device, or any device thirty days after its first sign-in, when Dynamic ends the login whatever the Dareful cookie says) is asked for one fresh sign-in in the tap's own place; the tap carries on when it is done.
+      let opened = 0;
+      if (live.current.state === "signed-out" || live.current.state === "other-account") {
+        await signIn();
+        opened = Date.now();
       }
+      const deadline = Date.now() + SIGN_IN_WAIT_MS;
+      while (!find() && live.current.state !== "keys-missing" && Date.now() < deadline) {
+        // The person closed the sign-in step: nothing is waited for that will not come.
+        if (signInAbandoned({ opened: opened > 0, authOpen: live.current.authOpen, state: live.current.state, sinceOpenedMs: Date.now() - opened })) break;
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      const wallet = find();
+      // Never silently: no signature, so the table's words for whoever is signed out, at the control that was tapped.
+      if (!wallet || !isEthereumWallet(wallet)) throw new SignerError(signerFailure(live.current.state));
       const done = mark(`sign: ${label}`);
       try {
         const client = await wallet.getWalletClient();

@@ -1,5 +1,6 @@
 "use client";
 
+import { attempt } from "@/lib/ui/attempt";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ProblemSummary } from "@/components/ledger/problem";
@@ -33,7 +34,7 @@ export function InkPicker({ dareId, current }: { dareId: string; current: InkNam
               onClick={() =>
                 start(async () => {
                   setProblem(null);
-                  const r = await pickInkAction(dareId, name);
+                  const r = await attempt(() => pickInkAction(dareId, name));
                   if ("error" in r) return setProblem(r.error);
                   router.refresh();
                 })

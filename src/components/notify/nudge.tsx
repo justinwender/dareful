@@ -1,5 +1,6 @@
 "use client";
 
+import { attempt } from "@/lib/ui/attempt";
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { InviteShare } from "@/components/ledger/invite-share";
@@ -24,7 +25,7 @@ export function Nudge({ dareId, names, relay, url }: { dareId: string; names: st
   function nudge() {
     setProblem(null);
     start(async () => {
-      const r = await nudgeAction(dareId);
+      const r = await attempt(() => nudgeAction(dareId));
       if ("error" in r) return setProblem(r.error);
       if (r.waitingOn === 0) return setSaid("Nobody left to wait on.");
       if (r.told === 0) {

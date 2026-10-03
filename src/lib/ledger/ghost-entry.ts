@@ -129,9 +129,9 @@ export async function enterAsGhost(input: { dareId: string; who: GhostWho; token
   const now = new Date();
   const [position] = await db
     .insert(schema.darePositions)
-    .values({ dareId: d.id, claimId, stake: input.stake, value: input.value, confidenceBps: d.kind === "categorical" ? confidenceFor(d) : null, enterSignature: null, enteredBy: d.creatorId, acknowledgedAt: now })
+    .values({ dareId: d.id, claimId, stake: input.stake, value: input.value, confidenceBps: d.kind === "categorical" ? confidenceFor(d) : null, enterSignature: null, enteredBy: d.creatorId, acknowledgedAt: now, changedAt: now })
     // A ghost the asker removed may enter again: the row comes back with the new number, and the asker may remove it again.
-    .onConflictDoUpdate({ target: [schema.darePositions.dareId, schema.darePositions.claimId], set: { stake: input.stake, value: input.value, confidenceBps: d.kind === "categorical" ? confidenceFor(d) : null, dismissedAt: null, acknowledgedAt: now } })
+    .onConflictDoUpdate({ target: [schema.darePositions.dareId, schema.darePositions.claimId], set: { stake: input.stake, value: input.value, confidenceBps: d.kind === "categorical" ? confidenceFor(d) : null, dismissedAt: null, acknowledgedAt: now, changedAt: now } })
     .returning();
   if (!position) throw new MarketError("Couldn't save that.", "chain");
 

@@ -33,6 +33,9 @@ export function stampInk(color: string | null): string {
 /** The abbreviation's size: Hanken 700 at 0.42 of the stamp for two letters, 0.36 for three or more (1.7). */
 export const stampGlyph = (size: number, abbr: string): number => Math.round(size * (abbr.length <= 2 ? 0.42 : 0.36));
 
+/** The stacked pair in Now's 40px mark (4.7, the field round): two bars the mark's width, 19px tall with 2px between, the abbreviation at 10px, a radius of a quarter of the bar. */
+export const STACKED = { mark: 40, bar: 19, gap: 2, glyph: 10, radius: 5 } as const;
+
 /** A quarter of the size (1.7). */
 export const stampRadius = (size: number): number => Math.round(size / 4);
 

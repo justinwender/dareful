@@ -1,5 +1,6 @@
 "use client";
 
+import { attempt } from "@/lib/ui/attempt";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AlertGlyph } from "@/components/ledger/problem";
@@ -32,7 +33,7 @@ export function FeedFailed({ lastOk, nothingSaved }: { lastOk: string | null; no
         onClick={() =>
           start(async () => {
             setProblem(null);
-            const r = await refreshWhatsOnAction();
+            const r = await attempt(() => refreshWhatsOnAction());
             if ("error" in r) return setProblem(r.error);
             router.refresh();
           })

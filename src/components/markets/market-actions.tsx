@@ -1,5 +1,6 @@
 "use client";
 
+import { attempt } from "@/lib/ui/attempt";
 import { useEffect, useId, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { TypedDataDomain } from "viem";
@@ -8,6 +9,7 @@ import { ProblemSummary } from "@/components/ledger/problem";
 import { Sheet } from "@/components/ui/sheet";
 import { HoldoutAvatar } from "./whos-in-row";
 import { lockMarketAction } from "@/lib/actions/markets";
+import { PinnedSheet } from "@/components/ui/pinned-sheet";
 import { WORDS } from "@/lib/ui/errors";
 import { hashAsksFor, useHash } from "@/lib/ui/hash";
 
@@ -52,7 +54,7 @@ export function LockButton({ dareId, count, leftOut = [], primary = true, varian
   const close = () =>
     start(async () => {
       setProblem(null);
-      const r = await lockMarketAction(dareId);
+      const r = await attempt(() => lockMarketAction(dareId));
       if ("error" in r) {
         setProblem(r.error);
         // Closed or decided under the person: the screen is read again, and the words say so (1.6).
@@ -91,5 +93,41 @@ export function LockButton({ dareId, count, leftOut = [], primary = true, varian
         </div>
       </Sheet>
     </div>
+  );
+}
+
+/** The close's one line in the sheet (3.24, 3.42; the strings of the fifteenth session): what closing now would do, by who is still out. Pure. */
+export function closeLine(input: { stuck: boolean; everyoneIn: boolean; leftOut: string[] }): string {
+  if (input.stuck) return "Time’s up, and nothing closed it. Anyone in it can.";
+  if (input.everyoneIn) return "Everyone you asked is in.";
+  const names = input.leftOut;
+  if (names.length === 0) return "Whoever isn’t in yet can’t get in after.";
+  const who = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  return `Close it now and ${who} can’t get in.`;
+}
+
+/**
+ * The close, in the sheet (docs/design.md 3.24, 3.42; the field round, the owner's correction of 2026-10-03): for
+ * everyone who can close a market, the asker on any open one and anyone in once it is stuck past its close time.
+ * It is the sheet's main action when everyone asked is in or when the market is stuck; otherwise it is a
+ * secondary that asks once, with the line saying what closing now costs. While the asker is the only one in
+ * there is no close: share is the chalk on the who's-in row. The entry sheet takes its place while someone is
+ * changing their own entry (`MarketStage`).
+ */
+export function CloseSheet({ dareId, count, leftOut, stuck, everyoneIn }: { dareId: string; count: number; leftOut: Array<{ name: string }>; stuck: boolean; everyoneIn: boolean }) {
+  const main = stuck || everyoneIn;
+  const first = leftOut.map((p) => p.name.trim().split(/\s+/)[0] ?? p.name);
+  return (
+    <PinnedSheet
+      label="Close it"
+      low={
+        <>
+          <p className="text-body-sm text-ink-2" data-close-line={main ? "main" : "secondary"} {...(stuck ? { "data-stuck-line": "" } : {})}>
+            {closeLine({ stuck, everyoneIn, leftOut: first })}
+          </p>
+          <LockButton dareId={dareId} count={count} leftOut={leftOut} variant={main ? "primary" : "secondary"} />
+        </>
+      }
+    />
   );
 }

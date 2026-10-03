@@ -983,6 +983,98 @@ Everything about the installed app: the time from the tap to Now, which only a r
 
 The ten-times sequence on iOS 26 in the installed app; the stake chips on the owner's phone; a slow write, an offline tap and a signed-out tap on a phone; the three voting notices arriving by push and by email; the session cookie's expiry moving; the set chips' replace. Items 154 to 164.
 
+## Session 33: the field round, part 2, in the development browser
+
+**When:** October 2, 2026, after part 1 was staged. **Who:** the real localhost session in the development browser at phone width; the suites against the shared database and the local server.
+
+### Exercised
+
+- **The sheet's positions (2.1).** On the draft "Was Trajan the greatest Roman emperor?", the sheet rested at its move with the page's room at 305px; dragged down past the snap it tucked to the handle row; dragged up it rested and then raised; the positions read from the sheet's own attribute (`data-pinned-sheet`: tucked, low, raised, full). The grabber at 48 by 6. Where the raised content fits, no full position exists.
+- **The stuck market (2.1).** The http test across three accounts: the asker and the friend in it are offered the close in the sheet, the stranger in the set is not.
+- **The inputs (2.3 to 2.6).** Held by source scans in the unit suite: the PIN fields numeric text, masked, autocomplete off; no `capture` on either photo input; the question and the title drawn as fields.
+- **The rows (2.7).** The token's face by a static render; the count's rule and the one row per game as pure tests with their mutants; the static mutant check at 0 stale.
+
+### Not verified here
+
+The four positions under a thumb on a phone (the snap, the full position scrolling under its handle row, the tucked sheet's handle still reachable above the tab bar); the PIN fields on an iPhone (no password manager, no focus moving on its own); the photo input's two choices; a pasted sticker appearing before its upload returns; the team stamps on a game row. Items 165 to 170.
+
+
+
+## Session 34: the field round, part 3, the numbers
+
+**When:** October 2 and 3, 2026. **Who:** the unit and database suites against the shared database; the http suite's door check against the local server.
+
+### Exercised
+
+- The owner check, the two windows, Eastern days (an evening that crosses midnight UTC is one day; the day the clocks go back is twenty-five hours and still one) and the definitions, as pure tests; the counts against the real database with a counted account, an excluded account and a guest; people with a channel in a window nobody else has events in; a day written twice as one row, replaced.
+- The page as a non-owner over http: the code screen, exactly as for an address with no screen.
+
+### What broke
+
+1. **A moment bound as a Date.** The driver refuses a `Date` as a parameter of a raw query; each bound of a window is ISO text cast back.
+2. **A day written twice.** The first test passed whether the second take replaced the row or was ignored; it now reads the take's time before and after.
+
+### Not verified here
+
+The page as the owner (the variable is not set on the local server during the suites); the two buttons on a phone; the chain's counts against the indexer in production. Items 171 to 173 and 184.
+
+## Session 36: the field round, 1.1 in installed copies on the iOS 26 simulator
+
+**When:** October 3, 2026. **Who:** the "iPhone 17 Pro iOS 26" simulator (iOS 26.0), which the owner let Claude use: the deployed build installed from dareful.app with the owner's own session, and the current build installed from the local server as a visitor. Touches through the simulator tool; readings through the simulator's Web Inspector. The real localhost session in the development browser for the pace row.
+
+### Exercised
+
+- **The old build, Now, one keyboard.** Fresh launch: `innerHeight` 874, `visualViewport.height` 874, `offsetTop` 0, the tab bar at 775 to 874. A code box focused and the keyboard dismissed: `innerHeight` 874, `visualViewport.height` 806, `offsetTop` 0, the tab bar at 707 to 806 with a band under it. The owner's finding, reproduced.
+- **The current build, a market, both sequences, light and dark, ten runs each.**
+
+| | `innerHeight` | `visualViewport.height` | `visualViewport.offsetTop` | pinned bottom |
+|---|---|---|---|---|
+| Fresh launch | 874 | 874 | 0 | 874 |
+| Before each run (after the first keyboard) | 874 | 806 | 0 | 874 |
+| Keyboard up, from rest | 498 | 461 | 313.7 | 498 |
+| Reopened with the keyboard up | 560 | 461 | 251.7 | 560 |
+| After each run | 874 | 806 | 0 | 874 |
+
+  Sequence (a), the field focused, the keyboard dismissed, the page scrolled up: light, ten after-readings of ten the same; dark, six of ten came back, the same. Sequence (b), sent to the background with the keyboard up and reopened onto the market: light, ten reopened readings and eight after-readings the same; dark, ten and ten. The readings that did not come back were the inspector timing out. 806 is what iOS 26 leaves in `visualViewport.height` after any keyboard; the app no longer reads it.
+- **Safari on the same simulator**, the same question: `innerHeight` 714, the pinned bottom at 714, the picture as before the change.
+- **The pace row**, in the real session: under the Yes or no chip with no heading, gone when A number is chosen.
+
+### What broke
+
+1. **The new shell stood 62 points short in an installed copy on iOS 26** (`innerHeight` 812 of 874, a band under the sheet at rest). A root one pixel taller than the large viewport is laid out whole; confirmed from a cold load.
+2. **The taller root left a pixel behind after a keyboard** (the window scrolled by 1, everything pinned at 873). The root is the plain height while a field is focused; after that, 0 and 874 in every run.
+3. **The installed copy kept an old stylesheet** across reloads of the development server's unchanging address, which made the first fix read as not working; the copy's cache was refreshed before each measurement after that.
+4. **The inspector stalled twice** and two runs of sequence (b) in light were recorded out of step; they were thrown out and run again.
+
+### Not verified here
+
+Now, People and You on the current build in an installed copy: they need a session at the local address on that simulator, which is the owner's to make, or the deploy (item 185). The caret on a real phone (item 186). A real phone at all: every reading here is a simulator's.
+
+## Session 35: the field round, the owner's follow-ups
+
+**When:** October 3, 2026. **Who:** the real localhost session in the development browser; the suites against the shared database and the local server; production read through the Supabase MCP; the iOS 26.0 simulator runtime, installed.
+
+### Exercised
+
+- **What the data says about late changes.** The positions on the friend's Red Sox question (five, the last entered at 10:10am Eastern on September 30) and on the Lightning question (two, entered at 8:48pm and 8:49pm on October 1), and the group's-number series for both, which gets a point at every entry and change: five points and two, each one a first entry, none after either game began.
+- **The close time ending editing**, against the real database: an entry and a change each stamped; three in with one changed after the close time, closed with the two that count and the third left out; two in with one changed late, ended as an expiry by a person's close and by the tick; an entry and a change refused past the time.
+- **The close in the sheet**, over http across three accounts: the asker's secondary with "Close it now and … can’t get in." while it runs, nothing for the friend who is in, and for both the main action once it is stuck; nothing for someone in the set who is not in it.
+- **The reminder's night**, against the real database with three voters in two zones: two told and one waiting, the question unmarked; the third's morning, and all three told once.
+- **The queues**: a split question out of the votes-decided list at a limit of one; the final score's questions out of the tiebreaker's list (inside the chain suite's backstop test); a chain write that could not be finished touched and sorted behind one not yet tried.
+- **The session door** keeping `America/Chicago` from the zone cookie and ignoring a name that is not a zone.
+- **The sticker's two legs**, with a stand-in cutout the size of a lifted subject: 46 to 75ms to shrink in the development browser (11.6MB to 1.3MB, transparency kept), 0.43 to 0.69 seconds for the server's part from this machine.
+- **iOS 26.** The 26.0 runtime downloaded and installed in about five minutes; a simulator made and booted; the build from before the shell served on a second port beside the current one, each with its installed copy pointed at a test question for the check.
+
+### What broke
+
+1. **The stage went with the close.** Part 2 drew the stuck market's close in place of the stage, which took the entry line of someone in with it; the close is a slot inside the stage now.
+2. **An older test's order.** The reconciler's test expected the write left unfinished last minute to come first; least recently tried first puts it after one not yet tried, which is the point, and the test says so.
+3. **Four older mutants and six of this round's** went stale under the edits and were pointed at the new lines; the static check reads them all.
+
+### Not verified here
+
+The two sequences of 1.1 in an installed copy on iOS 26: the simulator tool needs the owner to let Claude use the new simulator, and the request was not answered. A vote thirty-one days in (it needs a session with no Dynamic login). The stacked stamps, the close's sheet and the give-up at a minute on a phone. Items 174 to 184.
+
 ## Session 30: the QA round, on the simulator and across four accounts
 
 **When:** September 29, 2026, after the logo round was deployed. **Who:** four accounts. The real sessions on `localhost:3000` (the development browser, whose pane stayed hidden, so it was driven by script and read by script) and `dareful.app`; Xcode's iPhone 18 Pro simulator (iOS 27) with Dareful added to the home screen and signed in to production as one test account, and its Safari signed in as another; a private tab in that Safari as the visitor with no session. The simulator's web views were read and driven through its Web Inspector (a scratch tool over `appium-remote-debugger`), so every reading of a layer, a viewport or a tap is real WebKit's, and every tap is the simulator's own; its screenshots lag a tap by a second or two. The local build could not be run signed in inside the installed app: putting a test session's cookie into the simulator's browser by hand is materialising a credential and was refused, so what a fix changes there is confirmed on the local build in Safari signed out, or in the real localhost session, and listed below as a phone check where the installed app is the only place it shows.
@@ -1228,3 +1320,26 @@ Items the simulator covered are marked in place above (61, 66, 93, 98, 101, 113,
 162. **Everyone asked is in** (32): ask three named people. Expect one notice to the asker when the last of them gets in, and none when the asker's own entry is the last.
 163. **The session slides** (32): a day after signing in, open the app; in Safari's Web Inspector expect the `dareful_session` cookie's expiry moved to thirty days from now; over the following weeks, no sign-out after weekly opens.
 164. **A game question past the start** (32): a game question with two in at the start. Expect it closed by the first tick after the start and the voting notice; one with one in gone from Now as an expiry with no toll. And on the game page, switch sets twice and press Back once; expect the game left, not the previous set.
+165. **The sheet's four positions** (33): on a question you are not in, drag the handle down past 24px; expect the handle row alone above the tab bar, still draggable. Drag up: the move; up again: the stake and the chalk; where the sheet is taller than three quarters of the screen (a pick-one with six answers, the ballot with attachments), up again: the sheet to the status band, its content scrolling under a handle row that stays. A short drag leaves it where it was.
+166. **A stuck question** (33): a question whose close passed while it stayed open with two in. Expect the sheet resting on "Time’s up, and nothing closed it. Anyone in it can." and "Close it with N" for the asker and for anyone in; nothing for someone in the set who is not in it.
+167. **The PIN fields** (33): on You, turn pass the phone on. Expect a numeric keyboard, digits drawn as dots, no password manager offered, the focus moving to "Again" only once the first field holds four digits, and never back on its own.
+168. **The photo input** (33): on an open question you are in, tap the add tile. Expect the phone's choice of camera and library; the same on a settlement's photo.
+169. **A pasted sticker** (33): paste a cutout in the mark picker on a slow network. Expect it in "Your stickers" at once, dimmed, not pickable, then picked by itself when the upload returns.
+170. **Games and tokens on Now and the story** (33): a game with questions in two of your sets; expect one row on Now naming the game with the count across both. Open a settled question's who's got who; expect the tokens under "JP’s got" to wear the faces of the people JP has got. Send the screenshot of the clipped team stamps again if it recurs: the slot is 40px with the two 28px stamps overlapping by 16px.
+171. **The numbers page** (34): with `OWNER_USER_IDS` set in Vercel, open `/stats` signed in as the owner; expect the two columns with a definition under every number, and the code screen from any other account and signed out.
+172. **A snapshot and the backfill** (34): tap "Snapshot today"; expect today's row. Tap "Backfill the days"; expect one row per day since the first event, and the days already taken unchanged.
+173. **The numbers against the week** (34): compare accounts, askers and questions with two in against the owner's own count of the week; the definitions say what each one counts.
+174. **A change after the close time** (35): on a question whose close time has passed and that is still open, try to change your number. Expect "Numbers are locked." and nothing changed; then close it, and expect everyone's entry as it stood at the close time.
+175. **The close in the sheet** (35): as the asker of an open question with two in and someone asked still out, expect the sheet resting on "Close it now and … can’t get in." with "Close it with 2" as a secondary that asks once; with everyone asked in, "Everyone you asked is in." and the chalk. As someone else in it, expect no close until it is stuck past its time. Tap Change on your own entry: the entry sheet takes the close's place, and gives it back.
+176. **Both teams in Now's mark** (35): a game with more than one question on Now. Expect the two abbreviations whole, the away team over the home team, in the 40px mark.
+177. **A reminder at night** (35): with a question in voting for twelve hours at 11pm or later on the recipient's phone, expect nothing until 9am there; a recipient in another zone hears at their own 9am, or at once if it is daytime for them.
+178. **A pasted sticker, timed** (35): lift a subject out of a photo on the phone, paste it in the mark picker on cellular, and time from the paste to the sticker showing (expect well under a second) and to it being picked. Then paste another and close the picker at once: expect it picked when the upload lands; paste and leave the ask flow: expect it in "Your stickers" next time.
+179. **A write with no answer** (35): with the network cut after the tap (airplane mode a second after tapping "I’m in"), expect "Still going. This one takes a few seconds." and, a minute on, "Something broke on our end. Try again in a minute." with Try again; with airplane mode on before the tap, "You’re offline. Try again once you’re back." and nothing sent.
+180. **A vote thirty-one days in** (35): on a phone whose Dynamic login has ended while Dareful still shows you signed in (thirty-one days after first signing in, or after clearing the site's storage but not its cookies), tap a vote. Expect the code step in the vote's place, and the vote sent once the code is in; close the step instead and expect "You’ve been signed out. Sign in to finish this." within a couple of seconds.
+181. **1.1 in an installed copy on iOS 26** (35, 36): the owner's phone, as item 154. Run on the simulator for a market on the current build and for Now on the old one (session 36); the roots on the current build are item 185.
+182. **The stuck questions after the deploy** (35): within a minute of the deploy, expect the friend's Red Sox question and the Lightning question closed with voting opened, and the game questions with fewer than two in gone from Now as expiries.
+183. **A zone kept** (35): open the app signed in, then read `users.zone` for your account; expect your phone's zone. Travel, or change the phone's zone, open the app again: expect the new one.
+184. **The chain's counts** (34): on `/stats` in production, expect the four counts and the two links opening the ledger and the questions contract on the explorer.
+185. **The roots in an installed copy on iOS 26** (36): after the deploy, in the installed app, on Now, People and You: the tab bar at the very bottom with no band at rest; focus a field, dismiss the keyboard, scroll: the tab bar where it was. Then with the keyboard up, go to the home screen and reopen from a notification onto a market: its sheet at the bottom edge. On the simulator the same after the deploy, with the readings.
+186. **The caret in a sheet's field** (36): in the installed app on iOS 26, open a question's link signed out, slide, tap the main button, tap "Your name". Expect the caret in the field. On the simulator it stood about 62 points above the empty field until the first letter; say which the phone does.
+187. **The pace row** (36): on the question step, "Just write it up" and "Ask me three things first" sit indented under Yes or no with no heading; pick A number or Pick one and they are gone; pick Yes or no and they are back with the choice kept.

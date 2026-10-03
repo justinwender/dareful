@@ -99,6 +99,10 @@ export function MarketStage(props: {
   lockedLine: string | null;
   /** Voting has opened (3.38): the claim card or the source card stands where the entry line stood, so the entry line leaves and the picture alone remains. */
   claimed?: boolean;
+  /** The close, in the sheet (3.24, 3.42): drawn while the market is open and entering is not this person's move, for whoever can close it. */
+  closer?: React.ReactNode;
+  /** The close time has passed with the market still open (the owner's rule, 2026-10-03): the time ends editing whether or not the close has run, so nothing here offers an entry or a change, and an entry reads as final. */
+  pastClose?: boolean;
   /** "until 10:40pm": how long a number is this person's to change. */
   changeUntil: string;
   /**
@@ -384,7 +388,7 @@ export function MarketStage(props: {
                 mine?.from ? `from ${mine.from}’s phone` : null,
                 state === "locked"
                   ? props.lockedLine
-                  : mine?.final
+                  : mine?.final || props.pastClose
                     ? "final"
                     : `yours to change ${props.changeUntil}`,
               ]
@@ -392,13 +396,13 @@ export function MarketStage(props: {
                 .join(" · ")}
             </p>
           </div>
-          {state !== "locked" && !changing && mine?.final && mine.withdrawable ? (
+          {state !== "locked" && !changing && mine?.final && mine.withdrawable && !props.pastClose ? (
             // A blind entry made on a friend's phone (3.45): withdrawable from this person's own phone, and never enterable again, so a watched PIN stays fixable without a way around blind.
             <Button variant="tertiary" onClick={() => setWithdrawing("asking")} data-withdraw-entry="">
               Withdraw it
             </Button>
           ) : null}
-          {state !== "locked" && !changing && !mine?.final ? (
+          {state !== "locked" && !changing && !mine?.final && !props.pastClose ? (
             <Button
               variant="tertiary"
               onClick={() => {
@@ -570,7 +574,7 @@ export function MarketStage(props: {
           ) : null}
         </>
   );
-  const sheet = entering ? (
+  const sheet = entering && !props.pastClose ? (
     <PinnedSheet
       label="Your number"
       raised={raised}
@@ -771,7 +775,7 @@ export function MarketStage(props: {
       }
       foot={pickOne ? undefined : foot}
     />
-  ) : null;
+  ) : (props.closer ?? null);
 
   return (
     <>

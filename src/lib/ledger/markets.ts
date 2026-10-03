@@ -454,8 +454,8 @@ export async function enterMarket(input: { dareId: string; userId: string; stake
   const now = new Date();
   const [row] = await db
     .insert(schema.darePositions)
-    .values({ dareId: d.id, userId: input.userId, stake: input.stake, value: input.value, confidenceBps: d.kind === "categorical" ? confidenceFor(d) : null, enterSignature: hexToBuffer(input.signature), enteredBy: input.enteredBy ?? input.userId, acknowledgedAt: now, dismissedAt: null })
-    .onConflictDoUpdate({ target: [schema.darePositions.dareId, schema.darePositions.userId], set: { stake: input.stake, value: input.value, confidenceBps: d.kind === "categorical" ? confidenceFor(d) : null, enterSignature: hexToBuffer(input.signature), enteredBy: input.enteredBy ?? input.userId, dismissedAt: null } })
+    .values({ dareId: d.id, userId: input.userId, stake: input.stake, value: input.value, confidenceBps: d.kind === "categorical" ? confidenceFor(d) : null, enterSignature: hexToBuffer(input.signature), enteredBy: input.enteredBy ?? input.userId, acknowledgedAt: now, dismissedAt: null, changedAt: now })
+    .onConflictDoUpdate({ target: [schema.darePositions.dareId, schema.darePositions.userId], set: { stake: input.stake, value: input.value, confidenceBps: d.kind === "categorical" ? confidenceFor(d) : null, enterSignature: hexToBuffer(input.signature), enteredBy: input.enteredBy ?? input.userId, dismissedAt: null, changedAt: now } })
     .returning();
   if (!row) throw new MarketError("Couldn't save that.", "chain");
   // Counted as an entry the first time, never on a change (the field round); on a friend's phone it is counted as pass the phone.
@@ -493,18 +493,60 @@ export function mayClose(d: { creatorId: string; resolvesBy: Date | null; inIt: 
   return timesUp && d.inIt.includes(byUserId);
 }
 
+/** When an entry last changed: the stamp every entry and change writes, or, on a row from before the stamp existed, when it was first made. */
+export function lastChanged(p: Pick<PositionRow, "changedAt" | "enteredAt">): Date {
+  return p.changedAt ?? p.enteredAt;
+}
+
+/**
+ * The close time ends editing whether or not the close has run (the field round, the owner's rule on late
+ * closes): at any close after the close time, an entry last changed after it does not count, since by then the
+ * outcome may be knowable (for a game, the close time is its start). Pure: the entries that count and the late ones.
+ */
+export function countedAtClose<P extends Pick<PositionRow, "changedAt" | "enteredAt">>(positions: P[], resolvesBy: Date): { counted: P[]; late: P[] } {
+  const counted: P[] = [];
+  const late: P[] = [];
+  for (const p of positions) (lastChanged(p).getTime() <= resolvesBy.getTime() ? counted : late).push(p);
+  return { counted, late };
+}
+
+/** An open or closed question ends with nothing decided: no outcome, nothing minted, no toll. Idempotent; true when this call ended it. */
+export async function markExpired(dareId: string, now: Date): Promise<boolean> {
+  const done = await db.update(schema.dares).set({ resolvedBy: "expired", resolvedAt: now, resolvedOutcome: null }).where(and(eq(schema.dares.id, dareId), isNull(schema.dares.resolvedAt))).returning({ id: schema.dares.id });
+  if (done.length > 0) await record("settled", { by: "expired", outcome: "none" }, {}, { dareId });
+  return done.length > 0;
+}
+
 /** `byUserId` null is the app itself: an argument locks the moment its second person is in, and the scheduler locks a question whose time has come. */
-export async function lockMarket(dareId: string, byUserId: string | null): Promise<{ txHash: Hex; threshold: number; quorum: Address[] }> {
+export async function lockMarket(dareId: string, byUserId: string | null, now: Date = new Date()): Promise<{ txHash: Hex; threshold: number; quorum: Address[]; /** The close found fewer than two entries that count, so the question ended as an expiry instead. */ expired?: true }> {
   const d = await marketById(dareId);
   if (!d) throw new MarketError("That one doesn't exist.", "not_found");
   // A second tap on Close, or a close the time made while the first was on its way, finds it closed: that is the
   // close that was asked for, answered as done and sent nowhere twice (the field round, 1.6).
   if (d.lockedAt) return { txHash: "0x" as Hex, threshold: d.threshold, quorum: [] };
   if (stateOf(d) !== "open" || !d.creatorSignature) throw new MarketError(WORDS.changed, "wrong_state");
-  const positions = await positionsOf(d.id);
-  if (byUserId !== null && !mayClose({ creatorId: d.creatorId, resolvesBy: d.resolvesBy, inIt: positions.map((p) => p.userId) }, byUserId, new Date())) {
+  let positions = await positionsOf(d.id);
+  if (byUserId !== null && !mayClose({ creatorId: d.creatorId, resolvesBy: d.resolvesBy, inIt: positions.map((p) => p.userId) }, byUserId, now)) {
     const [asker] = await db.select({ displayName: schema.users.displayName }).from(schema.users).where(eq(schema.users.id, d.creatorId)).limit(1);
     throw new MarketError(notAllowed(firstName(asker?.displayName ?? "the asker"), "close"), "not_yours");
+  }
+  // A close after the close time counts only the entries as they stood at that time (`countedAtClose`): with fewer
+  // than two of those the question ends as an expiry, and an entry changed after it is out of the close, whoever
+  // closes and however late. An argument has no close time of its own, so it is never past it here.
+  if (pastItsClose(d, now) && d.resolvesBy) {
+    const { counted, late } = countedAtClose(positions, d.resolvesBy);
+    if (counted.length < 2) {
+      await markExpired(d.id, now);
+      return { txHash: "0x" as Hex, threshold: d.threshold, quorum: [], expired: true };
+    }
+    for (const p of late) {
+      await db
+        .update(schema.darePositions)
+        .set({ dismissedAt: now })
+        .where(and(eq(schema.darePositions.dareId, d.id), p.userId ? eq(schema.darePositions.userId, p.userId) : eq(schema.darePositions.claimId, p.claimId as string)));
+    }
+    if (late.length > 0) console.warn("entries changed after the close time were left out of the close", { dareId: d.id, late: late.length });
+    positions = counted;
   }
   if (positions.length < 2) throw new MarketError("It takes two to close it.", "wrong_state");
   // Nothing goes onchain for a position nobody signed (PLANNING.md section 4): a ghost's number, or one bound to

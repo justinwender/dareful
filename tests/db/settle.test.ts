@@ -4,14 +4,14 @@
  */
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { reminderSendTime, warningSendTime } from "@/lib/notify/messages";
+import { warningSendTime } from "@/lib/notify/messages";
 import { notAllowed } from "@/lib/ui/errors";
 import { ensureUsd } from "@/lib/ledger/denominations";
 import { createGroup } from "@/lib/ledger/groups";
 import * as markets from "@/lib/ledger/markets";
-import { cleanResolution, stateCase, tick } from "@/lib/ledger/settle";
+import { cleanResolution, decidedUnresolved, stateCase, tick } from "@/lib/ledger/settle";
 import { cleanup, codeOf, tempSigner, track, type Signer } from "./fixture";
 
 let ana: Signer, ben: Signer, cy: Signer;
@@ -140,35 +140,56 @@ test("the tick tells the asker their time has come exactly once, however often i
   assert.deepEqual([first.arbitrated, first.expired, first.failed], [[], [], []], "a day has not passed, so the group still gets to call it");
 });
 
-test("voting opened is told once per closed question whichever path closed it, and the reminder goes out twelve hours in, once, and never at night", async () => {
+test("voting opened is told once per closed question whichever path closed it, and the reminder is asked for twelve hours in and marked done only once nobody is waiting on their morning", async () => {
   const H = 3_600_000;
-  const zones = ["UTC", "America/New_York", "America/Los_Angeles", "Pacific/Honolulu", "Asia/Tokyo", "Australia/Sydney", "Europe/London", "Asia/Kolkata"];
-  // A reminder due an hour ago: a zone where that moment is daytime, and one where it is night.
-  const day = zones.find((z) => reminderSendTime(new Date(Date.now() - H), z).getTime() <= Date.now());
-  const night = zones.find((z) => reminderSendTime(new Date(Date.now() - H), z).getTime() > Date.now());
-  assert.ok(day && night, "one zone in daytime and one at night");
   const opened: string[] = [];
-  const reminded: string[] = [];
-  const notifyVoting = { opened: async (id: string, c: string) => void opened.push(`${id}:${c}`), remind: async (id: string, c: string) => void reminded.push(`${id}:${c}`) };
+  const asked: string[] = [];
+  let waiting = 1;
+  const notifyVoting = {
+    opened: async (id: string, c: string) => void opened.push(`${id}:${c}`),
+    remind: async (id: string) => {
+      asked.push(id);
+      return { waiting };
+    },
+  };
   const { d, enter } = await question();
   await enter(ana, 8000n);
   await enter(ben, 2000n);
-  await lockInMirror(d.id, { lockedAt: new Date(Date.now() - 13 * H), zone: day });
+  await lockInMirror(d.id, { lockedAt: new Date(Date.now() - 13 * H) });
   const first = await tick(new Date(), async () => undefined, { onlyIds: [d.id], notifyVoting });
+  assert.deepEqual([first.votingOpened, opened], [[d.id], [`${d.id}:${ana.user.id}`]], "told once, the asker as its cause");
+  assert.deepEqual([first.reminded, asked], [[], [d.id]], "someone's night: asked for, and not yet marked done");
+  waiting = 0;
   const second = await tick(new Date(), async () => undefined, { onlyIds: [d.id], notifyVoting });
-  assert.deepEqual([first.votingOpened, second.votingOpened, opened], [[d.id], [], [`${d.id}:${ana.user.id}`]], "told once, the asker as its cause");
-  assert.deepEqual([first.reminded, second.reminded, reminded], [[d.id], [], [`${d.id}:${ana.user.id}`]], "reminded once, thirteen hours in");
-  // Locked an hour ago: voting opened, no reminder yet. Locked thirteen hours ago at night in its zone: it waits for the morning.
+  assert.deepEqual([second.votingOpened, second.reminded, asked.length], [[], [d.id], 2], "nobody waiting: marked done");
+  const third = await tick(new Date(), async () => undefined, { onlyIds: [d.id], notifyVoting });
+  assert.deepEqual([third.reminded, asked.length], [[], 2], "never a second");
+  // Locked an hour ago: voting opened, and no reminder asked for yet.
   const fresh = await question();
   await fresh.enter(ana, 8000n);
   await fresh.enter(ben, 2000n);
-  await lockInMirror(fresh.d.id, { lockedAt: new Date(Date.now() - H), zone: day });
-  const late = await question();
-  await late.enter(ana, 8000n);
-  await late.enter(ben, 2000n);
-  await lockInMirror(late.d.id, { lockedAt: new Date(Date.now() - 13 * H), zone: night });
-  const r = await tick(new Date(), async () => undefined, { onlyIds: [fresh.d.id, late.d.id], notifyVoting });
-  assert.deepEqual([r.votingOpened.sort(), r.reminded], [[fresh.d.id, late.d.id].sort(), []]);
+  await lockInMirror(fresh.d.id, { lockedAt: new Date(Date.now() - H) });
+  const r = await tick(new Date(), async () => undefined, { onlyIds: [fresh.d.id], notifyVoting });
+  assert.deepEqual([r.votingOpened, r.reminded, asked.includes(fresh.d.id)], [[fresh.d.id], [], false]);
+});
+
+test("a question is decided by its leading outcome, never by how many voted: a split one holds no place in the tick's list", async () => {
+  const split = await question();
+  const decided = await question();
+  for (const q of [split, decided]) {
+    await q.enter(ana, 8000n);
+    await q.enter(ben, 2000n);
+  }
+  await lockInMirror(split.d.id, { threshold: 2, lockedAt: new Date(Date.now() - 2 * 3_600_000) });
+  await lockInMirror(decided.d.id, { threshold: 2 });
+  const vote = (dareId: string, userId: string, outcome: bigint) => db.insert(schema.dareVotes).values({ dareId, userId, outcome, signature: Buffer.alloc(65) });
+  await vote(split.d.id, ana.user.id, 1n);
+  await vote(split.d.id, ben.user.id, 0n);
+  await vote(decided.d.id, ana.user.id, 1n);
+  await vote(decided.d.id, ben.user.id, 1n);
+  const mine = inArray(schema.dares.id, [split.d.id, decided.d.id]);
+  assert.deepEqual(await decidedUnresolved(mine, 1), [{ id: decided.d.id }], "the split one, closed first, takes no place: two votes are not two for one outcome");
+  assert.deepEqual(await decidedUnresolved(mine, 10), [{ id: decided.d.id }]);
 });
 
 test("a second tap on Close finds it closed and is answered as done; before its time nobody but the asker may close it, and the refusal names the asker", async () => {

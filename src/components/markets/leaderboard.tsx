@@ -175,7 +175,7 @@ export function WhoHasWho({ transfers, people, participants, denomination, viewe
                 const to = people.get(t.toId);
                 return to ? (
                   <li key={t.toId}>
-                    <ObligationToken owner={{ id: owner.id, displayName: owner.displayName, hue: hueOf(owner), ghost: owner.ghost }} other={to} viewerId={viewerId} denomination={denomination} quantity={t.quantity} />
+                    <ObligationToken owner={{ id: owner.id, displayName: owner.displayName, hue: hueOf(owner), ghost: owner.ghost }} other={{ id: to.id, displayName: to.displayName, hue: hueOf(to), ghost: to.ghost }} face="other" viewerId={viewerId} denomination={denomination} quantity={t.quantity} />
                   </li>
                 ) : null;
               })}

@@ -100,7 +100,7 @@ export function JustHappened({ rows, viewerId, clock }: { rows: HomeData["happen
               <CallOff key={`g-${e.href}`} kind="archive" dareId={e.ids[0] ?? ""} ids={e.ids} game>
                 <Link prefetch={false} href={e.href} data-game-happened="" data-press="row" className={`press-row relative grid grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-[14px] ${divider}`}>
                   <LinkPending />
-                  <TeamPair away={e.away} home={e.home} size={28} overlap />
+                  <TeamPair away={e.away} home={e.home} stacked />
                   <span className="flex min-w-0 flex-col gap-1">
                     <span className="text-body-strong text-ink">{e.name}</span>
                     <span className="flex items-center gap-2 text-caption text-ink-3">

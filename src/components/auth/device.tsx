@@ -37,9 +37,9 @@ export function useSessionFacts(): SessionFacts {
 /** How long a confirmed login gets to produce its keys before the app says they are not coming. */
 const KEYS_GRACE_MS = 8_000;
 
-export function useDevice(): { state: DeviceState; me: Me | null; signIn: () => Promise<void> } {
+export function useDevice(): { state: DeviceState; me: Me | null; signIn: () => Promise<void>; /** Whether Dynamic's sign-in step is on screen now. */ authOpen: boolean } {
   const { me } = useSessionFacts();
-  const { sdkHasLoaded, user, setShowAuthFlow, handleLogOut } = useDynamicContext();
+  const { sdkHasLoaded, user, setShowAuthFlow, showAuthFlow, handleLogOut } = useDynamicContext();
   const wallets = useUserWallets();
   const [graceOver, setGraceOver] = useState(false);
   const sdkUserId = user?.userId ?? null;
@@ -61,7 +61,7 @@ export function useDevice(): { state: DeviceState; me: Me | null; signIn: () => 
     if (state === "keys-missing") await handleLogOut().catch(() => undefined);
     setShowAuthFlow(true);
   };
-  return { state, me, signIn };
+  return { state, me, signIn, authOpen: Boolean(showAuthFlow) };
 }
 
 /**

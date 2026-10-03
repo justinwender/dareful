@@ -17,7 +17,9 @@ import { enterAsGhost, ghostPositionFor, MAX_GHOSTS_PER_MARKET, NUMBER_TRIES_PER
 import { createGroup, isMember } from "@/lib/ledger/groups";
 import * as markets from "@/lib/ledger/markets";
 import { isProvisional, thresholdFor } from "@/lib/ledger/provisional";
-import { expireMarket } from "@/lib/ledger/settle";
+import { expireMarket, tick } from "@/lib/ledger/settle";
+import { notifyVoteReminder } from "@/lib/notify";
+import { reminderSendTime } from "@/lib/notify/messages";
 import { cleanup, codeOf, fictionalPhone, tempSigner, track, type Signer } from "./fixture";
 
 let ana: Signer, ben: Signer, cy: Signer, dee: Signer;
@@ -274,4 +276,77 @@ test("one guest's entries on two questions fold into one account at sign-in, eac
     assert.equal(ps.filter((p) => p.userId === noa.user.id).length, 1, "the guest's entry is the account's now, once");
     assert.equal(ps.find((p) => p.userId === noa.user.id)?.value, value);
   }
+});
+
+test("the close time ends editing: every entry and change is stamped, at a close after the time an entry changed after it is left out, and with fewer than two that count the question ends as an expiry", async () => {
+  const H = 3_600_000;
+  const close = new Date(Date.now() - H);
+  const stamp = (dareId: string, at: Date) => db.update(schema.darePositions).set({ changedAt: at }).where(eq(schema.darePositions.dareId, dareId));
+  const lateFor = (dareId: string, claimId: string) => db.update(schema.darePositions).set({ changedAt: new Date(close.getTime() + 60_000) }).where(and(eq(schema.darePositions.dareId, dareId), eq(schema.darePositions.claimId, claimId)));
+  const q = await question([ana]);
+  // Every entry is stamped, and a change moves the stamp: the data can say when an entry last changed.
+  const mine = await q.enter(ana, 7000n);
+  assert.ok(mine.changedAt, "an entry is stamped");
+  await new Promise((r) => setTimeout(r, 20));
+  const changed = await q.enter(ana, 6500n);
+  assert.ok(changed.changedAt && mine.changedAt && changed.changedAt.getTime() > mine.changedAt.getTime(), "a change moves the stamp");
+  const early = await q.ghost({ name: "Early" }, [], 4000n);
+  assert.ok(early.position.changedAt, "a guest's entry is stamped too");
+  const late = await q.ghost({ name: "Late" }, [], 3000n);
+  // The time passes with the question still open, and one entry was changed after it.
+  await db.update(schema.dares).set({ resolvesBy: close }).where(eq(schema.dares.id, q.d.id));
+  await stamp(q.d.id, new Date(close.getTime() - H));
+  await lateFor(q.d.id, late.claimId);
+  assert.equal(await codeOf(() => q.ghost({ name: "Later still" }, [], 5000n)), "wrong_state", "past the close time nobody gets in");
+  assert.equal(await codeOf(() => q.enter(ana, 2000n)), "wrong_state", "and nobody changes theirs");
+  const r = await markets.lockMarket(q.d.id, ana.user.id);
+  assert.notEqual(r.expired, true);
+  const m = await markets.marketById(q.d.id);
+  assert.ok(m?.lockedAt && !m.resolvedAt, "closed, with the two that count");
+  assert.deepEqual((await markets.positionsOf(q.d.id)).map((p) => p.claimId ?? "ana").sort(), [early.claimId, "ana"].sort(), "the entry changed after the close time is out of the close");
+  // Two in and one of them changed after the close time: fewer than two count, so it ends as an expiry, by a person's close or by the tick.
+  for (const by of ["person", "tick"] as const) {
+    const x = await question([ana]);
+    await x.enter(ana, 7000n);
+    const g = await x.ghost({ name: "Late" }, [], 3000n);
+    await db.update(schema.dares).set({ resolvesBy: close }).where(eq(schema.dares.id, x.d.id));
+    await stamp(x.d.id, new Date(close.getTime() - H));
+    await lateFor(x.d.id, g.claimId);
+    if (by === "person") assert.equal((await markets.lockMarket(x.d.id, ana.user.id)).expired, true);
+    else assert.deepEqual((await tick(new Date(), async () => undefined, { onlyIds: [x.d.id] })).expired, [x.d.id]);
+    const ended = await markets.marketById(x.d.id);
+    assert.deepEqual([ended?.resolvedBy, ended?.lockedAt, ended?.resolvedOutcome], ["expired", null, null], `${by}: an expiry, nothing closed and nothing decided`);
+    assert.equal((await markets.positionsOf(x.d.id)).length, 2, "the record of who was in stays");
+  }
+});
+
+test("the twelve-hour reminder is held to each person's own night: someone whose zone is at night waits for their morning while the others are told, and the question is marked only once nobody is waiting", async () => {
+  const H = 3_600_000;
+  const zones = ["UTC", "America/New_York", "America/Los_Angeles", "Pacific/Honolulu", "Asia/Tokyo", "Australia/Sydney", "Europe/London", "Asia/Kolkata"];
+  const due = new Date(Date.now() - H);
+  const day = zones.find((z) => reminderSendTime(due, z).getTime() <= Date.now());
+  const night = zones.find((z) => reminderSendTime(due, z).getTime() > Date.now());
+  assert.ok(day && night, "one zone in daytime and one at night");
+  const q = await question([ana, ben, cy]);
+  await q.enter(ana, 7000n);
+  await q.enter(ben, 4000n);
+  await q.enter(cy, 2000n);
+  // A guest makes it a question that closes here, so its voters are read here.
+  await q.ghost({ name: "Guest" }, [], 5000n);
+  await markets.lockMarket(q.d.id, ana.user.id);
+  await db.update(schema.dares).set({ lockedAt: new Date(due.getTime() - 12 * H), zone: day }).where(eq(schema.dares.id, q.d.id));
+  await db.update(schema.users).set({ zone: day }).where(eq(schema.users.id, ben.user.id));
+  await db.update(schema.users).set({ zone: night }).where(eq(schema.users.id, cy.user.id));
+  const told = () => db.select({ userId: schema.notificationLog.userId }).from(schema.notificationLog).where(and(eq(schema.notificationLog.dareId, q.d.id), eq(schema.notificationLog.kind, "vote_reminder")));
+  assert.deepEqual(await notifyVoteReminder(q.d.id, new Date()), { sent: 2, waiting: 1 });
+  assert.deepEqual((await told()).map((t) => t.userId).sort(), [ana.user.id, ben.user.id].sort(), "Ana by the asker's zone, Ben by his own; Cy's night is his own");
+  const notifyVoting = { opened: async () => undefined, remind: (id: string) => notifyVoteReminder(id, new Date()) };
+  const first = await tick(new Date(), async () => undefined, { onlyIds: [q.d.id], notifyVoting });
+  assert.deepEqual([first.reminded, (await markets.marketById(q.d.id))?.voteRemindedAt ?? null], [[], null], "Cy is still waiting on his morning");
+  // His morning comes.
+  await db.update(schema.users).set({ zone: day }).where(eq(schema.users.id, cy.user.id));
+  const second = await tick(new Date(), async () => undefined, { onlyIds: [q.d.id], notifyVoting });
+  assert.deepEqual(second.reminded, [q.d.id]);
+  assert.equal((await told()).length, 3, "each person once");
+  assert.deepEqual(await notifyVoteReminder(q.d.id, new Date()), { sent: 0, waiting: 0 }, "and never a second");
 });

@@ -66,7 +66,7 @@ export default function RootLayout({ children, ask }: { children: ReactNode; /**
   const facts = sessionFacts();
   return (
     // The scripts in the head and the handoff set attributes on `html` before the app is running (the appearance, dressed, arriving); they are theirs, and hydration leaves them be.
-    <html lang="en" className={`${hanken.variable} ${youngSerif.variable} dark h-full antialiased`} suppressHydrationWarning>
+    <html lang="en" className={`${hanken.variable} ${youngSerif.variable} dark antialiased`} suppressHydrationWarning>
       <head>
         {/* The opening (11.4): the first frame's style, in the head before anything else, so it paints with nothing to fetch. */}
         <style dangerouslySetInnerHTML={{ __html: OPENING_STYLE }} />

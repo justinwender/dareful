@@ -397,7 +397,18 @@
     touch-action: manipulation;
     /* The document never scrolls (the field round, 1.1; src/lib/ui/scroller.ts): the app root is the one scrolling box, the screen's height. */
     height: 100%;
+    /* iOS 26 lays an installed app whose document fits the screen out 62 points short (the top inset), with a band under every bottom-pinned layer
+       (measured in an installed copy on the iOS 26 simulator, 2026-10-03: innerHeight 812 of 874). A root one pixel taller than the large viewport is
+       laid out whole, and with overflow hidden a finger still cannot scroll it. The `100%` above is for a browser without the unit. The height is
+       set here and never by a class on the element, which would outrank the rule below. */
+    height: calc(100lvh + 1px);
     overflow: hidden;
+  }
+  /* While a field holds the keyboard the root is the plain height again: with the taller root iOS 26 pans the page 62 points further than it
+     draws its own caret (measured the same day: the caret stood in the heading above the field), and with the plain one the two agree. The band
+     this brings back is under the keyboard. Only what raises a keyboard counts, so a ticked box never moves the layout. */
+  html:has(:is(textarea, input:not([type="checkbox"], [type="radio"], [type="file"], [type="range"], [type="button"], [type="submit"], [type="hidden"])):focus) {
+    height: 100%;
   }
   body {
     @apply text-foreground;
@@ -634,3 +645,8 @@ html.back::view-transition-new(ask-step) { animation-name: step-in-back; }
 @utility tab-text { font-family: var(--font-sans); font-size: 0.8125rem; line-height: 1; }
 /* The stake chips (3.3): 44px, radius 10, 17px 600, and the selected one filled chalk. A control, outside the budget. */
 @utility stake-chip-text { font-family: var(--font-sans); font-weight: 600; font-size: 1.0625rem; line-height: 22px; }
+
+/* A PIN field (3.45; the field round, 2.3): a numeric text field drawn masked, so the phone offers digits and never a password or a jump to its manager. */
+.pin-field {
+  -webkit-text-security: disc;
+}

@@ -1,5 +1,6 @@
 "use client";
 
+import { attempt } from "@/lib/ui/attempt";
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/ledger/avatar";
@@ -191,7 +192,7 @@ export function CallSheet(props: CallSheetProps) {
         },
         "vote",
       );
-      const r = await castVoteAction(dareId, outcome, signature);
+      const r = await attempt(() => castVoteAction(dareId, outcome, signature));
       if ("error" in r) return setProblem(r.error);
       setChoice(null);
       setPick(null);
@@ -218,7 +219,7 @@ export function CallSheet(props: CallSheetProps) {
       form.set("dareId", dareId);
       form.set("text", line);
       for (const s of shots) form.append("attachment", await shrinkPhoto(s.file), "attachment.jpg");
-      const r = await sayWhatHappenedAction(form);
+      const r = await attempt(() => sayWhatHappenedAction(form));
       setBusy(false);
       if ("error" in r) return setProblem(r.error);
       setShots([]);
@@ -699,7 +700,7 @@ function AttachMore({ dareId }: { dareId: string }) {
       const form = new FormData();
       form.set("dareId", dareId);
       for (const s of shots) form.append("attachment", await shrinkPhoto(s.file), "attachment.jpg");
-      const r = await attachEvidenceAction(form);
+      const r = await attempt(() => attachEvidenceAction(form));
       if ("error" in r) return setProblem(r.error);
       setShots([]);
       router.refresh();
@@ -754,13 +755,13 @@ function CaseForm({ dareId, mine }: { dareId: string; mine: string | null }) {
         setField(null);
         if (text.trim().length < 2) return setField("Say your side in a line.");
         start(async () => {
-          const r = await stateCaseAction(dareId, text);
+          const r = await attempt(() => stateCaseAction(dareId, text));
           if ("error" in r) return setField(r.error);
           if (shots.length > 0) {
             const form = new FormData();
             form.set("dareId", dareId);
             for (const s of shots) form.append("attachment", await shrinkPhoto(s.file), "attachment.jpg");
-            const a = await attachEvidenceAction(form);
+            const a = await attempt(() => attachEvidenceAction(form));
             if ("error" in a) return setField(a.error);
             setShots([]);
           }
@@ -852,7 +853,7 @@ function Ask({
             onClick={() =>
               start(async () => {
                 setProblem(null);
-                const r = await arbitrateAction(dareId);
+                const r = await attempt(() => arbitrateAction(dareId));
                 if ("error" in r) return setProblem(r.error);
                 setAsking(false);
                 router.refresh();

@@ -63,6 +63,8 @@ export const users = pgTable("users", {
    * is in it.
    */
   excludedFromCounts: boolean("excluded_from_counts").notNull().default(false),
+  /** The zone this person's browser last reported (an IANA name), kept on each open of the app: a notice held for the night is held in the recipient's own night (the field round, 1.8 as amended). Null until a browser has reported one. */
+  zone: text("zone"),
   createdAt: ts("created_at").notNull().defaultNow(),
 }).enableRLS();
 
@@ -564,6 +566,13 @@ export const darePositions = pgTable(
     /** Set on resolution; sum of this participant's transfers. */
     net: money("net"),
     enteredAt: ts("entered_at").notNull().defaultNow(),
+    /**
+     * When the entry last changed (the field round, the owner's rule on late closes): written on every entry and
+     * every change. Null on a row from before the column existed, which then reads as `entered_at`. The close
+     * time ends editing whether or not the close has run, so at any close after it an entry changed after it
+     * does not count.
+     */
+    changedAt: ts("changed_at"),
     /** Always set for user_id rows; for claim_id rows, null means pending and the row does not count. */
     acknowledgedAt: ts("acknowledged_at"),
     /** Creator removed this ghost; the row stays for the record and does not count. */
@@ -1276,6 +1285,19 @@ export const dareNumberSeries = pgTable(
  * name, a phone number, an email address or an amount. `once_key` makes an event count once (a link opened once
  * per person or device per link): the server composes it and the insert does nothing on a repeat.
  */
+/**
+ * A day's numbers (the field round, 3.1): every count of `src/lib/usage/stats.ts` for one UTC day, written by the
+ * owner's snapshot button or the backfill, one row per day and replaced when the day is taken again. Kept apart
+ * from the events so the week's line survives the events table growing or being trimmed.
+ */
+export const usageSnapshots = pgTable("usage_snapshots", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  /** The UTC day, YYYY-MM-DD. */
+  day: text("day").notNull().unique(),
+  takenAt: ts("taken_at").notNull().defaultNow(),
+  counts: jsonb("counts").notNull().default(sql`'{}'::jsonb`),
+});
+
 export const usageEvents = pgTable(
   "usage_events",
   {

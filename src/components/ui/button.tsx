@@ -6,8 +6,8 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 import { LinkPending } from "./link-pending";
 import { NOTHING_CAME_BACK, ProblemSummary } from "@/components/ledger/problem";
-import { RUNNER_MS, STILL_GOING_MS, TRY_AGAIN_MS, waitStage, type WaitStage } from "@/lib/ui/motion";
-import { WORDS } from "@/lib/ui/errors";
+import { GIVE_UP_MS, RUNNER_MS, STILL_GOING_MS, TRY_AGAIN_MS, waitStage, type WaitStage } from "@/lib/ui/motion";
+import { offlineNow, WORDS } from "@/lib/ui/errors";
 
 export { STILL_GOING_MS, TRY_AGAIN_MS, waitStage, type WaitStage };
 
@@ -118,22 +118,33 @@ export function retryOf(control: { type?: string; form: Pick<HTMLFormElement, "r
 
 /**
  * What a control shows at a stage of its wait, by what the tap does (the field round, 1.6): a write past ten
- * seconds is still going, with its runner and its line, and never the block; a read gets the block with "Try
- * again" at ten seconds, since asking for a screen twice changes nothing. Pure.
+ * seconds is still going, with its runner and its line, and never the ten-second block; a read gets the block
+ * with "Try again" at ten seconds, since asking for a screen twice changes nothing. "Still going" cannot run for
+ * good: a write with no answer after a minute gives way to the words for a failure on our end, and the control
+ * takes taps again (the owner's check, 2026-10-03). Pure.
  */
-export function buttonWait(stage: WaitStage, kind: "write" | "read"): { block: boolean; pending: boolean; long: boolean; line: string | null } {
+export function buttonWait(stage: WaitStage, kind: "write" | "read", gaveUp = false): { block: boolean; pending: boolean; long: boolean; line: string | null; words: string | null } {
+  if (kind === "write" && gaveUp) return { block: true, pending: false, long: false, line: null, words: WORDS.server };
   const block = stage === "block" && kind === "read";
   const pending = stage === "pending" || stage === "still" || (stage === "block" && !block);
   const long = stage === "still" || (stage === "block" && !block);
-  return { block, pending, long, line: long ? (kind === "write" ? WORDS.writeStillGoing : "Still going.") : null };
+  return { block, pending, long, line: long ? (kind === "write" ? WORDS.writeStillGoing : "Still going.") : null, words: block ? NOTHING_CAME_BACK : null };
+}
+
+/** What a tap does on a phone with no network: nothing is sent, and the words say so (the field round, 1.6 as amended). Pure. */
+export function tapGoes(offline: boolean): { send: boolean; words: string | null } {
+  return offline ? { send: false, words: WORDS.offline } : { send: true, words: null };
 }
 
 export function Button({ className, variant = "secondary", size, loading, disabled, children, onClick, type, kind = "write", ...props }: ButtonProps) {
   const stage = useWaitStage(Boolean(loading));
-  const { block, pending, long, line } = buttonWait(stage, kind);
-  // Past ten seconds a read's control takes taps again, and the block under it offers the same tap as "Try again".
+  const gaveUp = useHeldFor(Boolean(loading), GIVE_UP_MS);
+  const { block, pending, long, line, words } = buttonWait(stage, kind, gaveUp);
+  // Past ten seconds a read's control takes taps again, and the block under it offers the same tap as "Try again"; a write's does after a minute with no answer.
   const busy = Boolean(loading) && !block;
   const lastClick = React.useRef<React.MouseEvent<HTMLButtonElement> | null>(null);
+  // Offline at the tap: nothing is sent, and the words stand under the control until a tap goes through.
+  const [offline, setOffline] = React.useState<string | null>(null);
   return (
     <>
       <button
@@ -145,6 +156,13 @@ export function Button({ className, variant = "secondary", size, loading, disabl
           busy
             ? undefined
             : (e) => {
+                const go = tapGoes(offlineNow());
+                setOffline(go.words);
+                if (!go.send) {
+                  // A submit control's form is not sent either.
+                  e.preventDefault();
+                  return;
+                }
                 // Kept for "Try again": React reuses nothing of the event, and only its target is read later.
                 e.persist?.();
                 lastClick.current = e;
@@ -162,7 +180,8 @@ export function Button({ className, variant = "secondary", size, loading, disabl
         ) : null}
       </button>
       {long ? <span className="text-center text-caption text-ink-3">{line}</span> : null}
-      {block ? <ProblemSummary messages={[NOTHING_CAME_BACK]} retry={() => retryOf({ type, form: formOf(props, lastClick.current), click: lastClick.current && onClick ? () => onClick(lastClick.current as React.MouseEvent<HTMLButtonElement>) : null })} /> : null}
+      {offline && !loading ? <ProblemSummary messages={[offline]} /> : null}
+      {block && words ? <ProblemSummary messages={[words]} retry={() => retryOf({ type, form: formOf(props, lastClick.current), click: lastClick.current && onClick ? () => onClick(lastClick.current as React.MouseEvent<HTMLButtonElement>) : null })} /> : null}
     </>
   );
 }

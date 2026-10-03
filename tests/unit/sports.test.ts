@@ -416,9 +416,12 @@ test("a game with more than one question in the same set of people is one row on
   if (row.kind === "game") {
     assert.deepEqual([row.subject, row.verb, row.context, row.href, row.game.questionHref, row.pressing], ["Chiefs at Bills", "Vote", "Voting ends at 7:45pm · 2 questions", "/on/g?g=s1", "/m/b", "vote"]);
   }
-  // The same game in another set is its own row; a game with one question is that question's ordinary row.
-  const two = collapseGames({ needs: [need("a", "enter", "s1"), need("b", "vote", "s1"), need("d", "enter", "s2")], running: [], over: [] }, games);
-  assert.deepEqual(two.needs.map((r) => r.kind), ["game", "enter"]);
+  // The same game in another set joins the row (one row per game, whatever the sets, 3.15 decided 2026-10-02), with the most pressing question's set in the address; a game with one question is that question's ordinary row.
+  const two = collapseGames({ needs: [need("a", "enter", "s1"), need("b", "vote", "s1"), need("d", "enter", "s2")], running: [], over: [] }, new Map([...games, ["d", { gameId: "g", name: "Chiefs at Bills", away, home, score: null }]]));
+  assert.deepEqual(two.needs.map((r) => r.kind), ["game"]);
+  if (two.needs[0]?.kind === "game") assert.deepEqual([two.needs[0].context, two.needs[0].href], ["Voting ends at 7:45pm · 3 questions", "/on/g?g=s1"]);
+  const other = collapseGames({ needs: [need("a", "enter", "s1"), need("e", "enter", "s2")], running: [], over: [] }, new Map([...games, ["e", { gameId: "h", name: "Jets at Bears", away, home, score: null }]]));
+  assert.deepEqual(other.needs.map((r) => r.kind), ["enter", "enter"], "two games with one question each stay two ordinary rows");
   // Over: one row in Just happened with the final score.
   const over = collapseGames({ needs: [], running: [], over: [{ dare: { id: "c", groupId: "s1" }, at: t, state: "resolved" }, { dare: { id: "a", groupId: "s1" }, at: t, state: "resolved" }] }, games);
   assert.deepEqual([over.over.length, over.happened.length, over.happened[0]?.meta], [0, 1, "Final: Bills 24, Chiefs 17"]);

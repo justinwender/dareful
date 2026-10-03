@@ -1,4 +1,4 @@
-import { stampFill, stampGlyph, stampInk, stampRadius, type TeamFace } from "@/lib/ui/team";
+import { STACKED, stampFill, stampGlyph, stampInk, stampRadius, type TeamFace } from "@/lib/ui/team";
 
 /**
  * A team stamp (docs/design.md 1.7): the feed's abbreviation on the team's colour, Hanken 700 at 0.42 of the
@@ -22,13 +22,31 @@ export function TeamStamp({ team, size = 28, className, travels }: { team: TeamF
   );
 }
 
-/** The two stamps side by side with a 4px gap, the away side first as in "Chiefs at Bills" (3.32); `overlap` draws the Now row's pair, 28px overlapping by 16px in the 40px slot (4.7). */
-export function TeamPair({ away, home, size = 28, overlap = false }: { away: TeamFace; home: TeamFace; size?: number; overlap?: boolean }) {
-  if (overlap) {
+/** One team's half of the stacked pair: the stamp's own rules (the team's colour, the ink that reads on it, the inset ring) on a bar the mark's full width. */
+function TeamBar({ team }: { team: TeamFace }) {
+  return (
+    <span
+      data-team-stamp={team.abbr}
+      className="inline-flex w-full shrink-0 items-center justify-center font-bold uppercase"
+      style={{ height: STACKED.bar, borderRadius: STACKED.radius, background: stampFill(team.color), color: stampInk(team.color), fontSize: STACKED.glyph, lineHeight: 1, letterSpacing: "0.02em", boxShadow: "inset 0 0 0 1px var(--stamp-edge)" }}
+    >
+      {team.abbr}
+    </span>
+  );
+}
+
+/**
+ * The two stamps side by side with a 4px gap, the away side first as in "Chiefs at Bills" (3.32). `stacked` draws
+ * the Now row's pair in the 40px mark (4.7): the away team over the home team, each a bar the mark's width with its
+ * abbreviation whole. Two 28px squares overlapping by 16px left 12px of the first showing, so "BOS" read "B(" (the
+ * owner's finding, the field round): stacked, both abbreviations are legible at once.
+ */
+export function TeamPair({ away, home, size = 28, stacked = false }: { away: TeamFace; home: TeamFace; size?: number; stacked?: boolean }) {
+  if (stacked) {
     return (
-      <span className="relative inline-flex h-10 w-10 shrink-0 items-center" aria-hidden="true">
-        <TeamStamp team={away} size={size} className="absolute left-0" />
-        <TeamStamp team={home} size={size} className="absolute left-3" />
+      <span className="inline-flex h-10 w-10 shrink-0 flex-col justify-between" aria-hidden="true" data-team-pair="stacked">
+        <TeamBar team={away} />
+        <TeamBar team={home} />
       </span>
     );
   }

@@ -1,5 +1,6 @@
 "use client";
 
+import { attempt } from "@/lib/ui/attempt";
 import { useState, useTransition } from "react";
 import { Chip, chipPress } from "@/components/ledger/chip";
 import { UnitGlyph } from "@/components/ledger/glyphs";
@@ -78,7 +79,7 @@ export function CoverSheet({ person, units, recent, viewer }: { person: { id: st
     setProblem(null);
     if (choice.kind === "usd" && (cents === null || cents <= 0n)) return setProblem("Add the amount first, like 40.");
     start(async () => {
-      const r = await proposeCoverAction({
+      const r = await attempt(() => proposeCoverAction({
         who: person.kind === "claim" ? { kind: "claim", claimId: person.id } : { kind: "user", userId: person.id },
         groupId: null,
         unit: choice.kind === "usd" ? { kind: "usd" } : choice.kind === "existing" ? { kind: "existing", id: choice.unit.id } : { kind: "new", template: choice.template, label: choice.label },
@@ -86,7 +87,7 @@ export function CoverSheet({ person, units, recent, viewer }: { person: { id: st
         amountCents: choice.kind === "usd" && cents !== null ? cents.toString() : costCents !== null && costCents > 0n ? costCents.toString() : null,
         settleExpected: payback,
         memo: memo.trim() || undefined,
-      });
+      }));
       if (r && "error" in r) setProblem(r.error);
     });
   }

@@ -47,7 +47,7 @@ test("Now: the asker's Close on time's up is offered only with two or more in; a
   assert.equal(ghost?.kind, "lock");
   // Everyone in is still the asker's Close before the time, and reads as the count.
   const everyone = needFromMarket(market({ groupSize: 2, people: [person("creator"), person("gabe")] }), "creator", false, t0, closes);
-  assert.deepEqual([everyone?.kind, everyone?.context], ["lock", "2 of 2 in"]);
+  assert.deepEqual([everyone?.kind, everyone?.context], ["lock", "2 in"]);
 });
 
 test("Now: past the close there is no Enter row, since the entry would be refused; before it there is", () => {

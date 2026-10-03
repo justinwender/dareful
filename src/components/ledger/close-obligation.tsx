@@ -167,7 +167,7 @@ export function CloseObligation({ obligationId, card, children, sentence, what, 
             )}
             <span className="min-w-0 flex-1">{preview ? "Change the photo" : "Add a photo of it"}</span>
             <span className="link-row" aria-hidden="true">{preview ? "Change" : "Add"}</span>
-            <input type="file" accept="image/*" capture="environment" className="sr-only" disabled={phase !== "idle"} onChange={(e) => pick(e.target.files?.[0] ?? null)} />
+            <input type="file" accept="image/*" className="sr-only" disabled={phase !== "idle"} onChange={(e) => pick(e.target.files?.[0] ?? null)} />
           </label>
         ) : null}
         {error ? <ProblemSummary messages={[error]} /> : null}

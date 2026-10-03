@@ -18,7 +18,7 @@ import { denominationById } from "@/lib/ledger/denominations";
 import { claimsForBrowserTokens } from "@/lib/ledger/claims";
 import { ghostPositionFor } from "@/lib/ledger/ghost-entry";
 import { askerLine } from "@/lib/ledger/groups";
-import { answersOf, marketById, positionsOf, stateOf, unitOf, VOID_OUTCOME } from "@/lib/ledger/markets";
+import { answersOf, marketById, pastItsClose, positionsOf, stateOf, unitOf, VOID_OUTCOME } from "@/lib/ledger/markets";
 import { numbersVisible } from "@/lib/ledger/market-view";
 import { numberAxis, serialiseAxis, unitPhrase } from "@/lib/ledger/number-axis";
 import { participantsOf, pidOf } from "@/lib/ledger/participants";
@@ -128,6 +128,7 @@ export async function GhostMarketPage({ id, clock }: { id: string; clock: Awaite
   const stage =
     state === "open" || (state === "locked" && mine) ? (
       <MarketStage
+        pastClose={state === "open" && pastItsClose(d, new Date())}
         dareId={d.id}
         signing={null}
         ghost={{ known: ghostMine ? { name: ghostMine.displayName } : remembered ? { name: remembered.displayName } : null }}

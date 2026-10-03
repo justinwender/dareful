@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChainEnum, useWalletDelegation } from "@dynamic-labs/sdk-react-core";
 import { useDevice } from "@/components/auth/device";
@@ -33,6 +33,7 @@ export function PassThePhoneRow({ status, hue }: { status: { on: boolean; delega
   const [open, setOpen] = useState(false);
   const [pin, setPin] = useState("");
   const [again, setAgain] = useState("");
+  const againField = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState<"on" | "off" | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [pinProblem, setPinProblem] = useState<string | null>(null);
@@ -140,11 +141,28 @@ export function PassThePhoneRow({ status, hue }: { status: { on: boolean; delega
           <div className="grid grid-cols-2 gap-3">
             <label className="flex flex-col gap-1">
               <span className="text-label text-ink-2">Your PIN</span>
-              <input value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, PIN_LENGTH))} type="password" inputMode="numeric" pattern="[0-9]*" autoComplete="new-password" maxLength={PIN_LENGTH} aria-invalid={pinProblem ? true : undefined} aria-describedby={pinProblem ? `${id}-pin-problem` : undefined} className={cn("h-12 rounded-button border border-line bg-surface px-4 text-body text-ink", pinProblem && FIELD_PROBLEM_CLASS)} data-pin="" />
+              <input
+                value={pin}
+                onChange={(e) => {
+                  const next = e.target.value.replace(/\D/g, "").slice(0, PIN_LENGTH);
+                  setPin(next);
+                  // The second field takes focus once the first is whole, and never before or again (the field round, 2.3).
+                  if (next.length === PIN_LENGTH && pin.length < PIN_LENGTH) againField.current?.focus();
+                }}
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                autoComplete="off"
+                maxLength={PIN_LENGTH}
+                aria-invalid={pinProblem ? true : undefined}
+                aria-describedby={pinProblem ? `${id}-pin-problem` : undefined}
+                className={cn("pin-field h-12 rounded-button border border-line bg-surface px-4 text-body text-ink", pinProblem && FIELD_PROBLEM_CLASS)}
+                data-pin=""
+              />
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-label text-ink-2">Again</span>
-              <input value={again} onChange={(e) => setAgain(e.target.value.replace(/\D/g, "").slice(0, PIN_LENGTH))} type="password" inputMode="numeric" pattern="[0-9]*" autoComplete="new-password" maxLength={PIN_LENGTH} className={cn("h-12 rounded-button border border-line bg-surface px-4 text-body text-ink", pinProblem && FIELD_PROBLEM_CLASS)} data-pin-again="" />
+              <input ref={againField} value={again} onChange={(e) => setAgain(e.target.value.replace(/\D/g, "").slice(0, PIN_LENGTH))} type="text" inputMode="numeric" pattern="[0-9]*" autoComplete="off" maxLength={PIN_LENGTH} className={cn("pin-field h-12 rounded-button border border-line bg-surface px-4 text-body text-ink", pinProblem && FIELD_PROBLEM_CLASS)} data-pin-again="" />
             </label>
           </div>
           <Problem id={`${id}-pin-problem`} message={pinProblem} />

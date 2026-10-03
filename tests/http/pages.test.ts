@@ -856,6 +856,9 @@ test("the bar is on the four roots and nowhere else, every other screen has a ba
 test("asking offers both paces and both ways of writing the terms, and the settler says up front what it will not call", async () => {
   const r = await get("/m/new", cAsker);
   for (const t of ["Something that’ll happen", "Settle an argument", "Just write it up", "Ask me three things first"]) assert.ok(r.text.includes(t), t);
+  // The field round, 2.6, as ruled on 2026-10-03: the row has no heading of its own and sits indented inside the Yes or no choice, after its chips.
+  assert.ok(!r.text.includes("How the rules get written"), "no heading that reads as a peer of How people answer");
+  assert.ok(/Pick one(?:(?!<h2)[\s\S])*data-pace-row=""[^>]*class="[^"]*\bml-3\b[^"]*\bborder-l\b[^"]*\bpl-3\b[^"]*"(?:(?!<h2)[\s\S])*Just write it up(?:(?!<h2)[\s\S])*One line in, terms out\./.test(r.html), "the row follows the kind chips with no heading between, indented, with its line under it");
   // Start's "Settle an argument" row lands on the same screen, on the settler's pace.
   const arg = await get("/m/new?pace=argument", cAsker);
   assert.ok(/aria-pressed="true"[^>]*>\s*<span[^>]*>\s*Settle an argument/.test(arg.html) && arg.text.includes("What are you two arguing about?"), "the settler preselected");
@@ -1448,7 +1451,8 @@ test("while a question is open, everyone the door admits sees the same slot and 
   const mine = await get(`/m/${windowId}`, cNia);
   assert.equal(mine.status, 200);
   assert.ok(mine.html.includes('data-open-photos=""') && mine.html.includes("data-media-frame") && mine.html.includes('data-add-tile=""'), "the frame with the add tile, once a photo is taken (3.39)");
-  assert.ok(mine.html.includes('capture="environment"'), "it opens the camera itself, not the library");
+  // The field round, part 2 (the owner's finding): the phone offers the camera and the library alike, open or ended.
+  assert.ok(!mine.html.includes('capture="environment"'), "it offers the camera and the library alike");
   assert.ok(!mine.text.includes("Everyone sees these once it’s over.") && !mine.text.includes("Yours from tonight"), "no caption and no heading: the album is open the whole time (3.37, 3.39, amended 2026-09-27)");
   assert.ok(mine.html.includes(`/api/media/${windowPhotoId}`), "the photo taken, in the frame");
   assert.ok(mine.dom.indexOf('data-open-photos=""') > mine.dom.indexOf("Counts if"), "last on the screen, under the details");
@@ -1905,7 +1909,8 @@ test("a ghost who is in sees the market as anyone in sees it (3.17, frame 6): th
   // The ghost's own line and its tokens, and nothing after them: the who's-in stack further down draws the same ghost dashed, and would answer for these two.
   const who = section.slice(section.lastIndexOf("<p", at), section.indexOf("</ul>", at));
   const ghostAvatars = (who.match(/outline-dashed/g) ?? []).length;
-  assert.ok(ghostAvatars >= 2 && /background:\s*var\(--person-stone\)/.test(who), `the line's avatar and the token's both stone and dashed (found ${ghostAvatars})`);
+  // The line's avatar is the ghost's, stone and dashed; the token under it wears the face of the one the ghost has got (the field round, part 2), so it is not dashed.
+  assert.ok(ghostAvatars === 1 && /background:\s*var\(--person-stone\)/.test(who), `the line's avatar stone and dashed, the token wearing the other end's face (found ${ghostAvatars} dashed)`);
 });
 
 test("at sign-in, an entry made from a link is a row on the claimant screen, pressed by default, with the one chalk counting it", async () => {
@@ -1977,4 +1982,49 @@ test("the session slides: a cookie a day old is issued again on a PATCH, a fresh
   assert.deepEqual([fresh.status, fresh.headers.get("set-cookie")], [204, null], "a fresh cookie is left alone");
   const nobody = await fetch(`${BASE}/api/session`, { method: "PATCH" });
   assert.deepEqual([nobody.status, nobody.headers.get("set-cookie")], [204, null], "nothing is issued from nothing");
+});
+
+test("a market stuck past its close rests its sheet on the close for the asker and for anyone in it, and for nobody else", async () => {
+  const g = await createGroup({ name: "stuck check (temporary)", createdBy: asker.user.id });
+  track.group(g.id);
+  await db.insert(schema.groupMembers).values([{ groupId: g.id, userId: friend.user.id }, { groupId: g.id, userId: stranger.user.id }]);
+  const usd = await ensureUsd(g.id, asker.user.id);
+  const d0 = await markets.draftMarket({ creatorId: asker.user.id, groupId: g.id, denomId: usd.id, title: "Does the late train make it?", termsText: "Yes if it arrives before midnight.", resolvesBy: new Date(Date.now() + 3_600_000) });
+  const d = await markets.openMarket(d0.id, asker.user.id, await asker.ledger.signTypedData(markets.createTypedData(d0)));
+  await markets.enterMarket({ dareId: d.id, userId: asker.user.id, stake: 500n, value: 7000n, signature: await asker.ledger.signTypedData(markets.enterTypedData(d, 500n, 7000n)) });
+  await markets.enterMarket({ dareId: d.id, userId: friend.user.id, stake: 500n, value: 3000n, signature: await friend.ledger.signTypedData(markets.enterTypedData(d, 500n, 3000n)) });
+  // While it runs the close is the asker's, in the sheet, a secondary whose line says what closing now costs; someone else in it has no close.
+  const running = await get(`/m/${d.id}`, cAsker);
+  assert.ok(/data-close-line="secondary"/.test(running.html) && /Close it now and \S+ can’t get in\./.test(running.text) && /data-close-early=""/.test(running.html), "the asker, with someone asked still out: the close in the sheet, as a secondary naming who it leaves out");
+  assert.ok(!/data-close-line=/.test((await get(`/m/${d.id}`, cFriend)).html), "someone in it who did not ask it: no close while it runs");
+  // The time passed and nothing closed it: stuck (the field round, 1.2, 2.1).
+  await db.update(schema.dares).set({ resolvesBy: new Date(Date.now() - 60_000) }).where(eq(schema.dares.id, d.id));
+  const mine = await get(`/m/${d.id}`, cAsker);
+  assert.ok(/data-stuck-line=""/.test(mine.html) && /data-close-line="main"/.test(mine.html) && /data-close-early=""/.test(mine.html), "the asker: the close is the sheet's main action");
+  const theirs = await get(`/m/${d.id}`, cFriend);
+  assert.ok(/data-stuck-line=""/.test(theirs.html) && /data-close-line="main"/.test(theirs.html) && /data-close-early=""/.test(theirs.html), "someone in it: the close in the sheet too");
+  const outside = await get(`/m/${d.id}`, cStranger);
+  assert.ok(!/data-stuck-line=""/.test(outside.html), "someone in the set but not in it: no close");
+  // The close time ends editing whether or not the close has run (the owner's rule): nothing offers an entry or a change, and an entry reads as final.
+  assert.ok(!/data-pinned-sheet=/.test(outside.html), "past the close time someone not in has no move at all: no entry sheet to be refused by");
+  assert.ok(/· final/.test(mine.text) && !/>Change</.test(mine.html) && !/>Change</.test(theirs.html), "an entry past the close time is final, and Change is not drawn");
+  assert.ok(/>Change</.test(running.html), "while it ran, Change was there");
+});
+
+test("the numbers page tells nobody but the owner that it exists", async () => {
+  // The owner's ids are not set on the server under test, so every account is somebody else: the code screen, as for an address with no screen (5.4).
+  const signedIn = await get("/stats", cA);
+  assert.equal(signedIn.status, 404, "a signed-in account that is not the owner");
+  assert.ok(!/data-stats=""/.test(signedIn.html), "nothing of the page");
+  const nobody = await get("/stats");
+  assert.equal(nobody.status, 404, "signed out");
+});
+
+test("the session door keeps the zone a browser reports on the account, and nothing that is not a zone", async () => {
+  const patchAs = (tz: string) => fetch(`${BASE}/api/session`, { method: "PATCH", headers: { cookie: `dareful_session=${cB}; dareful_tz=${encodeURIComponent(tz)}` } });
+  const zoneOf = async () => (await db.select({ zone: schema.users.zone }).from(schema.users).where(eq(schema.users.id, B.id)))[0]?.zone ?? null;
+  assert.equal((await patchAs("America/Chicago")).status, 204);
+  assert.equal(await zoneOf(), "America/Chicago");
+  await patchAs("Not/AZone");
+  assert.equal(await zoneOf(), "America/Chicago", "a name that is not a zone changes nothing");
 });

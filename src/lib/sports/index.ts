@@ -36,6 +36,8 @@ export const POLL_EVERY_MS = 10 * 60_000;
 export const SUMMARY_FROM_MS = 30 * 60_000;
 /** How many backstop settlements one tick may send: each is a chain transaction of its own. */
 export const BACKSTOP_PER_TICK = 2;
+/** How many candidates the backstop reads to find the ones it may act on. */
+export const BACKSTOP_SCAN = 50;
 /** Most asked (docs/design.md 3.32): a game qualifies once this many groups have started anything on it. Below it a count is noise, and a small one can tell someone whose group it is. */
 export const MOST_ASKED_FLOOR = 10;
 export const MOST_ASKED_MAX = 3;
@@ -194,7 +196,8 @@ export async function pollFinals(now: Date, opts: { source?: ScheduleSource; onl
       await noteRead(sport, source.name, now, null);
     } catch (err) {
       await noteRead(sport, source.name, now, err instanceof Error ? err.message : "unknown");
-      // A listing that failed leaves every game as it was; it is read again next time.
+      // A listing that failed leaves every game's result as it was and gives its place up: marked polled, its games wait the usual interval, so one sport's source being down never holds the twelve places against the others (the field round, 1.2's pattern).
+      await db.update(schema.sportsGames).set({ polledAt: now }).where(inArray(schema.sportsGames.id, rows.map((r) => r.id)));
       continue;
     }
     const seen = new Set(listed.map((g) => g.sourceId));
@@ -252,6 +255,8 @@ export async function pollSummaries(now: Date, opts: { play?: PlaySource; onlyId
       await noteRead(game.sport as Sport, `${play.name}:summary`, now, null);
     } catch (err) {
       await noteRead(game.sport as Sport, `${play.name}:summary`, now, err instanceof Error ? err.message : "unknown");
+      // A summary that could not be read gives its place up for the usual interval, for the same reason.
+      await db.update(schema.sportsGames).set({ summaryPolledAt: now }).where(eq(schema.sportsGames.id, game.id));
       continue;
     }
     const changed = drive !== null && drive.raw !== game.firstDriveRaw;
@@ -375,9 +380,12 @@ export async function feedBackstop(now: Date, opts: { check?: CheckSource; onlyI
     .innerJoin(schema.sportsGames, eq(schema.sportsGames.id, schema.publicQuestions.gameId))
     .where(and(isNotNull(schema.dares.lockedAt), isNull(schema.dares.resolvedAt), eq(schema.dares.stalemate, "arbitrate"), eq(schema.publicQuestions.decidedByFeed, true), isNotNull(schema.sportsGames.finalSeenAt), lt(schema.sportsGames.finalSeenAt, dueBy), some(opts.onlyIds, schema.dares.id)))
     .orderBy(asc(schema.sportsGames.finalSeenAt))
-    .limit(opts.limit ?? BACKSTOP_PER_TICK);
+    // Read past what must wait: a question whose two sources have not agreed yet waits up to three days, and cut at the tick's two it held a place against one that could settle (the field round, 1.2's pattern). The tick still acts on two at most.
+    .limit(BACKSTOP_SCAN);
+  const perTick = opts.limit ?? BACKSTOP_PER_TICK;
   const checked = new Map<string, FinalScore | null>();
   for (const { dare, template, game } of rows) {
+    if (settled.length + voided.length >= perTick) break;
     try {
       let decision: { outcome: bigint | null; ending: FeedEnding } | null = null;
       if (template.key === "first_drive") {

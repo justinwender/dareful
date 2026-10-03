@@ -11,7 +11,7 @@ import { Button, ButtonLink } from "@/components/ui/button";
 import { withViewTransition } from "@/lib/ui/transitions";
 import { streamWriteUp } from "@/lib/ui/write-up-stream";
 import { MOTION, waitStage } from "@/lib/ui/motion";
-import { answerLands } from "@/lib/ui/stage";
+import { answerLands, paceRowShows } from "@/lib/ui/stage";
 import { PinnedSheet } from "@/components/ui/pinned-sheet";
 import { carefulQuestionsAction, draftFromTemplateAction, draftMarketAction, scopeMarketAction, triageAction, type ScopeResult, type TriageResult } from "@/lib/actions/markets";
 import { emojiInk } from "@/lib/ui/emoji-ink";
@@ -324,7 +324,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
             <label htmlFor="ask-line" className="text-label text-ink-2">
               {pace === "argument" ? "What are you two arguing about?" : "Your question"}
             </label>
-            <textarea id="ask-line" rows={3} value={line} onChange={(e) => setLine(e.target.value)} maxLength={280} aria-invalid={fieldProblem ? true : undefined} aria-describedby={fieldProblem ? "ask-line-problem" : undefined} className={cn("field-sizing-content resize-none rounded-button bg-transparent text-serif-l text-ink", fieldProblem && "px-2 " + FIELD_PROBLEM_CLASS)} />
+            <textarea id="ask-line" rows={3} value={line} onChange={(e) => setLine(e.target.value)} maxLength={280} aria-invalid={fieldProblem ? true : undefined} aria-describedby={fieldProblem ? "ask-line-problem" : undefined} className={cn("field-sizing-content resize-none rounded-button border border-line bg-surface px-3 py-2 text-serif-l text-ink", fieldProblem && FIELD_PROBLEM_CLASS)} />
             <Problem id="ask-line-problem" message={fieldProblem} />
           </div>
         </section>
@@ -369,6 +369,26 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
                 </Chip>
               </button>
             </div>
+            {/* How the terms get written is part of the Yes or no choice (the field round, 2.6, as the owner ruled on 2026-10-03): careful mode's three
+                questions are written for a yes-or-no question and only that write-up reads the answers, so the row has no heading of its own (a heading made
+                it read as a peer of "How people answer"), sits indented under that chip, and stands only while it is the one selected. */}
+            {paceRowShows(pace, kind) ? (
+              <div data-pace-row="" className="ml-3 flex flex-col gap-2 border-l border-line pl-3">
+                <div role="group" aria-label="For a yes or no question" className="flex flex-wrap gap-2">
+                  <button type="button" aria-pressed={mode === "quick"} onClick={() => setMode("quick")} {...chipPress(mode === "quick")}>
+                    <Chip size={36} selected={mode === "quick"} choice>
+                      Just write it up
+                    </Chip>
+                  </button>
+                  <button type="button" aria-pressed={mode === "careful"} onClick={() => setMode("careful")} {...chipPress(mode === "careful")}>
+                    <Chip size={36} selected={mode === "careful"} choice>
+                      Ask me three things first
+                    </Chip>
+                  </button>
+                </div>
+                <p className="text-caption text-ink-3">{mode === "careful" ? "Three quick questions first, about fifteen seconds. For when a lot is riding on it, or it runs for weeks." : "One line in, terms out. Right for anything you’ll know tonight."}</p>
+              </div>
+            ) : null}
           </div>
         ) : null}
         {pickOne ? (
@@ -449,28 +469,9 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
             <p className="text-caption text-ink-3">If none of them might happen, add that too.</p>
           </div>
         ) : null}
-        {/* Careful mode is offered with Yes or no alone (the QA round): its three questions are written for a yes-or-no question, and only that write-up reads the answers. */}
         {pace !== "dare" ? (
           <p className="text-caption text-ink-3">Dareful checks whether facts can settle it before anyone picks a side, and it won’t rule on an argument about someone in the group.</p>
-        ) : numeric || pickOne ? null : (
-          <div className="flex flex-col gap-2">
-            {/* The pace of the write-up, under its own label like "How people answer" (the field round, 2.6): offered with Yes or no alone, so it sits under that choice. */}
-            <h2 className="text-label text-ink-3">How the rules get written</h2>
-            <div role="group" aria-label="How the rules get written" className="flex flex-wrap gap-2">
-              <button type="button" aria-pressed={mode === "quick"} onClick={() => setMode("quick")} {...chipPress(mode === "quick")}>
-                <Chip size={36} selected={mode === "quick"} choice>
-                  Just write it up
-                </Chip>
-              </button>
-              <button type="button" aria-pressed={mode === "careful"} onClick={() => setMode("careful")} {...chipPress(mode === "careful")}>
-                <Chip size={36} selected={mode === "careful"} choice>
-                  Ask me three things first
-                </Chip>
-              </button>
-            </div>
-            <p className="text-caption text-ink-3">{mode === "careful" ? "Three quick questions first, about fifteen seconds. For when a lot is riding on it, or it runs for weeks." : "One line in, terms out. Right for anything you’ll know tonight."}</p>
-          </div>
-        )}
+        ) : null}
         {/* The step's one move, in the sheet (3.24), with the form-level problem above it when there is one. */}
         <PinnedSheet
           label="Next"
@@ -665,7 +666,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
       <div className="flex min-w-0 flex-col gap-1">
         <span className="text-caption text-ink-3">Your question</span>
         {step === "terms" && scope ? (
-          <textarea id="ask-title" rows={2} value={title} onChange={(e) => setTitle(e.target.value)} maxLength={140} aria-label="The question" className="field-sizing-content -mx-1 resize-none rounded-button bg-transparent px-1 text-serif-l text-ink" />
+          <textarea id="ask-title" rows={2} value={title} onChange={(e) => setTitle(e.target.value)} maxLength={140} aria-label="The question" className="field-sizing-content resize-none rounded-button border border-line bg-surface px-3 py-2 text-serif-l text-ink" />
         ) : (
           <span className="text-serif-l text-ink">{step === "terms" && written?.title ? written.title : verdict?.kind === "ok" && pace === "argument" ? verdict.claim : line}</span>
         )}

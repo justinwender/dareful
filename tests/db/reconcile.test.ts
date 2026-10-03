@@ -77,8 +77,21 @@ test("a pending write with a receipt is finished by its kind's completion; witho
   // too young to look at is due now, and its receipt finishes it too; the lost one is broadcast once more.
   laterDone = true;
   const r2 = await reconcileChainWrites(new Date(now.getTime() + 60_000), deps);
-  assert.deepEqual([r2.completed, r2.mined, r2.dropped, r2.rebroadcast], [[minedLater, young], [young], [], [lost]]);
+  // Least recently tried first (the field round): the write tried and left last minute comes after the one not yet tried.
+  assert.deepEqual([r2.completed, r2.mined, r2.dropped, r2.rebroadcast], [[young, minedLater], [young], [], [lost]]);
   assert.ok((await rowOf(minedLater)).completedAt !== null);
   assert.equal(completed.filter((c) => c === "confirm p-1").length, 2, "asked again, and done");
   assert.deepEqual([(await rowOf(young)).status, (await rowOf(young)).completedAt !== null, (await rowOf(lost)).attempts], ["mined", true, 3]);
+});
+
+test("a mined write whose mirror cannot be finished goes to the back of the line each time it is tried, so it never holds a place", async () => {
+  const stuck = await write({ kind: "confirm", subject: { proposalIds: ["p-stuck"] }, ageMs: 2 * PENDING_AFTER_MS, status: "mined" });
+  const before = (await rowOf(stuck)).updatedAt.getTime();
+  const now = new Date(Date.now() + 60_000);
+  const complete: Completions = { confirm: async () => false };
+  const out = await reconcileChainWrites(now, { complete, receipt: async () => null, rebroadcast: async () => "sent", alert: async () => undefined, onlyHashes: [stuck] });
+  assert.deepEqual(out.completed, []);
+  const row = await rowOf(stuck);
+  assert.equal(row.completedAt, null, "still to finish");
+  assert.ok(row.updatedAt.getTime() === now.getTime() && row.updatedAt.getTime() > before, "tried now, so it sorts after everything not yet tried");
 });

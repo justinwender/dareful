@@ -3,6 +3,8 @@
  * version of this decision was one line inside a click handler, it called every state "still setting up", and
  * two of four real accounts were stuck behind it.
  */
+import { WORDS } from "@/lib/ui/errors";
+
 export type Me = { dynamicUserId: string; ledgerWallet: string; governanceWallet: string; /** Pass the phone is on (3.45): the server holds a share of the ledger wallet, so a device without the login can still act. */ passThePhone?: boolean };
 
 export type DeviceState =
@@ -43,4 +45,26 @@ export function platformOf(userAgent: string | null): "ios" | "android" | "deskt
  */
 export function serverMaySign(input: { via: boolean; state: DeviceState; me: Me | null; address: string }): boolean {
   return input.via && input.state === "signed-out" && input.me?.passThePhone === true && input.address.toLowerCase() === input.me.ledgerWallet.toLowerCase();
+}
+
+/** The sentence for a login whose keys never arrive: a failure that waiting will not fix (Principle 9). */
+export const KEYS_MISSING_WORDS = "Something's wrong with your sign-in on this device, and waiting won't fix it. Sign in again from the top of the screen. Nothing was sent.";
+
+/**
+ * What a tap that needs a signature says when this device ends up unable to make one (the field round, 1.6 and
+ * the owner's day-31 check): Dynamic ends its login thirty days after the first sign-in whatever the Dareful
+ * cookie says, so a person still signed in to Dareful finds a vote asking for one fresh sign-in in its place,
+ * and if they leave that step the words are the table's for a signed-out person. Pure.
+ */
+export function signerFailure(state: DeviceState): string {
+  return state === "keys-missing" ? KEYS_MISSING_WORDS : WORDS.signedOut;
+}
+
+/**
+ * Whether a tap that opened the sign-in step should stop waiting for it (pure): the step was opened, it is closed
+ * again, the device still holds no login, and a moment has passed for the step to have drawn at all. Without
+ * this a person who closed the step watched the control run for three minutes.
+ */
+export function signInAbandoned(input: { opened: boolean; authOpen: boolean; state: DeviceState; sinceOpenedMs: number }): boolean {
+  return input.opened && !input.authOpen && (input.state === "signed-out" || input.state === "other-account") && input.sinceOpenedMs >= 1500;
 }

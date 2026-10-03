@@ -122,3 +122,27 @@ export async function dareByOnchainId(dareId: string): Promise<EnvioDare | null>
   );
   return data.Dare[0] ?? null;
 }
+
+const Ids = z.array(z.object({ id: z.string() }));
+const OnchainCounts = z.object({ Obligation: Ids, Dare: Ids, Member: Ids, Group: Ids });
+/** How many rows of each kind one read asks for; a count that reaches it is said as "or more". */
+export const ONCHAIN_COUNT_CAP = 1000;
+
+/**
+ * What the contracts hold, counted from the indexer (the field round, 3.1): obligations minted, questions closed
+ * onto the chain, members and groups registered. Every account is in these, test accounts included: the chain
+ * has no notion of an excluded account.
+ */
+export async function onchainCounts(): Promise<{ obligations: number; questions: number; members: number; groups: number }> {
+  const data = await query(
+    `query OnchainCounts($n: Int!) {
+      Obligation(limit: $n) { id }
+      Dare(limit: $n) { id }
+      Member(limit: $n) { id }
+      Group(limit: $n) { id }
+    }`,
+    { n: ONCHAIN_COUNT_CAP },
+    OnchainCounts,
+  );
+  return { obligations: data.Obligation.length, questions: data.Dare.length, members: data.Member.length, groups: data.Group.length };
+}

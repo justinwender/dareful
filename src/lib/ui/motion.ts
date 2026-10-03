@@ -31,6 +31,8 @@ export type WaitStage = "none" | "pending" | "still" | "block";
 export const RUNNER_MS = 300;
 export const STILL_GOING_MS = 3_000;
 export const TRY_AGAIN_MS = 10_000;
+/** A write that has had no answer for this long gives way to the words for a failure (the field round, 1.6 as amended): "Still going" never runs for good. */
+export const GIVE_UP_MS = 60_000;
 export function waitStage(waiting: boolean, heldMs: number): WaitStage {
   if (!waiting) return "none";
   if (heldMs >= TRY_AGAIN_MS) return "block";

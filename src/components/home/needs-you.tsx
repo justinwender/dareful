@@ -39,7 +39,7 @@ export function NeedsYou({ rows, viewer, showAll, allHref }: { rows: NeedRow[]; 
                 <Link prefetch={false} href={r.href} className="absolute inset-0" aria-label={r.subject} data-press="row">
                   <LinkPending />
                 </Link>
-                <TeamPair away={r.game.away} home={r.game.home} size={28} overlap />
+                <TeamPair away={r.game.away} home={r.game.home} stacked />
                 <span className="pointer-events-none flex min-w-0 flex-col gap-1">
                   <span className="text-body-strong text-ink">{r.subject}</span>
                   <span className="flex items-center gap-2 text-caption text-ink-3">

@@ -337,8 +337,9 @@ export async function lockMarketAction(rawId: string): Promise<{ ok: true; /** S
   if (!user) return { error: WORDS.signedOut };
   const id = uuid.safeParse(rawId);
   if (!id.success) return { error: "That one doesn't exist." };
+  let expired = false;
   try {
-    await lockMarket(id.data, user.id);
+    expired = (await lockMarket(id.data, user.id)).expired === true;
   } catch (err) {
     if (err instanceof SendPending && err.kind !== "register") {
       revalidatePath(`/m/${id.data}`);
@@ -346,8 +347,8 @@ export async function lockMarketAction(rawId: string): Promise<{ ok: true; /** S
     }
     return { error: say(err, "Closing it didn’t go through. Nothing changed.") };
   }
-  // Voting opened by the asker's hand: everyone else in it hears now (the field round, 1.8).
-  after(() => notifyVotingOpened(id.data, user.id, "asker"));
+  // Voting opened by a person's hand: everyone else in it hears now (the field round, 1.8). A close that found fewer than two entries that count ended it instead, and there is nothing to vote on.
+  if (!expired) after(() => notifyVotingOpened(id.data, user.id, "asker"));
   revalidatePath(`/m/${id.data}`);
   return { ok: true };
 }

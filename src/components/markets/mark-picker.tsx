@@ -20,7 +20,12 @@ function loadCatalog(): Promise<Row[]> {
   return catalog;
 }
 
-export type Sticker = { id: string; ink: InkName | null };
+export type Sticker = { id: string; ink: InkName | null; /** A cutout still on its way up (the field round, 2.5): shown from the device's own copy, not yet pickable. */ preview?: string };
+
+/** What a sticker's cell draws: the device's copy while it is on its way, the stored one after. Pure. */
+export function stickerCell(s: Sticker, src: (id: string) => string): { src: string; pending: boolean } {
+  return s.preview ? { src: s.preview, pending: true } : { src: src(s.id), pending: false };
+}
 
 /**
  * The mark picker (docs/design.md 3.29): a modal sheet 560px tall on the current place's surface. Search, the
@@ -77,19 +82,29 @@ export function MarkPicker({ open, onClose, value, onPick, hue, preview = true, 
   async function takeCutout(blob: Blob) {
     setPasteProblem(null);
     setPasting(true);
+    // Shrunk on the device first, then shown at once from the device's copy while the upload runs behind it (the field round, 2.5).
+    const pendingId = `pending-${Date.now()}`;
+    let preview: string | null = null;
     try {
       const png = await prepareCutout(blob);
+      preview = URL.createObjectURL(png);
+      setMine((m) => [{ id: pendingId, ink: null, preview: preview as string }, ...m]);
       const form = new FormData();
       form.set("cutout", png, "cutout.png");
       form.set("source", "pasted");
       const r = await addStickerAction(form);
-      if ("error" in r) return setPasteProblem(r.error);
+      if ("error" in r) {
+        setMine((m) => m.filter((s) => s.id !== pendingId));
+        return setPasteProblem(r.error);
+      }
       const sticker: Sticker = { id: r.id, ink: r.ink };
-      setMine((m) => [sticker, ...m]);
+      setMine((m) => m.map((s) => (s.id === pendingId ? sticker : s)));
       onPick({ kind: "sticker", id: sticker.id, ink: sticker.ink });
     } catch (err) {
+      setMine((m) => m.filter((s) => s.id !== pendingId));
       setPasteProblem(err instanceof NotACutoutHere ? err.message : "That cutout couldn’t be read.");
     } finally {
+      if (preview) URL.revokeObjectURL(preview);
       setPasting(false);
     }
   }
@@ -212,10 +227,11 @@ export function MarkPicker({ open, onClose, value, onPick, hue, preview = true, 
             ) : null}
             {mine.map((s) => {
               const on = value?.kind === "sticker" && value.id === s.id;
+              const cell = stickerCell(s, (id) => stickerSrc(id, 44));
               return (
-                <button key={s.id} type="button" aria-label="One of your stickers" aria-pressed={on} onClick={() => onPick({ kind: "sticker", id: s.id, ink: s.ink })} data-press={on ? "fill" : "line"} className={cn("flex aspect-square h-11 w-full items-center justify-center rounded-stamp-28", on ? "bg-field press-fill" : "press-line")} style={ring(on)}>
+                <button key={s.id} type="button" aria-label={cell.pending ? "A sticker on its way" : "One of your stickers"} aria-busy={cell.pending || undefined} disabled={cell.pending} aria-pressed={on} onClick={() => onPick({ kind: "sticker", id: s.id, ink: s.ink })} data-press={on ? "fill" : "line"} className={cn("flex aspect-square h-11 w-full items-center justify-center rounded-stamp-28", on ? "bg-field press-fill" : "press-line")} style={ring(on)}>
                   {/* eslint-disable-next-line @next/next/no-img-element -- behind the mark's own door */}
-                  <img src={stickerSrc(s.id, 44)} alt="" width={35} height={35} className="h-[35px] w-[35px] object-contain" />
+                  <img src={cell.src} alt="" width={35} height={35} className={cn("h-[35px] w-[35px] object-contain", cell.pending && "opacity-50")} />
                 </button>
               );
             })}

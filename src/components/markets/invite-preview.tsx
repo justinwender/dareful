@@ -1,5 +1,6 @@
 "use client";
 
+import { attempt } from "@/lib/ui/attempt";
 import { useState, useTransition } from "react";
 import { Avatar } from "@/components/ledger/avatar";
 import { Chip } from "@/components/ledger/chip";
@@ -63,7 +64,7 @@ export function InvitePreview({ data, viewerName }: { data: InvitePreviewData; v
           loading={pending}
           onClick={() =>
             start(async () => {
-              const r = await joinMarketAction(data.dareId);
+              const r = await attempt(() => joinMarketAction(data.dareId));
               if (r && "error" in r) setProblem(r.error);
             })
           }

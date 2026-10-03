@@ -15,7 +15,7 @@ import { firstName } from "@/lib/ui/copy";
 import { sendEmail, sendPush } from "./channels";
 import { positionsOf } from "@/lib/ledger/markets";
 import { record } from "@/lib/usage";
-import { allInNotice, backstopResultNotice, backstopWarningNotice, closedNotice, deadlineNotice, voteReminderNotice, votingOpenedNotice, enteredFromNotice, rulingNotice, joinedNotice, nettedNotice, nudgeNotice, nudgeSeq, nudgeTargets, openedNotice, pinLockedNotice, pushElseEmail, recipientsAfterVote, resultNotice, voteRequest, type BackstopHow, type Notice, type WarningFlavour } from "./messages";
+import { allInNotice, backstopResultNotice, backstopWarningNotice, closedNotice, deadlineNotice, voteReminderNotice, votingOpenedNotice, enteredFromNotice, rulingNotice, joinedNotice, nettedNotice, nudgeNotice, nudgeSeq, nudgeTargets, openedNotice, pinLockedNotice, pushElseEmail, recipientsAfterVote, resultNotice, voteRequest, type BackstopHow, type Notice, type WarningFlavour, FALLBACK_ZONE, REMIND_AFTER_MS, reminderSendTime, reminderZone } from "./messages";
 
 /** Claims the (person, market, kind, count) slot; false if it was already told. This is what makes a retry silent. */
 export async function claimNotice(userId: string, dareId: string, kind: "vote_request" | "result" | "opened" | "joined" | "nudge" | "deadline" | "ruling" | "backstop_warning" | "backstop_result" | "entered_from" | "voting_opened" | "vote_reminder" | "all_in", seq: number, causedBy: string): Promise<string | null> {
@@ -254,7 +254,7 @@ export async function notifyBackstopWarning(dareId: string, flavour: WarningFlav
     await Promise.all(
       positions.map((p) => p.userId).filter((x): x is string => x !== null && !voted.has(x)).map(async (userId) => {
         const id = await claimNotice(userId, dareId, "backstop_warning", 0, d.creatorId);
-        if (id) await deliver(userId, id, backstopWarningNotice({ title: d.title, flavour, actsAt, now, zone: d.zone ?? "UTC", marketId: d.id, appUrl: APP_URL() }), "push-else-email");
+        if (id) await deliver(userId, id, backstopWarningNotice({ title: d.title, flavour, actsAt, now, zone: d.zone ?? FALLBACK_ZONE, marketId: d.id, appUrl: APP_URL() }), "push-else-email");
       }),
     );
   } catch (err) {
@@ -354,32 +354,40 @@ export async function notifyVotingOpened(dareId: string, causedBy: string | null
 
 /**
  * Twelve hours into voting (the field round, 1.8): everyone still to vote is reminded once, by push and email,
- * never at night in the asker's zone; the tick works out the moment and claims it. Nothing is sent once the votes
- * already decide it.
+ * never at night in their own zone where the app knows it, then the asker's, then Eastern (`reminderZone`). Each
+ * person is claimed alone, so someone whose night it is waits for their morning while the others are told now;
+ * the answer says how many are still waiting, and the tick asks again each minute until nobody is. Nothing is
+ * sent once the votes already decide it. An error counts as someone waiting, so a failed run is tried again.
  */
-export async function notifyVoteReminder(dareId: string, opts: { claimed?: boolean } = {}): Promise<void> {
+export async function notifyVoteReminder(dareId: string, now: Date = new Date()): Promise<{ sent: number; waiting: number }> {
   try {
     const d = await marketById(dareId);
-    if (!d || !d.lockedAt || d.resolvedAt) return;
-    if (!opts.claimed) {
-      const [row] = await db.update(schema.dares).set({ voteRemindedAt: new Date() }).where(and(eq(schema.dares.id, dareId), isNull(schema.dares.voteRemindedAt))).returning({ id: schema.dares.id });
-      if (!row) return;
-    }
+    if (!d || !d.lockedAt || d.resolvedAt) return { sent: 0, waiting: 0 };
     const votes = await votesOf(dareId);
-    if ((tally(votes)[0]?.votes ?? 0) >= d.threshold) return;
+    if ((tally(votes)[0]?.votes ?? 0) >= d.threshold) return { sent: 0, waiting: 0 };
     const voted = new Set(votes.map((v) => v.userId));
     const quorum = await quorumUserIds(d);
+    const out = quorum.filter((id) => !voted.has(id));
+    if (out.length === 0) return { sent: 0, waiting: 0 };
+    const zones = new Map((await db.select({ id: schema.users.id, zone: schema.users.zone }).from(schema.users).where(inArray(schema.users.id, out))).map((u) => [u.id, u.zone]));
+    const due = new Date(d.lockedAt.getTime() + REMIND_AFTER_MS);
     const name = await nameOf(d.creatorId);
-    await Promise.all(
-      quorum
-        .filter((id) => !voted.has(id))
-        .map(async (userId) => {
-          const id = await claimNotice(userId, dareId, "vote_reminder", 0, d.creatorId);
-          if (id) await deliver(userId, id, voteReminderNotice({ name, title: d.title, cast: votes.length, quorum: quorum.length, marketId: d.id, appUrl: APP_URL() }));
-        }),
-    );
+    let sent = 0;
+    let waiting = 0;
+    for (const userId of out) {
+      if (reminderSendTime(due, reminderZone(zones.get(userId), d.zone)).getTime() > now.getTime()) {
+        waiting += 1;
+        continue;
+      }
+      const id = await claimNotice(userId, dareId, "vote_reminder", 0, d.creatorId);
+      if (!id) continue;
+      await deliver(userId, id, voteReminderNotice({ name, title: d.title, cast: votes.length, quorum: quorum.length, marketId: d.id, appUrl: APP_URL() }));
+      sent += 1;
+    }
+    return { sent, waiting };
   } catch (err) {
     console.error("the vote reminder failed", { dareId, err });
+    return { sent: 0, waiting: 1 };
   }
 }
 

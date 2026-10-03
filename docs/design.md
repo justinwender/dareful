@@ -51,6 +51,10 @@ Round D), following the phone's setting, with an Appearance row on You.
 
 ### What changed in this revision
 
+Amended 2026-10-03 after the runs on the iOS 26 simulator, in dated notes before 3.16 (the pace row under its chip) and at 9.3 (the root a pixel taller than the large viewport).
+
+Amended 2026-10-03 by the owner's follow-ups, in dated notes at the ends of 3.15 (the stacked mark), 3.24 (the close for everyone who can), 3.42 (late closes), 4.10 (whose night) and 5.2 (a write that cannot wait for good); and on 2026-10-02 by part 2 at 3.15, 3.24, 3.28, 3.39, 3.42, 3.45 and before 3.16 and 6.4.
+
 Amended 2026-10-02 by the field round, part 1, in dated notes at the ends of 3.15, 3.24, 3.42, 4.10, 5.1, 5.2, 8.8 and 9.3: a row's address raises its sheet, the cause words, a write never shown failed, anyone in may close a market past its close, the three voting notices with the one named exception to Principle 1, and the document that never scrolls.
 
 (Amended 2026-09-29, the QA round: a walk through the whole app on the simulator's installed app
@@ -1099,6 +1103,14 @@ stays put, as a market does.)
 
 (Amended 2026-10-02, the field round, part 1: a row's address names its move as a fragment, which the server never sees. Enter opens the market at `#enter` with the entry sheet raised, Vote at `#ballot` with the ballot raised, Close at `#close` with the close's ask open, whoever it leaves out; Finish opens the draft's own screen, which is its step. And an open question past its close reads "Time’s up", never "Closes soon", on the row as on the band.)
 
+(Built 2026-10-02, the field round, part 2: one row per game whatever sets its questions came from, keyed by the game alone in `collapseGames`, with the most pressing question's set in the row's address.)
+
+(Amended 2026-10-02, the field round, part 2, the owner's finding: the question field on the question step and the title on the terms step are drawn as fields, the surface with a line, since on the field-coloured band a transparent box did not read as somewhere to type.)
+
+(Amended 2026-10-03, the owner's ruling: how the terms get written is part of the Yes or no choice, since careful mode exists for that kind alone. "Just write it up" and "Ask me three things first" have no heading of their own; they sit under the kind chips, indented 12px with a 1px `--line` at the left and 12px of padding, only while Yes or no is selected, with the sentence for the chosen one under them in `caption`. A number, a pick-one question and an argument never show the row.)
+
+(Amended 2026-10-03, the owner's finding: a game's 40px mark on Now is the two teams stacked, the away team over the home team, each a bar the mark's width and 19px tall with its abbreviation whole at 10px, 2px between them. Two 28px stamps overlapping by 16px left 12px of the first showing, so "BOS" read "B(". The squares stay everywhere a team stands alone.)
+
 ### 3.16 Code input
 
 Two forms of the same thing.
@@ -1659,6 +1671,10 @@ the entry line (3.38), on the claimant's screen and the voter's alike; the pictu
 
 (Amended 2026-10-02, the field round, part 1: a sheet reads the address it was opened at. `#enter` raises the entry sheet while entering is the move, `#ballot` raises the ballot; the raise is the next frame's, after the screen has landed, and a fragment never reaches the server or the cache.)
 
+(Built 2026-10-02, the field round, part 2: the four positions are one component, `PinnedSheet`, with `visibleAt`, `positionsOf` and `nextPosition` pure. Tucked shows the handle row alone, resting the move, raised up to 72% of the screen, and full up to the status band less 60px, the only position at which the sheet's own content scrolls, under a handle row that stays; full exists only where raised cannot show it all. The grabber is 48 by 6 (the owner's finding: the 36 by 5 one was too small for a thumb), on a row that keeps the header as its handle. A drag past 24px moves one position by direction and the ends hold; the page's room stays the resting height. The close in the sheet is built for a market stuck past its close alone, the owner's correction: in normal running the close time closes a market by itself, so only once the time has passed with the market still open and two or more in does the sheet rest on "Time’s up, and nothing closed it. Anyone in it can." and the chalk "Close it with N", for the asker and anyone in it; the calls-are-in stretch is next round's.)
+
+(Corrected 2026-10-03, the owner's reading of 3.42 and of this section: the close belongs in the sheet for every market someone can close, the asker on any open market with two in and anyone in once it is stuck past its close time. It is the sheet's main action when everyone asked is in or when the market is stuck, and otherwise a secondary that asks once, under one line saying what closing now costs: "Everyone you asked is in.", "Close it now and John and Maya can’t get in.", "Whoever isn’t in yet can’t get in after." where nobody was named, and "Time’s up, and nothing closed it. Anyone in it can." once stuck. While someone is changing their own entry the entry sheet stands in its place. The note above, which built it for the stuck case alone, is superseded. The calls-are-in stretch stays next round's.)
+
 ### 3.25 The question band and the market screen
 
 The top of every market screen. 12px from the screen edges, radius 12, the market's field
@@ -1956,6 +1972,8 @@ only knew emoji. The bucket admits PNG beside JPEG for it.
 into that question's link tiles (3.27): choosing a sticker as a mark is choosing to send it
 where the question goes. A sticker made later from a market's photo is seen by the people who
 could see that photo, until someone chooses it as a mark.
+
+(Amended 2026-10-02, the field round, part 2, the owner's finding: a pasted cutout shows in "Your stickers" at once from the device's own copy, shrunk on the device first, with the upload running behind it; the cell is not pickable until the sticker is stored, and the pick lands when it is.)
 
 ### 3.29 The question step and the mark picker
 
@@ -3053,6 +3071,8 @@ door, not only on the screen. Someone who has opened the link but not entered is
 so the link page (3.17) shows no photos. The claim's evidence stays on the claim card, never in
 this frame, and a memory still never reaches the proposal or the tiebreaker.
 
+(Amended 2026-10-02, the field round, part 2, the owner's finding: the file input no longer forces the camera while the market is open. A phone offers the camera and the library alike, open or ended, since a photo taken a minute ago is as much the night's as one taken now; the paragraph's `capture="environment"` is gone from the open window and from the settlement photo.)
+
 ### 3.40 Between two teams: who wins and the margin
 
 Both new kinds of What's on market sit between the two teams, so they share one picture: a line
@@ -3333,6 +3353,10 @@ theirs takes messages. A person hears about a question at most once per six hour
 
 (Amended 2026-10-02, the field round, part 1: past its close, anyone in a market may close it, since a close the time should have made is nobody's privilege and a market stuck past its close is everyone's to finish; before the close it stays the asker's, and the refusal names the asker ("Only JP can close this one."). A second tap on Close, or a tap after the time closed it, finds it closed and is answered as done. The "Closing it. A few seconds." caption is gone: the control's own wait says it.)
 
+(Amended 2026-10-02, the field round, part 2: a count on Now's rows names its second number only when it is real, "3 of 6 in" while someone named is still out and "4 in" once everyone named is in or when nobody was named (`inCount`), as the who's-in row already did.)
+
+(Amended 2026-10-03, the owner's rule on late closes: the close time ends editing whether or not the close has run. Past it nobody gets in or changes a number, and the screen offers neither: an entry's caption reads "final", Change is not drawn, and someone not in has no entry sheet. At any close after it an entry last changed after it does not count; for a game the close time is its start. With fewer than two entries that count, the question ends as an expiry: nothing scored, no toll. The tertiary "Close it with 4" under the row is gone: the close is in the sheet, 3.24.)
+
 ### 3.43 I got this one
 
 Logging a cover lives on the person view, because a cover is always between you and one person,
@@ -3476,6 +3500,8 @@ on their own account, naming whose phone. A watched PIN stays fixable: in an ope
 changed from the person's own phone until the close; a blind entry is final, so its owner can withdraw it
 from their own phone before the close, and cannot enter again, so the remedy is never a way around blind.
 The steps above are built in Round B's part 3.)
+
+(Amended 2026-10-02, the field round, part 2, the owner's finding: the two PIN fields on You are numeric text fields drawn masked (`.pin-field`, `-webkit-text-security: disc`) with autocomplete off, never password fields, so the phone offers digits and neither jumps to its password manager nor moves the focus on its own; the second field takes focus once the first holds four digits, and never again.)
 
 ### 3.46 The guest line
 
@@ -4104,6 +4130,8 @@ so, because the asker would otherwise reasonably wonder.
 
 (Amended 2026-10-02, the field round, part 1: three notices for voting. Voting opened: everyone in the quorum but the person whose act closed it, whichever path closed it, named for what they did ("JP closed “…”", "Time’s up on JP’s “…”", "Rae is in on “…”"), landing on the ballot; sent by the action that closed it and, for every path it did not, by the tick within a minute, once per question. Everyone asked is in: the asker, once, when the last person they asked gets in, never for their own entry. The twelve-hour reminder: once, by push and by email, to everyone still to vote twelve hours into voting, held to 9am in the asker's zone when it would fall between 11pm and 9am, never a second. The reminder is a notice sent because time passed, which Principle 1 forbids; the owner ruled it in on 2026-10-02 for the first week with real groups, where nobody came back to vote without being told (docs/decisions.md). It is the one exception, and it is named.)
 
+(Amended 2026-10-03, the owner's ruling: a notice held for the night is held in the recipient's own night where the app knows their zone (kept on the account from the browser on each open), then the asker's, then Eastern; never UTC, which is 3am on the east coast. The twelve-hour reminder is claimed a person at a time, so one person's night never holds the others. The backstop warning's quiet hours fall back to Eastern the same way.)
+
 ### 5.1 Errors
 
 There is no red for errors in this product (its only red is behind Now's swipe-to-remove, 3.15),
@@ -4186,6 +4214,8 @@ for taps whose result can't be shown before it finishes, such as signing in, joi
 a photo going up.
 
 (Amended 2026-10-02, the field round, part 1: a write is never shown failed. Past three seconds a working control that writes says "Still going. This one takes a few seconds." under its runner, and at ten seconds it keeps the runner and the line: the block with "Try again" never comes for a write, because the request may land after the words and a second send of the same thing is the one thing a slow write must not get. The ten-second block with "Try again" is a read's alone: a screen asked for again changes nothing. The control's `kind` says which; a write is the default.)
+
+(Amended 2026-10-03, the owner's check: "Still going" cannot run for good. A tap with no network sends nothing and the offline words stand under the control; an action that throws answers the table's words at the control, never the error card in place of the screen; and a write with no answer after a minute gets the block with "Something broke on our end. Try again in a minute." and takes taps again. A signature the device cannot make, thirty days after the first sign-in, opens the code step in the tap's own place; left unanswered, the control says "You’ve been signed out. Sign in to finish this.")
 
 ### 5.3 Waiting, and the one place a skeleton is allowed
 
@@ -4339,6 +4369,8 @@ it. Groups are not a destination for the reasons in 4.7.
 | Starting from an idea | The ideas tile, first on What's on and last on Now while fewer than three are running, then the ideas page (3.47) |
 | Signing up, as a guest | The guest line at the top of every screen (3.46), or Sign in on the join sheet (3.17) |
 | A screen's first-visit tips | On their own, the first time a screen opens (10.9) |
+
+(Amended 2026-10-02, the field round, part 2, the owner's finding: in who's got who, the tokens under a heading that already names the owner ("JP’s got") wear the face of the one they have got, never the owner's again, `ObligationToken` with `face="other"`.)
 
 ### 6.4 Shell rules
 
@@ -4592,6 +4624,8 @@ follows the rules in 9.2, and 9.13 lists each one with the layer it moves. Board
 (interactive) and `AskStepsFrames`.
 
 (Amended 2026-10-02, the field round, part 1: the document never scrolls. `html` and `body` are the viewport's height with overflow hidden; the app root (`#app`) is one fixed box the screen's height that scrolls, and it is the one place the page's scroll is read or set (`src/lib/ui/scroller.ts`); every fixed layer sits beside it. The viewport guard of 2026-09-29, its probes and the `--vv-top` and `--vv-bottom` offsets are gone. A keyboard pans the visual viewport over the box and pins the fixed layers to its own top edge; with it gone, and after the app returns from the background, everything is where it was. What a keyboard does is still read from the field that took it.)
+
+(Amended 2026-10-03, read in an installed copy on the iOS 26 simulator: a document that fits the screen is laid out 62 points short there, so `html` is one pixel taller than the large viewport, `calc(100lvh + 1px)`, with overflow still hidden, and the plain height while a text field holds the keyboard. The height is the stylesheet's and never a class on the element. Nothing reads `visualViewport`, which iOS 26 leaves 68 points short after any keyboard.)
 
 ### 9.1 The set
 

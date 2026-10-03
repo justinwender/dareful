@@ -1,5 +1,6 @@
 "use client";
 
+import { attempt } from "@/lib/ui/attempt";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -23,7 +24,7 @@ export function ThatsMe({ claimId, label }: { claimId: string; label: string }) 
         onClick={() =>
           start(async () => {
             setError(null);
-            const r = await acceptSuggestionAction(claimId);
+            const r = await attempt(() => acceptSuggestionAction(claimId));
             if ("error" in r) {
               setError(r.error);
               return;

@@ -86,7 +86,8 @@ export async function reconcileChainWrites(now: Date, deps: ReconcileDeps): Prom
         deps.onlyHashes ? inArray(W.hash, deps.onlyHashes.map(bufOf)) : sql`true`,
       ),
     )
-    .orderBy(W.createdAt)
+    // Least recently tried first (the field round, 1.2's pattern): a write whose mirror keeps failing, or that the network is not answering for, goes to the back each time it is tried and never holds a place against the rest.
+    .orderBy(W.updatedAt, W.createdAt)
     .limit(PER_TICK);
 
   for (const row of rows) {
@@ -103,6 +104,8 @@ export async function reconcileChainWrites(now: Date, deps: ReconcileDeps): Prom
       if (done) {
         await db.update(W).set({ completedAt: now, updatedAt: now }).where(eq(W.hash, row.hash));
         out.completed.push(hash);
+      } else {
+        await db.update(W).set({ updatedAt: now }).where(eq(W.hash, row.hash));
       }
     };
 
@@ -137,6 +140,7 @@ export async function reconcileChainWrites(now: Date, deps: ReconcileDeps): Prom
       // The network is not answering; next minute.
       console.warn(`reconcile: ${row.label} could not be broadcast again`, err instanceof Error ? err.message : err);
       out.waiting.push(hash);
+      await db.update(W).set({ updatedAt: now }).where(eq(W.hash, row.hash));
       continue;
     }
     if (result === "consumed") {

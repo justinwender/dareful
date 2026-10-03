@@ -136,7 +136,7 @@ test("the asker's Close row gives the count as its reason, never the state as a 
   const everyone = market({ people: ["creator", "a", "b", "c"].map(person) });
   const n = needFromMarket(everyone, "creator", false, t0, () => "tonight");
   assert.equal(n?.kind, "lock");
-  assert.equal(n?.context, "4 of 4 in");
+  assert.equal(n?.context, "4 in");
   assert.ok(!/everyone/i.test(n?.context ?? ""), "the sentence the mark replaced (3.23)");
 });
 

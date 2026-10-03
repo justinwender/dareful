@@ -19,12 +19,12 @@ import { REISSUE_AFTER_MS, sessionDueForReissue } from "@/lib/auth/session";
 import { causeOf } from "@/lib/usage/events";
 
 test("a write is never shown failed: past ten seconds it is still going with its line, and only a read gets the block with Try again", () => {
-  assert.deepEqual(buttonWait("none", "write"), { block: false, pending: false, long: false, line: null });
-  assert.deepEqual(buttonWait("pending", "write"), { block: false, pending: true, long: false, line: null });
-  assert.deepEqual(buttonWait("still", "write"), { block: false, pending: true, long: true, line: WORDS.writeStillGoing });
-  assert.deepEqual(buttonWait("block", "write"), { block: false, pending: true, long: true, line: WORDS.writeStillGoing }, "ten seconds into a write: the runner, the line, and no second send on offer");
-  assert.deepEqual(buttonWait("block", "read"), { block: true, pending: false, long: false, line: null }, "a read may be asked for again");
-  assert.deepEqual(buttonWait("still", "read"), { block: false, pending: true, long: true, line: "Still going." });
+  assert.deepEqual(buttonWait("none", "write"), { block: false, pending: false, long: false, line: null, words: null });
+  assert.deepEqual(buttonWait("pending", "write"), { block: false, pending: true, long: false, line: null, words: null });
+  assert.deepEqual(buttonWait("still", "write"), { block: false, pending: true, long: true, line: WORDS.writeStillGoing, words: null });
+  assert.deepEqual(buttonWait("block", "write"), { block: false, pending: true, long: true, line: WORDS.writeStillGoing, words: null }, "ten seconds into a write: the runner, the line, and no second send on offer");
+  assert.deepEqual(buttonWait("block", "read"), { block: true, pending: false, long: false, line: null, words: WORDS.readTimeout }, "a read may be asked for again");
+  assert.deepEqual(buttonWait("still", "read"), { block: false, pending: true, long: true, line: "Still going.", words: null });
   assert.equal(NOTHING_CAME_BACK, WORDS.readTimeout);
 });
 

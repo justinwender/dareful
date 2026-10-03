@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "@/db";
@@ -9,6 +10,8 @@ import { hashPhone } from "@/lib/auth/phone";
 import { clearSessionCookie, currentUser, issueSessionCookie, sessionDueForReissue, sessionIssuedAt } from "@/lib/auth/session";
 import { bindByBrowserTokens, bindByPhone } from "@/lib/ledger/claims";
 import { record } from "@/lib/usage";
+import { validZone } from "@/lib/ui/copy";
+import { ZONE_COOKIE } from "@/lib/ui/zone-report";
 
 const Body = z.object({
   token: z.string().min(20),
@@ -99,6 +102,7 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   await issueSessionCookie(user.id);
+  await rememberZone(user);
   await record(decision.kind === "create" ? "signed_up" : "signed_in", { method: phone ? "phone" : claims.email ? "email" : "other" }, { userId: user.id });
   return NextResponse.json({
     user: { id: user.id, displayName: user.displayName, ledgerWallet: user.ledgerWallet, governanceWallet: user.governanceWallet },
@@ -115,11 +119,26 @@ export async function POST(req: Request): Promise<Response> {
  */
 export async function PATCH(): Promise<Response> {
   const issued = await sessionIssuedAt();
-  if (sessionDueForReissue(issued, new Date())) {
-    const user = await currentUser();
-    if (user) await issueSessionCookie(user.id);
-  }
+  const user = await currentUser();
+  if (user && sessionDueForReissue(issued, new Date())) await issueSessionCookie(user.id);
+  if (user) await rememberZone(user);
   return new NextResponse(null, { status: 204 });
+}
+
+/**
+ * The zone this browser reported (the `dareful_tz` cookie), kept on the account when it changed (the field round,
+ * 1.8 as amended): a notice held for the night is held in the recipient's own night, and a server that sends a
+ * reminder has no browser to ask. A zone that is not an IANA name is ignored.
+ */
+async function rememberZone(user: { id: string; zone: string | null }): Promise<void> {
+  const raw = (await cookies()).get(ZONE_COOKIE)?.value;
+  let zone: string | null = null;
+  try {
+    zone = validZone(raw ? decodeURIComponent(raw) : null);
+  } catch {
+    zone = null;
+  }
+  if (zone && zone !== user.zone) await db.update(schema.users).set({ zone }).where(eq(schema.users.id, user.id));
 }
 
 export async function DELETE(): Promise<Response> {

@@ -1,5 +1,6 @@
 "use client";
 
+import { attempt } from "@/lib/ui/attempt";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { SignInButton } from "@/components/auth/sign-in-button";
@@ -22,7 +23,7 @@ export function ClaimChoice({ token, name, signedIn, held }: { token: string; na
   function thatsMe() {
     setError(null);
     start(async () => {
-      const r = await thatsMeAction(token);
+      const r = await attempt(() => thatsMeAction(token));
       if ("error" in r) {
         setError(r.error);
         return;
@@ -85,7 +86,7 @@ export function ConcedeButton({ proposalId, conceded }: { proposalId: string; co
         disabled={pending}
         onClick={() =>
           start(async () => {
-            const r = await concedeAction(proposalId);
+            const r = await attempt(() => concedeAction(proposalId));
             if ("error" in r) setError(r.error);
             else {
               setDone(true);

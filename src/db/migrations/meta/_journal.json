@@ -253,6 +253,20 @@
       "when": 1790966518972,
       "tag": "0035_voting_claims",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1790994103268,
+      "tag": "0036_usage_snapshots",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1791039852563,
+      "tag": "0037_changed_at_and_zone",
+      "breakpoints": true
     }
   ]
 }

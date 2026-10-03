@@ -1,5 +1,6 @@
 "use client";
 
+import { attempt } from "@/lib/ui/attempt";
 import { useId, useRef, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -62,7 +63,7 @@ export function CallOff({ kind, dareId, ids, game = false, children }: { kind: "
     setProblem(null);
     start(async () => {
       const all = ids && ids.length > 0 ? ids : [dareId];
-      const r = kind === "remove" ? await removeMarketAction(all) : await archiveMarketAction(all);
+      const r = kind === "remove" ? await attempt(() => removeMarketAction(all)) : await attempt(() => archiveMarketAction(all));
       if ("error" in r) return setProblem(r.error);
       setOpen(false);
       setGone(true);

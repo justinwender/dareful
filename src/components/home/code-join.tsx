@@ -1,5 +1,6 @@
 "use client";
 
+import { attempt } from "@/lib/ui/attempt";
 import { useId, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -74,8 +75,8 @@ export function CodeJoinCompact({ label = "Someone read you a code?" }: { label?
     }
     setField(null);
     start(async () => {
-      const r = await joinByCodeAction(read.code);
-      if (r.at === "field") setField(r.error);
+      const r = await attempt(() => joinByCodeAction(read.code));
+      if ("at" in r && r.at === "field") setField(r.error);
       else setForm(r.error);
     });
   }
@@ -134,8 +135,8 @@ export function CodeJoinFocused({ initial = "", initialProblem = null }: { initi
     }
     setField(null);
     start(async () => {
-      const r = await joinByCodeAction(read.code);
-      if (r.at === "field") setField(r.error);
+      const r = await attempt(() => joinByCodeAction(read.code));
+      if ("at" in r && r.at === "field") setField(r.error);
       else setForm(r.error);
     });
   }
@@ -192,8 +193,8 @@ export function LinkJoin() {
     setField(null);
     setForm(null);
     start(async () => {
-      const r = await joinByLinkAction(text);
-      if (r.at === "field") setForm("There’s no market link on your clipboard.");
+      const r = await attempt(() => joinByLinkAction(text));
+      if ("at" in r && r.at === "field") setForm("There’s no market link on your clipboard.");
       else setForm(r.error);
     });
   }

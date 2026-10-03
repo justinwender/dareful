@@ -285,7 +285,18 @@ export function allInNotice(input: { lastName: string; title: string; count: num
   return { title: "Everyone you asked is in", body: `${input.lastName} made ${input.count} on “${short(input.title)}”.`, url: `${input.appUrl}/m/${input.marketId}` };
 }
 
-/** The reminder's night: from 11pm to 9am in the asker's zone it waits for 9am (the field round, 1.8). */
+/** How long into voting the reminder goes out (the field round, 1.8). */
+export const REMIND_AFTER_MS = 12 * 3_600_000;
+
+/** Where a night is counted when nobody's zone is known: the groups this was built for are on the US east coast, and a night counted in UTC would send at 3am there (the field round). */
+export const FALLBACK_ZONE = "America/New_York";
+
+/** Whose night a notice is held for: the recipient's own zone where the app knows it, then the asker's, then Eastern (the owner's ruling, 2026-10-03). Pure. */
+export function reminderZone(recipient: string | null | undefined, asker: string | null | undefined): string {
+  return recipient || asker || FALLBACK_ZONE;
+}
+
+/** The reminder's night: from 11pm to 9am in that zone it waits for 9am (the field round, 1.8). */
 const REMIND_NIGHT_FROM = 23;
 const REMIND_MORNING = 9;
 

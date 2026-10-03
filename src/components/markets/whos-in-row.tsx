@@ -1,5 +1,6 @@
 "use client";
 
+import { attempt } from "@/lib/ui/attempt";
 import { useEffect, useId, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import QRCode from "qrcode";
@@ -235,7 +236,7 @@ export function CodeSheet({ open, onClose, dareId, url, question, mark }: { open
       .catch(() => alive && setQr(null));
     if (code === null) {
       start(async () => {
-        const r = await roomCodeAction(dareId);
+        const r = await attempt(() => roomCodeAction(dareId));
         if (!alive) return;
         if ("error" in r) setProblem(r.error);
         else setCode(r.code);
@@ -315,7 +316,7 @@ function WhosInSheet({ open, onClose, people, list }: { open: boolean; onClose: 
             onClick={() =>
               start(async () => {
                 setProblem(null);
-                const r = await removeGhostEntryAction(dareId, asking.claimId as string);
+                const r = await attempt(() => removeGhostEntryAction(dareId, asking.claimId as string));
                 if ("error" in r) return setProblem(r.error);
                 setAsking(null);
                 onClose();
@@ -378,7 +379,7 @@ function StillOutRow({ person, dareId, canNudge, relay }: { person: StillOut; da
   function nudge() {
     setProblem(null);
     start(async () => {
-      const r = await nudgeAction(dareId, person.id);
+      const r = await attempt(() => nudgeAction(dareId, person.id));
       if ("error" in r) return setProblem(r.error);
       if (r.waitingOn === 0) return setSaid("Nothing left to wait on.");
       if (r.told === 0) {

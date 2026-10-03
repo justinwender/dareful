@@ -83,6 +83,11 @@ const word = (n: number) => WORDS[n] ?? String(n);
  * "time's up" is computed when the screen is read: the deadline arriving is a consequence of their own act, and
  * it is the only row here that time produces (PLANNING.md 8d; docs/decisions.md 2026-09-19).
  */
+/** "3 of 6 in" while someone asked is still out, "4 in" once everyone named is in or when nobody was named (the field round, 2.7): the second number only when it is real. */
+export function inCount(people: number, groupSize: number): string {
+  return groupSize > people ? `${people} of ${groupSize} in` : `${people} in`;
+}
+
 export function needFromMarket(m: Pick<MarketCardData, "dare" | "state" | "people" | "groupSize" | "votesCast" | "saidBy">, viewerId: string, voted: boolean, now: Date, closes: (at: Date) => string): Omit<Extract<NeedRow, { question: true }>, "groupId"> | null {
   const d = m.dare;
   const base = { key: d.id, subject: d.title, question: true as const, ...lookOf(d, m.state === "locked" ? (m.votesCast > 0 ? "voting" : "locked") : "open") };
@@ -93,9 +98,9 @@ export function needFromMarket(m: Pick<MarketCardData, "dare" | "state" | "peopl
     // Needs you holds only what this person can finish now (4.7). The close refuses fewer than two in (`lockMarket`), so the asker's
     // Close on time's up is offered only with two or more in: a question only the asker is in stays in Running, where it swipes
     // to Remove (3.15). The reason beside the mark is the count (3.23: how many are in), never the state as a sentence: "6 of 6 in".
-    if (d.creatorId === viewerId && iAmIn && (everyone || (timesUp && m.people.length >= 2))) return { ...base, kind: "lock", href: `/m/${d.id}#close`, verb: "Close", context: everyone ? `${m.people.length} of ${m.groupSize} in` : "Time’s up on this one", deadline: d.resolvesBy, since: d.createdAt };
+    if (d.creatorId === viewerId && iAmIn && (everyone || (timesUp && m.people.length >= 2))) return { ...base, kind: "lock", href: `/m/${d.id}#close`, verb: "Close", context: everyone ? inCount(m.people.length, m.groupSize) : "Time’s up on this one", deadline: d.resolvesBy, since: d.createdAt };
     // Past its time nobody gets in (the close is a hard cutoff: `pastItsClose` refuses the entry), so there is no Enter row to finish.
-    if (!iAmIn && !timesUp) return { ...base, kind: "enter", href: `/m/${d.id}#enter`, verb: "Enter", context: `${d.resolvesBy ? `Closes ${closes(d.resolvesBy)} · ` : ""}${m.people.length} of ${m.groupSize} in`, deadline: d.resolvesBy, since: d.createdAt };
+    if (!iAmIn && !timesUp) return { ...base, kind: "enter", href: `/m/${d.id}#enter`, verb: "Enter", context: `${d.resolvesBy ? `Closes ${closes(d.resolvesBy)} · ` : ""}${inCount(m.people.length, m.groupSize)}`, deadline: d.resolvesBy, since: d.createdAt };
     return null;
   }
   if (m.state === "locked" && !voted) {
@@ -164,11 +169,14 @@ export function collapseGames<N extends { kind: NeedRow["kind"]; key: string; co
   const groupOf = new Map<string, string>();
   for (const n of input.needs) groupOf.set(n.key, n.groupId);
   for (const o of input.over) groupOf.set(o.dare.id, o.dare.groupId);
+  // One row per game, whatever sets its questions came from (3.15, decided 2026-10-02, the fifteenth session): the
+  // row opens the one page that holds them all, so the key is the game alone; the set in the row's address is the
+  // most pressing question's.
   const keyOf = (dareId: string, groupId: string | undefined) => {
     const g = games.get(dareId);
-    return g && groupId ? `${g.gameId}:${groupId}` : null;
+    return g && groupId ? g.gameId : null;
   };
-  // Count each game's questions across the three lists, by set of people.
+  // Count each game's questions across the three lists.
   const counts = new Map<string, number>();
   const bump = (k: string | null) => k && counts.set(k, (counts.get(k) ?? 0) + 1);
   for (const n of input.needs) bump(keyOf(n.key, n.groupId));

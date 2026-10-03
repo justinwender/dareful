@@ -11,7 +11,9 @@ type TokenUnit = Pick<DenominationRow, "label" | "pluralLabel" | "quantifiable" 
 
 export type ObligationTokenProps = {
   owner: TokenOwner; // who picks up next
-  other: { id: string; displayName: string };
+  other: { id: string; displayName: string; hue?: Hue; ghost?: boolean };
+  /** Which end's face the pill wears: the owner's (the default), or the other's where a heading already names the owner (the field round, 2.7). */
+  face?: "owner" | "other";
   viewerId: string;
   denomination: TokenUnit;
   quantity: bigint;
@@ -27,10 +29,10 @@ export type ObligationTokenProps = {
  * Contents in order: avatar, glyph tally, mark plus quoted words, rule, dollars. Whole dollars in lists (2.2);
  * the cents stay in the accessible name and on the detail sheet.
  */
-export function ObligationToken({ owner, other, viewerId, denomination, quantity, pending = false, height = 32, className }: ObligationTokenProps) {
+export function ObligationToken({ owner, other, viewerId, denomination, quantity, pending = false, height = 32, className, face = "owner" }: ObligationTokenProps) {
   const label = `${possessiveSentence(owner, other, viewerId)} ${unitWords(denomination, quantity)}`;
   return (
-    <Pill owner={owner} viewerId={viewerId} label={label} pending={pending} height={height} className={className}>
+    <Pill owner={owner} viewerId={viewerId} label={label} pending={pending} height={height} className={className} face={face === "other" && other.hue !== undefined ? { id: other.id, displayName: other.displayName, hue: other.hue, ghost: other.ghost } : undefined}>
       <UnitPart denomination={denomination} quantity={quantity} height={height} />
     </Pill>
   );
@@ -72,9 +74,10 @@ export function splitMixed<T extends { denomination: TokenUnit }>(lines: T[]): T
   return money.length ? [rest, money] : [rest.slice(0, 3), rest.slice(3)];
 }
 
-function Pill({ owner, viewerId, label, pending = false, height, className, children, ...rest }: { owner: TokenOwner; viewerId: string; label: string; pending?: boolean; height: 32 | 40; className?: string; children: React.ReactNode; "data-mixed"?: number }) {
+function Pill({ owner, viewerId, label, pending = false, height, className, children, face, ...rest }: { owner: TokenOwner; viewerId: string; label: string; pending?: boolean; height: 32 | 40; className?: string; children: React.ReactNode; /** Whose face the pill wears when not the owner's: under a heading that already names the owner, the other end's (the field round, 2.7). */ face?: TokenOwner; "data-mixed"?: number }) {
   const yours = owner.id === viewerId;
-  const avatar = <Avatar name={owner.displayName} hue={owner.hue} ghost={owner.ghost} size={height === 40 ? 28 : 22} />;
+  const shown = face ?? owner;
+  const avatar = <Avatar name={shown.displayName} hue={shown.hue} ghost={shown.ghost} size={height === 40 ? 28 : 22} />;
   return (
     <span
       role="img"

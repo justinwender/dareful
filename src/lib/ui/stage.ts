@@ -17,3 +17,11 @@ export function sheetPresent(reading: boolean, changing: boolean): boolean {
 export function answerLands(asked: { step: string; line: string }, now: { step: string; line: string }): boolean {
   return asked.step === now.step && asked.line === now.line;
 }
+
+/**
+ * Whether the row that picks how the terms get written stands (the field round, 2.6, as ruled on 2026-10-03): it is part of the Yes or no
+ * choice, under that chip and only while it is the one selected, on a dare. A number, a pick-one question and an argument never see it.
+ */
+export function paceRowShows(pace: "dare" | "argument", kind: "binary" | "numeric" | "categorical"): boolean {
+  return pace === "dare" && kind === "binary";
+}

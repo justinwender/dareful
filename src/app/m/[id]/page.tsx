@@ -54,7 +54,7 @@ import {
   proposeForArgument,
 } from "@/lib/ledger/settle";
 import {
-  LockButton,
+  CloseSheet,
   type Signing,
   type StakeUnit,
 } from "@/components/markets/market-actions";
@@ -92,6 +92,7 @@ import {
   unitOf,
   VOID_OUTCOME,
   votesOf,
+  pastItsClose,
 } from "@/lib/ledger/markets";
 import { marketShare } from "@/lib/ledger/share";
 import {
@@ -382,6 +383,8 @@ export default async function MarketPage({
     denomination.monetary ? formatMoney(s) : unitWords(denomination, s);
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://dareful.app";
   const now = new Date(clock.now);
+  // Stuck past its close with two or more in (the field round, 1.2, 2.1): the close is the sheet's main action for the asker and for anyone in it.
+  const stuck = state === "open" && d.resolvesBy !== null && d.resolvesBy.getTime() <= now.getTime() && positions.length >= 2;
   // After it ends (3.37): settled, voided or expired. The memory view is the same screen from the second calendar day.
   const ended = state === "resolved" || state === "voided" || state === "expired";
   const endedAt = d.resolvedAt ?? d.lockedAt ?? d.createdAt;
@@ -494,9 +497,30 @@ export default async function MarketPage({
             : null,
         }
       : null;
+  const doneIds = new Set(
+    state === "locked"
+      ? votes.map((v) => v.userId)
+      : positions.map((p) => p.userId).filter((x): x is string => x !== null),
+  );
+  const waitingIds = seats
+    .map((x) => x.userId)
+    .filter((x): x is string => x !== null && x !== me.id && !doneIds.has(x));
+  const waitingUsers = waitingIds.length
+    ? await db
+        .select({ id: schema.users.id, displayName: schema.users.displayName })
+        .from(schema.users)
+        .where(inArray(schema.users.id, waitingIds))
+    : [];
+  const waitingNames = waitingUsers.map((u) => firstName(u.displayName));
+  // The close, in the sheet (3.24, 3.42; the owner's correction, 2026-10-03): for the asker on any open market with two in, and for anyone in once it is stuck past its close time. The main action when everyone asked is in or it is stuck; a secondary that asks once otherwise.
+  const outByName = state === "open" ? waitingUsers.map((u) => ({ name: u.displayName })) : [];
+  const everyoneAskedIn = outByName.length === 0 && seats.filter((x) => x.userId !== null && x.userId !== me.id).length > 0;
+  const closer = state === "open" && mine !== null && positions.length >= 2 && (d.creatorId === me.id || stuck) ? <CloseSheet dareId={d.id} count={positions.length} leftOut={outByName} stuck={stuck} everyoneIn={everyoneAskedIn} /> : null;
   const stage = (
     <MarketStage
       dareId={d.id}
+      closer={closer}
+      pastClose={state === "open" && pastItsClose(d, now)}
       signing={signing}
       unit={unit}
       state={
@@ -661,21 +685,6 @@ export default async function MarketPage({
   const outcome = word(d.resolvedOutcome);
   // Who a nudge would go to, by first name: while open, group members with no number in; once locked, members
   // who have not called it. The server works out the real recipients again; this is only the sentence.
-  const doneIds = new Set(
-    state === "locked"
-      ? votes.map((v) => v.userId)
-      : positions.map((p) => p.userId).filter((x): x is string => x !== null),
-  );
-  const waitingIds = seats
-    .map((x) => x.userId)
-    .filter((x): x is string => x !== null && x !== me.id && !doneIds.has(x));
-  const waitingUsers = waitingIds.length
-    ? await db
-        .select({ id: schema.users.id, displayName: schema.users.displayName })
-        .from(schema.users)
-        .where(inArray(schema.users.id, waitingIds))
-    : [];
-  const waitingNames = waitingUsers.map((u) => firstName(u.displayName));
   const edges =
     state === "resolved"
       ? await db
@@ -1123,7 +1132,7 @@ export default async function MarketPage({
   return (
     <div className="flex flex-1 flex-col">
       <InkRoot ink={ink} />
-      <PhotoAdding dareId={d.id} night={night} canAdd={canAdd} capture={state === "open"} viewer={{ name: me.displayName, hue: hueFor(me.id) }}>
+      <PhotoAdding dareId={d.id} night={night} canAdd={canAdd} viewer={{ name: me.displayName, hue: hueFor(me.id) }}>
       <Screen arrive="fade">
         <LinkOpened link="market" dareId={d.id} signedIn />
         {/* Back, More and the information icon, and no context chip (10.3, 3.19): the band's asker line already names who was asked. */}
@@ -1170,8 +1179,7 @@ export default async function MarketPage({
                   </svg>
                 </section>
               )}
-              {/* The asker's close, under the row and never the primary while the close is still ahead (3.42): it asks once, naming who it leaves out. Who is in without an account is the asker's to remove from who's in, behind the stack. */}
-              {mine && d.creatorId === me.id && positions.length >= 2 ? <LockButton dareId={d.id} count={positions.length} leftOut={holdouts} variant="tertiary" /> : null}
+              {/* The close is in the sheet (3.24, 3.42), for whoever can close: nothing of it under the row. Who is in without an account is the asker's to remove from who's in, behind the stack. */}
               {/* The nudge (3.42, amended 2026-09-27; restored in Round B): the only way someone in reaches the people asked who are not in, with the relay for anyone no device reaches. */}
               {mine ? <Nudge dareId={d.id} names={waitingNames} url={`${appUrl}/m/${d.id}`} relay={relayWords} /> : null}
             </>
