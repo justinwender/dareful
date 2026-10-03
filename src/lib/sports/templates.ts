@@ -128,7 +128,7 @@ export function templatesFor(game: { sport: Sport; home: Pick<FeedGame["home"], 
   const tieRow = CAN_TIE[sport] ? TIE_VOID : null;
   const tie = CAN_TIE[sport] ? " If it ends in a tie, it's void: nothing changes hands, and it counts against nobody." : "";
   const winsCounts = `The team with more ${unit.plural} when the game ends, ${OVERTIME[sport]}.`;
-  const marginCounts = `${cap(unit.plural)} for the ${home} minus ${unit.plural} for the ${away} on the final score, ${OVERTIME[sport]}: the ${home} by 7 is 7, the ${away} by 3 is 3 the other way, a tie is 0. Scored on how close you land.`;
+  const marginCounts = `${cap(unit.plural)} for the ${home} minus ${unit.plural} for the ${away} on the final score, ${OVERTIME[sport]}: the ${home} by 7 is 7, the ${away} by 3 counts as minus 3, a tie is 0. Scored on how close you land.`;
   const totalCounts = `Both teams' ${unit.plural} added together on the final score, ${OVERTIME[sport]}. Scored on how close you land.`;
   const out: Template[] = [
     {

@@ -6,7 +6,8 @@ import { isHex, type Hex } from "viem";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { requireUser } from "@/lib/auth/session";
+import { currentUser } from "@/lib/auth/session";
+import { WORDS } from "@/lib/ui/errors";
 import { CloseError, closeObligation, closeState, closeTypedData, netBetween, netNonce, netTypedData, type ReasonWord } from "@/lib/ledger/closes";
 import { denomOnchainId, groupOnchainId, isUuidLike } from "@/lib/ledger/ids";
 import { notifyClosed, notifyNetted } from "@/lib/notify";
@@ -24,7 +25,8 @@ const PLAIN = "That didn't go through. Try again.";
  * without one and the client fills it in before signing.
  */
 export async function closePayloadAction(obligationId: string): Promise<{ ok: true; ledgerWallet: string; message: { id: string; qty: string; obligationId: Hex; nonce: string } } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   if (!Uuid.safeParse(obligationId).success) return { error: PLAIN };
   const [o] = await db.select({ toUser: schema.obligations.toUser }).from(schema.obligations).where(eq(schema.obligations.id, obligationId)).limit(1);
   if (!o || o.toUser !== user.id) return { error: "Only the person who’s got this one can close it." };
@@ -41,7 +43,8 @@ export async function closePayloadAction(obligationId: string): Promise<{ ok: tr
 
 /** The creditor's one tap: settled or forgiven, everything still open, signed with their ledger wallet. */
 export async function closeObligationAction(obligationId: string, reason: ReasonWord, signature: string): Promise<{ ok: true; txHash: string; /** Sent and still going through (docs/design.md 5.2): the card shows it on its way. */ pending?: true } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const r = Reason.safeParse(reason);
   if (!Uuid.safeParse(obligationId).success || !r.success || !isHex(signature)) return { error: "That didn't come through. Try again." };
   try {
@@ -56,7 +59,8 @@ export async function closeObligationAction(obligationId: string, reason: Reason
 
 /** What a Net signature has to cover: the unit, the set of people, the two of you, and the pair's counter. */
 export async function netPayloadAction(otherUserId: string, groupId: string, denomId: string): Promise<{ ok: true; ledgerWallet: string; message: { groupId: Hex; denomId: Hex; a: Address; b: Address; nonce: string } } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   if (![otherUserId, groupId, denomId].every((v) => Uuid.safeParse(v).success)) return { error: PLAIN };
   const [them] = await db.select({ ledgerWallet: schema.users.ledgerWallet }).from(schema.users).where(eq(schema.users.id, otherUserId)).limit(1);
   if (!them) return { error: PLAIN };
@@ -75,7 +79,8 @@ export async function netPayloadAction(otherUserId: string, groupId: string, den
 
 /** Either party's one tap: what goes both ways in this unit, in this set of people, cancels by the smaller side. */
 export async function netAction(otherUserId: string, groupId: string, denomId: string, signature: string): Promise<{ ok: true; txHash: string; pending?: true } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   if (![otherUserId, groupId, denomId].every((v) => Uuid.safeParse(v).success) || !isHex(signature)) return { error: "That didn't come through. Try again." };
   try {
     const result = await netBetween({ signerUserId: user.id, otherUserId, groupId, denomId, signature });

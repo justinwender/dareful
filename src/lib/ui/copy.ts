@@ -12,6 +12,8 @@ export type Person = { id: string; displayName: string };
  */
 export const ABOUT_FIRST = "Ask your friends what’ll happen, from who falls asleep first to who wins on Sunday.";
 export const ABOUT = `${ABOUT_FIRST} Everyone makes their call, and Dareful keeps track of who’s got who.`;
+/** The line under the signed-out screen's questions (the field round, 1.9): the owner's words, never changing while the questions turn. */
+export const FIRST_LINE = "Ask your friends. Everyone says how sure they are, with a beer or a few dollars riding on it, and Dareful keeps score.";
 
 /** `owner` picks up next (the debtor); `other` is who they have got (the creditor). */
 export function gotSentence(owner: Person, other: Person, viewerId: string): string {
@@ -77,6 +79,14 @@ export function closesLabel(at: Date, now: Date, timeZone: string): string {
   if (days === 1) return "tomorrow";
   if (days < 7) return at.toLocaleDateString("en-US", { timeZone, weekday: "long" });
   return at.toLocaleDateString("en-US", { timeZone, month: "short", day: "numeric" });
+}
+
+/** "Time’s up": the clock of an open market past its close that nothing has closed yet (the field round, 1.2), never "Closes soon", which promises what has not happened. */
+export const TIMES_UP = "Time’s up";
+
+/** "Closes tonight", "Closes Friday", or "Time’s up" once the close has passed with the market still open. */
+export function closesClock(at: Date, now: Date, timeZone: string): string {
+  return at.getTime() <= now.getTime() ? TIMES_UP : `Closes ${closesLabel(at, now, timeZone)}`;
 }
 
 /**

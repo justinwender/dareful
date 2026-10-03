@@ -16,6 +16,7 @@ import { WhoStep, type Person, type SetOption, type Who } from "@/components/mar
 import { openGameQuestionsAction, startGameAction } from "@/lib/actions/games";
 import { daresTypes } from "@/lib/chain/typed-data";
 import { consentFor } from "@/lib/sports/templates";
+import { startWord } from "@/lib/sports/types";
 import type { TeamFace } from "@/lib/ui/team";
 import { cn } from "@/lib/utils";
 
@@ -27,7 +28,7 @@ const PRESETS = [
 ] as const;
 
 export type MenuItem = { key: "home_wins" | "margin" | "total" | "first_drive"; name: string; kindLabel: string; title: string; rows: { countsIf: string; tie: string | null; unclear: string } };
-export type GameHeaderData = { id: string; name: string; away: TeamFace; home: TeamFace; /** "Sun 1:00pm" */ start: string };
+export type GameHeaderData = { id: string; name: string; away: TeamFace; home: TeamFace; /** "Sun 1:00pm" */ start: string; /** The feed's sport, for its own start word ("kickoff", "first pitch"). */ sport: string };
 
 /** The menu row's 28px glyph (3.33): a small structural icon per kind, on `--surface-2`. */
 function MenuGlyph({ k }: { k: MenuItem["key"] }) {
@@ -150,12 +151,12 @@ export function StartGame({ game, menu, sets, people, chrome, signing, mode, clo
     });
   }
 
-  const caption = step === "menu" || (step === "who" && !selectedSet) ? "Everything closes at kickoff." : selectedSet ? (
+  const caption = step === "menu" || (step === "who" && !selectedSet) ? `Everything closes at ${startWord(game.sport)}.` : selectedSet ? (
     <span className="flex items-center gap-2">
       <AvatarStack people={selectedSet.avatars.slice(0, 4)} size={26} ring="var(--surface-2)" />
       <span>{mode.kind === "add" ? mode.groupLabel : selectedSet.label}</span>
     </span>
-  ) : who.kind === "people" ? `${who.userIds.length} picked. Everything closes at kickoff.` : "Whoever you send it to. Everything closes at kickoff.";
+  ) : who.kind === "people" ? `${who.userIds.length} picked. Everything closes at ${startWord(game.sport)}.` : `Whoever you send it to. Everything closes at ${startWord(game.sport)}.`;
 
   const wrap = (children: ReactNode) => (
     <Screen>
@@ -268,7 +269,7 @@ export function StartGame({ game, menu, sets, people, chrome, signing, mode, clo
             <dt className="text-label text-ink-3">If it’s unclear</dt>
             <dd className="text-body text-ink-2">{m.rows.unclear}</dd>
             <dt className="text-label text-ink-3">Closes</dt>
-            <dd className="text-body text-ink-2">At kickoff, {closes}</dd>
+            <dd className="text-body text-ink-2">At {startWord(game.sport)}, {closes}</dd>
           </dl>
         </section>
       ))}

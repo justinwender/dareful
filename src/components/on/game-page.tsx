@@ -32,6 +32,7 @@ import { storageConfigured } from "@/lib/media/storage";
 import { cardMeta, gameWhosIn, lineT, type CardInput } from "@/lib/sports/cards";
 import { nightPhotoTarget } from "@/lib/sports/night-photo";
 import { gameById, gameGroupsFor, gameMarkets } from "@/lib/sports";
+import { startWord } from "@/lib/sports/types";
 import { scoreLine } from "@/lib/sports/results";
 import { SLIDER_REACH, templatesFor, type TemplateKey } from "@/lib/sports/templates";
 import type { Sport } from "@/lib/sports/types";
@@ -52,12 +53,12 @@ import { viewerClock } from "@/lib/ui/zone";
  * set asked on it, each opening its own screen, where they get in. Nothing about who is on it (3.32). Signed out it
  * has the wordmark and the way to sign in; signed in it has Back, and nothing about signing in.
  */
-function LinkedGame({ header, asked, ahead, signedIn }: { header: { id: string; name: string; away: TeamFace; home: TeamFace; start: string }; asked: Awaited<ReturnType<typeof gameMarkets>>; ahead: boolean; signedIn: boolean }) {
+function LinkedGame({ header, asked, ahead, signedIn }: { header: { id: string; name: string; away: TeamFace; home: TeamFace; start: string; sport: string }; asked: Awaited<ReturnType<typeof gameMarkets>>; ahead: boolean; signedIn: boolean }) {
   return (
     <Screen>
       {signedIn ? <TopBar back info="game-link" /> : <TopBar wordmark info="game-link" />}
       <div className={signedIn ? "flex flex-col gap-7 py-2" : "flex flex-col gap-6 py-6"} data-game-link="">
-        <GameHeader game={header} caption={ahead ? "Everything closes at kickoff." : "Everything closed at kickoff."} />
+        <GameHeader game={header} caption={ahead ? `Everything closes at ${startWord(header.sport)}.` : `Everything closed at ${startWord(header.sport)}.`} />
         {asked.length > 0 ? (
           <div className="overflow-hidden rounded-card border border-line bg-surface" data-game-questions="">
             {asked.map((r, i) => (
@@ -95,7 +96,7 @@ export async function GamePage({ id, g, add, start }: { id: string; g: string | 
   const me = await currentUser();
   const away: TeamFace = { abbr: game.awayAbbr, name: game.awayShort, color: game.awayColor };
   const home: TeamFace = { abbr: game.homeAbbr, name: game.homeShort, color: game.homeColor };
-  const header = { id: game.id, name: game.name, away, home, start: startLabel(game.startsAt, clock.zone) };
+  const header = { id: game.id, name: game.name, away, home, start: startLabel(game.startsAt, clock.zone), sport: game.sport };
   const ahead = game.startsAt.getTime() > now.getTime() && game.status !== "postponed" && game.status !== "canceled";
   // The set an address names, from the link's path or from `g`.
   const linked = g && /^[0-9a-f-]{36}$/i.test(g) ? g : null;
@@ -242,7 +243,7 @@ export async function GamePage({ id, g, add, start }: { id: string; g: string | 
         {groups.map((x) => {
           const on = x.groupId === chosen.groupId;
           return (
-            <Link key={x.groupId} prefetch={false} scroll={false} href={`/on/${game.id}?g=${x.groupId}`} aria-current={on ? "true" : undefined} className="relative -my-1 inline-flex h-11 max-w-full items-center">
+            <Link key={x.groupId} prefetch={false} scroll={false} replace href={`/on/${game.id}?g=${x.groupId}`} aria-current={on ? "true" : undefined} className="relative -my-1 inline-flex h-11 max-w-full items-center">
               <LinkPending />
               <span className={`inline-flex h-9 max-w-full items-center gap-1.5 rounded-pill border px-[14px] chip-context text-ink-2 ${on ? "border-ink-3 bg-surface-2" : "border-line-strong"} ${x.unnamed && !on ? "border-dashed" : ""}`}>
                 <span className="truncate">{x.label}</span>
@@ -397,7 +398,7 @@ export async function GamePage({ id, g, add, start }: { id: string; g: string | 
     <Screen>
       <TopBar back right={more} info="game" />
       <div className="flex flex-col gap-7 py-2">
-        <GameHeader game={header} caption={`${whoAsked} ${ahead ? "Everything closes at kickoff." : "Everything closed at kickoff."}`.trim()} right={ahead ? undefined : feedFinal ? scoreLine(feedFinal, game.homeShort, game.awayShort) : "Started"} />
+        <GameHeader game={header} caption={`${whoAsked} ${ahead ? `Everything closes at ${startWord(game.sport)}.` : `Everything closed at ${startWord(game.sport)}.`}`.trim()} right={ahead ? undefined : feedFinal ? scoreLine(feedFinal, game.homeShort, game.awayShort) : "Started"} />
         {chips}
         <section className="flex flex-col gap-[10px]">
           <SectionLabel>Questions</SectionLabel>

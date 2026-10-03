@@ -1,7 +1,8 @@
 "use server";
 
 import { z } from "zod";
-import { requireUser } from "@/lib/auth/session";
+import { currentUser } from "@/lib/auth/session";
+import { WORDS } from "@/lib/ui/errors";
 import { addMarketPhoto, addSettlementPhoto, MediaError, removeMarketPhoto } from "@/lib/media";
 import { addSticker, MarkError } from "@/lib/media/marks";
 import { MAX_UPLOAD_BYTES } from "@/lib/media/pipeline";
@@ -18,7 +19,8 @@ import { record } from "@/lib/usage";
  * kept, and every field of its metadata is gone before it is stored.
  */
 export async function addSettlementPhotoAction(form: FormData): Promise<{ ok: true; mediaId: string } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const obligationId = z.string().refine(isUuidLike).safeParse(form.get("obligationId"));
   const file = form.get("photo");
   if (!obligationId.success || !(file instanceof File)) return { error: "That didn't come through. Try again." };
@@ -42,7 +44,8 @@ export async function addSettlementPhotoAction(form: FormData): Promise<{ ok: tr
  * market as the parent, the role stored on the row. Adding sends nobody anything.
  */
 export async function addMarketPhotoAction(form: FormData): Promise<{ ok: true; mediaId: string } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const dareId = z.string().uuid().safeParse(form.get("dareId"));
   const file = form.get("photo");
   if (!dareId.success || !(file instanceof File)) return { error: "That didn't come through. Try again." };
@@ -65,7 +68,8 @@ export async function addMarketPhotoAction(form: FormData): Promise<{ ok: true; 
  * is refused here, since a vote or a ruling may rest on it.
  */
 export async function removeMarketPhotoAction(rawId: string): Promise<{ ok: true } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const id = z.string().uuid().safeParse(rawId);
   if (!id.success) return { error: "That one doesn't exist." };
   try {
@@ -83,7 +87,8 @@ export async function removeMarketPhotoAction(rawId: string): Promise<{ ok: true
  * derivative with its edge, and the ink measured from its own pixels, which the picker retints to at once.
  */
 export async function addStickerAction(form: FormData): Promise<{ ok: true; id: string; ink: InkName | null } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const file = form.get("cutout");
   if (!(file instanceof File)) return { error: "That didn't come through. Try again." };
   if (file.size === 0) return { error: "That doesn’t look like a cutout." };
@@ -107,7 +112,8 @@ export async function addStickerAction(form: FormData): Promise<{ ok: true; id: 
  * when the arbitrator reads them. Nothing is proposed again here; the arbitrator reads evidence when it is asked.
  */
 export async function attachEvidenceAction(form: FormData): Promise<{ ok: true; mediaIds: string[] } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const dareId = z.string().uuid().safeParse(form.get("dareId"));
   const files = form.getAll("attachment").filter((f): f is File => f instanceof File && f.size > 0);
   if (!dareId.success || files.length === 0) return { error: "That didn't come through. Try again." };

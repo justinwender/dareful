@@ -322,7 +322,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
           </button>
           <div className="flex flex-col gap-2">
             <label htmlFor="ask-line" className="text-label text-ink-2">
-              {pace === "argument" ? "What you disagree about" : "Your question"}
+              {pace === "argument" ? "What are you two arguing about?" : "Your question"}
             </label>
             <textarea id="ask-line" rows={3} value={line} onChange={(e) => setLine(e.target.value)} maxLength={280} aria-invalid={fieldProblem ? true : undefined} aria-describedby={fieldProblem ? "ask-line-problem" : undefined} className={cn("field-sizing-content resize-none rounded-button bg-transparent text-serif-l text-ink", fieldProblem && "px-2 " + FIELD_PROBLEM_CLASS)} />
             <Problem id="ask-line-problem" message={fieldProblem} />
@@ -451,10 +451,12 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
         ) : null}
         {/* Careful mode is offered with Yes or no alone (the QA round): its three questions are written for a yes-or-no question, and only that write-up reads the answers. */}
         {pace !== "dare" ? (
-          <p className="text-caption text-ink-3">The app says what kind of disagreement it is before anyone puts anything on it. If it’s about one of you rather than about the world, it won’t call it.</p>
+          <p className="text-caption text-ink-3">Dareful checks whether facts can settle it before anyone picks a side, and it won’t rule on an argument about someone in the group.</p>
         ) : numeric || pickOne ? null : (
           <div className="flex flex-col gap-2">
-            <div role="group" aria-label="How the terms get written" className="flex flex-wrap gap-2">
+            {/* The pace of the write-up, under its own label like "How people answer" (the field round, 2.6): offered with Yes or no alone, so it sits under that choice. */}
+            <h2 className="text-label text-ink-3">How the rules get written</h2>
+            <div role="group" aria-label="How the rules get written" className="flex flex-wrap gap-2">
               <button type="button" aria-pressed={mode === "quick"} onClick={() => setMode("quick")} {...chipPress(mode === "quick")}>
                 <Chip size={36} selected={mode === "quick"} choice>
                   Just write it up
@@ -466,7 +468,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
                 </Chip>
               </button>
             </div>
-            <p className="text-caption text-ink-3">{mode === "careful" ? "Three yes-or-no questions, about fifteen seconds. For when a lot is riding on it, or it runs for weeks." : "One line in, terms out. Right for anything you’ll know tonight."}</p>
+            <p className="text-caption text-ink-3">{mode === "careful" ? "Three quick questions first, about fifteen seconds. For when a lot is riding on it, or it runs for weeks." : "One line in, terms out. Right for anything you’ll know tonight."}</p>
           </div>
         )}
         {/* The step's one move, in the sheet (3.24), with the form-level problem above it when there is one. */}
@@ -476,7 +478,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
             <>
               <ProblemSummary messages={[fieldProblem, problem]} />
               <Button type="submit" form="ask-question" variant="primary" loading={thinking} disabled={pickOne && filledChoices.length < MIN_ANSWERS}>
-                {pace === "argument" ? "Weigh it up" : mode === "careful" ? "Ask me" : "Next: who’s in"}
+                {pace === "argument" ? "Check it." : mode === "careful" ? "Ask me" : "Next: who’s in"}
               </Button>
             </>
           }

@@ -8,7 +8,7 @@
  * a game that cannot be matched reads as no result, which is the safe side.
  */
 import { z } from "zod";
-import { FeedError, parseScore, type CheckSource, type FinalScore, type Sport } from "./types";
+import { FeedError, isoDayOf, parseScore, type CheckSource, type FinalScore, type Sport } from "./types";
 
 export const BDL_BASE = "https://api.balldontlie.io";
 /** Where each sport lives, or null where the free tier has nothing. */
@@ -77,7 +77,6 @@ export function gamesUrl(sport: Sport, dayIso: string): string | null {
   return `${BDL_BASE}/${path}/games?dates[]=${dayIso}&per_page=25`;
 }
 
-const isoDay = (at: Date, offsetDays = 0): string => new Date(at.getTime() + offsetDays * 86_400_000).toISOString().slice(0, 10);
 
 /** The live check. The key is read here and sent as the authorization header, never logged and never in a URL. */
 export const balldontlie: CheckSource = {
@@ -87,7 +86,7 @@ export const balldontlie: CheckSource = {
     if (!key || BDL_PATHS[game.sport] === null) return null;
     // The source keys a game by its UTC day; a late game can sit on the day before or after the scoreboard's start.
     for (const offset of [0, -1, 1]) {
-      const url = gamesUrl(game.sport, isoDay(game.startsAt, offset));
+      const url = gamesUrl(game.sport, isoDayOf(game.startsAt, offset));
       if (!url) return null;
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);

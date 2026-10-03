@@ -6,6 +6,12 @@
  */
 export const SPORTS = ["nfl", "mlb", "nba", "nhl"] as const;
 export type Sport = (typeof SPORTS)[number];
+
+/** How each sport's game starts, as the word a row and a caption use ("Everything closes at first pitch."): never "kickoff" for a sport that has none (the field round, 1.2). */
+export const START_WORD: Record<Sport, string> = { nfl: "kickoff", mlb: "first pitch", nba: "tip-off", nhl: "puck drop" };
+export function startWord(sport: string): string {
+  return isSport(sport) ? START_WORD[sport] : "the start";
+}
 export const isSport = (s: unknown): s is Sport => typeof s === "string" && (SPORTS as readonly string[]).includes(s);
 
 /** A team as the feed names it, with its colour as six hex digits (for its stamp and nowhere else, docs/design.md 1.7), or null when the feed gave none. */
@@ -58,9 +64,25 @@ export class FeedError extends Error {
   }
 }
 
-/** A day as the sources key it: the UTC calendar day, YYYYMMDD. */
+/**
+ * A day as the sources key it: the calendar day in the leagues' own zone (US Eastern), YYYYMMDD. Both sources
+ * list a day's games by the day it is in New York, and an evening game there (8pm, which is midnight in UTC) is
+ * on the UTC calendar's next day. Keyed by the UTC day, every such game was asked for under a day it was not on
+ * and never found: "Red Sox at Yankees" at 8pm stayed "scheduled" for good (the field round, 2026-10-02).
+ */
 export function dayOf(at: Date): string {
-  return at.toISOString().slice(0, 10).replace(/-/g, "");
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: SOURCE_ZONE, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(at);
+  const n = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${n("year")}${n("month")}${n("day")}`;
+}
+
+/** The zone the sources' days are counted in. */
+export const SOURCE_ZONE = "America/New_York";
+
+/** The same day as the second source writes it, YYYY-MM-DD, moved by whole days. */
+export function isoDayOf(at: Date, offsetDays = 0): string {
+  const d = dayOf(new Date(at.getTime() + offsetDays * 86_400_000));
+  return `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
 }
 
 /** A whole number from whatever a source sent: a string of digits ("14", never 14 above 9 by string order), or a number. Anything else is nothing. */

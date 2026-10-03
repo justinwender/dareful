@@ -93,9 +93,9 @@ export function needFromMarket(m: Pick<MarketCardData, "dare" | "state" | "peopl
     // Needs you holds only what this person can finish now (4.7). The close refuses fewer than two in (`lockMarket`), so the asker's
     // Close on time's up is offered only with two or more in: a question only the asker is in stays in Running, where it swipes
     // to Remove (3.15). The reason beside the mark is the count (3.23: how many are in), never the state as a sentence: "6 of 6 in".
-    if (d.creatorId === viewerId && iAmIn && (everyone || (timesUp && m.people.length >= 2))) return { ...base, kind: "lock", href: `/m/${d.id}`, verb: "Close", context: everyone ? `${m.people.length} of ${m.groupSize} in` : "Time’s up on this one", deadline: d.resolvesBy, since: d.createdAt };
+    if (d.creatorId === viewerId && iAmIn && (everyone || (timesUp && m.people.length >= 2))) return { ...base, kind: "lock", href: `/m/${d.id}#close`, verb: "Close", context: everyone ? `${m.people.length} of ${m.groupSize} in` : "Time’s up on this one", deadline: d.resolvesBy, since: d.createdAt };
     // Past its time nobody gets in (the close is a hard cutoff: `pastItsClose` refuses the entry), so there is no Enter row to finish.
-    if (!iAmIn && !timesUp) return { ...base, kind: "enter", href: `/m/${d.id}`, verb: "Enter", context: `${d.resolvesBy ? `Closes ${closes(d.resolvesBy)} · ` : ""}${m.people.length} of ${m.groupSize} in`, deadline: d.resolvesBy, since: d.createdAt };
+    if (!iAmIn && !timesUp) return { ...base, kind: "enter", href: `/m/${d.id}#enter`, verb: "Enter", context: `${d.resolvesBy ? `Closes ${closes(d.resolvesBy)} · ` : ""}${m.people.length} of ${m.groupSize} in`, deadline: d.resolvesBy, since: d.createdAt };
     return null;
   }
   if (m.state === "locked" && !voted) {

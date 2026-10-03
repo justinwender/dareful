@@ -4,7 +4,8 @@ import { headers } from "next/headers";
 import { z } from "zod";
 import { addClaimToken, readClaimTokens } from "@/lib/auth/claim-cookie";
 import { regionFromHeaders, tryHashPhone } from "@/lib/auth/phone";
-import { currentUser, requireUser } from "@/lib/auth/session";
+import { currentUser } from "@/lib/auth/session";
+import { WORDS } from "@/lib/ui/errors";
 import {
   addGhostToGroup,
   bindClaimToUser,
@@ -50,7 +51,8 @@ function say(err: unknown, fallback: string): string {
 
 /** A link for one ghost, returned once for the creator's own composer. Dareful never sends anything. */
 export async function createClaimLinkAction(rawClaimId: string): Promise<{ url: string } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const id = uuid.safeParse(rawClaimId);
   if (!id.success) return { error: "That person does not exist." };
   try {
@@ -89,7 +91,8 @@ export async function thatsMeAction(rawToken: string): Promise<{ bound: true } |
 
 /** A suggestion accepted: "Justin has things with a Gabe. Is that you?" Only ever on the person's own tap. */
 export async function acceptSuggestionAction(rawClaimId: string): Promise<{ bound: true } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const id = uuid.safeParse(rawClaimId);
   if (!id.success) return { error: "That person does not exist." };
   // The id must be one this person was actually offered: a same-named ghost in a group they are in.
@@ -110,7 +113,8 @@ const MergeTarget = z.discriminatedUnion("kind", [
 
 /** "This Gabe is that Gabe." */
 export async function mergeGhostAction(rawClaimId: string, rawTarget: unknown): Promise<{ ok: true; to: string } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const id = uuid.safeParse(rawClaimId);
   const target = MergeTarget.safeParse(rawTarget);
   if (!id.success || !target.success) return { error: "Pick who they are." };
@@ -123,7 +127,8 @@ export async function mergeGhostAction(rawClaimId: string, rawTarget: unknown): 
 }
 
 export async function dismissGhostAction(rawClaimId: string): Promise<{ ok: true } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const id = uuid.safeParse(rawClaimId);
   if (!id.success) return { error: "That person does not exist." };
   try {
@@ -146,7 +151,8 @@ const NewPerson = z.object({ name: z.string().trim().min(1).max(40), phone: z.st
 
 /** Adds someone to a named group before they exist, so every later market there just has them. */
 export async function addGhostToGroupAction(rawGroupId: string, rawPerson: unknown): Promise<{ ok: true } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const groupId = uuid.safeParse(rawGroupId);
   const person = NewPerson.safeParse(rawPerson);
   if (!groupId.success || !person.success) return { error: "Type their first name." };

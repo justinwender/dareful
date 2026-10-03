@@ -10,7 +10,7 @@ import manifest from "@/app/manifest";
 import { needFromMarket } from "@/lib/ledger/home";
 import { numbersCaption } from "@/lib/ledger/you";
 import { joinedNotice, voteRequest } from "@/lib/notify/messages";
-import { ABOUT, ABOUT_FIRST, dayLabel, firstName, friendsIn, validZone, whenLabel } from "@/lib/ui/copy";
+import { ABOUT, ABOUT_FIRST, FIRST_LINE, dayLabel, firstName, friendsIn, validZone, whenLabel } from "@/lib/ui/copy";
 import { cutPhrasesIn } from "@/lib/ui/copy-rules";
 import { plainCard } from "@/lib/ui/share-card";
 
@@ -93,9 +93,10 @@ test("what the app is: the owner's two sentences, and the four places read the o
   // The plain card's footer (and so the description on a dead link, share.ts) and the manifest say the first sentence alone.
   assert.equal(plainCard.footer, ABOUT_FIRST);
   assert.equal(manifest().description, ABOUT_FIRST);
-  // The signed-out screen says both. Read from the source, since it is a client component: it types no sentence of its own.
+  // The signed-out screen says the owner's line under its turning questions (the field round, 1.9), from the one constant; it types no sentence of its own.
+  assert.equal(FIRST_LINE, "Ask your friends. Everyone says how sure they are, with a beer or a few dollars riding on it, and Dareful keeps score.");
   const signedOut = readFileSync("src/components/home/signed-out.tsx", "utf8");
-  assert.ok(/\{ABOUT\}/.test(signedOut) && !/The dares, the rounds|No spreadsheet/.test(signedOut), "the signed-out screen reads ABOUT and types no sentence of its own");
+  assert.ok(/\{FIRST_LINE\}/.test(signedOut) && !/The dares, the rounds|No spreadsheet|Who’s got the next one/.test(signedOut), "the signed-out screen reads FIRST_LINE and types no sentence of its own");
 });
 
 test("the app's own description (the root layout's metadata) reads the first sentence from the constant", () => {

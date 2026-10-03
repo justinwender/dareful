@@ -397,7 +397,7 @@ export const INFO_SHEETS: Record<string, InfoSheet> = {
       Gestures: [e("Hold a mark", "In the picker, half a second on a mark with skin tones opens them."), e("Tap a person", "Under Add a person, adds them as an answer; one already added is dimmed.", { qualifier: "on Pick one" })],
       Icons: [e("Close", "Closes asking and returns you exactly where you were.", { glyph: "down" }), e("The cross on an answer", "Takes that answer out; two answers always stay.", { glyph: "close", qualifier: "on Pick one" })],
       "Rules and timing": [
-        e("Ask me three things first", "Three yes-or-no questions before the terms, for when a lot rides on it."),
+        e("Ask me three things first", "Three quick questions before the terms, for when a lot rides on it."),
         e("A named subject", "A name the app can’t place asks what it is, in one tap, before the three."),
         e("Next: who’s in", "Starts writing the terms while you pick who’s in."),
       ],
@@ -408,7 +408,7 @@ export const INFO_SHEETS: Record<string, InfoSheet> = {
         e("A number", "The terms step then asks what the number counts and how far off scores nothing."),
         e("Pick one", "Two to six answers, a few words each or a person you know here."),
         e("Ask me", "Asks the three questions first; the terms are written once you’ve answered them.", { qualifier: "with Ask me three things first" }),
-        e("Weigh it up", "Says what kind of disagreement it is; one about either of you is never called.", { qualifier: "on Settle an argument" }),
+        e("Check it.", "Says whether facts can settle it; an argument about someone in the group isn’t ruled on.", { qualifier: "on Settle an argument" }),
       ],
     },
   },

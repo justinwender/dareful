@@ -317,8 +317,9 @@ export async function nameGroup(groupId: string, userId: string, rawName: string
  */
 export function setLabel(input: { name: string | null; isDyad: boolean; memberNames: string[]; viewerName: string }): string {
   if (input.name) return input.name;
-  if (input.isDyad) return "Just you two";
   const others = input.memberNames.filter((n) => n !== input.viewerName).map((n) => n.trim().split(/\s+/)[0] ?? n);
+  // A set's name follows its people (the field round): a dyad is "Just you two" only while it is two.
+  if (input.isDyad && others.length <= 1) return "Just you two";
   if (others.length === 0) return "Just you";
   if (others.length <= 3) return `${others.join(", ")} and you`;
   return `${others.slice(0, 3).join(", ")} and ${others.length - 3} more`;

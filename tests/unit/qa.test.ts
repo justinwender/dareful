@@ -23,7 +23,7 @@ import { answerLands, sheetPresent } from "@/lib/ui/stage";
 import { CONTROLS, tapCounts } from "@/lib/ui/taps";
 import { invalidated, landedOn, QUIET_MS, resetTouchFetch, touched, touchKindOf, WARM_AFTER_MS, WARM_FOR_MS } from "@/lib/ui/touch-fetch";
 import { browserAnimated, EDGE_PX, landed, landingByTraversal, LANDING_MS, resetTraversal, touchBegan, touchReleased, traversed } from "@/lib/ui/traversal";
-import { takesKeyboard, viewportShift, viewportStuck } from "@/lib/ui/viewport";
+import { takesKeyboard } from "@/lib/ui/viewport";
 import { storedZone, ZONE_COOKIE, zoneCookie, zoneToReport } from "@/lib/ui/zone-report";
 
 test("the entry sheet goes in the render the entry line arrives in: it stands only before you're in or while changing (3.24)", () => {
@@ -177,23 +177,17 @@ test("a screen that lands from a traversal arrives with none of the app's motion
   assert.match(css, /::view-transition-new\(ask-action\) \{ animation: fade-in var\(--motion-quick\) var\(--ease-fade\) both; \}/);
 });
 
-test("a viewport that is short or offset with nothing typing and no zoom is out of step; the keyboard and pinch zoom are not; and each fixed box is told how far to move to sit on the glass", () => {
-  const fine = { scale: 1, offsetTop: 0, height: 852, innerHeight: 852, typing: false };
-  assert.equal(viewportStuck(fine), false, "at rest nothing is repaired");
-  assert.equal(viewportStuck({ ...fine, height: 828 }), true, "short after the keyboard went");
-  assert.equal(viewportStuck({ ...fine, offsetTop: 24 }), true, "offset from the top");
-  assert.equal(viewportStuck({ ...fine, height: 500, typing: true }), false, "the keyboard is up: the short viewport is real");
-  assert.equal(viewportStuck({ ...fine, scale: 2, height: 426, offsetTop: 100 }), false, "pinch zoom is meant to be smaller");
-  assert.equal(viewportStuck({ ...fine, height: 851.5 }), false, "half a pixel of rounding is not a viewport out of step");
-  // The owner's two pictures: every fixed box a screenful's worth off its place, the page showing under the bar.
-  assert.deepEqual(viewportShift({ scale: 1, typing: false }, { topProbeTop: -163, bottomProbeBottom: 711, glassHeight: 874 }), { top: 163, bottom: 163 });
-  // The reading taken on the simulator with the keyboard's pan forced to count: the top layers 304 down, the bottom ones where they are.
-  assert.deepEqual(viewportShift({ scale: 1, typing: false }, { topProbeTop: -304, bottomProbeBottom: 410, glassHeight: 410 }), { top: 304, bottom: 0 });
-  assert.equal(viewportShift({ scale: 1, typing: true }, { topProbeTop: -304, bottomProbeBottom: 410, glassHeight: 410 }), null, "while something is typed into, the keyboard's own pan is left alone");
-  assert.equal(viewportShift({ scale: 2, typing: false }, { topProbeTop: -100, bottomProbeBottom: 300, glassHeight: 426 }), null, "pinch zoom");
-  assert.equal(viewportShift({ scale: 1, typing: false }, { topProbeTop: 0, bottomProbeBottom: 874, glassHeight: 874 }), null, "in step: nothing moves");
-  assert.equal(viewportShift({ scale: 1, typing: false }, { topProbeTop: -0.4, bottomProbeBottom: 873.6, glassHeight: 874 }), null, "rounding is not a shift");
-  assert.deepEqual(viewportShift({ scale: 1, typing: false }, { topProbeTop: -163.4, bottomProbeBottom: 710.6, glassHeight: 874 }), { top: 163, bottom: 163 }, "a box moves by whole pixels, whatever fraction the probes read");
+test("the document never scrolls: the app root is the one scrolling box, the screen's height, and a keyboard is read from the field that takes it", () => {
+  const css = readFileSync("src/app/globals.css", "utf8");
+  const html = /\n  html \{[^}]*\}/.exec(css)?.[0] ?? "";
+  const body = /\n  body \{[^}]*\}/.exec(css)?.[0] ?? "";
+  assert.ok(/height: 100%;/.test(html) && /overflow: hidden;/.test(html), "html is the screen's height and never scrolls");
+  assert.ok(/height: 100%;/.test(body) && /overflow: hidden;/.test(body), "so is body");
+  const layout = readFileSync("src/app/layout.tsx", "utf8");
+  const app = /<div id="app"[^>]*>/.exec(layout)?.[0] ?? "";
+  assert.ok(/\bfixed\b/.test(app) && /\binset-0\b/.test(app) && /\boverflow-y-auto\b/.test(app), "the app root is a fixed box the size of the screen that scrolls its own overflow");
+  assert.ok(!/data-viewport-shift|--vv-top|--vv-bottom|data-viewport-probe/.test(css + layout + readFileSync("src/components/ui/layers.tsx", "utf8")), "the guard and its probes are gone");
+  assert.ok(!/(html|body|#app|#layers)[^{]*\{[^}]*translate:/.test(css), "nothing above the layers ever moves (9.3)");
   assert.equal(takesKeyboard({ tagName: "INPUT", getAttribute: () => "text" }), true);
   assert.equal(takesKeyboard({ tagName: "INPUT", getAttribute: () => null }), true, "an input with no type is a text field");
   assert.equal(takesKeyboard({ tagName: "INPUT", getAttribute: () => "range" }), false, "a slider takes no keyboard");
@@ -201,11 +195,6 @@ test("a viewport that is short or offset with nothing typing and no zoom is out 
   assert.equal(takesKeyboard({ tagName: "DIV", isContentEditable: true }), true);
   assert.equal(takesKeyboard({ tagName: "BUTTON" }), false);
   assert.equal(takesKeyboard(null), false);
-  // Each fixed box moves itself, and only while the guard has written the distances; nothing that contains one ever moves (9.3).
-  const css = readFileSync("src/app/globals.css", "utf8");
-  assert.match(css, /html\[data-viewport-shift\] \[data-fixed="top"\] \{ translate: 0 var\(--vv-top, 0px\); \}/);
-  assert.match(css, /html\[data-viewport-shift\] \[data-fixed="bottom"\] \{ translate: 0 var\(--vv-bottom, 0px\); \}/);
-  assert.ok(!/(html|body|#app|#layers)[^{]*\{[^}]*translate:/.test(css.replace(/html\[data-viewport-shift\] \[data-fixed[^}]*\}/g, "")), "never on an ancestor of the layers");
 });
 
 test("a touch on a row fetches its screen whole only while the route is known, and the route's shape otherwise (9.4)", () => {

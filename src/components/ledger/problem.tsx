@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { ErrorShown } from "@/components/ui/usage";
+import { WORDS } from "@/lib/ui/errors";
 
 /**
  * docs/design.md 5.1. There is no red, so colour cannot carry an error. Ink carries it instead, on four channels: position (at the field, and once more above the button), weight, a glyph, and the words.
@@ -36,8 +37,8 @@ export function isRetryable(message: string): boolean {
   return /didn[’']t go through|didn[’']t send|didn[’']t come back|didn[’']t come through|couldn[’']t save|couldn[’']t load|stopped partway|try again/i.test(message);
 }
 
-/** The words the ten-second step shows under a control that has not come back (5.2). */
-export const NOTHING_CAME_BACK = "That didn’t come back.";
+/** The words the ten-second step shows under a read that has not come back (5.2; the field round, 1.6): a screen asked for again changes nothing, so it may be. */
+export const NOTHING_CAME_BACK = WORDS.readTimeout;
 
 /** A 44px "Try again" inside the block (5.1): the row action's own utility, so this file owes the button nothing and the type budget sees no literal. */
 export function TryAgain({ onClick }: { onClick: () => void }) {

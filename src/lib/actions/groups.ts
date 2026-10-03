@@ -2,7 +2,8 @@
 
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { requireUser } from "@/lib/auth/session";
+import { currentUser, requireUser } from "@/lib/auth/session";
+import { WORDS } from "@/lib/ui/errors";
 import { createGroup, createInvite, redeemInvite, revokeInvite } from "@/lib/ledger/groups";
 
 const groupId = z.string().uuid();
@@ -22,7 +23,8 @@ export async function createGroupAction(formData: FormData): Promise<void> {
 
 /** Makes a link and returns it once. Only the hash is stored, so this is the only moment the link is readable. */
 export async function createInviteAction(rawGroupId: string): Promise<{ url: string } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const parsed = groupId.safeParse(rawGroupId);
   if (!parsed.success) return { error: "That group does not exist." };
   try {
@@ -34,7 +36,8 @@ export async function createInviteAction(rawGroupId: string): Promise<{ url: str
 }
 
 export async function revokeInviteAction(rawGroupId: string, rawInviteId: string): Promise<{ ok: true } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const g = groupId.safeParse(rawGroupId);
   const i = inviteId.safeParse(rawInviteId);
   if (!g.success || !i.success) return { error: "That link does not exist." };
@@ -47,7 +50,8 @@ export async function revokeInviteAction(rawGroupId: string, rawInviteId: string
 }
 
 export async function redeemInviteAction(token: string): Promise<{ groupId: string } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const group = await redeemInvite(token, user.id);
   if (!group) return { error: "That link has expired or was never valid." };
   return { groupId: group.id };

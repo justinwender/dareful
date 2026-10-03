@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/ledger/avatar";
 import {
@@ -30,6 +30,7 @@ import { lowerFirst } from "@/lib/ui/outcome-words";
 import { saidAnswer } from "@/lib/ledger/pick-one";
 import type { Hue } from "@/lib/ui/hue";
 import { cn } from "@/lib/utils";
+import { hashAsksFor, useHash } from "@/lib/ui/hash";
 import type { Signing } from "./market-actions";
 import { NumberEntry } from "./number-entry";
 import { TeamLine } from "./team-line";
@@ -135,6 +136,14 @@ export function CallSheet(props: CallSheetProps) {
   const [typed, setTyped] = useState<bigint | null>(null);
   const [picking, setPicking] = useState(false);
   const [raised, setRaised] = useState(false);
+  // A row on Now that says Vote lands here with the ballot raised (the field round, 1.5): the address asks for it.
+  const hash = useHash();
+  useEffect(() => {
+    if (!hashAsksFor(hash, "ballot")) return;
+    // The raise is the next frame's: the screen lands first, then the sheet travels up out of its rest.
+    const frame = requestAnimationFrame(() => setRaised(true));
+    return () => cancelAnimationFrame(frame);
+  }, [hash]);
   const [line, setLine] = useState("");
   // "Say it yourself" (3.35): the feed is late or has nothing, and a person opens the ordinary claim.
   const [sayingItMyself, setSayingItMyself] = useState(false);

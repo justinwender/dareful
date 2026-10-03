@@ -6,12 +6,12 @@ import { EthereumWalletConnectors } from "@dynamic-labs/ethereum";
 import { monadEvmNetworks } from "@/lib/dynamic/networks";
 import { WalletBootstrap } from "@/components/auth/wallet-bootstrap";
 import { DeviceNotice, MeProvider, useSessionFacts } from "@/components/auth/device";
+import { SessionRefresh } from "@/components/auth/session-refresh";
 import type { SessionFacts } from "@/lib/auth/session-facts";
 import { OpenFromNotification } from "@/components/notify/open-from-notification";
 import { Refresh } from "@/components/ui/refresh";
 import { Shells } from "@/components/ui/shells";
 import { Traversals } from "@/components/ui/traversals";
-import { ViewportGuard } from "@/components/ui/viewport-guard";
 import { ZoneReporter } from "@/components/ui/zone-reporter";
 import { NotificationOpened } from "@/components/ui/usage";
 import { ColdMarks } from "@/components/ui/cold-marks";
@@ -47,12 +47,12 @@ export function Providers({ children, facts }: { children: ReactNode; /** The se
         {/* The two pieces of the frame that read the session wait for it here, under everything and in nobody's way. */}
         <Suspense fallback={null}>
           <SessionPieces />
+          <SessionRefresh />
         </Suspense>
         <ColdMarks />
         <OpenFromNotification />
         <Refresh />
         <Traversals />
-        <ViewportGuard />
         <ZoneReporter />
         <NotificationOpened />
         <Shells />

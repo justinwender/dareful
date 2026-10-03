@@ -28,6 +28,7 @@ import { numberAxis, serialiseAxis, unitPhrase, withSeparators, type NumberLineA
 import type { Signing, StakeUnit } from "./market-actions";
 import { defaultStake, StakeChips } from "./stake-chips";
 import { sheetPresent } from "@/lib/ui/stage";
+import { hashAsksFor, useHash } from "@/lib/ui/hash";
 import { dropKeyboard } from "@/lib/ui/viewport";
 
 export type StagePicture =
@@ -160,6 +161,14 @@ export function MarketStage(props: {
   );
   // A pick-one sheet opens raised (3.30); the others raise on the first touch (3.13).
   const [raised, setRaised] = useState(mine?.unsigned === true || (pickOne !== null && mine === null));
+  // A row on Now that says Enter lands here with the sheet raised (the field round, 1.5): the address asks for it, and only while entering is the move.
+  const hash = useHash();
+  useEffect(() => {
+    if (!(hashAsksFor(hash, "enter") && mine === null)) return;
+    // The raise is the next frame's: the screen lands first, then the sheet travels up out of its rest.
+    const frame = requestAnimationFrame(() => setRaised(true));
+    return () => cancelAnimationFrame(frame);
+  }, [hash, mine]);
   const [stake, setStake] = useState<string>(
     mine?.stake ?? defaultStake(unit),
   );

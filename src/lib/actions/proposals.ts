@@ -7,7 +7,8 @@ import { redirect } from "next/navigation";
 import { isHex } from "viem";
 import { z } from "zod";
 import { regionFromHeaders, tryHashPhone } from "@/lib/auth/phone";
-import { requireUser } from "@/lib/auth/session";
+import { currentUser } from "@/lib/auth/session";
+import { WORDS } from "@/lib/ui/errors";
 import { ClaimError, ensureDyadWithClaim, resolvePicked, spendContactResolution, type Person } from "@/lib/ledger/claims";
 import { denominationById, ensureUnitInGroup, ensureUsd } from "@/lib/ledger/denominations";
 import { splitCover } from "@/lib/ledger/expenses";
@@ -55,7 +56,8 @@ function pathFor(p: Person): string {
 }
 
 export async function proposeCoverAction(input: ProposeInput): Promise<{ error: string } | never> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const parsed = Propose.safeParse(input);
   if (!parsed.success) return { error: "Something in that form is off." };
   const d = parsed.data;
@@ -106,7 +108,8 @@ export async function proposeCoverAction(input: ProposeInput): Promise<{ error: 
 }
 
 export async function confirmProposalAction(proposalId: string, signature: string): Promise<{ ok: true; txHash: string; /** Sent and still going through (docs/design.md 5.2): the screen moves on, and the thing shows on its way. */ pending?: true } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   if (!isHex(signature)) return { error: "That didn't come through. Try again." };
   try {
     const result = await confirmProposal(proposalId, user.id, signature);
@@ -122,7 +125,8 @@ const Batch = z.array(z.string().uuid()).min(1).max(CONFIRM_MANY_MAX);
 
 /** Confirm-all: one prompt for the batch. The ids arrive in the order they were signed in. */
 export async function confirmManyAction(proposalIds: string[], signature: string): Promise<{ ok: true; txHash: string; count: number; pending?: true } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const ids = Batch.safeParse(proposalIds);
   if (!ids.success || !isHex(signature)) return { error: "That didn't come through. Try again." };
   try {
@@ -136,7 +140,8 @@ export async function confirmManyAction(proposalIds: string[], signature: string
 }
 
 export async function declineProposalAction(proposalId: string): Promise<{ ok: true } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   try {
     await declineProposal(proposalId, user.id);
     return { ok: true };
@@ -160,7 +165,8 @@ export type SplitInput = z.infer<typeof Split>;
 
 /** One total, several people: one proposal per person who was there, the odd cent stays with whoever paid. */
 export async function splitCoverAction(input: SplitInput): Promise<{ error: string } | never> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const parsed = Split.safeParse(input);
   if (!parsed.success) return { error: "Something in that form is off." };
   const d = parsed.data;

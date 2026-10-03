@@ -6,7 +6,8 @@ import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { warningSendTime } from "@/lib/notify/messages";
+import { reminderSendTime, warningSendTime } from "@/lib/notify/messages";
+import { notAllowed } from "@/lib/ui/errors";
 import { ensureUsd } from "@/lib/ledger/denominations";
 import { createGroup } from "@/lib/ledger/groups";
 import * as markets from "@/lib/ledger/markets";
@@ -137,4 +138,47 @@ test("the tick tells the asker their time has come exactly once, however often i
   const second = await tick(due, notify, { onlyIds: [d.id] });
   assert.deepEqual([first.notified, second.notified, told], [[d.id], [], [`${d.id}:${ana.user.id}`]]);
   assert.deepEqual([first.arbitrated, first.expired, first.failed], [[], [], []], "a day has not passed, so the group still gets to call it");
+});
+
+test("voting opened is told once per closed question whichever path closed it, and the reminder goes out twelve hours in, once, and never at night", async () => {
+  const H = 3_600_000;
+  const zones = ["UTC", "America/New_York", "America/Los_Angeles", "Pacific/Honolulu", "Asia/Tokyo", "Australia/Sydney", "Europe/London", "Asia/Kolkata"];
+  // A reminder due an hour ago: a zone where that moment is daytime, and one where it is night.
+  const day = zones.find((z) => reminderSendTime(new Date(Date.now() - H), z).getTime() <= Date.now());
+  const night = zones.find((z) => reminderSendTime(new Date(Date.now() - H), z).getTime() > Date.now());
+  assert.ok(day && night, "one zone in daytime and one at night");
+  const opened: string[] = [];
+  const reminded: string[] = [];
+  const notifyVoting = { opened: async (id: string, c: string) => void opened.push(`${id}:${c}`), remind: async (id: string, c: string) => void reminded.push(`${id}:${c}`) };
+  const { d, enter } = await question();
+  await enter(ana, 8000n);
+  await enter(ben, 2000n);
+  await lockInMirror(d.id, { lockedAt: new Date(Date.now() - 13 * H), zone: day });
+  const first = await tick(new Date(), async () => undefined, { onlyIds: [d.id], notifyVoting });
+  const second = await tick(new Date(), async () => undefined, { onlyIds: [d.id], notifyVoting });
+  assert.deepEqual([first.votingOpened, second.votingOpened, opened], [[d.id], [], [`${d.id}:${ana.user.id}`]], "told once, the asker as its cause");
+  assert.deepEqual([first.reminded, second.reminded, reminded], [[d.id], [], [`${d.id}:${ana.user.id}`]], "reminded once, thirteen hours in");
+  // Locked an hour ago: voting opened, no reminder yet. Locked thirteen hours ago at night in its zone: it waits for the morning.
+  const fresh = await question();
+  await fresh.enter(ana, 8000n);
+  await fresh.enter(ben, 2000n);
+  await lockInMirror(fresh.d.id, { lockedAt: new Date(Date.now() - H), zone: day });
+  const late = await question();
+  await late.enter(ana, 8000n);
+  await late.enter(ben, 2000n);
+  await lockInMirror(late.d.id, { lockedAt: new Date(Date.now() - 13 * H), zone: night });
+  const r = await tick(new Date(), async () => undefined, { onlyIds: [fresh.d.id, late.d.id], notifyVoting });
+  assert.deepEqual([r.votingOpened.sort(), r.reminded], [[fresh.d.id, late.d.id].sort(), []]);
+});
+
+test("a second tap on Close finds it closed and is answered as done; before its time nobody but the asker may close it, and the refusal names the asker", async () => {
+  const { d, enter } = await question();
+  await enter(ana, 8000n);
+  await enter(ben, 2000n);
+  assert.equal(await codeOf(() => markets.lockMarket(d.id, ben.user.id)), "not_yours");
+  await assert.rejects(markets.lockMarket(d.id, ben.user.id), (e: unknown) => e instanceof Error && e.message === notAllowed("Ana", "close"));
+  assert.equal(await codeOf(() => markets.lockMarket(d.id, cy.user.id)), "not_yours", "someone in the set but not in the question, before its time");
+  await lockInMirror(d.id);
+  assert.equal((await markets.lockMarket(d.id, ana.user.id)).txHash, "0x", "closed is closed: nothing is sent twice");
+  assert.equal((await markets.lockMarket(d.id, ben.user.id)).txHash, "0x");
 });

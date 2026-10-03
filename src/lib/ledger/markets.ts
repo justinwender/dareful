@@ -15,6 +15,8 @@
  * server does not hold, verified here and again by the contract. Nothing goes onchain for a position nobody
  * signed: every position in `create` carries its owner's own signature. And one resolution per transaction.
  */
+import { firstName } from "@/lib/ui/copy";
+import { notAllowed, WORDS } from "@/lib/ui/errors";
 import { randomUUID } from "node:crypto";
 import { drawable, emojiInk } from "@/lib/ui/emoji-ink";
 import { inkFor, inkOf, isInkName, type InkName } from "@/lib/ui/ink";
@@ -480,13 +482,30 @@ export async function enterMarket(input: { dareId: string; userId: string; stake
  * nothing lands at all. The quorum is whatever the ledger says the group is at that moment, never anything sent
  * from here, and the threshold the contract computed is mirrored back.
  */
+/**
+ * Who may close a market by hand (the field round, 1.2): its asker while it runs, and once its close time has
+ * passed anyone in it, since a close the time should have made is nobody's privilege and a market stuck past
+ * its close is everyone's to finish. Pure, so the rule is held by a test.
+ */
+export function mayClose(d: { creatorId: string; resolvesBy: Date | null; inIt: ReadonlyArray<string | null> }, byUserId: string, now: Date): boolean {
+  if (d.creatorId === byUserId) return true;
+  const timesUp = d.resolvesBy !== null && d.resolvesBy.getTime() <= now.getTime();
+  return timesUp && d.inIt.includes(byUserId);
+}
+
 /** `byUserId` null is the app itself: an argument locks the moment its second person is in, and the scheduler locks a question whose time has come. */
 export async function lockMarket(dareId: string, byUserId: string | null): Promise<{ txHash: Hex; threshold: number; quorum: Address[] }> {
   const d = await marketById(dareId);
   if (!d) throw new MarketError("That one doesn't exist.", "not_found");
-  if (byUserId !== null && d.creatorId !== byUserId) throw new MarketError("Only the person who asked it can close it.", "not_yours");
-  if (stateOf(d) !== "open" || !d.creatorSignature) throw new MarketError("It can’t be closed right now.", "wrong_state");
+  // A second tap on Close, or a close the time made while the first was on its way, finds it closed: that is the
+  // close that was asked for, answered as done and sent nowhere twice (the field round, 1.6).
+  if (d.lockedAt) return { txHash: "0x" as Hex, threshold: d.threshold, quorum: [] };
+  if (stateOf(d) !== "open" || !d.creatorSignature) throw new MarketError(WORDS.changed, "wrong_state");
   const positions = await positionsOf(d.id);
+  if (byUserId !== null && !mayClose({ creatorId: d.creatorId, resolvesBy: d.resolvesBy, inIt: positions.map((p) => p.userId) }, byUserId, new Date())) {
+    const [asker] = await db.select({ displayName: schema.users.displayName }).from(schema.users).where(eq(schema.users.id, d.creatorId)).limit(1);
+    throw new MarketError(notAllowed(firstName(asker?.displayName ?? "the asker"), "close"), "not_yours");
+  }
   if (positions.length < 2) throw new MarketError("It takes two to close it.", "wrong_state");
   // Nothing goes onchain for a position nobody signed (PLANNING.md section 4): a ghost's number, or one bound to
   // an account but never signed, makes the market provisional. It locks here, and its transfers become proposals.

@@ -1,5 +1,6 @@
 "use client";
 
+import { failureWords, offlineNow } from "@/lib/ui/errors";
 import { useCallback, useEffect, useRef } from "react";
 import { useUserWallets } from "@dynamic-labs/sdk-react-core";
 import { isEthereumWallet } from "@dynamic-labs/ethereum";
@@ -15,7 +16,9 @@ export class SignerError extends Error {}
 /** A refusal in the person's own words: what happened, and that nothing was sent. */
 export function signingProblem(err: unknown): string {
   if (err instanceof SignerError) return err.message;
-  return err instanceof Error && /reject|denied|cancel/i.test(err.message) ? "No problem, nothing was sent." : "That didn't go through. Try again.";
+  if (err instanceof Error && /reject|denied|cancel/i.test(err.message)) return "No problem, nothing was sent.";
+  // A request that threw rather than answered (the field round, 1.6): nothing was sent on a phone with no network, and the server's words otherwise, since in production a thrown action says nothing of why.
+  return failureWords(!offlineNow());
 }
 
 type Typed = { domain: TypedDataDomain; types: Record<string, ReadonlyArray<{ name: string; type: string }>>; primaryType: string; message: Record<string, unknown> };

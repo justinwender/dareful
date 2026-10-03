@@ -10,7 +10,7 @@ import { ensureUsd } from "@/lib/ledger/denominations";
 import { createOccasionGroup, dismissNamePrompt, isMember, nameGroup, peopleSetsFor, setForPeople } from "@/lib/ledger/groups";
 import { homeFor } from "@/lib/ledger/home";
 import * as markets from "@/lib/ledger/markets";
-import { claimNotice, notifyJoined, notifyOpened, sendNudge } from "@/lib/notify";
+import { claimNotice, notifyAllIn, notifyJoined, notifyOpened, sendNudge } from "@/lib/notify";
 import { CODE_GUESSES_PER_HOUR, joinByCode, joinByMarketLink, roomCodeFor } from "@/lib/ledger/rooms";
 import { cleanup, codeOf, tempSigner, track, type Signer } from "./fixture";
 
@@ -227,4 +227,36 @@ test("a question this person has acted on is running, and once it is over it jus
   await db.update(schema.dares).set({ lockedAt: new Date(), resolvedAt: new Date(), resolvedOutcome: 1n, resolvedBy: "quorum" }).where(eq(schema.dares.id, d.id));
   const over = await home(ana);
   assert.deepEqual([over.running.some((r) => r.id === d.id), over.happened.some((e) => e.kind === "market" && e.market.dare.id === d.id)], [false, true], "over: just happened, and no longer running");
+});
+
+test("a third person joining a question asked between two makes the set the three of them, never a two-person set with three in it", async () => {
+  const two = await setForPeople(ana.user.id, [ben.user.id]);
+  track.group(two.id);
+  assert.equal(two.isDyad, true);
+  const usd = await ensureUsd(two.id, ana.user.id);
+  const d0 = await markets.draftMarket({ creatorId: ana.user.id, groupId: two.id, denomId: usd.id, title: "Does the ferry run Sunday?", termsText: "Yes if one leaves the pier.", resolvesBy: new Date(Date.now() + 3_600_000) });
+  const d = await markets.openMarket(d0.id, ana.user.id, await ana.ledger.signTypedData(markets.createTypedData(d0)));
+  await joinByMarketLink(d.id, cy.user.id);
+  const [g] = await db.select().from(schema.groups).where(eq(schema.groups.id, two.id));
+  assert.equal(g?.isDyad, false, "a set of three is not two people");
+  const mine = (await setsOf(ana)).find((s) => s.groupId === two.id);
+  assert.ok(mine && mine.label !== "Just you two" && /Cy/.test(mine.label), `the set reads as its people: ${mine?.label}`);
+});
+
+test("the asker hears once when the last person asked is in, never for their own entry, and not while someone is still out", async () => {
+  const { d } = await open();
+  await joinByMarketLink(d.id, ben.user.id);
+  await joinByMarketLink(d.id, cy.user.id);
+  const enter = async (who: Signer, bps: bigint) => markets.enterMarket({ dareId: d.id, userId: who.user.id, stake: 1000n, value: bps, signature: await who.ledger.signTypedData(markets.enterTypedData(d, 1000n, bps)) });
+  const rows = () => db.select({ userId: schema.notificationLog.userId, causedBy: schema.notificationLog.causedBy }).from(schema.notificationLog).where(and(eq(schema.notificationLog.dareId, d.id), eq(schema.notificationLog.kind, "all_in")));
+  await enter(ben, 7000n);
+  await notifyAllIn(d.id, ben.user.id);
+  assert.deepEqual(await rows(), [], "Cy is still out");
+  await enter(cy, 3000n);
+  await notifyAllIn(d.id, cy.user.id);
+  assert.deepEqual((await rows()).map((r) => [r.userId, r.causedBy]), [[ana.user.id, cy.user.id]], "told once, as Cy's doing");
+  await enter(ana, 5000n);
+  await notifyAllIn(d.id, ana.user.id);
+  await notifyAllIn(d.id, cy.user.id);
+  assert.equal((await rows()).length, 1, "never a second, and never for the asker's own entry");
 });

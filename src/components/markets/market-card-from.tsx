@@ -1,6 +1,6 @@
 import type { MarketCardData } from "@/lib/ledger/market-view";
 import { ruler, unitPhrase } from "@/lib/ledger/number-axis";
-import { closesLabel } from "@/lib/ui/copy";
+import { closesClock, closesLabel } from "@/lib/ui/copy";
 import { markRefOf } from "@/lib/ui/mark";
 import { outcomeLine } from "@/lib/ui/outcome-words";
 import { answerLine } from "@/lib/ledger/pick-one";
@@ -47,7 +47,7 @@ export function MarketCardFrom({ m, viewerId, clock, consequenceStates, close, g
       ink={m.ink}
       viewerIn={m.viewerIn}
       votesCast={m.votesCast}
-      clockLine={m.state === "open" && m.dare.resolvesBy ? `Closes ${closesLabel(m.dare.resolvesBy, new Date(clock.now), clock.zone)}` : m.state === "locked" && m.dare.resolvesBy && m.votesCast === 0 ? `Resolving ${closesLabel(m.dare.resolvesBy, new Date(clock.now), clock.zone)}` : null}
+      clockLine={m.state === "open" && m.dare.resolvesBy ? closesClock(m.dare.resolvesBy, new Date(clock.now), clock.zone) : m.state === "locked" && m.dare.resolvesBy && m.votesCast === 0 ? `Resolving ${closesLabel(m.dare.resolvesBy, new Date(clock.now), clock.zone)}` : null}
       argument={m.dare.pace === "argument"}
       at={m.at}
       clock={clock}

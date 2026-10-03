@@ -6,7 +6,7 @@ import { evmAddressesOf, InvalidLoginToken, phoneOf, suggestedNameOf, verifyDyna
 import { clearClaimTokens, readClaimTokens } from "@/lib/auth/claim-cookie";
 import { decideLogin } from "@/lib/auth/login";
 import { hashPhone } from "@/lib/auth/phone";
-import { clearSessionCookie, issueSessionCookie } from "@/lib/auth/session";
+import { clearSessionCookie, currentUser, issueSessionCookie, sessionDueForReissue, sessionIssuedAt } from "@/lib/auth/session";
 import { bindByBrowserTokens, bindByPhone } from "@/lib/ledger/claims";
 import { record } from "@/lib/usage";
 
@@ -106,6 +106,20 @@ export async function POST(req: Request): Promise<Response> {
     // A new account: the client marks its governance wallet denied for delegation at Dynamic's end, once, now.
     created: decision.kind === "create",
   });
+}
+
+/**
+ * The session slides (the field round, 1.7): a cookie a day old or more is issued again for thirty days from now,
+ * so an account that opens the app now and then is never signed out by the calendar. Nothing is issued for a bad
+ * or missing cookie, or for one younger than a day; the answer is 204 either way and says nothing else.
+ */
+export async function PATCH(): Promise<Response> {
+  const issued = await sessionIssuedAt();
+  if (sessionDueForReissue(issued, new Date())) {
+    const user = await currentUser();
+    if (user) await issueSessionCookie(user.id);
+  }
+  return new NextResponse(null, { status: 204 });
 }
 
 export async function DELETE(): Promise<Response> {

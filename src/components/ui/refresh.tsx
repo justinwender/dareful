@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { pullStartsHere } from "./handle";
+import { scrollTopOf } from "@/lib/ui/scroller";
 
 /** How far a finger has to pull from the top before letting go re-reads the screen. */
 export const PULL_TO_REFRESH_PX = 72;
@@ -39,12 +40,12 @@ export function Refresh() {
   useEffect(() => {
     const onPage = (t: EventTarget | null) => !(t instanceof Element) || pullStartsHere(t.closest("[data-layer]")?.getAttribute("data-layer") ?? null, t.closest("[role=dialog]") !== null);
     const onStart = (e: TouchEvent) => {
-      startY.current = window.scrollY <= 0 && e.touches.length === 1 && onPage(e.target) ? (e.touches[0]?.clientY ?? null) : null;
+      startY.current = scrollTopOf() <= 0 && e.touches.length === 1 && onPage(e.target) ? (e.touches[0]?.clientY ?? null) : null;
     };
     const onMove = (e: TouchEvent) => {
       if (startY.current === null) return;
       const dy = (e.touches[0]?.clientY ?? 0) - startY.current;
-      if (dy <= 0 || window.scrollY > 0) {
+      if (dy <= 0 || scrollTopOf() > 0) {
         setPulled(0);
         return;
       }

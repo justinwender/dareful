@@ -959,6 +959,30 @@ Everything about the installed app: the time from the tap to Now, which only a r
 
 1. **Two reports at once, two devices.** The first page a phone opens sends a link opened and, from a notification, the tap, in the same instant; each arrived without the cookie and each was answered with a device of its own. The browser's reports are now a queue, one request after the previous has been answered.
 
+## Session 32: the field round, part 1: the owner's nine findings
+
+**When:** October 2, 2026, after part 0's commit. **Who:** the simulator's Safari (iPhone 18 Pro, iOS 27) against the local build as a visitor with no session; the real localhost session in the development browser at phone width; the suites against the shared database and the local server; the production database read through the Supabase MCP for the lists.
+
+### Exercised
+
+- **The shell under a keyboard (1.1).** On the simulator's Safari, a visitor opened a question's link, slid a number, tapped "I’m in" and then the name field. With the keyboard up: the window's scroll read 226 and the visual viewport's offset 226 of a 714-point viewport, the app's own scrolling box stayed at 0, and the pinned sheet's bottom edge sat exactly at the keyboard's top (the layout viewport's 488). With the keyboard dismissed: every number back at 0 and the sheet at 253 to 714 where it started. Then the app sent to the background with Home, Safari reopened from the dock (the sheet still at the name step), the field tapped again: the same numbers under the keyboard, and the same return. The owner's finding was on iOS 26, which the simulator cannot run; item 154.
+- **Game questions (1.2).** The scoreboard day keyed by UTC, found by asking both sources for a known 8pm Eastern game and getting nothing; the lock queue's starvation, found by reading the ten rows the tick selected on production (eight with nobody in ahead of the one with five). The stuck questions listed with a query (eleven under counted askers); nothing changed.
+- **The split game (1.3).** The two sets on "Red Sox at Yankees" read with their people: the owner alone (three questions) and the two-person set carrying three people (one question); the join path reproduced in the database test.
+- **Getting lost (1.4).** In the development browser at phone width: What's on reached by its tab (one entry), a game row (one), a game with the owner's set (one); the set chips did not draw for the one set, so the replace is held by the code and item 164.
+- **Now's verbs (1.5).** The draft "Was Trajan the greatest Roman emperor?" opened from Now: its own screen with the asker's number and "Looks right. I’m in at 50%, $5" as the chalk, which is the step; the stake chips drew as three columns unclipped at 375 points (the owner's screenshot of them clipped is item 155).
+- **The suites.** The unit suites of the round (66 passing in the four files touched), the three database suites (38 passing: the tick's two voting jobs, the close's two rules, the guest's fold, the third joiner), the http suite's session door, the static mutant check at 0 stale, `tsc` and `eslint` clean, the type budget held, and the full run and the audit (below).
+
+### What broke
+
+1. **A sheet raised from an effect.** The lint's rule against a synchronous set-state in an effect refused the first version of the address-raised sheets; the raise is the next frame's now, which also reads as the sheet travelling up after the screen lands.
+2. **One phrase shared by two notices.** The reminder borrowed the vote request's "has/have" and made a mutant ambiguous; it has its own wording.
+3. **A title's question mark.** The notices shorten a title and drop its question mark; the test expected it kept.
+4. **A duplicate constant** in the mutant list (`SETTLE`) stopped the static check; removed.
+
+### Not verified here
+
+The ten-times sequence on iOS 26 in the installed app; the stake chips on the owner's phone; a slow write, an offline tap and a signed-out tap on a phone; the three voting notices arriving by push and by email; the session cookie's expiry moving; the set chips' replace. Items 154 to 164.
+
 ## Session 30: the QA round, on the simulator and across four accounts
 
 **When:** September 29, 2026, after the logo round was deployed. **Who:** four accounts. The real sessions on `localhost:3000` (the development browser, whose pane stayed hidden, so it was driven by script and read by script) and `dareful.app`; Xcode's iPhone 18 Pro simulator (iOS 27) with Dareful added to the home screen and signed in to production as one test account, and its Safari signed in as another; a private tab in that Safari as the visitor with no session. The simulator's web views were read and driven through its Web Inspector (a scratch tool over `appium-remote-debugger`), so every reading of a layer, a viewport or a tap is real WebKit's, and every tap is the simulator's own; its screenshots lag a tap by a second or two. The local build could not be run signed in inside the installed app: putting a test session's cookie into the simulator's browser by hand is materialising a credential and was refused, so what a fix changes there is confirmed on the local build in Safari signed out, or in the real localhost session, and listed below as a phone check where the installed app is the only place it shows.
@@ -1193,3 +1217,14 @@ Items the simulator covered are marked in place above (61, 66, 93, 98, 101, 113,
 151. **The ask layer's way out** (30): ask a question and send it; expect its own screen with nothing of asking over it, the same after pulling to refresh; Close from the question step on each of the four roots and from a photo's "Ask something with it"; expect the place it rose from, with nothing of asking left.
 152. **A device counted once** (31): on a phone that has never opened the app, open a question's link from Messages, then open it again. Expect one `link_opened` row for the device (the owner reads the table), with `installed` false in Safari and true from the home screen, and the preview Messages drew to have left no row at all.
 153. **A notification's tap counted** (31): tap a push and an email for the same question. Expect two `notification_opened` rows, one per channel, and the address bar clean of `via` and `n` once the screen is up.
+154. **The shell after a background and a keyboard** (32): on the owner's iPhone, open a question, send the app to the background, come back, tap the name or stake field, dismiss the keyboard; ten times, on Now, a question, People and You, in light and in dark. Expect the tab bar and the sheet in place every time, and the page the only thing that scrolled.
+155. **The stake chips** (32): the Roman emperor question's sheet on the owner's phone. Expect three chips unclipped; note the phone's width and the text size setting if one is clipped.
+156. **Enter, Vote and Close from Now** (32): tap each verb. Expect the entry sheet raised, the ballot raised, and the close's ask open ("Close it with 4?"), with Back landing on Now.
+157. **A slow write** (32): with the network throttled in Settings, tap "I’m in". Expect the runner and "Still going. This one takes a few seconds." past three seconds, never "Try again"; once the network is back, one entry.
+158. **Offline words** (32): in airplane mode, tap "I’m in". Expect "You’re offline. Try again once you’re back." and the offline bar; nothing sent twice once back.
+159. **Signed-out words** (32): in a browser whose Dareful cookie has been cleared, with a question still open on screen, tap "I’m in". Expect "You’ve been signed out. Sign in to finish this."
+160. **Voting opened** (32): close a question by hand with two in. Expect everyone else in it to hear "JP closed “…”" by push where allowed and by email, the tap landing with the ballot raised; the asker hears nothing of their own close. Let another close by its time: everyone but the asker hears "Time’s up on JP’s “…”" within a minute, the asker the deadline notice as before.
+161. **The reminder** (32): leave a question in voting with a call still open for twelve hours. Expect one reminder by push and by email to each person still out, none between 11pm and 9am in the asker's zone (it arrives at 9am), and never a second.
+162. **Everyone asked is in** (32): ask three named people. Expect one notice to the asker when the last of them gets in, and none when the asker's own entry is the last.
+163. **The session slides** (32): a day after signing in, open the app; in Safari's Web Inspector expect the `dareful_session` cookie's expiry moved to thirty days from now; over the following weeks, no sign-out after weekly opens.
+164. **A game question past the start** (32): a game question with two in at the start. Expect it closed by the first tick after the start and the voting notice; one with one in gone from Now as an expiry with no toll. And on the game page, switch sets twice and press Back once; expect the game left, not the previous set.

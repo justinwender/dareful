@@ -61,6 +61,11 @@ export async function joinGroupOf(d: DareRow, userId: string): Promise<{ joined:
     }
     if (seat) await tx.update(schema.groupMembers).set({ leftAt: null, archivedAt: null, joinedAt: new Date() }).where(and(eq(schema.groupMembers.groupId, d.groupId), eq(schema.groupMembers.userId, userId)));
     else await tx.insert(schema.groupMembers).values({ groupId: d.groupId, userId });
+    // A third person joining a question asked between two is the set growing: a dyad is the pair's own (their covers
+    // land in it, `ensureDyad` finds it by its two members), so from here the set is an ordinary one named by its
+    // people, and the pair's next cover makes them a fresh dyad. Before this, "Just you two" went on naming a set of
+    // five (the field round, 2026-10-02).
+    await tx.update(schema.groups).set({ isDyad: false }).where(and(eq(schema.groups.id, d.groupId), eq(schema.groups.isDyad, true)));
     return { joined: true };
   });
 }

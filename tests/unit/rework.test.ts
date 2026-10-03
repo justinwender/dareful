@@ -181,6 +181,8 @@ test("an open question someone is not in needs their number, with who is in and 
   const n = needFromMarket(market({}), "viewer", false, t0, closes);
   assert.equal(n?.kind, "enter");
   assert.equal(n?.context, "Closes tonight · 1 of 4 in");
+  // The row lands on the market with the entry sheet raised (the field round, 1.5): the verb does what it says.
+  assert.equal(n?.href, "/m/d1#enter");
 });
 
 test("a question someone is already in needs nothing more from them", () => {
@@ -193,6 +195,8 @@ test("the creator is asked to lock when time is up, and not before, and nobody e
   assert.equal(needFromMarket(market(past), "creator", false, t0, closes)?.kind, "lock");
   // The verb is the word of the close (4.6: "Lock it in" is a sportsbook phrase; the asker closes it).
   assert.equal(needFromMarket(market(past), "creator", false, t0, closes)?.verb, "Close");
+  // And lands with the close's ask open (the field round, 1.5).
+  assert.equal(needFromMarket(market(past), "creator", false, t0, closes)?.href, "/m/d1#close");
   assert.equal(needFromMarket(market({}), "creator", false, t0, closes), null);
   assert.equal(needFromMarket(market(past), "viewer", false, t0, closes), null);
 });

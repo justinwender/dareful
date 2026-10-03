@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
-import { notifyAfterVote, notifyBackstopResult, notifyBackstopWarning, notifyDeadline } from "@/lib/notify";
+import { notifyAfterVote, notifyBackstopResult, notifyBackstopWarning, notifyDeadline, notifyVotingOpened, notifyVoteReminder } from "@/lib/notify";
 import { desc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { tick } from "@/lib/ledger/settle";
@@ -33,7 +33,12 @@ export async function POST(req: Request): Promise<Response> {
   const now = new Date();
   // Now's own door, knocked on beside the jobs and never waited for ahead of them (src/lib/ops/warm.ts).
   const warming = keepWarm();
-  const report = await tick(now, notifyDeadline, { notifyWarning: (id, flavour, actsAt) => notifyBackstopWarning(id, flavour, actsAt, now), check: balldontlie });
+  const report = await tick(now, notifyDeadline, {
+    // The two voting notices (the field round, 1.8): the tick holds each claim, so the senders skip their own.
+    notifyVoting: { opened: (id, creatorId) => notifyVotingOpened(id, creatorId, "time", { claimed: true }), remind: (id) => notifyVoteReminder(id, { claimed: true }) },
+    notifyWarning: (id, flavour, actsAt) => notifyBackstopWarning(id, flavour, actsAt, now),
+    check: balldontlie,
+  });
   // The tiebreaker's backstop and the void rule's end are backstops acting: the one notice after, in place of the result notice.
   await Promise.all([...report.arbitrated, ...report.expired].map((id) => notifyBackstopResult(id)));
   // A resolution the tick landed from votes already signed: the result notice goes out as the last vote's, since that vote is what decided it.

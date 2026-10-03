@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { startWord } from "@/lib/sports/types";
 import { GamePage } from "@/components/on/game-page";
 import { gameById } from "@/lib/sports";
 import { currentUser } from "@/lib/auth/session";
@@ -11,7 +12,9 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const { id } = await params;
   const found = /^[0-9a-f-]{36}$/i.test(id) ? await gameById(id).catch(() => null) : null;
   const title = found ? found.game.name : "Dareful";
-  return { title, description: "Everything closes at kickoff.", robots: { index: false, follow: false }, openGraph: { title, description: "Everything closes at kickoff." } };
+  // Each sport's own start word (docs/design.md 3.33, session 15): never kickoff for a game that has none.
+  const description = found ? `Everything closes at ${startWord(found.game.sport)}.` : "Everything closes at the start.";
+  return { title, description, robots: { index: false, follow: false }, openGraph: { title, description } };
 }
 
 export default async function Page({ params, searchParams }: { params: Promise<{ id: string; g: string }>; searchParams: Promise<{ add?: string }> }) {

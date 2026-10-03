@@ -11,7 +11,7 @@ import { after, before, test } from "node:test";
 import { and, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { hashPhone } from "@/lib/auth/phone";
-import { bindClaimToUser, leaveEntry, linkEntriesFor } from "@/lib/ledger/claims";
+import { bindByBrowserTokens, bindClaimToUser, leaveEntry, linkEntriesFor } from "@/lib/ledger/claims";
 import { ensureUsd } from "@/lib/ledger/denominations";
 import { enterAsGhost, ghostPositionFor, MAX_GHOSTS_PER_MARKET, NUMBER_TRIES_PER_HOUR, removeGhostEntry, SUGGEST_AT_MOST, suggestGhostNames } from "@/lib/ledger/ghost-entry";
 import { createGroup, isMember } from "@/lib/ledger/groups";
@@ -256,4 +256,22 @@ test("at sign-in an entry made from a link is listed by the name it was typed un
   assert.equal(await isMember(g, cy.user.id), true);
   await enter(cy, 9000n);
   assert.deepEqual(await linkEntriesFor(cy.user.id), [], "keeping the other is the signature, and the list empties");
+});
+
+test("one guest's entries on two questions fold into one account at sign-in, each kept once at its number", async () => {
+  const q1 = await question([ana]);
+  const q2 = await question([ana]);
+  await q1.enter(ana, 7000n);
+  await q2.enter(ana, 6000n);
+  const first = await q1.ghost({ name: "Noa" }, [], 4000n);
+  const second = await q2.ghost({ name: "Noa" }, [first.browserToken as string], 3000n);
+  assert.equal(second.claimId, first.claimId, "the same browser is the same guest on the next question");
+  const noa = await tempSigner("Noa");
+  assert.deepEqual(await bindByBrowserTokens(noa.user.id, [first.browserToken as string]), [first.claimId]);
+  for (const [q, value] of [[q1, 4000n], [q2, 3000n]] as const) {
+    const ps = await markets.positionsOf(q.d.id);
+    assert.equal(ps.length, 2, "two in, as before the sign-in");
+    assert.equal(ps.filter((p) => p.userId === noa.user.id).length, 1, "the guest's entry is the account's now, once");
+    assert.equal(ps.find((p) => p.userId === noa.user.id)?.value, value);
+  }
 });

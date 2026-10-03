@@ -7,6 +7,7 @@
  * no name, no number, no address, no amount (`usage_events`, src/db/schema.ts).
  */
 import { z } from "zod";
+import { WORDS } from "@/lib/ui/errors";
 
 const count = z.number().int().min(0).max(1000);
 const method = z.enum(["phone", "email", "other"]);
@@ -41,7 +42,7 @@ export const EVENTS = {
   signed_up: z.object({ method }),
   signed_in: z.object({ method }),
   /** Every error a screen showed, by its cause and the screen's shape (never its ids), so the stats can say errors per hundred sessions. */
-  error_shown: z.object({ cause: z.enum(["nothing_came_back", "failed", "offline", "refused", "other"]), screen: z.string().regex(/^\/[a-z0-9/[\]-]{0,39}$/) }),
+  error_shown: z.object({ cause: z.enum(["nothing_came_back", "failed", "offline", "refused", "other", "server", "signed_out", "not_allowed", "changed", "too_many"]), screen: z.string().regex(/^\/[a-z0-9/[\]-]{0,39}$/) }),
 } as const;
 
 export type EventName = keyof typeof EVENTS;
@@ -78,7 +79,13 @@ export function screenOf(pathname: string): string {
 /** The cause an error's words say, for the count; the words themselves never leave the screen. */
 export function causeOf(message: string, online: boolean): EventProps<"error_shown">["cause"] {
   if (!online) return "offline";
-  if (/didn[’']t come back/i.test(message)) return "nothing_came_back";
+  if (message === WORDS.offline) return "offline";
+  if (message === WORDS.server) return "server";
+  if (message === WORDS.signedOut) return "signed_out";
+  if (message === WORDS.changed) return "changed";
+  if (message === WORDS.tooMany) return "too_many";
+  if (/^Only \S+ can \S+ this one\.$/.test(message)) return "not_allowed";
+  if (message === WORDS.readTimeout || /didn[’']t come back/i.test(message)) return "nothing_came_back";
   if (/didn[’']t go through|didn[’']t send|didn[’']t come through|couldn[’']t save|couldn[’']t load|stopped partway|try again/i.test(message)) return "failed";
   if (message.length > 0) return "refused";
   return "other";

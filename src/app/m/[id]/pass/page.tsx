@@ -18,7 +18,7 @@ import { farOffThreshold } from "@/lib/ledger/scale";
 import { templateOfMarket } from "@/lib/sports";
 import { CONSENT, DRIVE_CONSENT, SLIDER_REACH } from "@/lib/sports/templates";
 import type { Sport } from "@/lib/sports/types";
-import { closesLabel, firstName, untilLabel } from "@/lib/ui/copy";
+import { closesClock, firstName, untilLabel } from "@/lib/ui/copy";
 import { hueFor } from "@/lib/ui/hue";
 import { inkOf } from "@/lib/ui/ink";
 import { InkRoot } from "@/components/ledger/ink-root";
@@ -72,7 +72,7 @@ export default async function HandOverPage({ params }: { params: Promise<{ id: s
         {markRefOf(d) ? <MarkRefStamp mark={markRefOf(d)} size={44} onGround /> : <span />}
         <span className="flex items-center gap-2 text-label text-ink-2">
           <StateMark state="open" ink="var(--market-ink)" />
-          {d.resolvesBy ? <span>Closes {closesLabel(d.resolvesBy, now, clock.zone)}</span> : null}
+          {d.resolvesBy ? <span>{closesClock(d.resolvesBy, now, clock.zone)}</span> : null}
         </span>
       </div>
       <h1 className="text-serif-l text-ink">{d.title}</h1>

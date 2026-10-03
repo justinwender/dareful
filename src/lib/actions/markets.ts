@@ -4,7 +4,7 @@ import { pendingCopy, SendPending } from "@/lib/chain/relayer";
 
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
-import { notifyAfterVote, notifyJoined, notifyOpened, notifyRuling, sendNudge, voteCounts, type NudgeResult, type VoteCounts } from "@/lib/notify";
+import { notifyAfterVote, notifyJoined, notifyOpened, notifyRuling, sendNudge, voteCounts, type NudgeResult, type VoteCounts, notifyVotingOpened, notifyAllIn } from "@/lib/notify";
 import { carefulQuestions, declined, SUBJECT_KINDS, triage } from "@/lib/ai/settler";
 import { afterEntry, arbitrateMarket, proposeForArgument, stateCase } from "@/lib/ledger/settle";
 import { isHex, type Hex } from "viem";
@@ -21,7 +21,8 @@ import { StorageUnavailable } from "@/lib/media/storage";
 import { parseAskerScale } from "@/lib/ledger/scale";
 import { MAX_NUMBER } from "@/lib/ledger/scoring";
 import { viewerZone } from "@/lib/ui/zone";
-import { currentUser, requireUser } from "@/lib/auth/session";
+import { currentUser } from "@/lib/auth/session";
+import { WORDS } from "@/lib/ui/errors";
 import { headers } from "next/headers";
 import { regionFromHeaders, tryHashPhone } from "@/lib/auth/phone";
 import { addClaimToken, clearClaimTokens, readClaimTokens } from "@/lib/auth/claim-cookie";
@@ -46,7 +47,8 @@ const say = (err: unknown, fallback: string) => (err instanceof SendPending ? pe
  * nudge landed when it only reached the in-app strip.
  */
 export async function nudgeAction(rawId: string, rawTo?: string): Promise<({ ok: true } & NudgeResult) | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const id = uuid.safeParse(rawId);
   if (!id.success) return { error: "That one doesn't exist." };
   const to = rawTo === undefined ? null : uuid.safeParse(rawTo);
@@ -64,7 +66,8 @@ export async function nudgeAction(rawId: string, rawTo?: string): Promise<({ ok:
  * line is used as typed and the screen says so, because a market must never wait on a model.
  */
 export async function scopeMarketAction(rawLine: string, rawCriterion?: string, rawAnswers?: Array<{ question: string; yes: boolean }>, rawKind?: "binary" | "numeric" | "categorical", rawChoices?: string[]): Promise<ScopeResult | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   return writeUp({ line: rawLine, criterion: rawCriterion, answers: rawAnswers, kind: rawKind, choices: rawChoices }, user.id);
 }
 
@@ -111,7 +114,8 @@ const Draft = z.object({
 
 /** Saves the draft and sends the creator to it; they read the terms there and sign to open it. */
 export async function draftMarketAction(input: z.infer<typeof Draft>): Promise<{ id: string } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const parsed = Draft.safeParse(input);
   if (!parsed.success) return { error: "Something in that is off." };
   const d = parsed.data;
@@ -182,7 +186,8 @@ export async function draftMarketAction(input: z.infer<typeof Draft>): Promise<{
  * copied on the server and never taken from the client.
  */
 export async function draftFromTemplateAction(input: { templateId: string; who: z.infer<typeof Who>; unit: z.infer<typeof Unit>; blind?: boolean; id?: string }): Promise<{ id: string } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const parsed = z.object({ templateId: uuid, who: Who, unit: Unit, blind: z.boolean().default(false), id: z.string().uuid().optional() }).safeParse(input);
   if (!parsed.success) return { error: "Something in that is off." };
   const d = parsed.data;
@@ -214,7 +219,8 @@ const valueOf = (p: z.infer<typeof Position>): bigint => (p.number !== undefined
 
 /** The creator's two signatures: one opens the market, one is their own position. Either failing leaves it a draft or open with nobody in. */
 export async function openMarketAction(rawId: string, createSignature: string, rawPosition: z.infer<typeof Position>, enterSignature: string): Promise<{ ok: true } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const id = uuid.safeParse(rawId);
   const position = Position.safeParse(rawPosition);
   if (!id.success || !position.success || !isHex(createSignature) || !isHex(enterSignature)) return { error: "That didn't come through. Try again." };
@@ -232,7 +238,8 @@ export async function openMarketAction(rawId: string, createSignature: string, r
 }
 
 export async function enterMarketAction(rawId: string, rawPosition: z.infer<typeof Position>, signature: string): Promise<{ ok: true } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const id = uuid.safeParse(rawId);
   const position = Position.safeParse(rawPosition);
   if (!id.success || !position.success || !isHex(signature)) return { error: "That didn't come through. Try again." };
@@ -252,6 +259,8 @@ export async function enterMarketAction(rawId: string, rawPosition: z.infer<type
   revalidatePath(`/m/${id.data}`);
   revalidatePath("/");
   after(() => notifyJoined(id.data, user.id));
+  // An argument's second entry opens its voting; otherwise the asker hears once when the last person asked is in (the field round, 1.8).
+  after(() => (lockedNow ? notifyVotingOpened(id.data, user.id, "both_in") : notifyAllIn(id.data, user.id)));
   // A model is never on the critical path: the ballot is open already, and the proposal arrives when it arrives.
   if (lockedNow) after(() => proposeForArgument(id.data).catch((err: unknown) => console.error("the ruling on an argument did not come through", err)));
   return { ok: true };
@@ -301,13 +310,16 @@ export async function enterAsGhostAction(rawId: string, rawPosition: z.infer<typ
     console.error("an argument did not lock when its second person got in", { dareId: id.data, err });
   }
   revalidatePath(`/m/${id.data}`);
+  // A guest's entry that locks an argument opens its voting for the account-holder in it (the field round, 1.8).
+  if (lockedNow) after(() => notifyVotingOpened(id.data, null, "both_in", { actorName: name }));
   if (lockedNow) after(() => proposeForArgument(id.data).catch((err: unknown) => console.error("the ruling on an argument did not come through", err)));
   return { ok: true, name };
 }
 
 /** The asker removes an entry from someone without an account, while the question is open. */
 export async function removeGhostEntryAction(rawId: string, rawClaimId: string): Promise<{ ok: true } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const id = uuid.safeParse(rawId);
   const claimId = uuid.safeParse(rawClaimId);
   if (!id.success || !claimId.success) return { error: "That didn't come through. Try again." };
@@ -321,7 +333,8 @@ export async function removeGhostEntryAction(rawId: string, rawClaimId: string):
 }
 
 export async function lockMarketAction(rawId: string): Promise<{ ok: true; /** Sent and still going through (docs/design.md 5.2): the band shows it on its way. */ pending?: true } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const id = uuid.safeParse(rawId);
   if (!id.success) return { error: "That one doesn't exist." };
   try {
@@ -333,6 +346,8 @@ export async function lockMarketAction(rawId: string): Promise<{ ok: true; /** S
     }
     return { error: say(err, "Closing it didn’t go through. Nothing changed.") };
   }
+  // Voting opened by the asker's hand: everyone else in it hears now (the field round, 1.8).
+  after(() => notifyVotingOpened(id.data, user.id, "asker"));
   revalidatePath(`/m/${id.data}`);
   return { ok: true };
 }
@@ -345,7 +360,8 @@ export async function lockMarketAction(rawId: string): Promise<{ ok: true; /** S
  * frame (3.8). One proposal is written after everything has landed.
  */
 export async function sayWhatHappenedAction(form: FormData): Promise<{ ok: true } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const id = uuid.safeParse(form.get("dareId"));
   const raw = form.get("text");
   const text = z.string().trim().max(280).safeParse(typeof raw === "string" ? raw : "");
@@ -400,7 +416,8 @@ async function refreshProposal(dareId: string): Promise<void> {
 
 /** A vote is a signature from the voter's governance wallet. This relays it; nothing here can make one. */
 export async function castVoteAction(rawId: string, rawOutcome: string, signature: string): Promise<{ ok: true; resolved: boolean; counts: VoteCounts | null } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const id = uuid.safeParse(rawId);
   const outcome = typeof rawOutcome === "string" ? callToOutcome(rawOutcome) : null;
   if (!id.success || outcome === null || !isHex(signature)) return { error: "That didn't come through. Try again." };
@@ -433,7 +450,7 @@ export type TriageResult = { kind: "declined"; reason: string; dareInstead: stri
  * says so and rules on nothing, because a failed triage is not permission to rule.
  */
 export async function triageAction(rawLine: string): Promise<TriageResult | { error: string }> {
-  await requireUser();
+  if (!(await currentUser())) return { error: WORDS.signedOut };
   const line = z.string().trim().min(3).max(280).safeParse(rawLine);
   if (!line.success) return { error: "Say what you two disagree about, in a line." };
   try {
@@ -452,7 +469,7 @@ const SubjectAnswer = z.object({ name: z.string().trim().min(1).max(40), kind: z
 
 /** Careful mode's three questions, or first the one tap-to-answer question about what a named subject is (docs/decisions.md 2026-09-27). */
 export async function carefulQuestionsAction(rawLine: string, rawSubject?: z.infer<typeof SubjectAnswer>): Promise<{ questions: string[] } | { ask: { subject: string } } | { error: string }> {
-  await requireUser();
+  if (!(await currentUser())) return { error: WORDS.signedOut };
   const line = z.string().trim().min(3).max(280).safeParse(rawLine);
   if (!line.success) return { error: "Ask it in a line." };
   const subject = rawSubject ? SubjectAnswer.safeParse(rawSubject) : null;
@@ -470,7 +487,8 @@ export async function carefulQuestionsAction(rawLine: string, rawSubject?: z.inf
 
 /** One line of someone's case, for the arbitrator. Kept apart from "what happened". */
 export async function stateCaseAction(rawId: string, rawText: string): Promise<{ ok: true } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const id = uuid.safeParse(rawId);
   if (!id.success) return { error: "That one doesn't exist." };
   try {
@@ -484,7 +502,8 @@ export async function stateCaseAction(rawId: string, rawText: string): Promise<{
 
 /** "Let the app call it": someone who is in it asks for the arbitration everyone agreed to going in. */
 export async function arbitrateAction(rawId: string): Promise<{ ok: true; /** Null while the ruling is sent and still going through (5.2). */ outcome: "yes" | "no" | "void" | "number" | "answer" | null } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const id = uuid.safeParse(rawId);
   if (!id.success) return { error: "That one doesn't exist." };
   try {
@@ -504,7 +523,8 @@ export async function arbitrateAction(rawId: string): Promise<{ ok: true; /** Nu
 
 /** The creator's ink pick (docs/design.md 1.8, rule 1): one tap from the market's screen, honoured as picked. */
 export async function pickInkAction(rawId: string, rawInk: string): Promise<{ ok: true } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const id = uuid.safeParse(rawId);
   if (!id.success || !isInkName(rawInk)) return { error: "Something in that is off." };
   try {
@@ -528,7 +548,8 @@ export async function suggestGhostNamesAction(rawId: string, rawTyped: string): 
 
 /** The swipe on Now that removes a market you asked that nobody else is in (3.15): a void only the asker can make, counted against nobody. */
 export async function removeMarketAction(rawIds: string | string[]): Promise<{ ok: true } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const ids = z.array(uuid).min(1).max(SWIPE_AT_MOST).safeParse(Array.isArray(rawIds) ? rawIds : [rawIds]);
   if (!ids.success) return { error: "That one doesn't exist." };
   try {
@@ -543,7 +564,8 @@ export async function removeMarketAction(rawIds: string | string[]): Promise<{ o
 
 /** The swipe on Now that archives a finished market, or a finished game's questions as one row, off this person's Now (3.15): nothing else changes. */
 export async function archiveMarketAction(rawIds: string | string[]): Promise<{ ok: true } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const ids = z.array(uuid).min(1).max(SWIPE_AT_MOST).safeParse(Array.isArray(rawIds) ? rawIds : [rawIds]);
   if (!ids.success) return { error: "That one doesn't exist." };
   try {
@@ -557,7 +579,8 @@ export async function archiveMarketAction(rawIds: string | string[]): Promise<{ 
 
 /** The claimant screen's "leave it out" for an entry made from a link (3.38): it goes back to a fresh ghost under the typed name and never becomes this person's. */
 export async function leaveEntriesAction(rawIds: string[]): Promise<{ ok: true; left: number } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const ids = z.array(uuid).max(50).safeParse(rawIds);
   if (!ids.success) return { error: "That didn't come through. Try again." };
   let left = 0;

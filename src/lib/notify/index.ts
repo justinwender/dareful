@@ -7,17 +7,18 @@
  * Never throws. A notification that fails costs nobody their vote, and the pull path ("Needs you") carries
  * everything a channel drops.
  */
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import type { Address } from "viem";
 import { db, schema } from "@/db";
-import { marketById, quorumOf, tally, VOID_OUTCOME, votesOf } from "@/lib/ledger/markets";
+import { marketById, quorumOf, tally, VOID_OUTCOME, votesOf, type DareRow } from "@/lib/ledger/markets";
 import { firstName } from "@/lib/ui/copy";
 import { sendEmail, sendPush } from "./channels";
 import { positionsOf } from "@/lib/ledger/markets";
 import { record } from "@/lib/usage";
-import { backstopResultNotice, backstopWarningNotice, closedNotice, deadlineNotice, enteredFromNotice, rulingNotice, joinedNotice, nettedNotice, nudgeNotice, nudgeSeq, nudgeTargets, openedNotice, pinLockedNotice, pushElseEmail, recipientsAfterVote, resultNotice, voteRequest, type BackstopHow, type Notice, type WarningFlavour } from "./messages";
+import { allInNotice, backstopResultNotice, backstopWarningNotice, closedNotice, deadlineNotice, voteReminderNotice, votingOpenedNotice, enteredFromNotice, rulingNotice, joinedNotice, nettedNotice, nudgeNotice, nudgeSeq, nudgeTargets, openedNotice, pinLockedNotice, pushElseEmail, recipientsAfterVote, resultNotice, voteRequest, type BackstopHow, type Notice, type WarningFlavour } from "./messages";
 
 /** Claims the (person, market, kind, count) slot; false if it was already told. This is what makes a retry silent. */
-export async function claimNotice(userId: string, dareId: string, kind: "vote_request" | "result" | "opened" | "joined" | "nudge" | "deadline" | "ruling" | "backstop_warning" | "backstop_result" | "entered_from", seq: number, causedBy: string): Promise<string | null> {
+export async function claimNotice(userId: string, dareId: string, kind: "vote_request" | "result" | "opened" | "joined" | "nudge" | "deadline" | "ruling" | "backstop_warning" | "backstop_result" | "entered_from" | "voting_opened" | "vote_reminder" | "all_in", seq: number, causedBy: string): Promise<string | null> {
   const [row] = await db.insert(schema.notificationLog).values({ userId, dareId, kind, seq, causedBy }).onConflictDoNothing().returning({ id: schema.notificationLog.id });
   return row?.id ?? null;
 }
@@ -312,5 +313,92 @@ export async function notifyNetted(otherUserId: string, byUserId: string, denomI
     if (id) await deliver(otherUserId, id, nettedNotice({ name, personId: byUserId, appUrl: APP_URL() }));
   } catch (err) {
     console.error("notifying that obligations were netted failed", { otherUserId, denomId, err });
+  }
+}
+
+/** The quorum's account-holders, by their governance wallets as the chain (or a provisional market) holds them. */
+async function quorumUserIds(d: DareRow): Promise<string[]> {
+  const wallets = await quorumOf(d).catch(() => [] as Address[]);
+  if (wallets.length === 0) return [];
+  const rows = await db.select({ id: schema.users.id }).from(schema.users).where(inArray(sql`lower(${schema.users.governanceWallet})`, wallets.map((w) => w.toLowerCase())));
+  return rows.map((r) => r.id);
+}
+
+/**
+ * Voting opened (the field round, 1.8): everyone in the quorum but the person whose act closed it hears, once per
+ * question, whichever path closed it. The action that closed it calls this at once; the tick calls it for every
+ * locked question not yet asked, within a minute, with `claimed` since it holds the claim already. A lock still on
+ * its way is not yet a close: nothing is claimed, and the tick sends once the mirror is written.
+ */
+export async function notifyVotingOpened(dareId: string, causedBy: string | null, by: "asker" | "time" | "both_in", opts: { claimed?: boolean; actorName?: string } = {}): Promise<void> {
+  try {
+    const d = await marketById(dareId);
+    if (!d || !d.lockedAt || d.resolvedAt) return;
+    if (!opts.claimed) {
+      const [row] = await db.update(schema.dares).set({ voteAskedAt: new Date() }).where(and(eq(schema.dares.id, dareId), isNull(schema.dares.voteAskedAt))).returning({ id: schema.dares.id });
+      if (!row) return;
+    }
+    const actor = causedBy ?? d.creatorId;
+    const name = opts.actorName ? firstName(opts.actorName) : await nameOf(actor);
+    const ids = (await quorumUserIds(d)).filter((id) => id !== actor);
+    await Promise.all(
+      ids.map(async (userId) => {
+        const id = await claimNotice(userId, dareId, "voting_opened", 0, actor);
+        if (id) await deliver(userId, id, votingOpenedNotice({ by, name, title: d.title, marketId: d.id, appUrl: APP_URL() }));
+      }),
+    );
+  } catch (err) {
+    console.error("the voting-opened notice failed", { dareId, err });
+  }
+}
+
+/**
+ * Twelve hours into voting (the field round, 1.8): everyone still to vote is reminded once, by push and email,
+ * never at night in the asker's zone; the tick works out the moment and claims it. Nothing is sent once the votes
+ * already decide it.
+ */
+export async function notifyVoteReminder(dareId: string, opts: { claimed?: boolean } = {}): Promise<void> {
+  try {
+    const d = await marketById(dareId);
+    if (!d || !d.lockedAt || d.resolvedAt) return;
+    if (!opts.claimed) {
+      const [row] = await db.update(schema.dares).set({ voteRemindedAt: new Date() }).where(and(eq(schema.dares.id, dareId), isNull(schema.dares.voteRemindedAt))).returning({ id: schema.dares.id });
+      if (!row) return;
+    }
+    const votes = await votesOf(dareId);
+    if ((tally(votes)[0]?.votes ?? 0) >= d.threshold) return;
+    const voted = new Set(votes.map((v) => v.userId));
+    const quorum = await quorumUserIds(d);
+    const name = await nameOf(d.creatorId);
+    await Promise.all(
+      quorum
+        .filter((id) => !voted.has(id))
+        .map(async (userId) => {
+          const id = await claimNotice(userId, dareId, "vote_reminder", 0, d.creatorId);
+          if (id) await deliver(userId, id, voteReminderNotice({ name, title: d.title, cast: votes.length, quorum: quorum.length, marketId: d.id, appUrl: APP_URL() }));
+        }),
+    );
+  } catch (err) {
+    console.error("the vote reminder failed", { dareId, err });
+  }
+}
+
+/**
+ * The asker hears once when the last person they asked is in (the field round, 1.8): everyone the set holds has a
+ * number on it, the set is more than the asker, the question is still open (an argument locks on its second
+ * entry and says so instead), and the last in was somebody else, since one's own entry is no news.
+ */
+export async function notifyAllIn(dareId: string, lastInId: string): Promise<void> {
+  try {
+    const d = await marketById(dareId);
+    if (!d || d.lockedAt || d.resolvedAt || lastInId === d.creatorId) return;
+    const asked = (await accountHolders(d.groupId)).filter((id) => id !== d.creatorId);
+    if (asked.length === 0) return;
+    const inIt = new Set((await positionsOf(d.id)).map((p) => p.userId));
+    if (!asked.every((id) => inIt.has(id))) return;
+    const id = await claimNotice(d.creatorId, dareId, "all_in", 0, lastInId);
+    if (id) await deliver(d.creatorId, id, allInNotice({ lastName: await nameOf(lastInId), title: d.title, count: inIt.size, marketId: d.id, appUrl: APP_URL() }));
+  } catch (err) {
+    console.error("the all-in notice failed", { dareId, err });
   }
 }

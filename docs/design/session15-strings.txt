@@ -1,0 +1,145 @@
+Session 15 (2026-10-02): every new or changed screen string, by section of docs/design.md.
+Names and numbers in braces are filled in; everything else is literal.
+
+# Calls are in: the close, and between the close and the vote (3.5, 3.13, 3.15, 3.22, 3.23, 3.24, 3.42)
+Calls are in
+Close it with {n}
+When enough of you say calls are in, it closes early.
+{A} says calls are in.
+{A} and {B} say calls are in.
+You and {A} say calls are in.
+It closes when {A}, {B} or you say so too.
+It closes when two of {A}, {B}, {C} and you say so too.
+Everyone you asked is in.
+Close it now and {A} and {B} can't get in.
+Take it back
+Voting opens once it's happened.
+It's happened
+{A} says it's happened.
+Who said what
+{stake} · closed at {10:40pm}
+Calls are in · you said {70%}
+It's happened · you said {70%}
+{$20} on {Justin} is more than half of what's riding.
+The final score will propose what happened.
+
+# The state mark (3.23), aria-label
+Calls are in
+
+# A game's questions while calls are in (3.24, 3.33)
+{Red Sox} {5}, {Yankees} {2} · {top 7th}
+Calls are in · {Red Sox 5, Yankees 2}
+Calls are in · you said {Yankees by 2}
+Waiting on the final score
+
+# The game page (3.33)
+Everything closes at kickoff.
+Everything closes at tip-off.
+Everything closes at first pitch.
+Everything closes at puck drop.
+Everything closed at kickoff.
+Everything closed at tip-off.
+Everything closed at first pitch.
+Everything closed at puck drop.
+Closes at kickoff, {4:25pm}
+Closes at tip-off, {7:30pm}
+Closes at first pitch, {1:05pm}
+Closes at puck drop, {7:00pm}
+yours to change until kickoff
+yours to change until tip-off
+yours to change until first pitch
+yours to change until puck drop
+Q{3} · {8:41}
+Halftime
+Top {7th}
+Bottom {7th}
+{2nd} period · {12:03}
+{2nd} intermission
+OT
+Shootout
+Final
+Final, OT
+Final, {10} innings
+Final, shootout
+How many points, {Chiefs} and {Bills} together?
+How many runs, {Red Sox} and {Yankees} together?
+How many goals, {Bruins} and {Rangers} together?
+Total points
+Total runs
+Total goals
+The terms
+{JP} already asked who wins, with you, {Rachel} and {3} others.
+Go to that one
+Ask your own
+
+# Inviting to a game (3.27, 3.33): the link's title and the game tile
+{Red Sox} at {Yankees}
+{Justin} asks
+{Red Sox} at
+{Yankees}
+Who wins
+By how much
+Total runs
+Closes {Sun Oct 4, 1:05pm}
+
+# The guest line (3.46)
+Sign up and Dareful will remind you when it's time to vote.
+You called it. Sign up so it counts.
+You were closest. Sign up so it counts.
+Sign up
+
+# Joining on a phone with no sign-in (3.17)
+Who's joining?
+Sign in
+Join as {Noah}
+Join as a guest
+The app and Safari each keep their own sign-in.
+Not {Noah}?
+
+# Ideas (3.47)
+Ideas
+Questions ready to ask
+Tonight
+Around the house
+Out and about
+This season
+Will {someone} win the pong game?	Yes or no ({someone} is a blank the asker fills)
+How many minutes until the food comes?	A number (minutes)
+How long will {someone} take?	A number (minutes; {someone} is a blank the asker fills)
+Who's last to arrive?	Pick one
+Will dinner start on time?	Yes or no
+How many times will someone say "back in my day"?	A number (times)
+Will the group chat agree on a restaurant before 7?	Yes or no
+Will the train be late?	Yes or no
+How long is the line, in minutes?	A number (minutes)
+Will it rain before the walk home?	Yes or no
+Which of us wins the costume contest?	Pick one
+Will it snow before Thanksgiving?	Yes or no
+Will the turkey be done on time?	Yes or no
+someone   (the blank on the ideas page)
+Who?
+Or type a name
+
+# First-visit tips (10.9): the footer of each tip
+{1} of {3}
+Next
+Done
+
+# The worked sheet, a market while it's open (10.8), changed entries
+Where the stake sits. Shows once you're in, never before; the names show at the close.
+The close. The time in the band: after it nobody gets in or changes, and everyone's names show.
+Remove, in who's in · if you asked it. Takes out an entry from someone without an account, until the close.
+Calls are in · once you're in. In the sheet: when enough of you say it, it closes before the time.
+Swipe the sheet. Up shows your stake and what gets you in; down lowers it to read the market.
+
+# Qualifier (10.6)
+until the close
+
+# Gone from every screen (4.6)
+locked at {time}
+until the lock
+Locked (as a state name or label)
+Where everyone landed
+Resolving tonight
+Joining as {name} · Not you?   (on a phone with no sign-in; it stays for a signed-in phone)
+Who you're on this with   (the game page's set chips)

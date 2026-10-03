@@ -837,9 +837,9 @@ test("the bar is on the four roots and nowhere else, every other screen has a ba
   const claimant = await get("/welcome", cU);
   if (claimant.status === 200) assert.ok(!/aria-label="Back"/.test(claimant.html) && /data-wordmark=""/.test(claimant.html) && /data-info-icon="claimant"/.test(claimant.html), "the claimant screen's header is the wordmark alone");
   const signedOut = await get("/");
-  assert.ok(/data-wordmark=""/.test(signedOut.html) && signedOut.text.includes("Who’s got the next one?") && !/<nav aria-label="Main"/.test(signedOut.html), "signed out on Now: the wordmark and the way in");
-  // The owner's line (2026-09-29), word for word, and Round C's gone with it: the literal, so a change to the constant is seen here.
-  assert.ok(signedOut.text.includes("Ask your friends what’ll happen, from who falls asleep first to who wins on Sunday. Everyone makes their call, and Dareful keeps track of who’s got who.") && !signedOut.text.includes("No spreadsheet") && !signedOut.text.includes("The dares, the rounds"), "signed out on Now: what the app is, in the owner's words");
+  assert.ok(/data-wordmark=""/.test(signedOut.html) && signedOut.text.includes("Will dinner start on time?") && signedOut.text.includes("Ask your friends. Everyone says how sure they are") && !signedOut.text.includes("Who’s got the next one?") && !/<nav aria-label="Main"/.test(signedOut.html), "signed out on Now: the wordmark and the way in");
+  // The owner's line (2026-10-02, the field round), word for word, and the earlier lines gone with it: the literal, so a change to the constant is seen here.
+  assert.ok(signedOut.text.includes("Ask your friends. Everyone says how sure they are, with a beer or a few dollars riding on it, and Dareful keeps score.") && !signedOut.text.includes("Everyone makes their call, and Dareful keeps track") && !signedOut.text.includes("No spreadsheet") && !signedOut.text.includes("The dares, the rounds"), "signed out on Now: what the app is, in the owner's words");
   // An empty Now (3.14): "Ask something" is the one chalk control, so Start stays hidden, and the bar is still there.
   const empty = await get("/", cA);
   assert.ok(empty.text.includes("Nothing happens here until somebody else is in it.") && empty.text.includes("Ask something"), "the first-run state");
@@ -858,7 +858,7 @@ test("asking offers both paces and both ways of writing the terms, and the settl
   for (const t of ["Something that’ll happen", "Settle an argument", "Just write it up", "Ask me three things first"]) assert.ok(r.text.includes(t), t);
   // Start's "Settle an argument" row lands on the same screen, on the settler's pace.
   const arg = await get("/m/new?pace=argument", cAsker);
-  assert.ok(/aria-pressed="true"[^>]*>\s*<span[^>]*>\s*Settle an argument/.test(arg.html) && arg.text.includes("What you disagree about"), "the settler preselected");
+  assert.ok(/aria-pressed="true"[^>]*>\s*<span[^>]*>\s*Settle an argument/.test(arg.html) && arg.text.includes("What are you two arguing about?"), "the settler preselected");
 });
 
 test("someone not yet in is shown the tiebreaker they would be agreeing to", async () => {
@@ -1965,4 +1965,16 @@ test("the usage door counts a link opened once per device, refuses a link-previe
   const all = await db.select({ name: U.name }).from(U).where(and(eq(U.dareId, marketId), eq(U.deviceId, cookie as string), isNull(U.userId)));
   assert.deepEqual(all.map((r) => r.name), ["link_opened"], "nothing but the one open from this device while nobody was signed in");
   assert.equal((await db.select({ id: U.id }).from(U).where(eq(U.name, "page"))).length, 0);
+});
+
+test("the session slides: a cookie a day old is issued again on a PATCH, a fresh one is left, and no cookie gets none", async () => {
+  const secret = new TextEncoder().encode(process.env.SESSION_SECRET ?? "");
+  const old = await new SignJWT({}).setProtectedHeader({ alg: "HS256" }).setSubject(A.id).setIssuedAt(Math.floor(Date.now() / 1000) - 2 * 86_400).setExpirationTime("20d").sign(secret);
+  const aged = await fetch(`${BASE}/api/session`, { method: "PATCH", headers: { cookie: `dareful_session=${old}` } });
+  assert.equal(aged.status, 204);
+  assert.match(aged.headers.get("set-cookie") ?? "", /dareful_session=/, "issued again");
+  const fresh = await fetch(`${BASE}/api/session`, { method: "PATCH", headers: { cookie: `dareful_session=${cA}` } });
+  assert.deepEqual([fresh.status, fresh.headers.get("set-cookie")], [204, null], "a fresh cookie is left alone");
+  const nobody = await fetch(`${BASE}/api/session`, { method: "PATCH" });
+  assert.deepEqual([nobody.status, nobody.headers.get("set-cookie")], [204, null], "nothing is issued from nothing");
 });

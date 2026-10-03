@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { requireUser } from "@/lib/auth/session";
+import { currentUser } from "@/lib/auth/session";
+import { WORDS } from "@/lib/ui/errors";
 import { dismissNamePrompt, nameGroup } from "@/lib/ledger/groups";
 import { MarketError } from "@/lib/ledger/markets";
 import { readPastedLink } from "@/lib/ledger/room-code";
@@ -19,7 +20,8 @@ type Refusal = { error: string; at: "field" | "form" };
  * the market, already a member or not.
  */
 export async function joinByCodeAction(raw: string): Promise<Refusal> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut, at: "form" };
   const typed = z.string().max(40).safeParse(raw);
   if (!typed.success) return { error: "Codes are six characters.", at: "field" };
   let marketId: string;
@@ -37,7 +39,8 @@ export async function joinByCodeAction(raw: string): Promise<Refusal> {
 
 /** A link pasted into the joining screen: a question's link. Only this app's own path is read. */
 export async function joinByLinkAction(raw: string): Promise<Refusal> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut, at: "form" };
   const typed = z.string().max(400).safeParse(raw);
   const link = typed.success ? readPastedLink(typed.data) : null;
   if (!link) return { error: "That isn't a Dareful link. It starts with dareful.app.", at: "field" };
@@ -55,7 +58,8 @@ export async function joinByLinkAction(raw: string): Promise<Refusal> {
 
 /** "Join as Sam": the person looking at a question's invitation says yes to it. */
 export async function joinMarketAction(rawId: string): Promise<{ error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const id = uuid.safeParse(rawId);
   if (!id.success) return { error: "That link doesn't go anywhere. Ask them to send it again." };
   try {
@@ -68,7 +72,8 @@ export async function joinMarketAction(rawId: string): Promise<{ error: string }
 }
 
 export async function roomCodeAction(rawId: string): Promise<{ code: string } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const id = uuid.safeParse(rawId);
   if (!id.success) return { error: "That one doesn't exist." };
   try {
@@ -81,7 +86,8 @@ export async function roomCodeAction(rawId: string): Promise<{ code: string } | 
 }
 
 export async function nameGroupAction(rawId: string, rawName: string): Promise<{ ok: true } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const id = uuid.safeParse(rawId);
   const name = z.string().trim().min(2).max(40).safeParse(rawName);
   if (!id.success) return { error: "That group doesn't exist." };
@@ -97,7 +103,8 @@ export async function nameGroupAction(rawId: string, rawName: string): Promise<{
 
 /** "Not now" on the naming question under the picker. */
 export async function dismissNamePromptAction(rawId: string): Promise<void> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return;
   const id = uuid.safeParse(rawId);
   if (id.success) await dismissNamePrompt(id.data, user.id);
 }

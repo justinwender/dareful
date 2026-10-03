@@ -150,6 +150,7 @@ test("the band's clock is one function for the screen and the shell (3.25, 9.4)"
   const zone = "America/New_York";
   const soon = new Date("2026-09-28T22:30:00Z");
   assert.match(bandClock({ state: "open", resolvesBy: soon, resolvedAt: null, resolvedBy: null, votes: 0, now, zone }) ?? "", /^Closes /);
+  assert.equal(bandClock({ state: "open", resolvesBy: new Date(now.getTime() - 60_000), resolvedAt: null, resolvedBy: null, votes: 0, now, zone }), "Time’s up", "an open market past its close never says Closes soon (the field round, 1.2)");
   assert.match(bandClock({ state: "locked", resolvesBy: soon, resolvedAt: null, resolvedBy: null, votes: 0, now, zone }) ?? "", /^Resolving /);
   assert.match(bandClock({ state: "locked", resolvesBy: soon, resolvedAt: null, resolvedBy: null, votes: 2, now, zone }) ?? "", /^Voting ends /);
   assert.match(bandClock({ state: "resolved", resolvesBy: soon, resolvedAt: new Date("2026-09-28T19:00:00Z"), resolvedBy: "quorum", votes: 3, now, zone }) ?? "", /^Settled /);

@@ -9,6 +9,7 @@ import { ROOT_KEY, ROOTS, rootFor, type RootPath } from "@/lib/ui/root";
 import { rootMounted } from "@/lib/ui/roots-store";
 import { cn } from "@/lib/utils";
 import { dropKeyboard } from "@/lib/ui/viewport";
+import { scroller, scrollPageTo, scrollTopOf } from "@/lib/ui/scroller";
 import type { Prefetch } from "@/lib/ui/touch-fetch";
 
 /**
@@ -80,7 +81,7 @@ export function TabBar({ active, start }: { active: RootPath; start: boolean }) 
     const y = rememberedScroll(active);
     let touched = false;
     const restore = () => {
-      if (!touched && Math.abs(window.scrollY - y) >= 1) window.scrollTo({ top: y, behavior: "instant" });
+      if (!touched && Math.abs(scrollTopOf() - y) >= 1) scrollPageTo(y);
     };
     restore();
     rootMounted(active);
@@ -97,16 +98,17 @@ export function TabBar({ active, start }: { active: RootPath; start: boolean }) 
     let frame = 0;
     const onScroll = () => {
       cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => rememberScroll(active, window.scrollY));
+      frame = requestAnimationFrame(() => rememberScroll(active, scrollTopOf()));
     };
-    window.addEventListener("scroll", onScroll, { passive: true });
+    const box = scroller();
+    box?.addEventListener("scroll", onScroll, { passive: true });
     return () => {
       cancelAnimationFrame(frame);
       clearTimeout(settle);
       grown?.disconnect();
       window.removeEventListener("touchstart", hands);
       window.removeEventListener("wheel", hands);
-      window.removeEventListener("scroll", onScroll);
+      box?.removeEventListener("scroll", onScroll);
     };
   }, [active]);
   // From Now, the other three roots are fetched while the phone is idle (9.6), the one place prefetch is on.
@@ -124,12 +126,12 @@ export function TabBar({ active, start }: { active: RootPath; start: boolean }) 
     if (href === active) {
       // The current tab again: to the top, smoothly, and at once with Reduce Motion (9.6).
       const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      window.scrollTo({ top: 0, behavior: reduce ? "instant" : "smooth" });
+      scrollPageTo(0, reduce ? "instant" : "smooth");
       return;
     }
     dropKeyboard();
     setGoing(href);
-    rememberScroll(active, window.scrollY);
+    rememberScroll(active, scrollTopOf());
     startNav(() => router.push(href, { scroll: false }));
   };
   const selected = going ?? rootFor(active);

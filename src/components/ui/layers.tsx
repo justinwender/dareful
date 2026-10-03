@@ -46,9 +46,6 @@ export function LayersRoot() {
     <>
       <div aria-hidden="true" data-layer="grain" data-fixed="top" className="grain-tile pointer-events-none fixed inset-0 -z-10" style={{ viewTransitionName: "grain" } as CSSProperties} />
       <div aria-hidden="true" data-layer="status-band" data-fixed="top" data-status-band="" className="grain fixed inset-x-0 top-0 z-20 h-[env(safe-area-inset-top)]" style={{ viewTransitionName: "status-band" } as CSSProperties} />
-      {/* Two probes, fixed like the layers and drawing nothing: where they land against the glass is how the guard knows the phone's viewport is out of step (`viewport.ts`). They never move. */}
-      <div aria-hidden="true" data-viewport-probe="top" className="pointer-events-none invisible fixed top-0 left-0 h-0 w-0" />
-      <div aria-hidden="true" data-viewport-probe="bottom" className="pointer-events-none invisible fixed bottom-0 left-0 h-0 w-0" />
       <div id={LAYERS_ID} data-layer-root="" />
     </>
   );

@@ -246,6 +246,13 @@
       "when": 1790958240253,
       "tag": "0034_usage_events",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1790966518972,
+      "tag": "0035_voting_claims",
+      "breakpoints": true
     }
   ]
 }

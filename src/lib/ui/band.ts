@@ -1,4 +1,4 @@
-import { closesLabel, endedClock } from "./copy";
+import { closesClock, closesLabel, endedClock } from "./copy";
 
 /**
  * The band's clock (docs/design.md 3.25, 3.37, 3.38): "Closes …" while open, "Resolving …" once closed with
@@ -8,7 +8,7 @@ import { closesLabel, endedClock } from "./copy";
  */
 export function bandClock(input: { state: string; resolvesBy: Date | null; resolvedAt: Date | null; resolvedBy: string | null; votes: number; now: Date; zone: string }): string | null {
   const { state, resolvesBy, resolvedAt, resolvedBy, votes, now, zone } = input;
-  if (state === "open" && resolvesBy) return `Closes ${closesLabel(resolvesBy, now, zone)}`;
+  if (state === "open" && resolvesBy) return closesClock(resolvesBy, now, zone);
   if (state === "locked" && resolvesBy && votes === 0) return `Resolving ${closesLabel(resolvesBy, now, zone)}`;
   if (state === "locked" && resolvesBy) return `Voting ends ${closesLabel(resolvesBy, now, zone)}`;
   if ((state === "resolved" || state === "voided" || state === "expired") && (resolvedAt ?? resolvesBy)) return endedClock(state, resolvedBy, (resolvedAt ?? resolvesBy) as Date, now, zone);

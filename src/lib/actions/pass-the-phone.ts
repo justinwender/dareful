@@ -1,7 +1,8 @@
 "use server";
 
 import type { Hex } from "viem";
-import { requireUser } from "@/lib/auth/session";
+import { currentUser } from "@/lib/auth/session";
+import { WORDS } from "@/lib/ui/errors";
 import { delegatedSignatureFor, PassThePhoneError, passThePhoneStatus, setPin, turnOffPassThePhone } from "@/lib/ledger/pass-the-phone";
 import { Via } from "@/lib/ledger/via";
 
@@ -11,7 +12,8 @@ import { Via } from "@/lib/ledger/via";
  * lands through the webhook), and this sets the PIN. Nothing here logs or returns the PIN.
  */
 export async function turnOnPassThePhoneAction(rawPin: string): Promise<{ ok: true } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   try {
     await setPin(user.id, typeof rawPin === "string" ? rawPin : "");
   } catch (err) {
@@ -21,15 +23,17 @@ export async function turnOnPassThePhoneAction(rawPin: string): Promise<{ ok: tr
 }
 
 /** Turning it off: the stored share wiped now, the PIN cleared; Dynamic's own revocation lands after and finds nothing. */
-export async function turnOffPassThePhoneAction(): Promise<{ ok: true }> {
-  const user = await requireUser();
+export async function turnOffPassThePhoneAction(): Promise<{ ok: true } | { error: string }> {
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   await turnOffPassThePhone(user.id);
   return { ok: true };
 }
 
 /** Whether the delegation has landed and the PIN is set, for the row on You while it is being set up. */
 export async function passThePhoneStatusAction(): Promise<{ on: boolean; delegated: boolean; pinSet: boolean }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { on: false, delegated: false, pinSet: false };
   return passThePhoneStatus(user.id);
 }
 
@@ -39,7 +43,8 @@ export async function passThePhoneStatusAction(): Promise<{ on: boolean; delegat
  * Null means the device prompts as before. The client names the action and the ids; it never sends typed data.
  */
 export async function signFromThisDeviceAction(rawVia: unknown): Promise<{ ok: true; signature: Hex } | { ok: false }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { ok: false };
   const via = Via.safeParse(rawVia);
   if (!via.success) return { ok: false };
   try {

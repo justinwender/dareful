@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { LinkPending } from "./link-pending";
 import { NOTHING_CAME_BACK, ProblemSummary } from "@/components/ledger/problem";
 import { RUNNER_MS, STILL_GOING_MS, TRY_AGAIN_MS, waitStage, type WaitStage } from "@/lib/ui/motion";
+import { WORDS } from "@/lib/ui/errors";
 
 export { STILL_GOING_MS, TRY_AGAIN_MS, waitStage, type WaitStage };
 
@@ -50,7 +51,16 @@ const buttonVariants = cva(
 type Variants = VariantProps<typeof buttonVariants>;
 
 export type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> &
-  Variants & { loading?: boolean };
+  Variants & {
+    loading?: boolean;
+    /**
+     * What the tap does (the field round, 1.6). A write, the default, is never shown failed while it may still
+     * be going through: past three seconds it says so and keeps its runner, and the ten-second block never
+     * comes, since a second send of the same thing is the one thing a slow write must not get. A read (asking
+     * for a screen again) is safe to ask for twice, so at ten seconds it gets the block with "Try again".
+     */
+    kind?: "write" | "read";
+  };
 
 /** Picks the size that matches a variant when only the variant is given. */
 function sizeFor(variant: Variants["variant"], size: Variants["size"]): Variants["size"] {
@@ -106,12 +116,23 @@ export function retryOf(control: { type?: string; form: Pick<HTMLFormElement, "r
   if (control.type === "submit" && control.form) control.form.requestSubmit();
 }
 
-export function Button({ className, variant = "secondary", size, loading, disabled, children, onClick, type, ...props }: ButtonProps) {
+/**
+ * What a control shows at a stage of its wait, by what the tap does (the field round, 1.6): a write past ten
+ * seconds is still going, with its runner and its line, and never the block; a read gets the block with "Try
+ * again" at ten seconds, since asking for a screen twice changes nothing. Pure.
+ */
+export function buttonWait(stage: WaitStage, kind: "write" | "read"): { block: boolean; pending: boolean; long: boolean; line: string | null } {
+  const block = stage === "block" && kind === "read";
+  const pending = stage === "pending" || stage === "still" || (stage === "block" && !block);
+  const long = stage === "still" || (stage === "block" && !block);
+  return { block, pending, long, line: long ? (kind === "write" ? WORDS.writeStillGoing : "Still going.") : null };
+}
+
+export function Button({ className, variant = "secondary", size, loading, disabled, children, onClick, type, kind = "write", ...props }: ButtonProps) {
   const stage = useWaitStage(Boolean(loading));
-  const pending = stage === "pending" || stage === "still";
-  const long = stage === "still";
-  // Past ten seconds the control takes taps again, and the block under it offers the same tap as "Try again".
-  const busy = Boolean(loading) && stage !== "block";
+  const { block, pending, long, line } = buttonWait(stage, kind);
+  // Past ten seconds a read's control takes taps again, and the block under it offers the same tap as "Try again".
+  const busy = Boolean(loading) && !block;
   const lastClick = React.useRef<React.MouseEvent<HTMLButtonElement> | null>(null);
   return (
     <>
@@ -140,8 +161,8 @@ export function Button({ className, variant = "secondary", size, loading, disabl
           </span>
         ) : null}
       </button>
-      {long ? <span className="text-center text-caption text-ink-3">Still going.</span> : null}
-      {stage === "block" ? <ProblemSummary messages={[NOTHING_CAME_BACK]} retry={() => retryOf({ type, form: formOf(props, lastClick.current), click: lastClick.current && onClick ? () => onClick(lastClick.current as React.MouseEvent<HTMLButtonElement>) : null })} /> : null}
+      {long ? <span className="text-center text-caption text-ink-3">{line}</span> : null}
+      {block ? <ProblemSummary messages={[NOTHING_CAME_BACK]} retry={() => retryOf({ type, form: formOf(props, lastClick.current), click: lastClick.current && onClick ? () => onClick(lastClick.current as React.MouseEvent<HTMLButtonElement>) : null })} /> : null}
     </>
   );
 }

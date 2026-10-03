@@ -76,11 +76,11 @@ export default function RootLayout({ children, ask }: { children: ReactNode; /**
       {/* An installed app draws under the status bar and the home indicator (viewport-fit=cover, translucent status
           bar). The top and side insets are paid once, here, so no screen can forget them; anything fixed or sticky
           pays its own (docs/decisions.md 2026-09-20). Sized from the parent's height, never from 100vh. */}
-      <body className="flex min-h-full flex-col pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)]">
+      <body className="h-full overflow-hidden">
         {/* The opening (11): the launch image again, the bare ground in the phone's own scheme, and then the tally counted a stroke at a time until the first screen's shell has painted. The first thing in the body, outside the app root, and it only fades. The handoff removes `#opening` from the page, often before the app is running, so the app holds a box around it that stays: what is inside is the opening's own, and the app never looks for it. */}
         <div data-opening-host="" className="contents" suppressHydrationWarning dangerouslySetInnerHTML={{ __html: OPENING_ELEMENT }} />
-        {/* The app root (9.3): the page, then the host every fixed layer portals into. Nothing that moves is ever set on it. */}
-        <div id="app" data-layer="app" className="flex min-h-full flex-1 flex-col">
+        {/* The app root (9.3): the page, then the host every fixed layer portals into. Nothing that moves is ever set on it. It is the one thing that scrolls (`src/lib/ui/scroller.ts`): a box the size of the screen, so the document never scrolls and no fixed layer can be left where a keyboard moved the viewport (the field round, 1.1). The top and side insets are paid here, once. */}
+        <div id="app" data-layer="app" className="fixed inset-0 flex flex-col overflow-x-hidden overflow-y-auto overscroll-y-contain pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)]">
           <Providers facts={facts}>
             {children}
             {ask}

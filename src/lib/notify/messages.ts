@@ -258,3 +258,44 @@ export async function pushElseEmail(push: () => Promise<boolean>, email: () => P
   if (p) return { push: true, email: false };
   return { push: false, email: await email().catch(() => false) };
 }
+
+/**
+ * Voting opened on a question (the field round, 1.8): to everyone in its quorum but the person whose act closed
+ * it, whichever way it closed. The asker closed it, the time the asker set came, or an argument's second person
+ * got in; each names who, since every one of these is someone having done something.
+ */
+export function votingOpenedNotice(input: { by: "asker" | "time" | "both_in"; name: string; title: string; marketId: string; appUrl: string }): Notice {
+  const t = short(input.title);
+  const title = input.by === "asker" ? `${input.name} closed “${t}”` : input.by === "both_in" ? `${input.name} is in on “${t}”` : `Time’s up on ${input.name}’s “${t}”`;
+  const body = input.by === "both_in" ? "It’s between the two of you now. Say how it came out." : "Say what happened. Everyone’s call together settles it.";
+  return { title, body, url: `${input.appUrl}/m/${input.marketId}#ballot` };
+}
+
+/** Twelve hours into voting with a call still open (the field round, 1.8): once, by push and email, never at night. */
+export function voteReminderNotice(input: { name: string; title: string; cast: number; quorum: number; marketId: string; appUrl: string }): Notice {
+  return {
+    title: `Still open: ${input.name}’s “${short(input.title)}”`,
+    body: `${input.cast} of ${input.quorum} ${input.cast === 1 ? "has called it" : "have called it"}. Yours is still to come.`,
+    url: `${input.appUrl}/m/${input.marketId}#ballot`,
+  };
+}
+
+/** The asker hears once when the last person they asked gets in (the field round, 1.8). */
+export function allInNotice(input: { lastName: string; title: string; count: number; marketId: string; appUrl: string }): Notice {
+  return { title: "Everyone you asked is in", body: `${input.lastName} made ${input.count} on “${short(input.title)}”.`, url: `${input.appUrl}/m/${input.marketId}` };
+}
+
+/** The reminder's night: from 11pm to 9am in the asker's zone it waits for 9am (the field round, 1.8). */
+const REMIND_NIGHT_FROM = 23;
+const REMIND_MORNING = 9;
+
+/** When a reminder due at `at` goes out: then, unless that is at night in the zone, in which case the next 9am there. */
+export function reminderSendTime(at: Date, zone: string): Date {
+  const w = wallClock(at, zone);
+  if (w.h >= REMIND_NIGHT_FROM) {
+    const next = wallClock(new Date(at.getTime() + 86_400_000), zone);
+    return atWallClock(next.y, next.m, next.d, REMIND_MORNING, zone);
+  }
+  if (w.h < REMIND_MORNING) return atWallClock(w.y, w.m, w.d, REMIND_MORNING, zone);
+  return at;
+}

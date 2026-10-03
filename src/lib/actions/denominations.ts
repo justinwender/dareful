@@ -1,7 +1,8 @@
 "use server";
 
 import { z } from "zod";
-import { requireUser } from "@/lib/auth/session";
+import { currentUser } from "@/lib/auth/session";
+import { WORDS } from "@/lib/ui/errors";
 import { copyDenominationToGroup, createDenomination, TEMPLATES, type TemplateKey } from "@/lib/ledger/denominations";
 import { isMember } from "@/lib/ledger/groups";
 
@@ -27,7 +28,8 @@ export type UnitSummary = {
 };
 
 export async function createDenominationAction(input: z.infer<typeof NewUnit>): Promise<UnitSummary | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const parsed = NewUnit.safeParse(input);
   if (!parsed.success) return { error: "That unit needs a name under 40 characters." };
   const data = parsed.data;
@@ -48,7 +50,8 @@ export async function createDenominationAction(input: z.infer<typeof NewUnit>): 
 }
 
 export async function reuseDenominationAction(sourceId: string, groupId: string): Promise<UnitSummary | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   if (!(await isMember(groupId, user.id))) return { error: "You are not in that group." };
   const row = await copyDenominationToGroup(sourceId, groupId, user.id);
   return summarize(row);

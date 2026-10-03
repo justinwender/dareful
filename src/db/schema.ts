@@ -456,6 +456,10 @@ export const dares = pgTable(
     rulingHash: bytea("ruling_hash"),
     /** Set once when the asker has been told the time they set has come. What makes the scheduler's tick idempotent. */
     deadlineNotifiedAt: ts("deadline_notified_at"),
+    /** Set once when everyone in the quorum was told voting opened, whichever way it closed (the field round, 1.8): the action that closed it or the tick, whichever got there first. */
+    voteAskedAt: ts("vote_asked_at"),
+    /** Set once when the people still to vote were reminded, twelve hours into voting and never at night; never a second (the field round, 1.8). */
+    voteRemindedAt: ts("vote_reminded_at"),
     /**
      * A What's on market (docs/design.md 3.33; docs/decisions.md, public markets): the public question it was
      * started from. Its terms, kind, unit, scale and close time are the template's, copied at draft so the market
@@ -1186,7 +1190,7 @@ export const notificationLog = pgTable(
     /** What it is about: a question, or an obligation (settled, forgiven), or neither for a netting between two people. */
     dareId: uuid("dare_id").references(() => dares.id),
     obligationId: uuid("obligation_id").references(() => obligations.id),
-    kind: text("kind", { enum: ["vote_request", "result", "opened", "joined", "nudge", "deadline", "ruling", "settled", "forgiven", "netted", "backstop_warning", "backstop_result", "pin_locked", "entered_from"] }).notNull(),
+    kind: text("kind", { enum: ["vote_request", "result", "opened", "joined", "nudge", "deadline", "ruling", "settled", "forgiven", "netted", "backstop_warning", "backstop_result", "pin_locked", "entered_from", "voting_opened", "vote_reminder", "all_in"] }).notNull(),
     /**
      * What makes "the same thing" the same, per kind: how many had voted (vote_request), how many were in
      * (joined), a six-hour window (nudge), 0 otherwise.

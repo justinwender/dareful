@@ -23,7 +23,7 @@ import { driveAnswer, gameOf, parseScoreboard, parseSummary, resultOf, scoreboar
 import { AGREE_AFTER_MS, ALONE_AFTER_MS, backstopDecision, driveBackstopDecision, driveOutcome, fromStored, marginWords, outcomeFor, scoreLine, toStored, warnAt, WARN_BEFORE_MS } from "@/lib/sports/results";
 import { askerName } from "@/lib/ledger/share";
 import { BOTH_CONSENT, CONSENT, consentFor, DRIVE_CONSENT, expectedEnd, marginShift, menuName, offersFirstDrive, SCALES, SLIDER_REACH, templatesFor, TIE_VOID, UNCLEAR_BY_SCORE, UNIT } from "@/lib/sports/templates";
-import { dayOf, DRIVE_ANSWERS, FeedError, parseColor, parseScore, SPORTS } from "@/lib/sports/types";
+import { dayOf, DRIVE_ANSWERS, FeedError, isoDayOf, parseColor, parseScore, SPORTS } from "@/lib/sports/types";
 import { leanBand, leanPill, saidLean, sliderStamps, stampGlyph, stampInk } from "@/lib/ui/team";
 import { GAME_TILE, gameNameLines, gameNameSize, gameTileHeight, tileSize } from "@/lib/ui/tiles";
 
@@ -78,6 +78,12 @@ test("anything missing, malformed or unparseable is no game or no result, never 
   assert.equal(scoreboardUrl("nfl", "20260927"), "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates=20260927");
   assert.throws(() => scoreboardUrl("nfl", "2026-09-27"), FeedError, "a day is eight digits");
   assert.equal(dayOf(new Date("2026-09-27T17:00:00Z")), "20260927");
+  // The sources count days in New York: an 8pm game there is the next day in UTC and must be asked for under its own (the field round).
+  assert.equal(dayOf(new Date("2026-10-01T00:00:00Z")), "20260930", "8pm Eastern on the 30th");
+  assert.equal(dayOf(new Date("2026-10-01T03:59:00Z")), "20260930", "11:59pm Eastern on the 30th");
+  assert.equal(dayOf(new Date("2026-10-01T04:00:00Z")), "20261001", "midnight Eastern, the 1st");
+  assert.equal(isoDayOf(new Date("2026-10-01T00:00:00Z")), "2026-09-30");
+  assert.equal(isoDayOf(new Date("2026-10-01T00:00:00Z"), 1), "2026-10-01");
 });
 
 test("the first drive is read from the recorded play-by-play and mapped to the answers explicitly; a word the table does not know, or no play-by-play yet, is no result", () => {
@@ -143,7 +149,7 @@ test("the templates: who wins, the margin, the total, and the first drive by cov
   assert.deepEqual([wins.name, margin.name, total.name, first.name], ["Who wins", "By how much", "Total points", "The first drive"]);
   assert.equal(margin.kind, "numeric");
   assert.deepEqual([margin.range, margin.shift, margin.outcomeLabels], [SCALES.nfl.margin, marginShift("nfl"), ["point", "points"]]);
-  assert.ok(margin.terms.startsWith("Points for the Giants minus points for the Titans") && margin.terms.includes("Giants by 7 is 7") && margin.terms.includes("the other way") && margin.terms.includes("a tie is 0"), "signed, home minus away, with a tie as zero, and no possessive of a team's name (the real session read \"the Giants's\")");
+  assert.ok(margin.terms.startsWith("Points for the Giants minus points for the Titans") && margin.terms.includes("Giants by 7 is 7") && margin.terms.includes("counts as minus 3") && margin.terms.includes("a tie is 0"), "signed, home minus away, with a tie as zero, and no possessive of a team's name (the real session read \"the Giants's\")");
   assert.deepEqual([total.range, total.typical], [SCALES.nfl.total, SCALES.nfl.totalTypical]);
   const nhl = templatesFor({ ...game, sport: "nhl" });
   assert.ok(!nhl[0]!.terms.includes("tie") && nhl[0]!.terms.includes("shootout included") && nhl[0]!.rows.tie === null, "hockey plays on: no tie line");

@@ -395,9 +395,14 @@
     background: var(--ground);
     /* 9.4: no tap waits to find out whether it is a double tap. */
     touch-action: manipulation;
+    /* The document never scrolls (the field round, 1.1; src/lib/ui/scroller.ts): the app root is the one scrolling box, the screen's height. */
+    height: 100%;
+    overflow: hidden;
   }
   body {
     @apply text-foreground;
+    height: 100%;
+    overflow: hidden;
     font-family: var(--font-sans);
     font-size: 1.0625rem;
     line-height: 24px;
@@ -482,10 +487,6 @@ html.back .motion-step-in { animation-name: step-in-back; }
 .page-arrive > header, .page-arrive > [data-offline] { animation: fade-in var(--motion-base) var(--ease-fade) both; }
 .page-arrive > :not(header):not([data-offline]):not(style):not(script) { animation: step-in var(--motion-base) var(--ease-move) both; }
 html.back .page-arrive > :not(header):not([data-offline]):not(style):not(script) { animation-name: step-in-back; }
-/* The phone's viewport out of step (viewport.ts): each fixed box moves itself back onto the glass by what the guard read,
-   the ones pinned to the top by one distance and the ones pinned to the bottom by the other. Never an ancestor (9.3). */
-html[data-viewport-shift] [data-fixed="top"] { translate: 0 var(--vv-top, 0px); }
-html[data-viewport-shift] [data-fixed="bottom"] { translate: 0 var(--vv-bottom, 0px); }
 /* While a shell is up the tab bar and the Start button are covered: they leave the tree, so the transition fades them out over quick (9.7). */
 html[data-shell] [data-layer="tab-bar"] > *, html[data-shell] [data-layer="start"] > * { display: none; }
 

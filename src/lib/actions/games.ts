@@ -6,7 +6,8 @@ import { isHex, type Hex } from "viem";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { and, eq, gte } from "drizzle-orm";
-import { requireUser } from "@/lib/auth/session";
+import { currentUser } from "@/lib/auth/session";
+import { WORDS } from "@/lib/ui/errors";
 import { denominationById, ensureUnitInGroup, ensureUsd } from "@/lib/ledger/denominations";
 import { createOccasionGroup, isMember, setForPeople } from "@/lib/ledger/groups";
 import { createTypedData, MarketError, marketById, openMarket, stateOf } from "@/lib/ledger/markets";
@@ -34,7 +35,8 @@ export type ToOpen = { id: string; title: string; create: { dareId: Hex; groupId
  * each, since a draft is only its asker's until their `Create` signature; the group sees only those.
  */
 export async function startGameAction(input: z.input<typeof Start>): Promise<{ ok: true; groupId: string; toOpen: ToOpen[] } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const parsed = Start.safeParse(input);
   if (!parsed.success) return { error: "Something in that is off." };
   const d = parsed.data;
@@ -57,7 +59,8 @@ export async function startGameAction(input: z.input<typeof Start>): Promise<{ o
 
 /** The asker's `Create` signatures, one per question started: each opens its market for the group. A signature that fails leaves that one a draft, listed on the page as such. */
 export async function openGameQuestionsAction(signed: Array<{ id: string; signature: string }>): Promise<{ ok: true; opened: string[] } | { error: string }> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
   const parsed = z.array(z.object({ id: uuid, signature: z.string() })).min(1).max(4).safeParse(signed);
   if (!parsed.success || parsed.data.some((s) => !isHex(s.signature))) return { error: "That didn't come through. Try again." };
   const opened: string[] = [];
@@ -79,7 +82,7 @@ export async function openGameQuestionsAction(signed: Array<{ id: string; signat
 
 /** "Try again" on the failed-feed state (3.32): re-reads the stalest sport's schedule now, once a minute at most for everyone. */
 export async function refreshWhatsOnAction(): Promise<{ ok: true } | { error: string }> {
-  await requireUser();
+  if (!(await currentUser())) return { error: WORDS.signedOut };
   const recent = await db.select({ sport: schema.sportsFeedReads.sport }).from(schema.sportsFeedReads).where(and(eq(schema.sportsFeedReads.source, "espn"), gte(schema.sportsFeedReads.lastOkAt, new Date(Date.now() - 60_000)))).limit(1);
   if (recent.length > 0) {
     revalidatePath("/on");
@@ -97,7 +100,8 @@ export async function refreshWhatsOnAction(): Promise<{ ok: true } | { error: st
 
 /** Whether a market is one this person may read as a draft to finish on the game page. */
 export async function draftOwnedAction(rawId: string): Promise<boolean> {
-  const user = await requireUser();
+  const user = await currentUser();
+  if (!user) return false;
   const id = uuid.safeParse(rawId);
   if (!id.success) return false;
   const d = await marketById(id.data);

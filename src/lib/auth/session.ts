@@ -35,6 +35,27 @@ export async function issueSessionCookie(userId: string): Promise<void> {
   });
 }
 
+/** When the session cookie was issued, from the cookie alone; null when there is none or it is bad. */
+export async function sessionIssuedAt(): Promise<Date | null> {
+  const jar = await cookies();
+  const token = jar.get(SESSION_COOKIE)?.value;
+  if (!token) return null;
+  try {
+    const { payload } = await jwtVerify(token, secret(), { algorithms: ["HS256"] });
+    return typeof payload.iat === "number" ? new Date(payload.iat * 1000) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A session older than this is issued again on the next open, so a phone that opens the app now and then never runs out of its thirty days (the field round, 1.7). */
+export const REISSUE_AFTER_MS = 86_400_000;
+
+/** Whether a session issued at `issuedAt` is due a fresh cookie at `now`: a day old or more. Pure. */
+export function sessionDueForReissue(issuedAt: Date | null, now: Date): boolean {
+  return issuedAt !== null && now.getTime() - issuedAt.getTime() >= REISSUE_AFTER_MS;
+}
+
 export async function clearSessionCookie(): Promise<void> {
   const jar = await cookies();
   jar.delete(SESSION_COOKIE);
