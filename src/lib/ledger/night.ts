@@ -8,7 +8,7 @@ import { and, eq, gte, inArray, isNotNull, lte, ne, notInArray, or } from "drizz
 import { db, schema } from "@/db";
 import { frameOnMarkets } from "@/lib/media";
 import { outcomeLine } from "@/lib/ui/outcome-words";
-import { answersOf, stateOf, unitOf, VOID_OUTCOME } from "./markets";
+import { answersOf, stateOf, unitOf, voterIsIn, VOID_OUTCOME } from "./markets";
 import { unitPhrase } from "./number-axis";
 
 export const NIGHT_HOURS = 6;
@@ -54,7 +54,7 @@ export async function restOfThatNight(input: { dareId: string; /** A game's nigh
       .where(and(ne(schema.obligations.origin, "dare"), inArray(schema.obligations.fromUser, input.people), inArray(schema.obligations.toUser, input.people), gte(schema.obligations.createdAt, from), lte(schema.obligations.createdAt, to))),
   ]);
   const positions = dares.length ? await db.select({ dareId: schema.darePositions.dareId, userId: schema.darePositions.userId }).from(schema.darePositions).where(inArray(schema.darePositions.dareId, dares.map((d) => d.id))) : [];
-  const votes = dares.length ? await db.select({ dareId: schema.dareVotes.dareId, userId: schema.dareVotes.userId, signedAt: schema.dareVotes.signedAt }).from(schema.dareVotes).where(inArray(schema.dareVotes.dareId, dares.map((d) => d.id))) : [];
+  const votes = dares.length ? await db.select({ dareId: schema.dareVotes.dareId, userId: schema.dareVotes.userId, signedAt: schema.dareVotes.signedAt }).from(schema.dareVotes).where(and(inArray(schema.dareVotes.dareId, dares.map((d) => d.id)), voterIsIn)) : [];
   const shared = dares.filter((d) => sharesTheNight(input.people, positions.filter((p) => p.dareId === d.id).map((p) => p.userId as string), input.viewerId));
   const frames = await frameOnMarkets(shared.map((d) => d.id));
   const userIds = Array.from(new Set([...votes.map((v) => v.userId), ...obligations.flatMap((o) => [o.fromUser, o.toUser])]));

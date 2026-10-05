@@ -25,10 +25,13 @@ test("questions you asked count a quorum's answer and its void, leave out expiry
   track.group(g.id);
   await db.insert(schema.groupMembers).values({ groupId: g.id, userId: ben.user.id });
   const usd = await ensureUsd(g.id, ana.user.id);
-  const ask = async (title: string, mark?: string) => {
+  // Two in each, since a question one person was in counts in neither number (the first-contact round); the one
+  // removed has ana alone, since a question somebody else is in cannot be removed.
+  const ask = async (title: string, mark?: string, alone = false) => {
     const d0 = await markets.draftMarket({ creatorId: ana.user.id, groupId: g.id, denomId: usd.id, title, termsText: "Yes if it happens.", resolvesBy: new Date(Date.now() + 3_600_000), ...(mark ? { mark: { kind: "emoji" as const, value: mark } } : {}) });
     const d = await markets.openMarket(d0.id, ana.user.id, await ana.ledger.signTypedData(markets.createTypedData(d0)));
     await markets.enterMarket({ dareId: d.id, userId: ana.user.id, stake: 500n, value: 7000n, signature: await ana.ledger.signTypedData(markets.enterTypedData(d, 500n, 7000n)) });
+    if (!alone) await markets.enterMarket({ dareId: d.id, userId: ben.user.id, stake: 500n, value: 4000n, signature: await ben.ledger.signTypedData(markets.enterTypedData(d, 500n, 4000n)) });
     return d;
   };
   const end = (id: string, by: "quorum" | "arbitration" | "feed" | "expired", outcome: bigint | null, minutesAgo: number) => db.update(schema.dares).set({ lockedAt: new Date(Date.now() - (minutesAgo + 60) * 60_000), resolvedAt: new Date(Date.now() - minutesAgo * 60_000), resolvedBy: by, resolvedOutcome: outcome }).where(eq(schema.dares.id, id));
@@ -36,7 +39,7 @@ test("questions you asked count a quorum's answer and its void, leave out expiry
   const voided = await ask("Does the voided one count against me?", "🍺");
   const expired = await ask("Does the expired one count against nobody?");
   const feedVoid = await ask("Does the tie count against nobody?");
-  const removed = await ask("Does the removed one vanish?");
+  const removed = await ask("Does the removed one vanish?", undefined, true);
   const open = await ask("Is the open one still open?");
   await end(clean.id, "quorum", 1n, 50);
   // The clean one scored its one position, as a resolution does (a void scores nobody).
@@ -45,11 +48,14 @@ test("questions you asked count a quorum's answer and its void, leave out expiry
   await end(expired.id, "expired", null, 30);
   await end(feedVoid.id, "feed", markets.VOID_OUTCOME, 20);
   await removeMarket(removed.id, ana.user.id);
+  // One that ended cleanly with ana alone in it counts in neither number.
+  const lonely = await ask("Does a question nobody joined grade its asker?", undefined, true);
+  await end(lonely.id, "quorum", 1n, 10);
   const asked = await askedRecord(ana.user.id);
   assert.deepEqual(asked.counted.map((q) => [q.title, q.clean]), [["Does the clean one end cleanly?", true], ["Does the voided one count against me?", false]], "the quorum's answer and its void, oldest first; expiry, the final score's void and a removal are not counted");
   assert.deepEqual([asked.clean, asked.expired], [1, 1]);
   const you = await youFor({ id: ana.user.id, createdAt: ana.user.createdAt });
-  assert.equal(you.markets, 5, "in six, one removed: five");
+  assert.equal(you.markets, 6, "in seven, one removed: six");
   assert.ok(you.firstEnteredAt && you.firstEnteredAt.getTime() <= Date.now(), "since the first entry");
   assert.deepEqual(you.marks, [{ kind: "emoji", value: "🍺" }], "the marks used on questions asked, once each: two questions wore the beer and it is listed once");
   assert.ok(you.units.some((u) => u.id === usd.id) && you.units.filter((u) => u.monetary).length === 1, "dollars once, however many sets use them");

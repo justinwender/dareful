@@ -1,4 +1,5 @@
 import { SignInButton } from "@/components/auth/sign-in-button";
+import { GuestLineFor } from "@/components/guest/guest-line";
 import { Avatar, AvatarStack } from "@/components/ledger/avatar";
 import { MarkRefStamp } from "@/components/ledger/mark-stamp";
 import { Screen, TopBar } from "@/components/ledger/screen";
@@ -125,6 +126,8 @@ export async function GhostMarketPage({ id, clock }: { id: string; clock: Awaite
           : numberUnit
             ? `${unitPhrase(d.resolvedOutcome, numberUnit)}.`
             : outcomeLine(d, d.resolvedOutcome === 1n);
+  // One place in the tree before and after the entry, so the sheet's next step (keeping the call in an account) survives
+  // the refresh that brings the entry line in (the first-contact round): before you're in it draws nothing in the flow.
   const stage =
     state === "open" || (state === "locked" && mine) ? (
       <MarketStage
@@ -157,6 +160,8 @@ export async function GhostMarketPage({ id, clock }: { id: string; clock: Awaite
   return (
     <div className="flex flex-1 flex-col">
       <InkRoot ink={ink} />
+      {/* The guest line (3.46): once this guest is in, never on the link page before. */}
+      <GuestLineFor dareId={d.id} />
       <Screen>
         <LinkOpened link="market" dareId={d.id} signedIn={false} />
         <TopBar wordmark info="market-link" />
@@ -182,7 +187,7 @@ export async function GhostMarketPage({ id, clock }: { id: string; clock: Awaite
           {/* In (3.17, frame 6): the entry line and the picture first, as anyone in sees them, then who's in and the facts. */}
           {pulse ? <VotePoll dareId={d.id} pulse={pulse.pulse} /> : null}
           {mine && endedLine ? <p className="text-serif-l text-ink">{endedLine}</p> : null}
-          {mine && (state === "open" || state === "locked") ? stage : null}
+          {state === "open" || (state === "locked" && mine) ? stage : null}
           {mine ? (
             // In (3.17, frame 6): the who's-in row with its icons. The code is the asker's to make, so share and copy alone here.
             <WhosInRow people={stack} count={positions.length === 1 ? "Just you so far" : `${positions.length} of you in`} share={{ url: `${appUrl}/m/${d.id}`, title: d.title }} code={null} />
@@ -216,7 +221,7 @@ export async function GhostMarketPage({ id, clock }: { id: string; clock: Awaite
             </div>
           ) : null}
         </div>
-        {mine ? null : stage}
+        {mine || state === "open" ? null : stage}
       </Screen>
     </div>
   );

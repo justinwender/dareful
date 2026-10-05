@@ -5,6 +5,8 @@ import { DynamicContextProvider } from "@dynamic-labs/sdk-react-core";
 import { EthereumWalletConnectors } from "@dynamic-labs/ethereum";
 import { monadEvmNetworks } from "@/lib/dynamic/networks";
 import { WalletBootstrap } from "@/components/auth/wallet-bootstrap";
+import { OauthReturn } from "@/components/auth/oauth-return";
+import { FirstTips } from "@/components/ui/first-tips";
 import { DeviceNotice, MeProvider, useSessionFacts } from "@/components/auth/device";
 import { SessionRefresh } from "@/components/auth/session-refresh";
 import type { SessionFacts } from "@/lib/auth/session-facts";
@@ -50,6 +52,7 @@ export function Providers({ children, facts }: { children: ReactNode; /** The se
           <SessionRefresh />
         </Suspense>
         <ColdMarks />
+        <OauthReturn />
         <OpenFromNotification />
         <Refresh />
         <Traversals />
@@ -69,6 +72,7 @@ function SessionPieces() {
     <>
       <WalletBootstrap settled={settled} sessionDynamicUserId={me?.dynamicUserId ?? null} />
       <DeviceNotice />
+      <FirstTips />
     </>
   );
 }

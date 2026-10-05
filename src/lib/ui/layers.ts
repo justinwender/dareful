@@ -7,7 +7,7 @@
  * contains one. Pure: the rules here are read by the http suite over every screen's markup and by the browser
  * walk over the live tree.
  */
-export const FIXED_LAYERS = ["tab-bar", "start", "sheet", "modal", "ask", "shell", "grain", "status-band"] as const;
+export const FIXED_LAYERS = ["tab-bar", "start", "sheet", "modal", "ask", "shell", "grain", "status-band", "guest-line", "tips"] as const;
 export type FixedLayerName = (typeof FIXED_LAYERS)[number];
 
 /** The properties that make an element the containing block of its fixed descendants, with any value but the one named. */

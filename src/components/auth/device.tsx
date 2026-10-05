@@ -21,7 +21,7 @@ import type { SessionFacts } from "@/lib/auth/session-facts";
  * first screen's shell without waiting for it, and whatever asks here waits for the answer where it stands. On
  * every screen but Now that is the screen itself, as before; on Now it is the content behind the shell.
  */
-const NO_SESSION: SessionFacts = { settled: false, me: null };
+const NO_SESSION: SessionFacts = { settled: false, me: null, tipsSeen: [] };
 const FactsContext = createContext<Promise<SessionFacts> | null>(null);
 
 export function MeProvider({ facts, children }: { facts: Promise<SessionFacts>; children: ReactNode }) {

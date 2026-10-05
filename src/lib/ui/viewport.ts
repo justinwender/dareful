@@ -27,3 +27,33 @@ export function dropKeyboard(): void {
   if (el instanceof HTMLElement && takesKeyboard(el)) el.blur();
 }
 
+
+/** What the root wears while a field holds the keyboard; `globals.css` drops the root to its plain height under it. */
+export const TYPING = "data-typing";
+
+/** Under this share of the layout's height, what a phone shows beside a focused field is a keyboard's leftover. */
+export const KEYBOARD_SHARE = 0.8;
+
+/**
+ * Whether a field's focus brings the keyboard up, so the root drops to its plain height (the first-contact round,
+ * 2026-10-04). A phone raises the keyboard for a field a finger touched, and for a focus made while a tap is still
+ * being handled (a sheet that focuses its field as it opens); a field a page focuses by itself on arriving takes
+ * the caret and no keyboard. The rule was `:focus`, and the code screen's field, focused on arrival, dropped an
+ * installed copy's root to 812 of 874 points with no keyboard under it: a band under its sheet (the iOS 26
+ * simulator, the same day).
+ */
+export function typingStarts(focus: { field: boolean; touched: boolean; inGesture: boolean }): boolean {
+  return focus.field && (focus.touched || focus.inGesture);
+}
+
+/**
+ * What the visible part of the screen says once it has moved: with no field focused the root is never typing; with
+ * one focused and the visible part under `KEYBOARD_SHARE` of the layout a keyboard is up, however it came (a phone
+ * reopened with its keyboard). Anything else leaves the attribute where it is, since a keyboard on its way in has
+ * not shrunk anything yet.
+ */
+export function typingFromViewport(v: { field: boolean; visible: number; layout: number }): boolean | null {
+  if (!v.field) return false;
+  if (v.visible < v.layout * KEYBOARD_SHARE) return true;
+  return null;
+}

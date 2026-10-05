@@ -8,6 +8,7 @@ import { mark } from "@/lib/ui/timing";
 import { FIELD_PROBLEM_CLASS, Problem, ProblemSummary } from "@/components/ledger/problem";
 import { useDenyGovernanceDelegation } from "@/components/auth/governance-denied";
 import { isIdentifier } from "@/lib/auth/login";
+import { readJoinHandoff, readStay } from "@/lib/ui/join-handoff";
 
 type Answer = { user: { id: string; governanceWallet: string }; bound: number; created?: boolean } | { need: "wallets"; have: number } | { need: "name"; suggested: string; /** What was typed is an identifier, not a name: the step stays up with the refusal at the field. */ refused?: true } | { error: string };
 type Phase = { at: "idle" } | { at: "working"; line: string } | { at: "name"; suggested: string; ready: boolean } | { at: "done" } | { at: "error"; message: string };
@@ -75,8 +76,9 @@ export function WalletBootstrap({ settled, sessionDynamicUserId }: { settled: bo
       }
       setPhase({ at: "done" });
       // Things a friend logged before this person had an account became theirs at this login. That screen
-      // comes before anything else, once; after that it is a strip on the home screen.
-      if (a.bound > 0) router.push("/welcome");
+      // comes before anything else, once; after that it is a strip on the home screen. A sign-in from a link's
+      // join flow stays on its question instead (3.17 as amended 2026-10-04), where the entry is sent or kept.
+      if (a.bound > 0 && !readJoinHandoff(Date.now()) && !readStay(Date.now())) router.push("/welcome");
       router.refresh();
     },
     [router, denyGovernance],
@@ -105,16 +107,25 @@ export function WalletBootstrap({ settled, sessionDynamicUserId }: { settled: bo
       setPhase({ at: "working", line: "Signing you in…" });
       let a = await ask();
       if ("need" in a && a.need === "wallets") {
-        // A new person. Ask their name now and make the wallets behind the question.
+        // A new person. Ask their name now and make the wallets behind the question; someone who typed it at a link's "Who's joining?" is not asked again.
         const have = a.have;
-        setPhase({ at: "name", suggested: "", ready: false });
+        const known = readJoinHandoff(Date.now())?.name;
+        if (known && !isIdentifier(known)) setPhase({ at: "working", line: "Signing you in…" });
+        else setPhase({ at: "name", suggested: "", ready: false });
         walletsReady.current = makeWallets(have);
         await walletsReady.current;
         if (nameSent.current) return; // they answered before the wallets were ready; submitName finishes it
         a = await ask();
       }
+      // Someone who said their name at a link's "Who's joining?" moments ago is not asked it again (3.17 as amended 2026-10-04).
+      const typed = readJoinHandoff(Date.now())?.name;
+      if ("need" in a && a.need === "name" && typed && !isIdentifier(typed) && !nameSent.current) {
+        nameSent.current = true;
+        a = await ask(typed);
+        nameSent.current = false;
+      }
       if ("need" in a && a.need === "name") {
-        setName((n) => n || ("suggested" in a ? a.suggested : ""));
+        setName((n) => n || typed || ("suggested" in a ? a.suggested : ""));
         setPhase({ at: "name", suggested: a.suggested, ready: true });
         return;
       }

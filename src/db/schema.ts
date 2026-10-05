@@ -57,6 +57,10 @@ export const users = pgTable("users", {
   headsUpAnsweredAt: ts("heads_up_answered_at"),
   /** When the one explainer for passing the phone was seen, whichever way it went (docs/design.md 3.42, 3.45): asked once, on the account. */
   handOverExplainedAt: ts("hand_over_explained_at"),
+  /** When the one card offering an email or Google to an account the app cannot reach was shown (the first-contact round, 2026-10-04): once, on the account. */
+  reachCardAt: ts("reach_card_at"),
+  /** The screens whose first-visit tips this person has seen (docs/design.md 10.9), by their shape ("/m/[id]"): a screen counts once its first tip has shown. */
+  tipsSeen: text("tips_seen").array().notNull().default(sql`'{}'::text[]`),
   /**
    * Left out of every count (the field round, 2026-10-02): the owner's own accounts, the simulator's and the
    * localhost sessions, the QA accounts. Set by hand, never by the app; a market counts only when someone counted

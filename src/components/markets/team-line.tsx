@@ -1,5 +1,6 @@
 "use client";
 
+import { headerWords } from "@/lib/ui/entry-words";
 import { useId, useRef, useState } from "react";
 import { TeamStamp } from "@/components/ledger/team-stamp";
 import { hueStrokeVar, hueVar, type Hue } from "@/lib/ui/hue";
@@ -214,11 +215,11 @@ export function TeamLine({ mode, value, onChange, away, home, hue, disabled = fa
 }
 
 /** The line's header row (3.40): "Who wins?" or "By how much?" on the left, and the word band or "Slide to pick a side" on the right. */
-export function TeamHeader({ mode, value, away, home }: { mode: "wins" | "margin"; value: number | null; away: TeamFace; home: TeamFace }) {
+export function TeamHeader({ mode, value, touched = true, away, home }: { mode: "wins" | "margin"; value: number | null; /** Who wins starts at even under the slide prompt (3.13 as amended 2026-10-04); the margin starts empty. */ touched?: boolean; away: TeamFace; home: TeamFace }) {
   return (
     <div className="flex items-baseline justify-between gap-3">
       <span className="text-body-strong text-ink">{mode === "wins" ? "Who wins?" : "By how much?"}</span>
-      <span className="text-caption text-ink-2">{value === null ? "Slide to pick a side" : mode === "wins" ? leanBand(value, away.name, home.name) : ""}</span>
+      <span className="text-caption text-ink-2" data-odds-words="">{mode === "wins" ? headerWords(touched, value, (v) => leanBand(v, away.name, home.name)) : value === null ? "Slide to pick a side" : ""}</span>
     </div>
   );
 }

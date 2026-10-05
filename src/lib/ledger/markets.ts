@@ -39,7 +39,7 @@ import { scaleAfterward } from "./scale";
 import { bufferToHex, bytes16ToUuid, dareOnchainId, denomOnchainId, groupOnchainId, hexToBuffer } from "./ids";
 import { ensureDenomOnchain, ensureGroupOnchain } from "./registry";
 import { pidOf } from "./participants";
-import { isProvisional, lockProvisional, provisionalVoters, settleProvisional } from "./provisional";
+import { isProvisional, lockProvisional, locksHere, provisionalVoters, settleProvisional } from "./provisional";
 import { record } from "@/lib/usage";
 import { settledWord } from "@/lib/usage/events";
 
@@ -144,9 +144,19 @@ export async function positionsOf(dareId: string): Promise<PositionRow[]> {
     .orderBy(asc(schema.darePositions.enteredAt), asc(schema.darePositions.userId));
 }
 
+/**
+ * A vote counts only from someone in the market (the first-contact round, 2026-10-04): a live position held by the
+ * voter's account. A vote anyone else ever signed is set aside wherever votes are read, never deleted.
+ */
+export const voterIsIn = sql`exists (select 1 from dare_positions vp where vp.dare_id = ${schema.dareVotes.dareId} and vp.user_id = ${schema.dareVotes.userId} and vp.acknowledged_at is not null and vp.dismissed_at is null)`;
+
+/** The votes that count, oldest first. */
 export async function votesOf(dareId: string): Promise<VoteRow[]> {
-  return db.select().from(schema.dareVotes).where(eq(schema.dareVotes.dareId, dareId)).orderBy(asc(schema.dareVotes.signedAt));
+  return db.select().from(schema.dareVotes).where(and(eq(schema.dareVotes.dareId, dareId), voterIsIn)).orderBy(asc(schema.dareVotes.signedAt));
 }
+
+/** What a vote or a line about what happened from someone not in it is told. */
+export const ONLY_THOSE_IN = "Only the people in it can call it.";
 
 // ---------------------------------------------------------------------------------------------- typed data
 
@@ -258,7 +268,8 @@ export async function draftMarket(input: DraftInput): Promise<DareRow> {
   if (input.criterion && !termsText.includes(input.criterion.trim())) throw new MarketError("The terms have to say how it's being decided.", "bad_input");
   if (!(await isMember(input.groupId, input.creatorId))) throw new MarketError("You're not in that group.", "not_member");
   const kind: MarketKind = input.kind ?? "binary";
-  if (kind !== "binary" && pace === "argument") throw new MarketError("An argument is yes or no.", "bad_input");
+  // An argument is yes or no, or one of its answers, each person's answer an answer (the first-contact round); never a number.
+  if (kind === "numeric" && pace === "argument") throw new MarketError("An argument is yes or no, or one of its answers.", "bad_input");
   // The answers (3.29): two to six, each a few words or a person; a person is someone the asker already knows in the app, or the asker.
   const answers = kind === "categorical" ? (input.answers ?? []).map((a) => ({ text: a.text.trim().replace(/\s+/g, " "), userId: a.userId ?? null })) : [];
   if (kind === "categorical" && (answers.length < MIN_ANSWERS || answers.length > MAX_ANSWERS)) throw new MarketError(`Two to ${MAX_ANSWERS} answers.`, "bad_input");
@@ -570,6 +581,13 @@ export async function lockMarket(dareId: string, byUserId: string | null, now: D
   const { dares } = contracts();
   const { publicClient } = relayer();
   const quorumNow = (await publicClient.readContract({ address: contracts().ledger.address, abi: contracts().ledger.abi, functionName: "governanceOf", args: [typed.message.groupId] })) as readonly Address[];
+  // The quorum counts only the people in (the first-contact round, 2026-10-04). The contract asks a majority of
+  // everyone in the set, so with fewer in than that the people in could never decide it there: it locks here
+  // instead, where a majority of the people in decides, and settles as proposals each debtor confirms.
+  if (locksHere(positions.length, quorumNow.length)) {
+    const r = await lockProvisional(d, positions);
+    return { txHash: "0x" as Hex, threshold: r.threshold, quorum: [] };
+  }
 
   const dareStruct = {
     id: typed.message.dareId,
@@ -645,26 +663,33 @@ export async function completeLock(d: DareRow, minedIn?: bigint): Promise<{ thre
 
 // -------------------------------------------------------------------------------------------------- voting
 
-/** The quorum as the chain snapshotted it at lock: governance wallets. The ballot is only ever offered to these. */
+/**
+ * Who may vote, by governance wallet: the account-holders in the market (the first-contact round, 2026-10-04), and
+ * on a market the chain holds only those of them its snapshot names. The ballot is only ever offered to these.
+ */
 export async function quorumOf(d: DareRow): Promise<Address[]> {
-  if (isProvisional(d)) {
-    // A provisional market's quorum is its account-holders and its asker (PLANNING.md section 4, step 6), by their governance wallets, as the chain would hold them.
-    const voters = provisionalVoters(d, await positionsOf(d.id));
-    const users = voters.length ? await db.select({ governanceWallet: schema.users.governanceWallet }).from(schema.users).where(inArray(schema.users.id, voters)) : [];
-    return users.map((u) => u.governanceWallet.toLowerCase() as Address);
-  }
-  if (!d.onchainId) return [];
+  if (!isProvisional(d) && !d.onchainId) return [];
+  const voters = provisionalVoters(await positionsOf(d.id));
+  const users = voters.length ? await db.select({ governanceWallet: schema.users.governanceWallet }).from(schema.users).where(inArray(schema.users.id, voters)) : [];
+  const theirs = users.map((u) => u.governanceWallet.toLowerCase() as Address);
+  if (isProvisional(d) || !d.onchainId) return theirs;
   const { dares } = contracts();
   const onchain = (await relayer().publicClient.readContract({ address: dares.address, abi: dares.abi, functionName: "dareOf", args: [bufferToHex(d.onchainId)] })) as { quorum: readonly Address[] };
-  return onchain.quorum.map((a) => a.toLowerCase() as Address);
+  return inTheSnapshot(theirs, onchain.quorum);
 }
 
-/** One line from anyone in the group about what happened. It is what the outcome proposal reads. */
+/** The people in whom the chain's snapshot also names: on a market the chain holds, only they can sign a vote it takes. */
+export function inTheSnapshot(theirs: Address[], snapshot: readonly string[]): Address[] {
+  const names = new Set(snapshot.map((a) => a.toLowerCase()));
+  return theirs.filter((w) => names.has(w));
+}
+
+/** One line from someone in it about what happened. It is what the outcome proposal reads. */
 export async function sayWhatHappened(dareId: string, userId: string, statement: string): Promise<void> {
   const d = await marketById(dareId);
   if (!d) throw new MarketError("That one doesn't exist.", "not_found");
   if (stateOf(d) !== "locked") throw new MarketError("There’s nothing to call on this one right now.", "wrong_state");
-  if (!(await isMember(d.groupId, userId))) throw new MarketError("This one is for the people in its group.", "not_member");
+  if (!(await positionsOf(d.id)).some((p) => p.userId === userId)) throw new MarketError(ONLY_THOSE_IN, "not_member");
   const text = statement.trim().slice(0, 280);
   if (text.length < 2) throw new MarketError("Say what happened in a line.", "bad_input");
   await db
@@ -693,6 +718,8 @@ export async function castVote(input: { dareId: string; userId: string; outcome:
 
   const [user] = await db.select().from(schema.users).where(eq(schema.users.id, input.userId)).limit(1);
   if (!user) throw new MarketError("unknown user", "not_found");
+  // Only the people in it vote (the first-contact round, 2026-10-04): a member of the set who never got in is refused here, before any signature is read.
+  if (!(await positionsOf(d.id)).some((p) => p.userId === input.userId)) throw new MarketError(ONLY_THOSE_IN, "not_member");
   const quorum = await quorumOf(d);
   if (!quorum.includes(user.governanceWallet.toLowerCase() as Address)) throw new MarketError("This one was locked before you joined the group, so it isn't yours to call.", "not_member");
   const ok = await verifyTypedData({ ...voteTypedData(d, input.outcome), address: user.governanceWallet as Address, signature: input.signature });

@@ -1,5 +1,6 @@
 "use client";
 
+import { attempt } from "@/lib/ui/attempt";
 import type { CSSProperties } from "react";
 import { useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
@@ -101,7 +102,8 @@ export function StartGame({ game, menu, sets, people, chrome, signing, mode, clo
   const sign = useSigner();
   const [step, setStep] = useState<"menu" | "who" | "terms">(mode.kind === "add" ? "terms" : "menu");
   const [checked, setChecked] = useState<Set<MenuItem["key"]>>(new Set(mode.kind === "add" ? [mode.key] : menu.some((m) => m.key === "home_wins") ? ["home_wins"] : []));
-  const [who, setWho] = useState<Who>(mode.kind === "add" ? { kind: "set", groupId: mode.groupId } : sets[0] ? { kind: "set", groupId: sets[0].groupId } : { kind: "link" });
+  // "Whoever I send it to" is where who's in starts, starting a game included (the first-contact round); adding one keeps the game's own people.
+  const [who, setWho] = useState<Who>(mode.kind === "add" ? { kind: "set", groupId: mode.groupId } : { kind: "link" });
   const [unit, setUnit] = useState<Unit>({ kind: "usd" });
   const [problem, setProblem] = useState<string | null>(null);
   const [saving, startSave] = useTransition();
@@ -126,7 +128,8 @@ export function StartGame({ game, menu, sets, people, chrome, signing, mode, clo
     if (chosen.length === 0) return setProblem("Pick at least one question.");
     if (who.kind === "people" && who.userIds.length === 0) return setProblem("Pick someone, or just send the link around.");
     startSave(async () => {
-      const r = await startGameAction({ gameId: game.id, keys: chosen.map((m) => m.key), who, unit });
+      // A send that throws on its way (a phone that lost its network halfway) answers words at the button, never the error card (the first-contact round).
+      const r = await attempt(() => startGameAction({ gameId: game.id, keys: chosen.map((m) => m.key), who, unit }));
       if ("error" in r) return setProblem(r.error);
       // The asker's Create signature opens each question for the group; the ledger wallet signs silently, once per question.
       const signed: Array<{ id: string; signature: string }> = [];
@@ -145,7 +148,7 @@ export function StartGame({ game, menu, sets, people, chrome, signing, mode, clo
         return;
       }
       setSigningStep(null);
-      const o = await openGameQuestionsAction(signed);
+      const o = await attempt(() => openGameQuestionsAction(signed));
       if ("error" in o) return setProblem(o.error);
       router.replace(`/on/${game.id}?g=${r.groupId}`);
     });

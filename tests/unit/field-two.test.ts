@@ -17,7 +17,7 @@ import { ObligationToken } from "@/components/ledger/obligation-token";
 const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
 
 test("the sheet has four positions: tucked and resting always, raised when there is more than the move, full when raised cannot show it all, and each shows its own height", () => {
-  const small: SheetMeasure = { handle: 40, rest: 140, natural: 140, raisedCap: 500, fullCap: 700 };
+  const small: SheetMeasure = { handle: 40, rest: 140, natural: 140, raisedCap: 500, fullCap: 700, pad: 0 };
   assert.deepEqual(positionsOf(small), ["tucked", "resting"], "nothing more to show: no raised");
   const some: SheetMeasure = { ...small, natural: 360 };
   assert.deepEqual(positionsOf(some), ["tucked", "resting", "raised"]);
@@ -35,7 +35,7 @@ test("a drag moves the sheet one position by direction past 24px, a shorter one 
   assert.equal(nextPosition("raised", -100, [...all]), "full");
   assert.equal(nextPosition("full", -100, [...all]), "full", "the top holds");
   assert.equal(nextPosition("tucked", 100, [...all]), "tucked", "the bottom holds");
-  assert.equal(nextPosition("raised", 100, [...all]), "resting", "down from raised is resting, never straight to tucked");
+  assert.equal(nextPosition("raised", 100, [...all]), "resting", "one position when the positions' offsets are not given");
   assert.equal(nextPosition("full", 100, [...all]), "raised", "down from full is raised");
   assert.equal(nextPosition("raised", -100, ["tucked", "resting", "raised"]), "raised", "no full where raised shows it all");
 });

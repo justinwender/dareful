@@ -1,3 +1,4 @@
+import { GuestLineFor } from "@/components/guest/guest-line";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, eq, inArray, isNull } from "drizzle-orm";
@@ -104,7 +105,12 @@ export async function GamePage({ id, g, add, start }: { id: string; g: string | 
     // A pasted link: the game, and the questions the link's own set asked on it, each opening its market screen, where
     // someone without an account can put a number on it (docs/design.md 3.17). Nothing about any other group (3.32).
     const asked = linked ? (await gameMarkets(game.id, linked)).filter((r) => r.dare.creatorSignature) : [];
-    return <LinkedGame header={header} asked={asked} ahead={ahead} signedIn={false} />;
+    return (
+      <>
+        <GuestLineFor />
+        <LinkedGame header={header} asked={asked} ahead={ahead} signedIn={false} />
+      </>
+    );
   }
   const groups = await gameGroupsFor(game.id, me);
   // A link to a set this person is not in, with anything opened on this game (3.33, 3.17): that set's questions, never the start and never a set of their own. Nothing joins on the way in: the join is a tap on the question they open.

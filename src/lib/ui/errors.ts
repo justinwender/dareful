@@ -1,3 +1,4 @@
+import { browserSaysOffline } from "./connection";
 /**
  * The words for what went wrong, by cause (the field round, 2026-10-02, 1.6): one table, read by the actions on
  * the server and by the controls in the browser, so the same failure says the same thing everywhere. Each one
@@ -38,7 +39,7 @@ export function failureWords(online: boolean): string {
   return online ? WORDS.server : WORDS.offline;
 }
 
-/** Whether the browser is offline right now; on the server, never. */
+/** Whether the browser says it is offline right now, unless a request on this page has shown that wrong; on the server, never. */
 export function offlineNow(): boolean {
-  return typeof navigator !== "undefined" && navigator.onLine === false;
+  return browserSaysOffline();
 }

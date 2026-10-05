@@ -41,7 +41,7 @@ export function closeMoment(key: Closing, now: Date, zone: string): Date {
 }
 
 /** A minute before midnight, `plusDays` calendar days after now's date in the zone. */
-function endOfDay(now: Date, zone: string, plusDays: number): Date {
+export function endOfDay(now: Date, zone: string, plusDays: number): Date {
   const d = wallClock(now, zone);
   // The wall time wanted, read as if the zone were UTC, then moved by the zone's offset at that moment (twice,
   // so a change of offset between the guess and the answer, a clock change that night, is followed).
@@ -57,7 +57,7 @@ function offsetAt(instant: number, zone: string): number {
   return Date.UTC(w.year, w.month - 1, w.day, w.hour, w.minute, w.second) - Math.floor(instant / 1000) * 1000;
 }
 
-function wallClock(at: Date, zone: string): { year: number; month: number; day: number; hour: number; minute: number; second: number } {
+export function wallClock(at: Date, zone: string): { year: number; month: number; day: number; hour: number; minute: number; second: number } {
   const parts = new Intl.DateTimeFormat("en-US", { timeZone: zone, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" }).formatToParts(at);
   const n = (type: string) => Number(parts.find((x) => x.type === type)?.value);
   return { year: n("year"), month: n("month"), day: n("day"), hour: n("hour") % 24, minute: n("minute"), second: n("second") };

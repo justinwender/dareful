@@ -44,6 +44,7 @@ import { leanPill, type TeamFace } from "@/lib/ui/team";
 import { farOffThreshold } from "@/lib/ledger/scale";
 import { InvitePreview } from "@/components/markets/invite-preview";
 import { WhosInRow } from "@/components/markets/whos-in-row";
+import { WithdrawMarket } from "@/components/markets/withdraw-market";
 import { Nudge } from "@/components/notify/nudge";
 import { DeadLink } from "@/components/markets/dead-link";
 import { HeadsUp } from "@/components/notify/heads-up";
@@ -150,7 +151,7 @@ export default async function MarketPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ side?: string }>;
+  searchParams: Promise<{ side?: string; pick?: string }>;
 }) {
   const clock = await viewerClock();
   const { id } = await params;
@@ -476,8 +477,12 @@ export default async function MarketPage({
   // thing; either of them can soften theirs before they're in. The other side is not a secret in an argument:
   // taking the opposite one is the whole act, so the opponent is told which side is taken, never the number.
   const firstIn = d.pace === "argument" ? (others[0] ?? null) : null;
+  // A pick-one argument (the first-contact round): each person's answer is an answer; the asker starts on theirs, and with two answers the other person starts on the other.
+  const pickArgument = d.pace === "argument" && d.kind === "categorical";
+  const asked = Number((await searchParams).pick);
+  const defaultPick = pickArgument && answers ? (firstIn ? (answers.length === 2 ? (Number(firstIn.value) === 0 ? 1 : 0) : null) : Number.isInteger(asked) && asked >= 0 && asked < answers.length ? asked : null) : null;
   const argument =
-    d.pace === "argument"
+    d.pace === "argument" && !pickArgument
       ? {
           defaultPercent: firstIn
             ? firstIn.value >= 5000n
@@ -502,8 +507,8 @@ export default async function MarketPage({
       ? votes.map((v) => v.userId)
       : positions.map((p) => p.userId).filter((x): x is string => x !== null),
   );
-  const waitingIds = seats
-    .map((x) => x.userId)
+  // Who is still out: the set, for getting in; the people in, for calling it (only they vote, the first-contact round).
+  const waitingIds = (state === "locked" ? positions.map((p) => p.userId) : seats.map((x) => x.userId))
     .filter((x): x is string => x !== null && x !== me.id && !doneIds.has(x));
   const waitingUsers = waitingIds.length
     ? await db
@@ -551,6 +556,7 @@ export default async function MarketPage({
       teams={teams}
       consent={decidedByFeed ? (firstDrive ? DRIVE_CONSENT : CONSENT) : null}
       pickOne={pickAnswers ? { answers: pickAnswers } : null}
+      defaultPick={defaultPick}
       mark={d.markKind === "emoji" ? d.markValue : null}
       argument={argument}
       lockedLine={lockedLine}
@@ -842,13 +848,14 @@ export default async function MarketPage({
       </section>
     ) : null;
   // The sheet on a locked market: whose move it is, and the move (3.24).
+  // Only the people in it call it (the first-contact round, 2026-10-04): no ballot for anyone else, and the count is over the account-holders in.
   const callSheet =
-    state === "locked" ? (
+    state === "locked" && mine ? (
       <CallSheet
         dareId={d.id}
         signing={signing}
         threshold={d.threshold}
-        quorum={seats.length}
+        quorum={positions.filter((p) => p.userId !== null).length}
         me={{ name: me.displayName, hue: hueFor(me.id) }}
         myVote={myVote}
         votes={orderedVotes.map((v) => ({
@@ -996,12 +1003,12 @@ export default async function MarketPage({
   // Holdouts (3.42): the people the market was sent to who are not in yet follow the stack as dashed avatars while it is open, and the count names both numbers.
   const holdouts = state === "open" ? waitingUsers.map((u) => ({ name: u.displayName, hue: hueFor(u.id) })) : [];
   // The count (3.42, ruled 2026-09-27): when the asker named people, the holdouts rule from the first entry ("1 of 6 in", with the dashed avatars); "Just you so far" only when nobody was named. Share stays the chalk while the asker is alone either way.
-  const whosInCount = holdouts.length > 0 ? `${positions.length} of ${positions.length + holdouts.length} in` : alone ? "Just you so far" : `${positions.length} of you in`;
+  const whosInCount = holdouts.length > 0 ? `${positions.length} of ${positions.length + holdouts.length} in` : alone ? "Just you so far" : positions.length === 0 ? "Nobody’s in yet." : `${positions.length} of you in`;
   // The people still out, in who's in (3.42, amended 2026-09-27): asked and not in while open, in the quorum and not voted once locked, each with a nudge beside them for anyone who is in.
   const stillOut = state === "open" || state === "locked" ? waitingUsers.map((u) => ({ id: u.id, name: u.displayName, hue: hueFor(u.id) })) : [];
   const relayWords = state === "locked" ? `We’re waiting on your call: ${d.title}` : `We’re waiting on you: ${d.title}`;
   const whosIn = (
-    <WhosInRow people={whosInPeople} holdouts={holdouts} count={whosInCount} share={{ url: `${appUrl}/m/${d.id}`, title: d.title }} code={state === "open" ? { dareId: d.id, question: d.title, mark: markRefOf(d) } : null} chalk={state === "open" && alone} list={{ dareId: d.id, canRemove: state === "open" && d.creatorId === me.id, out: stillOut, stage: state === "locked" ? "vote" : "enter", canNudge: mine !== null, relay: { url: `${appUrl}/m/${d.id}`, text: relayWords } }} pass={state === "open" && mine ? { dareId: d.id, explained: me.handOverExplainedAt !== null } : null} />
+    <WhosInRow people={whosInPeople} holdouts={holdouts} count={whosInCount} share={{ url: `${appUrl}/m/${d.id}`, title: d.title }} code={state === "open" ? { dareId: d.id, question: d.title, mark: markRefOf(d) } : null} chalk={state === "open" && (alone || (d.creatorId === me.id && positions.length === 0))} list={{ dareId: d.id, canRemove: state === "open" && d.creatorId === me.id, out: stillOut, stage: state === "locked" ? "vote" : "enter", canNudge: mine !== null, relay: { url: `${appUrl}/m/${d.id}`, text: relayWords } }} pass={state === "open" && mine ? { dareId: d.id, explained: me.handOverExplainedAt !== null } : null} />
   );
   // The photos while it is open and through the vote (3.37 and 3.39, amended 2026-09-27: the album is open the whole time): the same slot and frame as after it ends, last on the screen under the details, for everyone the door admits, someone in and the group it was asked in (a signed-in viewer past this point is one or the other: a non-member got the invitation above). The add tile and the empty slot are for someone who can add, which before the end means someone who is in while it is open; someone who only opened the link sees nothing here.
   const albumItems = media.memories.map((m) => ({ id: m.id, author: { name: m.author.displayName, hue: hueFor(m.author.id) }, removable: m.author.id === me.id }));
@@ -1164,7 +1171,8 @@ export default async function MarketPage({
             <>
               {stage}
               {sparkline}
-              {mine ? (
+              {/* The asker shares before entering (the first-contact round): who's in with its share, copy and code from creation. */}
+              {mine || d.creatorId === me.id ? (
                 whosIn
               ) : (
                 // Before you're in (3.38): who is in and no number, with the lock glyph; where they landed shows once you are. With nobody in (a game opens every question that way) the count is "Nobody's in yet." alone, never a zero (3.14) and no second sentence.
@@ -1182,6 +1190,8 @@ export default async function MarketPage({
               {/* The close is in the sheet (3.24, 3.42), for whoever can close: nothing of it under the row. Who is in without an account is the asker's to remove from who's in, behind the stack. */}
               {/* The nudge (3.42, amended 2026-09-27; restored in Round B): the only way someone in reaches the people asked who are not in, with the relay for anyone no device reaches. */}
               {mine ? <Nudge dareId={d.id} names={waitingNames} url={`${appUrl}/m/${d.id}`} relay={relayWords} /> : null}
+              {/* A question nobody else got into is its asker's to withdraw, here as on Now (the first-contact round). */}
+              {d.creatorId === me.id && positions.every((p) => p.userId === me.id) ? <WithdrawMarket dareId={d.id} /> : null}
             </>
           ) : null}
 

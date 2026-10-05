@@ -5,7 +5,7 @@ import { z } from "zod";
 import { db, schema } from "@/db";
 import { evmAddressesOf, InvalidLoginToken, phoneOf, suggestedNameOf, verifyDynamicToken } from "@/lib/auth/jwt";
 import { clearClaimTokens, readClaimTokens } from "@/lib/auth/claim-cookie";
-import { decideLogin } from "@/lib/auth/login";
+import { decideLogin, loginMethod } from "@/lib/auth/login";
 import { hashPhone } from "@/lib/auth/phone";
 import { clearSessionCookie, currentUser, issueSessionCookie, sessionDueForReissue, sessionIssuedAt } from "@/lib/auth/session";
 import { bindByBrowserTokens, bindByPhone } from "@/lib/ledger/claims";
@@ -103,7 +103,7 @@ export async function POST(req: Request): Promise<Response> {
 
   await issueSessionCookie(user.id);
   await rememberZone(user);
-  await record(decision.kind === "create" ? "signed_up" : "signed_in", { method: phone ? "phone" : claims.email ? "email" : "other" }, { userId: user.id });
+  await record(decision.kind === "create" ? "signed_up" : "signed_in", { method: loginMethod(claims) }, { userId: user.id });
   return NextResponse.json({
     user: { id: user.id, displayName: user.displayName, ledgerWallet: user.ledgerWallet, governanceWallet: user.governanceWallet },
     bound,

@@ -116,6 +116,8 @@ export function phoneOf(claims: DynamicClaims): string | undefined {
  * share cards in other people's group chats.
  */
 export function suggestedNameOf(claims: DynamicClaims): string | undefined {
-  const first = claims.given_name?.trim().split(/\s+/)[0];
+  // A Google login may carry no given name, and its display name is on the credential instead (the first-contact round).
+  const google = claims.verified_credentials.find((c) => c.format === "oauth" && typeof (c as Record<string, unknown>).oauth_display_name === "string") as Record<string, unknown> | undefined;
+  const first = (claims.given_name ?? (google?.oauth_display_name as string | undefined))?.trim().split(/\s+/)[0];
   return first ? first.slice(0, 40) : undefined;
 }

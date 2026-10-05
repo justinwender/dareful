@@ -63,14 +63,14 @@ export function BackControl({ label = "Back", onBack }: { label?: string; /** Ba
   };
   if (onBack)
     return (
-      <button type="button" aria-label={label} onClick={onBack} data-press="line" className="relative -ml-2 inline-flex h-12 w-12 items-center justify-center rounded-pill text-ink press-line">
+      <button type="button" aria-label={label} onClick={onBack} data-back="" data-press="line" className="relative -ml-2 inline-flex h-12 w-12 items-center justify-center rounded-pill text-ink press-line">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M15 5l-7 7 7 7" />
         </svg>
       </button>
     );
   return (
-    <Link prefetch={false} href={href} aria-label={label} data-press="line" onClick={back} className="relative -ml-2 inline-flex h-12 w-12 items-center justify-center rounded-pill text-ink press-line">
+    <Link prefetch={false} href={href} aria-label={label} data-back="" data-press="line" onClick={back} className="relative -ml-2 inline-flex h-12 w-12 items-center justify-center rounded-pill text-ink press-line">
       <LinkPending look="control" />
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M15 5l-7 7 7 7" />

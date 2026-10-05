@@ -49,7 +49,7 @@ test("a set of people nobody named is described by first names and you, and neve
   assert.equal(label(["Maya", "Theo"]), "Maya, Theo and you");
   assert.equal(label(["A a", "B b", "C c", "D d", "E e"]), "A, B, C and 2 more");
   assert.equal(label(["Priya"], "Friday crew"), "Friday crew");
-  assert.equal(label(["Gabe"], null, true), "Just you two");
+  assert.equal(label(["Gabe"], null, true), "Gabe and you", "a set of two reads as its other person, a dyad or not (the first-contact round)");
   for (const l of [label(["Priya"]), label([]), label(["a", "b", "c", "d"])]) assert.equal(/unnamed|untitled|no name/i.test(l), false, l);
 });
 
@@ -202,7 +202,7 @@ test("the creator is asked to lock when time is up, and not before, and nobody e
 });
 
 test("a locked question needs a call from whoever has not made one, and links to the ballot", () => {
-  const locked = market({ state: "locked", votesCast: 2, saidBy: "Priya" });
+  const locked = market({ state: "locked", votesCast: 2, saidBy: "Priya", people: ["viewer", "a", "b", "c"].map((id) => ({ id, name: id, percent: null, number: null, pick: null })) });
   const n = needFromMarket(locked, "viewer", false, t0, closes);
   assert.equal(n?.kind, "vote");
   assert.equal(n?.href, "/m/d1#ballot");
@@ -211,7 +211,7 @@ test("a locked question needs a call from whoever has not made one, and links to
 });
 
 test("no needs-you line ever says how long anything has waited", () => {
-  const old = market({ state: "locked", dare: { resolvesBy: new Date(t0.getTime() - 60 * day), createdAt: new Date(t0.getTime() - 90 * day) } });
+  const old = market({ state: "locked", people: [{ id: "viewer", name: "V", percent: null, number: null, pick: null }], dare: { resolvesBy: new Date(t0.getTime() - 60 * day), createdAt: new Date(t0.getTime() - 90 * day) } });
   const n = needFromMarket(old, "viewer", false, t0, () => closesLabel(new Date(t0.getTime() - 60 * day), t0, "UTC"));
   assert.equal(/\d+\s*(day|week|month|hour)|ago|overdue|late/i.test(`${n?.context} ${n?.verb}`), false);
   assert.equal(closesLabel(new Date(t0.getTime() - 60 * day), t0, "UTC"), "soon");

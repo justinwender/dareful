@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { eq, inArray } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { askedRecord } from "@/lib/ledger/you";
 import { warningSendTime } from "@/lib/notify/messages";
 import { notAllowed } from "@/lib/ui/errors";
 import { ensureUsd } from "@/lib/ledger/denominations";
@@ -68,16 +69,18 @@ test("a case is kept apart from what happened, only someone who is in can make o
   assert.equal(await codeOf(() => stateCase(v.d.id, ana.user.id, "hear me out")), "wrong_state");
 });
 
-test("the toll: a void by the group or by the arbitrator counts against whoever wrote the terms, and expiry counts against nobody", async () => {
+test("the toll: a void by the group or by the arbitrator counts against whoever wrote the terms, expiry counts against nobody, and only a question two or more were in is counted", async () => {
   const dana = await tempSigner("Dana");
+  const eli = await tempSigner("Eli");
   const before = await cleanResolution(dana.user.id);
   assert.deepEqual(before, { ended: 0, clean: 0 });
   const g = await createGroup({ name: "toll check (temporary)", createdBy: dana.user.id });
   track.group(g.id);
   const usd = await ensureUsd(g.id, dana.user.id);
-  const end = async (resolvedBy: string, outcome: bigint | null) => {
+  const end = async (resolvedBy: string, outcome: bigint | null, people: Array<{ user: { id: string } }> = [dana, eli]) => {
     const d = await markets.draftMarket({ creatorId: dana.user.id, groupId: g.id, denomId: usd.id, title: "Toll check?", termsText: "Yes if it happens.", resolvesBy: new Date(Date.now() + 3_600_000) });
     await db.update(schema.dares).set({ creatorSignature: Buffer.from([1]), lockedAt: new Date(), resolvedAt: new Date(), resolvedBy, resolvedOutcome: outcome }).where(eq(schema.dares.id, d.id));
+    for (const p of people) await db.insert(schema.darePositions).values({ dareId: d.id, userId: p.user.id, stake: 100n, value: 5000n, enteredBy: p.user.id, acknowledgedAt: new Date() });
     return d.id;
   };
   await end("quorum", 1n);
@@ -87,6 +90,15 @@ test("the toll: a void by the group or by the arbitrator counts against whoever 
   const expired = await end("expired", null);
   assert.deepEqual(await cleanResolution(dana.user.id), { ended: 4, clean: 2 });
   assert.equal(markets.stateOf((await markets.marketById(expired)) as markets.DareRow), "expired");
+  // One person in says nothing about the terms, answered or voided: in neither number.
+  await end("quorum", 1n, [dana]);
+  await end("arbitration", markets.VOID_OUTCOME, [dana]);
+  assert.deepEqual(await cleanResolution(dana.user.id), { ended: 4, clean: 2 }, "a question one person was in is left out");
+  // A question with a guest in it is settled here by its quorum and recorded as provisional: a vote like any other.
+  await end("provisional", 1n);
+  assert.deepEqual(await cleanResolution(dana.user.id), { ended: 5, clean: 3 }, "a guest's question decided by vote counts");
+  const asked = await askedRecord(dana.user.id);
+  assert.deepEqual([asked.counted.length, asked.clean, asked.expired], [5, 3, 1], "the profile reads the same rule");
 });
 
 test("one warning before the backstop acts, never a second: six hours before the tiebreaker's day is up, and six hours before the void rule's deadline", async () => {

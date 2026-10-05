@@ -49,6 +49,19 @@ export function marginWords(signed: bigint, home: string, away: string): string 
 
 export const agree = (a: FinalScore, b: FinalScore): boolean => a.home === b.home && a.away === b.away;
 
+/**
+ * Whether two finals answer one question the same way (the first-contact round, 2026-10-04): the question's outcome
+ * under each, never the whole score. Two scoreboards naming the same winner agree on who wins though one has the
+ * loser's score wrong (the Yankees 9, the Red Sox 2 or 0); the same two disagree on the margin and the total. A
+ * question the score does not decide falls back to the whole final.
+ */
+export function outcomesAgree(t: { key: string; shift: bigint | null; decidedByScore: boolean }, a: FinalScore, b: FinalScore): boolean {
+  const x = outcomeFor(t, a);
+  const y = outcomeFor(t, b);
+  if (!x || !y) return agree(a, b);
+  return x.outcome === y.outcome && x.tie === y.tie && x.floored === y.floored;
+}
+
 /** The three endings' clocks: both sources agreeing settles at a day; the scoreboard alone at three days, unchanged; the warning goes six hours before the earliest. */
 export const AGREE_AFTER_MS = 24 * 3_600_000;
 export const ALONE_AFTER_MS = 72 * 3_600_000;
@@ -67,13 +80,14 @@ export type Backstop = { act: "wait" } | { act: "settle"; final: FinalScore; alo
  * Whether the backstop may act, and how (docs/decisions.md, public markets, "Every backstop path has an ending"):
  * the two sources reporting the same final settles it a day after the final was seen; the scoreboard alone, with
  * no second source (hockey always, or the check down or late), settles it three days after, provided the score has
- * not changed since; two different finals void it with no toll, a real conflict being worse than nothing changing
- * hands. Before its time, it waits. `check` is null where the second source had nothing to say.
+ * not changed since; two finals that answer the question differently void it with no toll, a real conflict being
+ * worse than nothing changing hands (`same`, the question's own outcome under each since 2026-10-04; the whole final
+ * when not given). Before its time, it waits. `check` is null where the second source had nothing to say.
  */
-export function backstopDecision(input: { finalSeenAt: Date; confirmedAt: Date | null; final: FinalScore; check: FinalScore | null; now: Date }): Backstop {
+export function backstopDecision(input: { finalSeenAt: Date; confirmedAt: Date | null; final: FinalScore; check: FinalScore | null; now: Date; same?: (a: FinalScore, b: FinalScore) => boolean }): Backstop {
   const since = input.now.getTime() - input.finalSeenAt.getTime();
   if (input.check) {
-    if (!agree(input.final, input.check)) return since >= AGREE_AFTER_MS ? { act: "void", why: "conflict" } : { act: "wait" };
+    if (!(input.same ?? agree)(input.final, input.check)) return since >= AGREE_AFTER_MS ? { act: "void", why: "conflict" } : { act: "wait" };
     return since >= AGREE_AFTER_MS ? { act: "settle", final: input.final, alone: false } : { act: "wait" };
   }
   if (since >= ALONE_AFTER_MS && input.confirmedAt !== null) return { act: "settle", final: input.final, alone: true };

@@ -66,7 +66,12 @@ export async function streamWriteUp<T>(body: WriteUpBody, onPartial: (p: Partial
       const line = buffer.slice(0, nl);
       buffer = buffer.slice(nl + 1);
       if (!line.trim()) continue;
-      const o = JSON.parse(line) as { t?: string; done?: T };
+      const o = JSON.parse(line) as { t?: string; r?: 1; done?: T };
+      // The quick model's answer failed its shape and the careful one starts again from nothing (the first-contact round): what was shown goes.
+      if (o.r === 1) {
+        json = "";
+        onPartial({ title: null, terms: null });
+      }
       if (typeof o.t === "string") {
         json += o.t;
         onPartial(partialValues(json));

@@ -406,8 +406,10 @@
   }
   /* While a field holds the keyboard the root is the plain height again: with the taller root iOS 26 pans the page 62 points further than it
      draws its own caret (measured the same day: the caret stood in the heading above the field), and with the plain one the two agree. The band
-     this brings back is under the keyboard. Only what raises a keyboard counts, so a ticked box never moves the layout. */
-  html:has(:is(textarea, input:not([type="checkbox"], [type="radio"], [type="file"], [type="range"], [type="button"], [type="submit"], [type="hidden"])):focus) {
+     this brings back is under the keyboard. The root wears `data-typing` only when a keyboard came up (`Typing`, src/lib/ui/viewport.ts): a field
+     a finger touched or one focused while a tap was handled. `:focus` alone also matched a field a page focused on arriving, with no keyboard,
+     and left a band under the code screen's sheet (the first-contact round, 2026-10-04). */
+  html[data-typing] {
     height: 100%;
   }
   body {
@@ -489,6 +491,9 @@
 .motion-rise { animation: layer-rise var(--motion-travel) var(--ease-move) both; }
 .motion-sink { animation: layer-sink var(--motion-base) var(--ease-leave) both; }
 .motion-fade-in { animation: fade-in var(--motion-base) var(--ease-fade) both; }
+/* First-visit tips (10.9): the one glass in the app (1.5's exception), the screen blurred 8px under a 40% wash of the ground, and the cut-out and the tip moving to the next control over base on the move curve. */
+.tips-blur { -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); background: color-mix(in srgb, var(--ground) 40%, transparent); }
+.tips-move { transition: left var(--motion-base) var(--ease-move), top var(--motion-base) var(--ease-move), width var(--motion-base) var(--ease-move), height var(--motion-base) var(--ease-move); }
 .motion-fade-out { animation: fade-out var(--motion-quick) var(--ease-fade) both; }
 .motion-step-in { animation: step-in var(--motion-base) var(--ease-move) both; }
 html.back .motion-step-in { animation-name: step-in-back; }
@@ -618,6 +623,9 @@ html.back::view-transition-new(ask-step) { animation-name: step-in-back; }
  * line, the ring rests at a quarter, the caret holds still.
  */
 @media (prefers-reduced-motion: reduce) {
+  /* 10.9: with Reduce Motion the blur and the tips appear and change without moving or fading. */
+  .tips-move { transition: none; }
+  [data-first-tips].motion-fade-in { animation: none; }
   .motion-rise, .motion-step-in, .motion-arrive, .page-arrive > * { animation-name: fade-in; animation-duration: var(--motion-base); animation-timing-function: var(--ease-fade); }
   .motion-sink { animation-name: fade-out; animation-duration: var(--motion-base); animation-timing-function: var(--ease-fade); }
   .motion-loop-runner { animation: none; left: 0; width: 100%; }

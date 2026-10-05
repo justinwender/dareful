@@ -96,11 +96,11 @@ test("both teams' abbreviations are whole in Now's 40px mark: stacked bars the m
   assert.ok(STACKED.glyph >= 10, "the abbreviation is never smaller than ten pixels");
 });
 
-test("how the terms get written is part of the Yes or no choice: the row stands only on a dare while Yes or no is the kind selected", () => {
+test("the AI market setup stands on every type of a dare, and never on an argument (the first-contact round, superseding 2.6)", () => {
   assert.equal(paceRowShows("dare", "binary"), true);
-  assert.equal(paceRowShows("dare", "numeric"), false, "a number never sees it");
-  assert.equal(paceRowShows("dare", "categorical"), false, "nor a pick-one question");
-  assert.equal(paceRowShows("argument", "binary"), false, "nor an argument, whatever kind was left selected");
+  assert.equal(paceRowShows("dare", "numeric"), true, "a number gets its own three questions: the unit, the source, the rounding");
+  assert.equal(paceRowShows("dare", "categorical"), true, "and a pick-one question: the answers and a tie");
+  assert.equal(paceRowShows("argument", "binary"), false, "an argument has its own check");
 });
 
 test("an installed app on iOS 26 is laid out whole: the root is a pixel taller than the large viewport at rest, the plain height while a field holds the keyboard, and nothing on the element outranks either", () => {
@@ -110,10 +110,10 @@ test("an installed app on iOS 26 is laid out whole: the root is a pixel taller t
   const taller = html.indexOf("height: calc(100lvh + 1px);");
   assert.ok(plain > 0 && taller > plain, "the taller root is declared after the plain one, which stays for a browser without the unit");
   assert.ok(/overflow: hidden;/.test(html), "and a finger still cannot scroll it");
-  const editing = /\n  html:has\(:is\(textarea, input:not\(([^)]*)\)\):focus\) \{\s*height: 100%;\s*\}/.exec(css);
+  const editing = /\n  html\[data-typing\] \{\s*height: 100%;\s*\}/.exec(css);
   assert.ok(editing, "while a field holds the keyboard the root is the plain height, so the page and the phone's own caret agree");
-  for (const t of ["checkbox", "radio", "range", "file"]) assert.ok(editing[1].includes(`[type="${t}"]`), `a ${t} raises no keyboard and never moves the layout`);
-  assert.ok(css.indexOf("html:has(:is(textarea") > css.indexOf("height: calc(100lvh + 1px);"), "the editing rule comes after the root's, so it wins");
+  assert.ok(!/:focus\) \{\s*height: 100%;/.test(css), "a field the page focused by itself, with no keyboard, never moves the layout");
+  assert.ok(css.indexOf("html[data-typing]") > css.indexOf("height: calc(100lvh + 1px);"), "the editing rule comes after the root's, so it wins");
   const layout = readFileSync("src/app/layout.tsx", "utf8");
   const root = /<html [^>]*className=\{`([^`]*)`\}/.exec(layout)?.[1] ?? "";
   assert.ok(root.length > 0 && !/(^|\s)(h|min-h|max-h)-/.test(root), "no height class on the root element: a utility would outrank both rules");

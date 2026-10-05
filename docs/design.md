@@ -51,6 +51,8 @@ Round D), following the phone's setting, with an Appearance row on You.
 
 ### What changed in this revision
 
+Amended 2026-10-04 by the first-contact round, in dated notes at the ends of 3.13 (the line starts at 50%), 3.14 and 3.47 (ideas), 3.15 (drafts and who votes), 3.17 (joining: the name, then keeping it in an account), 3.24 (the room, tucked and the long drag), 3.29 (asking: the labels, the type from the shape, decided by, who's in, drafts), 3.42 (the row from creation), 3.46, 4.7 (the one card) and 10.9 (the ring).
+
 Amended 2026-10-03 after the runs on the iOS 26 simulator, in dated notes before 3.16 (the pace row under its chip) and at 9.3 (the root a pixel taller than the large viewport).
 
 Amended 2026-10-03 by the owner's follow-ups, in dated notes at the ends of 3.15 (the stacked mark), 3.24 (the close for everyone who can), 3.42 (late closes), 4.10 (whose night) and 5.2 (a write that cannot wait for good); and on 2026-10-02 by part 2 at 3.15, 3.24, 3.28, 3.39, 3.42, 3.45 and before 3.16 and 6.4.
@@ -1010,6 +1012,8 @@ in at 70%" in the sheet, is not built and is not needed: the entry line says it.
 motion for a sheet that loses its move is not drawn either; the sheet is simply gone, as it was at
 1.8 seconds.)
 
+(Amended 2026-10-04, the first-contact round, the owner's call. **The line starts at 50%.** Before the first touch the thumb sits at the middle, the header's right side reads "Slide to your prediction" where the words for the number will be, and the primary says what it would send: "I'm in at 50%, $5". An untouched entry is 50%. A first entry opens the sheet raised, so that primary is on screen without a touch; a number starts on its field at rest, and a draft rests so its terms stay in view. An argument still starts all the way to one side and a pick starts empty. This replaces "nothing starts at 50%" for the odds line.)
+
 ### 3.14 Empty and first-run states
 
 - **Now, before anything** (`FirstRun`): today's date as a label, the `serif-xl` headline
@@ -1032,6 +1036,8 @@ motion for a sheet that loses its move is not drawn either; the sheet is simply 
   count of zero.
 - **Offline**: a 28px `--surface-2` bar under the header, "Offline. You can still look around."
   Entries queue and send on reconnect.
+
+(Amended 2026-10-04, the first-contact round: the ideas tile (3.47) sits last on Now while someone has fewer than three questions running, and first on What's on (3.32).)
 
 ### 3.15 Needs-you row
 
@@ -1110,6 +1116,8 @@ stays put, as a market does.)
 (Amended 2026-10-03, the owner's ruling: how the terms get written is part of the Yes or no choice, since careful mode exists for that kind alone. "Just write it up" and "Ask me three things first" have no heading of their own; they sit under the kind chips, indented 12px with a 1px `--line` at the left and 12px of padding, only while Yes or no is selected, with the sentence for the chosen one under them in `caption`. A number, a pick-one question and an argument never show the row.)
 
 (Amended 2026-10-03, the owner's finding: a game's 40px mark on Now is the two teams stacked, the away team over the home team, each a bar the mark's width and 19px tall with its abbreviation whole at 10px, 2px between them. Two 28px stamps overlapping by 16px left 12px of the first showing, so "BOS" read "B(". The squares stay everywhere a team stands alone.)
+
+(Amended 2026-10-04, the first-contact round: a draft never sent is a Needs you row ("You never sent this one", Finish) for a day, and then lives on You under Drafts until it is sent or discarded. A vote row is only for someone in the question, since only they call it.)
 
 ### 3.16 Code input
 
@@ -1265,6 +1273,8 @@ remembered, a 44px tertiary "Not Noah?" sits under the caption and does what "No
 Signed in, frame 7 is unchanged. The smaller version, if the week runs short, is the remembered
 guest alone, since that is the case that went wrong; a phone with no guest then keeps frame 3,
 with "Have an account? Sign in" made a 48px secondary above the fields.)
+
+(Amended 2026-10-04, the first-contact round, the owner's brief; this supersedes the fifteenth session's two equal choices above. **Who's joining?** holds "Your name" and, directly under it at the field's width, the 48px secondary "Sign in". A guest gives a name and nothing else: no number, and no names suggested. The chalk is "Join as Sam". **The entry is saved first.** The sheet's next step, raised, is "Keep your calls in an account": an email field with Continue as the primary, then "Continue with Google", then "Use a phone number" (which switches the field, and back with "Use an email"), and the tertiary "Not now". An address leads to its code: "The code sent to …", Continue, "Send a new code" and Back. **Sign in at the first step** opens the same fields under "Sign in", with Back, and the entry picked goes in under the account once it exists. A phone that remembers a guest still joins as them ("Joining as Noah · Not you?"), and the keeping step follows a first entry only. On the simulators, three taps and the name from the link to the entry (four on a first visit, with the tip), and the entry saved about a second and a half after "Join as".)
 
 ### 3.18 Person row
 
@@ -1674,6 +1684,8 @@ the entry line (3.38), on the claimant's screen and the voter's alike; the pictu
 (Built 2026-10-02, the field round, part 2: the four positions are one component, `PinnedSheet`, with `visibleAt`, `positionsOf` and `nextPosition` pure. Tucked shows the handle row alone, resting the move, raised up to 72% of the screen, and full up to the status band less 60px, the only position at which the sheet's own content scrolls, under a handle row that stays; full exists only where raised cannot show it all. The grabber is 48 by 6 (the owner's finding: the 36 by 5 one was too small for a thumb), on a row that keeps the header as its handle. A drag past 24px moves one position by direction and the ends hold; the page's room stays the resting height. The close in the sheet is built for a market stuck past its close alone, the owner's correction: in normal running the close time closes a market by itself, so only once the time has passed with the market still open and two or more in does the sheet rest on "Time’s up, and nothing closed it. Anyone in it can." and the chalk "Close it with N", for the asker and anyone in it; the calls-are-in stretch is next round's.)
 
 (Corrected 2026-10-03, the owner's reading of 3.42 and of this section: the close belongs in the sheet for every market someone can close, the asker on any open market with two in and anyone in once it is stuck past its close time. It is the sheet's main action when everyone asked is in or when the market is stuck, and otherwise a secondary that asks once, under one line saying what closing now costs: "Everyone you asked is in.", "Close it now and John and Maya can’t get in.", "Whoever isn’t in yet can’t get in after." where nobody was named, and "Time’s up, and nothing closed it. Anyone in it can." once stuck. While someone is changing their own entry the entry sheet stands in its place. The note above, which built it for the stuck case alone, is superseded. The calls-are-in stretch stays next round's.)
+
+(Amended 2026-10-04, the first-contact round, from the simulators. **The room follows the sheet.** The page's last element scrolls clear of the sheet at every position, by what shows at that position and 20px (full counts as raised); and the page grows with its content and is never held at its minimum height, which had put Now's last row under the tab bar and "Stakes, for all 3" under the sheet. **Tucked** shows the handle row and the strip over the home indicator, above Safari's toolbar too, and a tap on it raises the sheet. **A drag lands where the finger let it go**: past 24px it moves at least one position, and as far as the position nearest where it was released, so one long drag from raised tucks it. A draft's "Share it first" and "Discard it" sit on the page under its terms, never in the sheet, since on a 714-point Safari screen the raised sheet ended short of them.)
 
 ### 3.25 The question band and the market screen
 
@@ -2098,6 +2110,8 @@ mark required to continue.
 Accessibility: every cell is a `button` with the emoji's name as its `aria-label` and
 `aria-pressed`; the None cell is labelled "No mark"; the sheet is a `dialog` labelled "Pick a
 mark".
+
+(Amended 2026-10-04, the first-contact round, the owner's brief. **The labels**: "Market type" over "Yes or no", "Pick a number" and "Pick one"; more space; then "AI market setup" over "Quick setup" and "Help define the terms", each keeping its caption, for every type (Help define asks about the unit, the source and the rounding for a number, and about the answers and a tie for pick one). Every row of chips wraps. **The type follows the question's shape** until the asker picks one: which and who are pick one, how many and how much a number, a whether question yes or no; nothing is ever written about "the one picked". **An argument may be pick one**, each person's answer an answer, with "Your side" marking the asker's; never a number. **Who's in starts at "Whoever I send it to"**, here and in starting a game. **Decided** is "Tonight", "This week", "This month" or a date: the date chip carries the write-up's date with the phone's own date picker under it, choosing a chip changes the date in the terms, and a deadline the terms name must be the decided date, refused at the field otherwise ("The terms say October 13, and it's decided November 2. Make them match."). **A draft** carries "Share it first" (sent without entering, so the share, the copy and the code are there from creation and the asker enters any time before the close) and "Discard it", on the page under its terms. **A question nobody else got into** is its asker's to withdraw from its own screen, asked once.)
 
 ### 3.30 Pick one: entering
 
@@ -3357,6 +3371,8 @@ theirs takes messages. A person hears about a question at most once per six hour
 
 (Amended 2026-10-03, the owner's rule on late closes: the close time ends editing whether or not the close has run. Past it nobody gets in or changes a number, and the screen offers neither: an entry's caption reads "final", Change is not drawn, and someone not in has no entry sheet. At any close after it an entry last changed after it does not count; for a game the close time is its start. With fewer than two entries that count, the question ends as an expiry: nothing scored, no toll. The tertiary "Close it with 4" under the row is gone: the close is in the sheet, 3.24.)
 
+(Amended 2026-10-04, the first-contact round: the asker has the row from creation, before entering, with share as the chalk while nobody is in and the count "Nobody's in yet."; "Withdraw it" sits under it while nobody else is in.)
+
 ### 3.43 I got this one
 
 Logging a cover lives on the person view, because a cover is always between you and one person,
@@ -3535,6 +3551,8 @@ nothing to dismiss. Signing up from it comes back to the screen it was tapped on
 **Where it isn't.** On the link page before they're in (its sheet already offers signing in,
 3.17), on modal sheets, on the opening (11), and for anyone signed in.
 
+(Built 2026-10-04, the first-contact round, as drawn: a fixed layer the page starts under, drawn once the guest is in and never on the link page before.)
+
 ### 3.47 Ideas
 
 (New 2026-10-02, the fifteenth session.) A short, fixed list of ready questions for the moments
@@ -3597,6 +3615,8 @@ sleepiness, which sits close to health; "the service" is most often a religious 
 wins the costume contest?" is now "Which of us wins the costume contest?": costume contests are
 often children's, its answers are names the asker types and the app can't check, and "of us"
 keeps it to the people asking.
+
+(Built 2026-10-04, the first-contact round: thirteen questions in four groups; the tile first on What's on and last on Now while fewer than three are running; a blank opens with the people the asker knows and "Or type a name", and the step's primary waits until it is filled.)
 
 ---
 
@@ -3837,6 +3857,8 @@ Two rules generalise out of this and apply everywhere:
   saying nothing is noise. Collapse the empty cases into a single line that names them.
 - The root carries no way to leave the product. Account actions, sign out included, live
   behind You.
+
+(Amended 2026-10-04, the first-contact round: an account the app cannot reach (no push on any device, no email, no Google) sees one card at the top of Now, once, "Add an email or link Google" with "Add an email", "Link Google" and "Not now". It is the one thing above "Needs you", it is drawn only on the phone that holds the login, and it never comes back.)
 
 ### 4.8 The style budget
 
@@ -5488,6 +5510,8 @@ once per screen, three at most, and says only what the screen's sheet already sa
 changes when its entry does and never needs words of its own. Tips count toward 4.8 like
 anything else on the screen, and they are never chalk or citron. They go with the sheets after
 the hackathon (10.3).
+
+(Built 2026-10-04, the first-contact round. One change from the drawing: the ring moves with its cut-out at once and only the tip travels, since a clip path cannot travel and the simulator caught a sliding ring apart from its cut-out. A guest's seen screens are kept on the phone.)
 
 ---
 

@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "tips_seen" text[] DEFAULT '{}'::text[] NOT NULL;

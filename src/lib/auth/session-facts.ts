@@ -11,12 +11,12 @@ import { currentUser } from "@/lib/auth/session";
 import type { Me } from "@/lib/auth/device";
 import { passThePhoneStatus } from "@/lib/ledger/pass-the-phone";
 
-export type SessionFacts = { /** Someone with a session and a name they gave (`nameSettled`: not the placeholder, not an identifier) has nothing to set up, so the login bootstrap stays out of their way. */ settled: boolean; me: Me | null };
+export type SessionFacts = { /** Someone with a session and a name they gave (`nameSettled`: not the placeholder, not an identifier) has nothing to set up, so the login bootstrap stays out of their way. */ settled: boolean; me: Me | null; /** The screens whose first-visit tips this account has seen (docs/design.md 10.9); a guest's are on the phone. */ tipsSeen: string[] };
 
 export const sessionFacts = cache(async function sessionFacts(): Promise<SessionFacts> {
   const user = await currentUser();
-  if (!user) return { settled: false, me: null };
+  if (!user) return { settled: false, me: null, tipsSeen: [] };
   // Whether the server may sign for this person where the device cannot (3.45): read once per load, so a second device knows without asking.
   const passThePhone = (await passThePhoneStatus(user.id)).on;
-  return { settled: nameSettled(user.displayName), me: { dynamicUserId: user.dynamicUserId, ledgerWallet: user.ledgerWallet, governanceWallet: user.governanceWallet, passThePhone } };
+  return { settled: nameSettled(user.displayName), me: { dynamicUserId: user.dynamicUserId, ledgerWallet: user.ledgerWallet, governanceWallet: user.governanceWallet, passThePhone }, tipsSeen: user.tipsSeen ?? [] };
 });

@@ -26,7 +26,9 @@ import { WORDS } from "@/lib/ui/errors";
 import { headers } from "next/headers";
 import { regionFromHeaders, tryHashPhone } from "@/lib/auth/phone";
 import { addClaimToken, clearClaimTokens, readClaimTokens } from "@/lib/auth/claim-cookie";
-import { enterAsGhost, removeGhostEntry, suggestGhostNames } from "@/lib/ledger/ghost-entry";
+import { enterAsGhost, removeGhostEntry } from "@/lib/ledger/ghost-entry";
+import { discardDraft } from "@/lib/ledger/drafts";
+import { dateWords, deadlineMismatch, localDate } from "@/lib/ledger/decide-by";
 import { leaveEntry } from "@/lib/ledger/claims";
 import { archiveMarkets, removeMarkets, SWIPE_AT_MOST } from "@/lib/ledger/now-swipes";
 import { db, schema } from "@/db";
@@ -68,7 +70,7 @@ export async function nudgeAction(rawId: string, rawTo?: string): Promise<({ ok:
 export async function scopeMarketAction(rawLine: string, rawCriterion?: string, rawAnswers?: Array<{ question: string; yes: boolean }>, rawKind?: "binary" | "numeric" | "categorical", rawChoices?: string[]): Promise<ScopeResult | { error: string }> {
   const user = await currentUser();
   if (!user) return { error: WORDS.signedOut };
-  return writeUp({ line: rawLine, criterion: rawCriterion, answers: rawAnswers, kind: rawKind, choices: rawChoices }, user.id);
+  return writeUp({ line: rawLine, criterion: rawCriterion, answers: rawAnswers, kind: rawKind, choices: rawChoices }, user.id, await viewerZone());
 }
 
 const Unit = z.discriminatedUnion("kind", [
@@ -127,7 +129,15 @@ export async function draftMarketAction(input: z.infer<typeof Draft>): Promise<{
       if (saved === "taken") return { error: "That one’s already sent. Ask it again from the start." };
     }
     if (d.argument?.tier === "contestable" && !d.argument.criterion) return { error: "Pick how it's being decided first." };
-    if (d.answers && (d.argument || d.number)) return { error: "Something in that is off." };
+    // A pick-one argument carries its answers (the first-contact round); a number never does.
+    if (d.answers && d.number) return { error: "Something in that is off." };
+    // The terms and the decide-by never disagree (the first-contact round): a deadline the terms name is the decide-by date, in the asker's zone.
+    if (!d.argument && d.resolvesBy) {
+      const zone = await viewerZone();
+      const decided = localDate(new Date(d.resolvesBy), zone);
+      const off = deadlineMismatch(d.terms, decided, new Date(), zone);
+      if (off) return { error: `The terms say ${off}, and it’s decided ${dateWords(decided)}. Make them match.` };
+    }
     if (d.who.kind === "set" && !(await isMember(d.who.groupId, user.id))) return { error: "You're not one of those people." };
     if (d.who.kind !== "set" && d.unit.kind === "existing") return { error: "That unit isn't around any more. Pick another." };
     const groupId = d.who.kind === "set" ? d.who.groupId : d.who.kind === "people" ? (await setForPeople(user.id, d.who.userIds)).id : (await createOccasionGroup(user.id)).id;
@@ -237,6 +247,42 @@ export async function openMarketAction(rawId: string, createSignature: string, r
   return { ok: true };
 }
 
+/**
+ * Sending a question without entering it (the first-contact round, 2026-10-04): the asker's Create signature alone, so
+ * the link, the copy and the code exist from creation and the asker enters any time before the close.
+ */
+export async function openWithoutEntryAction(rawId: string, createSignature: string): Promise<{ ok: true } | { error: string }> {
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
+  const id = uuid.safeParse(rawId);
+  if (!id.success || !isHex(createSignature)) return { error: "That didn't come through. Try again." };
+  try {
+    await openMarket(id.data, user.id, createSignature as Hex);
+  } catch (err) {
+    return { error: say(err, "That didn't go through. Try again.") };
+  }
+  revalidatePath(`/m/${id.data}`);
+  revalidatePath("/");
+  after(() => notifyOpened(id.data, user.id));
+  return { ok: true };
+}
+
+/** Discarding a draft never sent (the first-contact round): it is the asker's alone, so it goes for good. */
+export async function discardDraftAction(rawId: string): Promise<{ ok: true } | { error: string }> {
+  const user = await currentUser();
+  if (!user) return { error: WORDS.signedOut };
+  const id = uuid.safeParse(rawId);
+  if (!id.success) return { error: "That one doesn't exist." };
+  try {
+    await discardDraft(id.data, user.id);
+  } catch (err) {
+    return { error: say(err, "That didn't go through. Try again.") };
+  }
+  revalidatePath("/");
+  revalidatePath("/you");
+  return { ok: true };
+}
+
 export async function enterMarketAction(rawId: string, rawPosition: z.infer<typeof Position>, signature: string): Promise<{ ok: true } | { error: string }> {
   const user = await currentUser();
   if (!user) return { error: WORDS.signedOut };
@@ -267,7 +313,8 @@ export async function enterMarketAction(rawId: string, rawPosition: z.infer<type
 }
 
 /** Who a ghost says they are: a name, their own number (hashed here and never kept), or one of the group's ghosts. */
-const GhostWho = z.object({ name: z.string().trim().max(40).default(""), phone: z.string().trim().max(40).optional(), memberClaimId: z.string().uuid().optional() });
+/** Who a guest says they are: a name and nothing else (docs/design.md 3.17 as amended 2026-10-04). A number or a picked name an older page still sends is not read. */
+const GhostWho = z.object({ name: z.string().trim().max(40).default("") });
 
 /**
  * "Not you?" for a phone that remembers a ghost (3.17, frame 7, as a ghost meets it; the QA round): the browser
@@ -284,23 +331,19 @@ export async function forgetGhostAction(): Promise<{ ok: true }> {
  * position is a ghost's, the browser keeps a token for it, and the ghost binds at a login here or with that
  * number. Someone who is signed in enters as themselves; this door is shut to them.
  */
-export async function enterAsGhostAction(rawId: string, rawPosition: z.infer<typeof Position>, rawWho: z.infer<typeof GhostWho>): Promise<{ ok: true; name: string } | { error: string; /** The field the refusal is about (5.1): the number, for a picked name. */ at?: "phone" }> {
+export async function enterAsGhostAction(rawId: string, rawPosition: z.infer<typeof Position>, rawWho: z.input<typeof GhostWho>): Promise<{ ok: true; name: string } | { error: string }> {
   if (await currentUser()) return { error: "You’re signed in, so get in as yourself." };
   const id = uuid.safeParse(rawId);
   const position = Position.safeParse(rawPosition);
   const who = GhostWho.safeParse(rawWho);
   if (!id.success || !position.success || !who.success) return { error: "That didn't come through. Try again." };
-  const phoneHash = who.data.phone ? tryHashPhone(who.data.phone, regionFromHeaders(await headers())) : null;
-  if (who.data.phone && !phoneHash) return { error: "That didn’t read as a phone number. Check it, or leave it out." };
   let name = who.data.name;
   try {
-    const r = await enterAsGhost({ dareId: id.data, who: { name: who.data.name, phoneHash, memberClaimId: who.data.memberClaimId ?? null }, tokens: await readClaimTokens(), stake: BigInt(position.data.stake), value: valueOf(position.data) });
+    const r = await enterAsGhost({ dareId: id.data, who: { name: who.data.name, phoneHash: null, memberClaimId: null }, tokens: await readClaimTokens(), stake: BigInt(position.data.stake), value: valueOf(position.data) });
     if (r.browserToken) await addClaimToken(r.browserToken);
     const [claim] = await db.select({ displayName: schema.participantClaims.displayName }).from(schema.participantClaims).where(eq(schema.participantClaims.id, r.claimId)).limit(1);
     name = claim?.displayName ?? name;
   } catch (err) {
-    // The picked name's number check lands at its field (3.17, frame 5; 5.1).
-    if (err instanceof MarketError && (err.code === "wrong_number" || err.code === "slow_down")) return { error: err.message, at: "phone" };
     return { error: say(err, "That didn't go through. Try again.") };
   }
   let lockedNow = false;
@@ -469,14 +512,16 @@ export async function triageAction(rawLine: string): Promise<TriageResult | { er
 const SubjectAnswer = z.object({ name: z.string().trim().min(1).max(40), kind: z.enum(SUBJECT_KINDS) });
 
 /** Careful mode's three questions, or first the one tap-to-answer question about what a named subject is (docs/decisions.md 2026-09-27). */
-export async function carefulQuestionsAction(rawLine: string, rawSubject?: z.infer<typeof SubjectAnswer>): Promise<{ questions: string[] } | { ask: { subject: string } } | { error: string }> {
+export async function carefulQuestionsAction(rawLine: string, rawSubject?: z.infer<typeof SubjectAnswer>, rawKind?: "binary" | "numeric" | "categorical", rawChoices?: string[]): Promise<{ questions: string[] } | { ask: { subject: string } } | { error: string }> {
   if (!(await currentUser())) return { error: WORDS.signedOut };
   const line = z.string().trim().min(3).max(280).safeParse(rawLine);
   if (!line.success) return { error: "Ask it in a line." };
   const subject = rawSubject ? SubjectAnswer.safeParse(rawSubject) : null;
   if (subject && !subject.success) return { error: "That didn't come through. Try again." };
   try {
-    const r = await carefulQuestions({ line: line.data, subject: subject?.data });
+    const kind = z.enum(["binary", "numeric", "categorical"]).catch("binary").parse(rawKind ?? "binary");
+    const choices = z.array(z.string().trim().min(1).max(40)).max(6).catch([]).parse(rawChoices ?? []);
+    const r = await carefulQuestions({ line: line.data, subject: subject?.data, kind, choices });
     if ("ask" in r) return r;
     if (r.questions.length !== 3) return { error: "The questions didn’t come through. You can write the terms yourself on the next screen." };
     return { questions: r.questions };
@@ -536,16 +581,6 @@ export async function pickInkAction(rawId: string, rawInk: string): Promise<{ ok
   }
 }
 
-/** "Is one of these you?" (3.17, frame 4): names for the letters typed, at most three, and nothing before the first letters. Only from the link page, for a market that is open. */
-export async function suggestGhostNamesAction(rawId: string, rawTyped: string): Promise<Array<{ claimId: string; name: string }>> {
-  if (await currentUser()) return [];
-  const id = uuid.safeParse(rawId);
-  const typed = z.string().max(40).safeParse(rawTyped);
-  if (!id.success || !typed.success) return [];
-  const d = await marketById(id.data);
-  if (!d || stateOf(d) !== "open") return [];
-  return (await suggestGhostNames(d.groupId, typed.data)).map((r) => ({ claimId: r.claimId, name: r.displayName }));
-}
 
 /** The swipe on Now that removes a market you asked that nobody else is in (3.15): a void only the asker can make, counted against nobody. */
 export async function removeMarketAction(rawIds: string | string[]): Promise<{ ok: true } | { error: string }> {

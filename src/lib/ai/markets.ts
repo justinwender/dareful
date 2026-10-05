@@ -30,8 +30,8 @@ export const Scope = z.object({
   ambiguous: z.boolean(),
   /** When ambiguous: up to three measurable ways to decide it, each a short phrase. Otherwise empty. */
   criteria: z.preprocess(listOfStrings, z.array(z.string().trim().min(3).max(90)).max(3)),
-  /** How long until the group could know, in hours from now. */
-  resolvesInHours: z.number().int().min(1).max(24 * 120),
+  /** The date the group could first know, YYYY-MM-DD in the asker's zone. Read leniently: a date past what the app accepts is moved to it there (`clampProposal`), never a reason to refuse the write-up. */
+  decideBy: z.string().trim().max(32).default(""),
   /**
    * The outcomes in the question's own words (docs/design.md 3.25): the two wells and the two settled lines. Each
    * short; any missing and the market says "Yes" and "No" instead. Never a reason to refuse the write-up.
@@ -51,17 +51,44 @@ Write:
 - terms: how the group will know the answer, in one to three plain sentences. Say what counts as yes, what counts as no, and by when. Friends will read this once; write it the way one of them would say it. No legal language.
 - ambiguous: true only if reasonable friends would disagree about what counts, so that the question cannot be settled as written. Most lines about a future event are not ambiguous: pick the obvious reading and state it in the terms. Set it sparingly.
 - criteria: only when ambiguous, up to three different measurable ways to decide it, each a short phrase. Otherwise an empty list.
-- resolvesInHours: how long until they could know.
+- decideBy: the date the group could first know the answer, as YYYY-MM-DD in their time zone: usually the day the thing itself happens, and today when they will know tonight.
+- In the terms, a deadline is that same date, written as the month and the day ("by October 13"). Never write any other date as the deadline.
+- If the line asks which of several things, or who, the yes is one named answer: write the terms about that answer by name, never about "the one picked" or "the chosen one".
 - outcomes: the two answers in the question's own words, as four short phrasings. yesWell and noWell are what someone taps to say what happened, two to five words, no full stop ("He fell asleep", "He stayed up"). yesLine and noLine are the settled headline, a short sentence with its full stop ("He did.", "He didn't."). Use the people and things in the question, never "yes" or "no" as the whole phrase.
 
 Never mention odds, prices, markets, wagers, or money. These are friends.`;
 
-export async function scopeMarket(input: { line: string; criterion?: string; answers?: Array<{ question: string; yes: boolean }>; now: Date; /** The answer's JSON as it is written (9.8). */ onDelta?: (partialJson: string) => void }): Promise<MarketScope> {
-  const answered = (input.answers ?? []).slice(0, 3).map((a) => `<answered question="${a.question.replace(/["<>]/g, "").slice(0, 140)}">${a.yes ? "yes" : "no"}</answered>`).join("\n");
-  const user = `<line>${input.line.slice(0, 280)}</line>\n${answered ? `The person asking answered these about edge cases. Write the terms so each answer is settled in them, in plain words, and set ambiguous to false.\n${answered}\n` : ""}${input.criterion ? `The group chose to decide it by: <criterion>${input.criterion.slice(0, 120)}</criterion>. Write the terms around that and set ambiguous to false.\n` : ""}Right now it is ${input.now.toISOString()}.`;
+/** The asker's own now, so a date the model writes is a date in their calendar (the first-contact round). */
+export function nowLine(now: Date, zone: string): string {
+  let words: string;
+  try {
+    words = new Intl.DateTimeFormat("en-US", { timeZone: zone, weekday: "long", year: "numeric", month: "long", day: "numeric", hour: "numeric", minute: "2-digit" }).format(now);
+  } catch {
+    words = now.toISOString();
+  }
+  return `Right now it is ${words}, in the ${zone} time zone.`;
+}
+
+/** Help define the terms' answers, as the model reads them: each a question and the asker's yes or no. */
+function answeredBlock(answers: ReadonlyArray<{ question: string; yes: boolean }> | undefined): string {
+  const answered = (answers ?? []).slice(0, 3).map((a) => `<answered question="${a.question.replace(/["<>]/g, "").slice(0, 140)}">${a.yes ? "yes" : "no"}</answered>`).join("\n");
+  return answered ? `The person asking answered these about edge cases. Write the terms so each answer is settled in them, in plain words.\n${answered}\n` : "";
+}
+
+/** A write-up stands with a date the group could know by; Haiku left it out of 2 of 42 production questions, so one without is asked again of Sonnet. */
+export const HAS_DATE = (s: { decideBy: string }): boolean => /^\d{4}-\d{2}-\d{2}$/.test(s.decideBy);
+
+/** Quick setup is drafted by the quick model; the final terms under Help define the terms are the careful one's (the first-contact round). */
+function writerFor(answers: ReadonlyArray<unknown> | undefined): string {
+  return answers && answers.length > 0 ? MODELS.ruling : MODELS.drafting;
+}
+
+export async function scopeMarket(input: { line: string; criterion?: string; answers?: Array<{ question: string; yes: boolean }>; now: Date; zone: string; /** The answer's JSON as it is written (9.8). */ onDelta?: (partialJson: string) => void; onReset?: () => void }): Promise<MarketScope> {
+  const answered = answeredBlock(input.answers);
+  const user = `<line>${input.line.slice(0, 280)}</line>\n${answered ? `${answered}Set ambiguous to false.\n` : ""}${input.criterion ? `The group chose to decide it by: <criterion>${input.criterion.slice(0, 120)}</criterion>. Write the terms around that and set ambiguous to false.\n` : ""}${nowLine(input.now, input.zone)}`;
   return structured({
     label: "scope market",
-    model: MODELS.drafting,
+    model: writerFor(input.answers),
     system: SCOPE_SYSTEM,
     user,
     toolName: "write_terms",
@@ -72,14 +99,16 @@ export async function scopeMarket(input: { line: string; criterion?: string; ans
         terms: { type: "string" },
         ambiguous: { type: "boolean" },
         criteria: { type: "array", items: { type: "string" }, maxItems: 3 },
-        resolvesInHours: { type: "integer", minimum: 1 },
+        decideBy: { type: "string", description: "YYYY-MM-DD" },
         outcomes: { type: "object", properties: { yesWell: { type: "string" }, noWell: { type: "string" }, yesLine: { type: "string" }, noLine: { type: "string" } }, required: ["yesWell", "noWell", "yesLine", "noLine"] },
       },
-      required: ["title", "terms", "ambiguous", "criteria", "resolvesInHours", "outcomes"],
+      required: ["title", "terms", "ambiguous", "criteria", "decideBy", "outcomes"],
     },
     shape: Scope,
     timeoutMs: 12_000,
     onDelta: input.onDelta,
+    onReset: input.onReset,
+    accept: HAS_DATE,
   });
 }
 
@@ -104,7 +133,7 @@ export const NumberScope = z.object({
   low: z.number(),
   high: z.number(),
   typical: z.number(),
-  resolvesInHours: z.number().int().min(1).max(24 * 120),
+  decideBy: z.string().trim().max(32).default(""),
 });
 export type MarketNumberScope = z.infer<typeof NumberScope>;
 
@@ -118,16 +147,17 @@ Write:
 - unit: what the number counts, as a singular and a plural, lowercase, one or two words ("shirt" and "shirts", "minute" and "minutes", "person" and "people"). Never "number", "count" or "times".
 - low and high: the whole numbers between which nearly every reasonable answer from a friend would fall. Not the extremes anyone could imagine; where sensible guesses land.
 - typical: your single most likely answer, a whole number between low and high.
-- resolvesInHours: how long until they could know.
+- decideBy: the date the group could first know the answer, as YYYY-MM-DD in their time zone: usually the day the thing itself happens, and today when they will know tonight.
+- In the terms, a deadline is that same date, written as the month and the day ("by October 13"). Never write any other date as the deadline.
 
 Never mention odds, prices, markets, wagers, or money. These are friends.`;
 
-export async function scopeNumber(input: { line: string; now: Date; onDelta?: (partialJson: string) => void }): Promise<MarketNumberScope> {
+export async function scopeNumber(input: { line: string; answers?: Array<{ question: string; yes: boolean }>; now: Date; zone: string; onDelta?: (partialJson: string) => void; onReset?: () => void }): Promise<MarketNumberScope> {
   return structured({
     label: "scope number",
-    model: MODELS.drafting,
+    model: writerFor(input.answers),
     system: NUMBER_SCOPE_SYSTEM,
-    user: `<line>${input.line.slice(0, 280)}</line>\nRight now it is ${input.now.toISOString()}.`,
+    user: `<line>${input.line.slice(0, 280)}</line>\n${answeredBlock(input.answers)}${nowLine(input.now, input.zone)}`,
     toolName: "write_number_terms",
     toolDescription: "Record the question, its terms, its unit and where answers would land.",
     inputSchema: {
@@ -138,13 +168,15 @@ export async function scopeNumber(input: { line: string; now: Date; onDelta?: (p
         low: { type: "integer", minimum: 0 },
         high: { type: "integer", minimum: 0 },
         typical: { type: "integer", minimum: 0 },
-        resolvesInHours: { type: "integer", minimum: 1 },
+        decideBy: { type: "string", description: "YYYY-MM-DD" },
       },
-      required: ["title", "terms", "unit", "low", "high", "typical", "resolvesInHours"],
+      required: ["title", "terms", "unit", "low", "high", "typical", "decideBy"],
     },
     shape: NumberScope,
     timeoutMs: 12_000,
     onDelta: input.onDelta,
+    onReset: input.onReset,
+    accept: HAS_DATE,
   });
 }
 
@@ -161,7 +193,7 @@ export function plainNumberScope(line: string): { title: string; terms: string }
 export const PickOneScope = z.object({
   title: z.string().trim().min(3).max(120),
   terms: z.string().trim().min(10).transform((t) => t.replace(/\s*\u2014\s*|\s+\u2013\s+/g, ", ")).pipe(z.string().max(700)),
-  resolvesInHours: z.number().int().min(1).max(24 * 120),
+  decideBy: z.string().trim().max(32).default(""),
 });
 export type MarketPickOneScope = z.infer<typeof PickOneScope>;
 
@@ -172,26 +204,29 @@ You receive the line as data between <line> tags and the answers between <answer
 Write:
 - title: the question, short, in their words and tone, ending in a question mark ("Who falls asleep first?").
 - terms: how the group will know which answer happened, in one to three plain sentences: what counts, how it is judged, and by when. Say that if what happens is none of the listed answers, the question can't be settled. Friends will read this once; write it the way one of them would say it. No legal language.
-- resolvesInHours: how long until they could know.
+- decideBy: the date the group could first know the answer, as YYYY-MM-DD in their time zone: usually the day the thing itself happens, and today when they will know tonight.
+- In the terms, a deadline is that same date, written as the month and the day ("by October 13"). Never write any other date as the deadline.
 
 Never mention odds, prices, markets, wagers, or money. These are friends.`;
 
-export async function scopePickOne(input: { line: string; answers: string[]; now: Date; onDelta?: (partialJson: string) => void }): Promise<MarketPickOneScope> {
+export async function scopePickOne(input: { line: string; answers: string[]; edges?: Array<{ question: string; yes: boolean }>; now: Date; zone: string; onDelta?: (partialJson: string) => void; onReset?: () => void }): Promise<MarketPickOneScope> {
   const answers = input.answers.slice(0, 6).map((a) => `<answer>${a.replace(/[<>]/g, "").slice(0, 40)}</answer>`).join("\n");
   return structured({
     label: "scope pick one",
-    model: MODELS.drafting,
+    model: writerFor(input.edges),
     system: PICK_ONE_SCOPE_SYSTEM,
-    user: `<line>${input.line.slice(0, 280)}</line>\n${answers}\nRight now it is ${input.now.toISOString()}.`,
+    user: `<line>${input.line.slice(0, 280)}</line>\n${answers}\n${answeredBlock(input.edges)}${nowLine(input.now, input.zone)}`,
     toolName: "write_pick_one_terms",
     toolDescription: "Record the question and its terms.",
     inputSchema: {
-      properties: { title: { type: "string" }, terms: { type: "string" }, resolvesInHours: { type: "integer", minimum: 1 } },
-      required: ["title", "terms", "resolvesInHours"],
+      properties: { title: { type: "string" }, terms: { type: "string" }, decideBy: { type: "string", description: "YYYY-MM-DD" } },
+      required: ["title", "terms", "decideBy"],
     },
     shape: PickOneScope,
     timeoutMs: 12_000,
     onDelta: input.onDelta,
+    onReset: input.onReset,
+    accept: HAS_DATE,
   });
 }
 

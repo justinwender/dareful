@@ -1,11 +1,12 @@
 import type { Metadata, Viewport } from "next";
-import { ABOUT_FIRST } from "@/lib/ui/copy";
+import { FIRST_LINE } from "@/lib/ui/copy";
 import type { ReactNode } from "react";
 import { Hanken_Grotesk, Young_Serif } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import { LayersRoot } from "@/components/ui/layers";
 import { Presses } from "@/components/ui/press";
+import { Typing } from "@/components/ui/typing";
 import { sessionFacts } from "@/lib/auth/session-facts";
 import { GROUND_DARK, GROUND_LIGHT, launchImageLinks, OPENING_ELEMENT, OPENING_HANDOFF_SCRIPT, OPENING_STYLE } from "@/lib/ui/opening";
 import { THEME_SCRIPT } from "@/lib/ui/theme";
@@ -29,7 +30,8 @@ export const metadata: Metadata = {
   // and a messaging app's preview bot will not fetch it, so a pasted link renders as bare text.
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "https://dareful.app"),
   title: "Dareful",
-  description: ABOUT_FIRST,
+  // What the app is on its own link and in every preview of it (the first-contact round): the signed-out screen's line since 1.9, so a preview says what the screen says.
+  description: FIRST_LINE,
   // The link preview for the app itself (LOGO.md): the lockup on the dark ground. A market, a cover and a game carry their own tile.
   openGraph: { siteName: "Dareful", type: "website", images: [{ url: "/og-image.png", width: 1200, height: 630, alt: "dareful" }] },
   // The logo's own files, placed by scripts/opening.mjs (LOGO.md, "In the head"): the .ico holds the favicon drawn
@@ -80,11 +82,12 @@ export default function RootLayout({ children, ask }: { children: ReactNode; /**
         {/* The opening (11): the launch image again, the bare ground in the phone's own scheme, and then the tally counted a stroke at a time until the first screen's shell has painted. The first thing in the body, outside the app root, and it only fades. The handoff removes `#opening` from the page, often before the app is running, so the app holds a box around it that stays: what is inside is the opening's own, and the app never looks for it. */}
         <div data-opening-host="" className="contents" suppressHydrationWarning dangerouslySetInnerHTML={{ __html: OPENING_ELEMENT }} />
         {/* The app root (9.3): the page, then the host every fixed layer portals into. Nothing that moves is ever set on it. It is the one thing that scrolls (`src/lib/ui/scroller.ts`): a box the size of the screen, so the document never scrolls and no fixed layer can be left where a keyboard moved the viewport (the field round, 1.1). The top and side insets are paid here, once. */}
-        <div id="app" data-layer="app" className="fixed inset-0 flex flex-col overflow-x-hidden overflow-y-auto overscroll-y-contain pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)]">
+        <div id="app" data-layer="app" className="fixed inset-0 flex flex-col overflow-x-hidden overflow-y-auto overscroll-y-contain pt-[calc(env(safe-area-inset-top)+var(--guest-line,0px))] pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)]">
           <Providers facts={facts}>
             {children}
             {ask}
             <Presses />
+            <Typing />
             <LayersRoot />
           </Providers>
         </div>

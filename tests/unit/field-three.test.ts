@@ -37,6 +37,7 @@ test("two windows and the days: since launch is open at the start, the week is s
 test("a share is a whole percent of the same people, and the chain's contracts open on the explorer of the chain the app is on", () => {
   assert.deepEqual([shareOf(3, 7), shareOf(0, 0), shareOf(7, 7)], [43, 0, 100]);
   assert.ok(PERCENT_STATS.has("channel_share") && !PERCENT_STATS.has("with_channel"));
+  assert.ok(PERCENT_STATS.has("clean_rate") && !PERCENT_STATS.has("media_added"), "the clean-resolution rate reads as a percent, a count never does");
   assert.equal(explorerAddressUrl(10143, "0xabc"), "https://testnet.monadexplorer.com/address/0xabc");
   assert.equal(explorerAddressUrl(143, "0xabc"), "https://monadexplorer.com/address/0xabc");
 });
@@ -44,6 +45,7 @@ test("a share is a whole percent of the same people, and the chain's contracts o
 test("every number has a key of its own and a definition that says what the window does to it", () => {
   const keys = STATS.map((s) => s.key);
   assert.equal(new Set(keys).size, keys.length);
-  assert.ok(STATS.length >= 21);
+  assert.ok(STATS.length >= 25);
+  for (const k of ["link_to_asker", "sets_two_questions", "clean_rate", "media_added"]) assert.ok((keys as string[]).includes(k), `${k} is on the page`);
   for (const s of STATS) assert.ok(s.definition.length > 20 && /window/.test(s.definition) && !s.definition.includes("—"), `${s.key} says what the window does`);
 });

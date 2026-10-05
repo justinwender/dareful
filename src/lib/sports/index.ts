@@ -20,7 +20,7 @@ import { membersOfGroups, setFacts, setLabel, type SetFacts } from "@/lib/ledger
 import { balldontlie } from "./balldontlie";
 import { onePerQuestion, setsOnGames } from "./cards";
 import { espn, espnPlays, resultOf } from "./espn";
-import { AGREE_AFTER_MS, ALONE_AFTER_MS, backstopDecision, CONFIRM_AFTER_MS, driveBackstopDecision, driveOutcome, outcomeFor, scoreLine, type Backstop, type FeedEnding } from "./results";
+import { AGREE_AFTER_MS, ALONE_AFTER_MS, backstopDecision, CONFIRM_AFTER_MS, driveBackstopDecision, driveOutcome, outcomeFor, outcomesAgree, scoreLine, type Backstop, type FeedEnding } from "./results";
 import { expectedEnd, gameName, templatesFor, type TemplateKey } from "./templates";
 import { dayOf, SPORTS, type CheckSource, type DriveAnswer, type FeedGame, type FinalScore, type PlaySource, type ScheduleSource, type Sport } from "./types";
 
@@ -406,7 +406,7 @@ export async function feedBackstop(now: Date, opts: { check?: CheckSource; onlyI
           checked.set(game.id, second);
           await db.update(schema.sportsGames).set({ checkHomeScore: second?.home ?? null, checkAwayScore: second?.away ?? null, checkedAt: now }).where(eq(schema.sportsGames.id, game.id));
         } else if (checked.has(game.id)) second = checked.get(game.id) ?? null;
-        decision = endingOf(backstopDecision({ finalSeenAt: game.finalSeenAt!, confirmedAt: game.finalConfirmedAt, final, check: second, now }), outcomeFor(template, final));
+        decision = endingOf(backstopDecision({ finalSeenAt: game.finalSeenAt!, confirmedAt: game.finalConfirmedAt, final, check: second, now, same: (a, b) => outcomesAgree(template, a, b) }), outcomeFor(template, final));
       }
       if (!decision) continue;
       // Still worth a vote if the votes already there would decide it: never overrule a quorum that exists.
@@ -536,7 +536,7 @@ async function yoursOnGames(gameIds: string[], viewerId: string, viewerName: str
   const on = setsOnGames(rows);
   const groupIds = Array.from(new Set(Array.from(on.values()).flatMap((list) => list.map((x) => x.groupId))));
   const [groups, members] = await Promise.all([groupIds.length ? db.select().from(schema.groups).where(inArray(schema.groups.id, groupIds)) : Promise.resolve([]), membersOfGroups(groupIds)]);
-  const labelOf = new Map(groups.map((g) => [g.id, setLabel({ name: g.name, isDyad: g.isDyad, memberNames: (members.get(g.id) ?? []).filter((m) => m.userId).map((m) => m.displayName), viewerName })]));
+  const labelOf = new Map(groups.map((g) => [g.id, setLabel({ name: g.name, isDyad: g.isDyad, memberNames: (members.get(g.id) ?? []).map((m) => m.displayName), viewerName })]));
   // The set's own facts beside the chip's label: a sentence is written from these (`setInSentence`), never from the label.
   const factsOf = new Map(groups.map((g) => [g.id, setFacts(g.name, members.get(g.id) ?? [])]));
   for (const [gameId, list] of on) out.set(gameId, list.map((x) => ({ groupId: x.groupId, label: labelOf.get(x.groupId) ?? "your friends", set: factsOf.get(x.groupId) ?? { name: null, members: [] }, lastAt: x.lastAt })));
@@ -581,6 +581,8 @@ export async function starterGames(now: Date): Promise<GameRow[]> {
 // -------------------------------------------------------------------------------------- the game page's data
 
 export async function gameById(id: string): Promise<{ game: GameRow; templates: TemplateRow[] } | null> {
+  // An address that is not a game's id is no game (production saw a scoreboard's own id typed into the path, 2026-09-30).
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return null;
   const [game] = await db.select().from(schema.sportsGames).where(eq(schema.sportsGames.id, id)).limit(1);
   if (!game) return null;
   const templates = await db.select().from(schema.publicQuestions).where(eq(schema.publicQuestions.gameId, id)).orderBy(asc(schema.publicQuestions.sort));
@@ -620,6 +622,14 @@ export async function startGame(input: { gameId: string; keys: TemplateKey[]; cr
   const out: DareRow[] = [];
   for (const t of wanted) {
     const already = running.find((r) => r.template.key === t.key && r.dare.creatorSignature);
+    // A send that failed between the draft and the signature left this asker's draft for the question: it is the
+    // one sent again, never a second draft beside it (the first-contact round).
+    const left = already ? null : running.find((r) => r.template.key === t.key && !r.dare.creatorSignature && r.dare.creatorId === input.creatorId);
+    if (left) {
+      const [again] = await db.update(schema.dares).set({ denomId: input.denomId, revealMode: input.blind ? "blind" : "open" }).where(eq(schema.dares.id, left.dare.id)).returning();
+      out.push(again ?? left.dare);
+      continue;
+    }
     if (already) throw new MarketError(`${templatesFor({ sport: found.game.sport as Sport, home: { short: found.game.homeShort }, away: { short: found.game.awayShort }, seasonType: found.game.seasonType }).find((x) => x.key === t.key)?.name ?? "That one"} is already running with these people.`, "wrong_state");
     const d = await draftFromTemplate({ templateId: t.id, creatorId: input.creatorId, groupId: input.groupId, denomId: input.denomId, zone: input.zone });
     if (input.blind) await db.update(schema.dares).set({ revealMode: "blind" }).where(eq(schema.dares.id, d.id));

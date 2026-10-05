@@ -11,8 +11,9 @@ import { plainNumberScope, plainPickOneScope, plainScope, scopeMarket, scopeNumb
 import { checkScale } from "@/lib/ledger/scale";
 import { MAX_ANSWER_LENGTH, MAX_ANSWERS, MIN_ANSWERS } from "@/lib/ledger/pick-one";
 import { outcomeWordsFrom } from "@/lib/ui/outcome-words";
+import { clampProposal } from "@/lib/ledger/decide-by";
 
-export type ScopeResult = { title: string; terms: string; ambiguous: boolean; criteria: string[]; resolvesInHours: number; plain: boolean; number: NumberScopeResult | null; /** The outcomes in the question's own words (3.25), when the write-up gave four usable phrasings. */ outcomes: [string, string, string, string] | null };
+export type ScopeResult = { title: string; terms: string; ambiguous: boolean; criteria: string[]; /** The date the write-up proposes deciding it by, YYYY-MM-DD in the asker's zone, moved into what the app accepts; null when it proposed none (`clampProposal`). */ decideBy: string | null; plain: boolean; number: NumberScopeResult | null; /** The outcomes in the question's own words (3.25), when the write-up gave four usable phrasings. */ outcomes: [string, string, string, string] | null };
 /**
  * A number question's write-up carries its unit and, when the model's scale passed the check, that scale under a
  * token only this server can mint for this person: the draft that comes back with it is stored as the model's
@@ -42,46 +43,54 @@ export const WriteUpInput = z.object({
 });
 export type WriteUpRequest = { line: string; criterion?: string; answers?: Array<{ question: string; yes: boolean }>; kind?: "binary" | "numeric" | "categorical"; choices?: string[] };
 
-export async function writeUp(raw: WriteUpRequest, userId: string, onDelta?: (partialJson: string) => void): Promise<ScopeResult | { error: string }> {
+/**
+ * `zone` is the asker's, so the date the model proposes is a date in their calendar; `onReset` says a streamed
+ * answer starts over (a quick answer that failed its shape, asked again of the careful model).
+ */
+export async function writeUp(raw: WriteUpRequest, userId: string, zone: string, onDelta?: (partialJson: string) => void, onReset?: () => void): Promise<ScopeResult | { error: string }> {
   const line = z.string().trim().min(3).max(280).safeParse(raw.line);
   if (!line.success) return { error: "Ask it in a line." };
   const criterion = raw.criterion ? z.string().trim().min(3).max(120).safeParse(raw.criterion) : null;
+  const now = new Date();
+  // Help define the terms' answers, for every type (the first-contact round): what the asker settled about the edge cases.
+  const answered = z.array(z.object({ question: z.string().trim().min(3).max(160), yes: z.boolean() })).max(3).safeParse(raw.answers ?? []);
+  const answers = answered.success && answered.data.length > 0 ? answered.data : undefined;
+  const decideBy = (proposed: string) => clampProposal(proposed, now, zone);
   if (raw.kind === "categorical") {
     // A pick-one question (3.29): the write-up is given the answers and leaves them exactly as the asker wrote them.
     const choices = z.array(z.string().trim().min(1).max(MAX_ANSWER_LENGTH)).min(MIN_ANSWERS).max(MAX_ANSWERS).safeParse(raw.choices ?? []);
     if (!choices.success) return { error: `Two to ${MAX_ANSWERS} answers, a few words each.` };
     try {
-      const s = await scopePickOne({ line: line.data, answers: choices.data, now: new Date(), onDelta });
-      return { title: s.title, terms: s.terms, ambiguous: false, criteria: [], resolvesInHours: s.resolvesInHours, plain: false, number: null, outcomes: null };
+      const s = await scopePickOne({ line: line.data, answers: choices.data, edges: answers, now, zone, onDelta, onReset });
+      return { title: s.title, terms: s.terms, ambiguous: false, criteria: [], decideBy: decideBy(s.decideBy), plain: false, number: null, outcomes: null };
     } catch (err) {
       console.error("scoping a pick-one question failed; using the line as typed", err);
       const p = plainPickOneScope(line.data);
-      return { ...p, ambiguous: false, criteria: [], resolvesInHours: 24, plain: true, number: null, outcomes: null };
+      return { ...p, ambiguous: false, criteria: [], decideBy: null, plain: true, number: null, outcomes: null };
     }
   }
   if (raw.kind === "numeric") {
     try {
-      const s = await scopeNumber({ line: line.data, now: new Date(), onDelta });
+      const s = await scopeNumber({ line: line.data, answers, now, zone, onDelta, onReset });
       const unit = { singular: s.unit.singular.toLowerCase(), plural: s.unit.plural.toLowerCase() };
       // The model's scale is used only when it passes the check; otherwise the asker sets one (src/lib/ledger/scale.ts).
       const checked = checkScale({ low: s.low, high: s.high, typical: s.typical });
       if (!checked.ok) console.warn("number scale proposal refused", { why: checked.why, low: s.low, high: s.high, typical: s.typical });
       const range = checked.ok ? checked.range.toString() : null;
       const typical = Number.isInteger(s.typical) && s.typical >= 0 ? String(s.typical) : "0";
-      return { title: s.title, terms: s.terms, ambiguous: false, criteria: [], resolvesInHours: s.resolvesInHours, plain: false, number: { unit, model: { range, typical, token: scaleToken(userId, range, typical) } }, outcomes: null };
+      return { title: s.title, terms: s.terms, ambiguous: false, criteria: [], decideBy: decideBy(s.decideBy), plain: false, number: { unit, model: { range, typical, token: scaleToken(userId, range, typical) } }, outcomes: null };
     } catch (err) {
       console.error("scoping a number question failed; using the line as typed", err);
       const p = plainNumberScope(line.data);
-      return { ...p, ambiguous: false, criteria: [], resolvesInHours: 24, plain: true, number: { unit: { singular: "", plural: "" }, model: null }, outcomes: null };
+      return { ...p, ambiguous: false, criteria: [], decideBy: null, plain: true, number: { unit: { singular: "", plural: "" }, model: null }, outcomes: null };
     }
   }
   try {
-    const answers = z.array(z.object({ question: z.string().trim().min(3).max(160), yes: z.boolean() })).max(3).safeParse(raw.answers ?? []);
-    const s = await scopeMarket({ line: line.data, criterion: criterion?.success ? criterion.data : undefined, answers: answers.success ? answers.data : undefined, now: new Date(), onDelta });
-    return { title: s.title, terms: s.terms, ambiguous: s.ambiguous && s.criteria.length > 0, criteria: s.criteria, resolvesInHours: s.resolvesInHours, plain: false, number: null, outcomes: outcomeWordsFrom(s.outcomes) };
+    const s = await scopeMarket({ line: line.data, criterion: criterion?.success ? criterion.data : undefined, answers, now, zone, onDelta, onReset });
+    return { title: s.title, terms: s.terms, ambiguous: s.ambiguous && s.criteria.length > 0, criteria: s.criteria, decideBy: decideBy(s.decideBy), plain: false, number: null, outcomes: outcomeWordsFrom(s.outcomes) };
   } catch (err) {
     console.error("scoping failed; using the line as typed", err);
     const p = plainScope(line.data);
-    return { ...p, ambiguous: false, criteria: [], resolvesInHours: 24, plain: true, number: null, outcomes: null };
+    return { ...p, ambiguous: false, criteria: [], decideBy: null, plain: true, number: null, outcomes: null };
   }
 }

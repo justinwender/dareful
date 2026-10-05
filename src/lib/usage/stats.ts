@@ -29,7 +29,11 @@ export type StatKey =
   | "notices_opened"
   | "errors_shown"
   | "with_channel"
-  | "channel_share";
+  | "channel_share"
+  | "link_to_asker"
+  | "sets_two_questions"
+  | "clean_rate"
+  | "media_added";
 
 export const STATS: ReadonlyArray<{ key: StatKey; label: string; definition: string }> = [
   { key: "accounts", label: "Accounts", definition: "Accounts made in the window, excluded ones left out." },
@@ -53,10 +57,14 @@ export const STATS: ReadonlyArray<{ key: StatKey; label: string; definition: str
   { key: "errors_shown", label: "Errors shown", definition: "Problems shown on a screen in the window, by cause." },
   { key: "with_channel", label: "People with a channel", definition: "Counted accounts a notice can reach, by a push subscription or an email sign-in: of everyone since launch, and of the people active in the window otherwise." },
   { key: "channel_share", label: "Share with a channel", definition: "People with a channel as a percent of the same people: everyone since launch, or the people active in the window." },
+  { key: "link_to_asker", label: "Came by a link, then asked", definition: "Counted accounts whose first question was asked in the window and who were already in a question someone else asked before it: they arrived through a friend's question and went on to ask their own." },
+  { key: "sets_two_questions", label: "Sets with two or more questions", definition: "Sets of people in which two or more questions were asked in the window by counted askers; a game's questions count once, and a question called off does not count." },
+  { key: "clean_rate", label: "Clean resolutions", definition: "Of the counted askers' questions two or more people were in that ended in the window by a vote, the tiebreaker or the final score, the percent that ended with an answer, as the profile counts it: a void by vote or tiebreaker counts against it, and an expiry or the final score's own void is in neither number." },
+  { key: "media_added", label: "Photos and stickers added", definition: "Photos put on a question or a settlement, and stickers made, in the window by counted accounts." },
 ];
 
 /** The numbers shown as a percent. */
-export const PERCENT_STATS: ReadonlySet<StatKey> = new Set<StatKey>(["channel_share"]);
+export const PERCENT_STATS: ReadonlySet<StatKey> = new Set<StatKey>(["channel_share", "clean_rate"]);
 
 /** A share as a whole percent, zero of nobody. Pure. */
 export function shareOf(part: number, whole: number): number {
@@ -119,6 +127,9 @@ async function one(q: ReturnType<typeof sql>): Promise<number> {
   return Number(rows[0]?.n ?? 0);
 }
 
+/** What the profile's clean-resolution rate counts as ended (`CLEAN_COUNTED_ENDINGS` and `TWO_OR_MORE_IN` in settle.ts, PLANNING.md 8e): a vote (a guest's question's quorum included), the tiebreaker or the final score, without the final score's own void, on a question two or more were in. "Nobody can tell" is minus one here. */
+const CLEAN_ENDED = sql`d.resolved_at is not null and d.resolved_by in ('quorum', 'provisional', 'arbitration', 'feed') and not (d.resolved_by = 'feed' and d.resolved_outcome = -1) and (select count(*) from dare_positions cp where cp.dare_id = d.id and cp.acknowledged_at is not null and cp.dismissed_at is null) >= 2`;
+
 /** Every number for one window, counted now. */
 export async function countStats(w: StatWindow): Promise<Counts> {
   const [accounts, active, askers, questions, twoIn, entries, guests, voting, byVote, byTiebreaker, byFeed, expired, links, shares, push, email, none, opened, errors] = await Promise.all([
@@ -150,7 +161,20 @@ export async function countStats(w: StatWindow): Promise<Counts> {
     one(sql`select count(*)::int as n from (${base}) b`),
     one(sql`select count(*)::int as n from (${base}) b join users u on u.id = b.id where u.phone_hash is null or exists (select 1 from push_subscriptions s where s.user_id = u.id)`),
   ]);
+  // The four the pitch quotes, from the ledger's own tables (the owner's ask, 2026-10-03).
+  const [linkToAsker, sets, ended, clean, photos, stickers] = await Promise.all([
+    one(sql`select count(*)::int as n from (select d.creator_id as id, min(d.created_at) as first_asked from dares d join users u on u.id = d.creator_id where not u.excluded_from_counts and d.creator_signature is not null group by d.creator_id) a where ${inWindow("a.first_asked", w)} and exists (select 1 from dare_positions p join dares o on o.id = p.dare_id where p.user_id = a.id and o.creator_id <> a.id and p.entered_at < a.first_asked)`),
+    one(sql`select count(*)::int as n from (select d.group_id from dares d join users u on u.id = d.creator_id left join public_questions q on q.id = d.template_id where not u.excluded_from_counts and d.creator_signature is not null and coalesce(d.resolved_by, '') <> 'removed' and ${inWindow("d.created_at", w)} group by d.group_id having count(distinct coalesce(q.game_id::text, d.id::text)) >= 2) g`),
+    one(sql`select count(*)::int as n from dares d join users u on u.id = d.creator_id where not u.excluded_from_counts and ${CLEAN_ENDED} and ${inWindow("d.resolved_at", w)}`),
+    one(sql`select count(*)::int as n from dares d join users u on u.id = d.creator_id where not u.excluded_from_counts and ${CLEAN_ENDED} and d.resolved_outcome <> -1 and ${inWindow("d.resolved_at", w)}`),
+    one(sql`select count(*)::int as n from media m join users u on u.id = m.author_id where not u.excluded_from_counts and ${inWindow("m.created_at", w)}`),
+    one(sql`select count(*)::int as n from picture_marks k join users u on u.id = k.owner_id where not u.excluded_from_counts and k.kind = 'sticker' and ${inWindow("k.created_at", w)}`),
+  ]);
   return {
+    link_to_asker: linkToAsker,
+    sets_two_questions: sets,
+    clean_rate: shareOf(clean, ended),
+    media_added: photos + stickers,
     accounts,
     active_people: active,
     askers,

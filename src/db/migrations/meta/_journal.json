@@ -267,6 +267,20 @@
       "when": 1791039852563,
       "tag": "0037_changed_at_and_zone",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1791158343715,
+      "tag": "0038_reach_card",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1791160293121,
+      "tag": "0039_tips_seen",
+      "breakpoints": true
     }
   ]
 }

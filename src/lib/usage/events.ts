@@ -10,7 +10,7 @@ import { z } from "zod";
 import { WORDS } from "@/lib/ui/errors";
 
 const count = z.number().int().min(0).max(1000);
-const method = z.enum(["phone", "email", "other"]);
+const method = z.enum(["phone", "email", "other", "google"]);
 
 /** How a market is settled, as the counts say it: the quorum's word is a vote, the tiebreaker's a ruling, and the feed settles only as the backstop (its ending is on the market's row). */
 export const SETTLED_BY = ["vote", "tiebreaker", "feed", "expired", "removed"] as const;
@@ -42,7 +42,9 @@ export const EVENTS = {
   signed_up: z.object({ method }),
   signed_in: z.object({ method }),
   /** Every error a screen showed, by its cause and the screen's shape (never its ids), so the stats can say errors per hundred sessions. */
-  error_shown: z.object({ cause: z.enum(["nothing_came_back", "failed", "offline", "refused", "other", "server", "signed_out", "not_allowed", "changed", "too_many"]), screen: z.string().regex(/^\/[a-z0-9/[\]-]{0,39}$/) }),
+  /** A drafting answer (Haiku) that failed its shape or ran out of time, asked once more of the ruling model (Sonnet): the first-contact round, 2026-10-04. Server only. */
+  model_escalated: z.object({ task: z.enum(["write_up", "careful", "other"]), why: z.enum(["invalid", "timeout"]) }),
+  error_shown: z.object({ cause: z.enum(["nothing_came_back", "failed", "offline", "refused", "other", "server", "signed_out", "not_allowed", "changed", "too_many", "screen"]), screen: z.string().regex(/^\/[a-z0-9/[\]-]{0,39}$/) }),
 } as const;
 
 export type EventName = keyof typeof EVENTS;

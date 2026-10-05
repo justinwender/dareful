@@ -119,7 +119,7 @@ export function WhosInRow({ people, holdouts = [], count, share, code, chalk = f
           </>
         );
         return list ? (
-          <button type="button" onClick={() => setListOpen(true)} aria-haspopup="dialog" aria-expanded={listOpen} aria-label={`Who’s in: ${count}`} data-whos-in-list="" data-still-out={list.out?.length ?? 0} data-press="line" className="press-line flex min-w-0 flex-col items-start gap-1 rounded-button text-left">
+          <button type="button" onClick={() => setListOpen(true)} aria-haspopup="dialog" aria-expanded={listOpen} aria-label={`Who’s in: ${count}`} data-whos-in-list="" data-whos-in-stack="" data-still-out={list.out?.length ?? 0} data-press="line" className="press-line flex min-w-0 flex-col items-start gap-1 rounded-button text-left">
             {stack}
           </button>
         ) : (

@@ -65,3 +65,10 @@ export function decideLogin(input: { existing: ExistingAccount | null; vouched: 
   // Two fresh embedded wallets are interchangeable until one is recorded, so the server assigns them.
   return { kind: "create", ledgerWallet, governanceWallet, displayName: name };
 }
+
+/** How this login was made, for the count (the first-contact round adds Google): the phone, an email, Google, or something else. */
+export function loginMethod(claims: { email?: string; verified_credentials: Array<{ format?: string } & Record<string, unknown>> }): "phone" | "email" | "google" | "other" {
+  if (claims.verified_credentials.some((c) => c.format === "oauth" && c.oauth_provider === "google")) return "google";
+  if (claims.verified_credentials.some((c) => c.format === "phoneNumber" && typeof c.phoneNumber === "string" && c.phoneNumber.length > 0)) return "phone";
+  return claims.email ? "email" : "other";
+}

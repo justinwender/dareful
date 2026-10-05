@@ -42,8 +42,26 @@ export async function sendPush(userId: string, notice: Notice): Promise<boolean>
   return delivered;
 }
 
-const Emailed = z.object({ email: z.string().email().nullish() });
+const Credential = z.object({ format: z.string().optional(), email: z.string().optional(), oauth_emails: z.array(z.string()).optional(), oauthEmails: z.array(z.string()).optional() }).passthrough();
+const Emailed = z.object({ email: z.string().email().nullish(), verifiedCredentials: z.array(Credential).optional(), verified_credentials: z.array(Credential).optional() }).passthrough();
 const DynamicUser = z.union([z.object({ user: Emailed }), Emailed]);
+
+/**
+ * The address a Dynamic user record gives: its email, else an email credential's, else the first address a linked
+ * Google account carries (the first-contact round: a Google login may have no top-level email, and its notices went
+ * nowhere). Pure, so the three shapes have a test. Never stored.
+ */
+export function emailOfDynamicUser(json: unknown): string | null {
+  const parsed = DynamicUser.safeParse(json);
+  if (!parsed.success) return null;
+  const u: z.infer<typeof Emailed> = "user" in parsed.data && parsed.data.user ? (parsed.data.user as z.infer<typeof Emailed>) : (parsed.data as z.infer<typeof Emailed>);
+  if (u.email) return u.email;
+  const creds = u.verifiedCredentials ?? u.verified_credentials ?? [];
+  const valid = (s: string | undefined) => (s && z.string().email().safeParse(s).success ? s : null);
+  for (const c of creds) if (c.format === "email" && valid(c.email)) return c.email as string;
+  for (const c of creds) for (const e of c.oauth_emails ?? c.oauthEmails ?? []) if (valid(e)) return e;
+  return null;
+}
 
 /**
  * The address this person logs in with, read from Dynamic when it is needed and never stored: `users` has no
@@ -55,9 +73,7 @@ async function loginEmail(dynamicUserId: string): Promise<string | null> {
   if (!env || !token || dynamicUserId.includes(":")) return null; // seed and test users have no Dynamic record
   const res = await fetch(`https://app.dynamicauth.com/api/v0/environments/${env}/users/${dynamicUserId}`, { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(5_000) });
   if (!res.ok) return null;
-  const parsed = DynamicUser.safeParse(await res.json());
-  if (!parsed.success) return null;
-  return ("user" in parsed.data ? parsed.data.user.email : parsed.data.email) ?? null;
+  return emailOfDynamicUser(await res.json());
 }
 
 let warnedOps = false;

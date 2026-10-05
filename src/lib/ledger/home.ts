@@ -5,6 +5,7 @@
  *
  * The rows are assembled here as data so the ordering rule and the "nothing counts, nothing ages" rule have tests.
  */
+import { draftOnNow } from "./drafts";
 import { and, desc, eq, inArray, isNotNull, isNull, ne, or } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { inkOf, type InkName } from "@/lib/ui/ink";
@@ -103,10 +104,12 @@ export function needFromMarket(m: Pick<MarketCardData, "dare" | "state" | "peopl
     if (!iAmIn && !timesUp) return { ...base, kind: "enter", href: `/m/${d.id}#enter`, verb: "Enter", context: `${d.resolvesBy ? `Closes ${closes(d.resolvesBy)} · ` : ""}${inCount(m.people.length, m.groupSize)}`, deadline: d.resolvesBy, since: d.createdAt };
     return null;
   }
-  if (m.state === "locked" && !voted) {
+  if (m.state === "locked" && iAmIn && !voted) {
     // The mark says it is in voting (3.23); the words beside it are who spoke and the count, never the state again.
+    // Only the people in it call it (the first-contact round, 2026-10-04): the count is over the account-holders in.
+    const voters = m.people.filter((p) => !p.ghost).length;
     const called = m.votesCast === 1 ? "has called it" : "have called it";
-    const context = m.saidBy ? `${m.saidBy} says what happened · ${m.votesCast} of ${m.groupSize} ${called}` : m.votesCast > 0 ? `${word(m.votesCast)} of ${m.groupSize} ${called}` : `${d.resolvesBy ? `Voting ends ${closes(d.resolvesBy)}` : "Nobody has called it yet"}`;
+    const context = m.saidBy ? `${m.saidBy} says what happened · ${m.votesCast} of ${voters} ${called}` : m.votesCast > 0 ? `${word(m.votesCast)} of ${voters} ${called}` : `${d.resolvesBy ? `Voting ends ${closes(d.resolvesBy)}` : "Nobody has called it yet"}`;
     return { ...base, kind: "vote", href: `/m/${d.id}#ballot`, verb: "Vote", context, deadline: d.resolvesBy, since: d.lockedAt ?? d.createdAt };
   }
   return null;
@@ -319,7 +322,7 @@ export async function nowFor(me: { id: string; displayName: string }, opts: { no
   // The label on an event says which set of people it came out of. It is a label, never a way in.
   const groupIds = Array.from(new Set([...over.map((m) => m.dare.groupId), ...covers.map((o) => o.groupId), ...closed.map((o) => o.groupId)]));
   const [groupRows, groupMembers] = await Promise.all([groupIds.length ? db.select().from(schema.groups).where(inArray(schema.groups.id, groupIds)) : Promise.resolve([]), membersOfGroups(groupIds)]);
-  const labelOf = new Map(groupRows.map((g) => [g.id, setLabel({ name: g.name, isDyad: g.isDyad, memberNames: (groupMembers.get(g.id) ?? []).filter((m) => m.userId).map((m) => m.displayName), viewerName: me.displayName })]));
+  const labelOf = new Map(groupRows.map((g) => [g.id, setLabel({ name: g.name, isDyad: g.isDyad, memberNames: (groupMembers.get(g.id) ?? []).map((m) => m.displayName), viewerName: me.displayName })]));
 
   const counterparties = Array.from(new Set([...pending.map((p) => p.toUser), ...covers.flatMap((o) => [o.fromUser, o.toUser]), ...closed.flatMap((o) => [o.fromUser, o.toUser])].filter((x): x is string => Boolean(x) && x !== me.id)));
   const [users, denoms] = await Promise.all([
@@ -335,7 +338,8 @@ export async function nowFor(me: { id: string; displayName: string }, opts: { no
     const failed = again.confirms.has(p.id);
     needs.push({ kind: "yep", key: p.id, href: `/o/${p.id}`, verb: failed ? "Try again" : "Yep", context: failed ? AGAIN_CONTEXT : p.memo ? `${creditor.displayName} got ${p.memo}` : `${creditor.displayName} got this one`, subject: `${creditor.displayName}'s got you`, question: false, deadline: null, since: p.createdAt, groupId: p.groupId, proposal: p, creditor, denomination, ...(failed ? { failed: true as const } : {}) });
   }
-  for (const d of drafts) needs.push({ kind: "finish", key: d.id, href: `/m/${d.id}`, verb: "Finish", context: "You never sent this one", subject: d.title, question: true, deadline: null, since: d.createdAt, groupId: d.groupId, ...lookOf(d, "draft") });
+  // An unsent draft is a Needs you row for a day, and then lives on You (the first-contact round).
+  for (const d of drafts.filter((x) => draftOnNow(x.createdAt, opts.now))) needs.push({ kind: "finish", key: d.id, href: `/m/${d.id}`, verb: "Finish", context: "You never sent this one", subject: d.title, question: true, deadline: null, since: d.createdAt, groupId: d.groupId, ...lookOf(d, "draft") });
   // A claim to accept is a Needs you row (4.7), never a section of its own: a friend added someone under this name in a set they share.
   for (const g of suggested) needs.push({ kind: "claim", key: g.claimId, href: "/welcome", verb: "That’s me", context: `${g.creatorName} has things with a ${g.displayName}`, subject: "Is that you?", question: false, deadline: null, since: opts.now, groupId: "", claimId: g.claimId });
 

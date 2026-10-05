@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { IdeasTile } from "@/components/ideas/ideas-tile";
 import { GameRow, rowData } from "@/components/on/game-row";
 import { FeedFailed } from "@/components/on/try-again";
 import { RootHeader, Screen, SectionLabel } from "@/components/ledger/screen";
@@ -42,6 +43,8 @@ export default async function WhatsOnPage() {
             <p className="text-body-sm text-ink-2">Nothing on right now. Games show up here a few days before they start.</p>
           </div>
         ) : null}
+        {/* Ideas first, above Most asked (3.47). */}
+        <IdeasTile />
         {on.mostAsked.length > 0 ? (
           <section className="flex flex-col gap-[10px]" data-most-asked="">
             <SectionLabel>Most asked</SectionLabel>

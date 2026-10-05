@@ -17,7 +17,7 @@ import { createGroup } from "@/lib/ledger/groups";
 import * as markets from "@/lib/ledger/markets";
 import { arbitrateMarket, cleanResolution, tick, toArbitrate } from "@/lib/ledger/settle";
 import { notifyBackstopResult } from "@/lib/notify";
-import { DRIVE_RULING, FEED_RULING, feedBackstop, gameMarkets, gameUseCounts, pollFinals, pollSummaries, startGame, syncSchedule, templateById, useCounts, whatsOn } from "@/lib/sports";
+import { DRIVE_RULING, FEED_RULING, POLL_EVERY_MS, feedBackstop, gameMarkets, gameUseCounts, gamesToPoll, pollFinals, pollSummaries, startGame, syncSchedule, templateById, useCounts, whatsOn } from "@/lib/sports";
 import { parseScoreboard, parseSummary } from "@/lib/sports/espn";
 import { AGREE_AFTER_MS, ALONE_AFTER_MS, CONFIRM_AFTER_MS } from "@/lib/sports/results";
 import { CONSENT, SCALES } from "@/lib/sports/templates";
@@ -242,6 +242,9 @@ test("the backstop on the chain: both sources agreeing settles a day on and coun
 
   // 4. The first drive, from the play-by-play: read once the game has it, proposed on the ballot, read again unchanged, and settled three days on, on one source.
   const drive = made.first_drive!;
+  // Production's tick reads every game in the shared database once a minute, and a summary it cannot fetch (this
+  // run's made-up game) marks the game read for ten minutes; the mark is cleared here as the finals' is above.
+  await db.update(schema.sportsGames).set({ summaryPolledAt: null }).where(eq(schema.sportsGames.id, game.id));
   const noPlays = await pollSummaries(new Date(), { play: playsOf("espn-nfl-summary-scheduled"), onlyIds: [drive.id] });
   assert.deepEqual([noPlays.read, noPlays.proposed], [[game.id], []], "a summary with no play-by-play yet: read, nothing proposed");
   await db.update(schema.sportsGames).set({ summaryPolledAt: null }).where(eq(schema.sportsGames.id, game.id));
@@ -260,4 +263,86 @@ test("the backstop on the chain: both sources agreeing settles a day on and coun
   assert.deepEqual([done.resolvedBy, done.resolvedOutcome, done.feedEnding], ["feed", 3n, "drive"]);
   assert.ok(done.rulingText?.startsWith(DRIVE_RULING) && done.rulingText.includes("Turnover"));
   assert.deepEqual(await cleanResolution(asker.user.id), { ended: 3, clean: 3 });
+});
+
+test("the tick's two feed queues give places up: with one place, a question waiting on its second source does not hold it against one that can settle, and a listing that fails leaves its games to wait their turn", async () => {
+  // Three games of this run's own, each with a question asked on it. None of the three goes near the chain: a question locked here alone is settled here.
+  const three = recorded("espn-nfl-scheduled", "nfl", () => new Date(Date.now() + 2 * H)).slice(6, 9);
+  assert.equal(three.length, 3);
+  await syncSchedule("nfl", new Date(), listing(three));
+  const made: Array<{ d: markets.DareRow; gameId: string; feed: FeedGame }> = [];
+  for (const g of three) {
+    const { game, byKey } = await templatesOf(g.sourceId);
+    const d = await markets.draftFromTemplate({ templateId: byKey.get("home_wins")!.id, creatorId: asker.user.id, groupId, denomId });
+    await open(d);
+    await enter(d, asker, 500n, 8000n);
+    await enter(d, friend, 500n, 3000n);
+    await db.update(schema.sportsGames).set({ startsAt: new Date(Date.now() - 30 * H), expectedEndAt: new Date(Date.now() - 27 * H), polledAt: null }).where(eq(schema.sportsGames.id, game.id));
+    made.push({ d, gameId: game.id, feed: g });
+  }
+  const [waiting, ready, down] = made as [typeof made[number], typeof made[number], typeof made[number]];
+
+  // 1. The backstop. Two locked questions whose finals have stood a day; the older one's second source has nothing yet, so it waits up to three days.
+  for (const m of [waiting, ready]) await db.update(schema.dares).set({ lockedAt: new Date(), resolvesBy: new Date(Date.now() - 30 * H) }).where(eq(schema.dares.id, m.d.id));
+  const finalFor = (g: FeedGame): FeedGame => ({ ...recorded("espn-nfl-final", "nfl")[0]!, sourceId: g.sourceId, home: g.home, away: g.away });
+  const finals = [finalFor(waiting.feed), finalFor(ready.feed)];
+  const seen = new Date(Date.now() - AGREE_AFTER_MS - 2 * H);
+  await pollFinals(seen, { source: listing(finals), onlyIds: [waiting.d.id, ready.d.id] });
+  await db.update(schema.sportsGames).set({ finalSeenAt: seen, finalConfirmedAt: new Date(seen.getTime() + CONFIRM_AFTER_MS) }).where(eq(schema.sportsGames.id, waiting.gameId));
+  await db.update(schema.sportsGames).set({ finalSeenAt: new Date(seen.getTime() + H), finalConfirmedAt: new Date(seen.getTime() + H + CONFIRM_AFTER_MS) }).where(eq(schema.sportsGames.id, ready.gameId));
+  const score: FinalScore = { home: finals[1]!.homeScore!, away: finals[1]!.awayScore! };
+  const asked: string[] = [];
+  const check: CheckSource = { name: "balldontlie", finalOf: async (q) => (asked.push(q.homeAbbr), q.homeAbbr === ready.feed.home.abbr ? score : null) };
+  const one = await feedBackstop(new Date(), { check, onlyIds: [waiting.d.id, ready.d.id], limit: 1 });
+  assert.deepEqual([one.settled, one.voided, one.failed], [[ready.d.id], [], []], "the one place goes to the question that can settle, though the waiting one is older");
+  assert.deepEqual(asked, [waiting.feed.home.abbr, ready.feed.home.abbr], "read in order, the waiting one first");
+  assert.equal(markets.stateOf((await markets.marketById(waiting.d.id))!), "locked", "and the waiting one still waits");
+  assert.deepEqual([(await markets.marketById(ready.d.id))!.resolvedBy, (await markets.marketById(ready.d.id))!.feedEnding], ["feed", "agreed"]);
+
+  // 2. The finals poll. A listing that throws leaves the result as it was and marks its games read, so they wait the usual interval and hold no place meanwhile.
+  const now = new Date();
+  assert.deepEqual((await gamesToPoll(now, [down.d.id])).map((g) => g.id), [down.gameId], "due: its end is behind us and it has never been read");
+  const source = `test:${RUN}`;
+  const failing = { name: source, listGames: async () => { throw new Error("the scoreboard is down"); } } as unknown as ScheduleSource;
+  try {
+    const r = await pollFinals(now, { source: failing, onlyIds: [down.d.id] });
+    assert.deepEqual([r.polled, r.proposed], [[], []], "nothing read and nothing proposed");
+    const after = (await db.select().from(schema.sportsGames).where(eq(schema.sportsGames.id, down.gameId)))[0]!;
+    assert.deepEqual([after.polledAt?.getTime(), after.completed, after.homeScore], [now.getTime(), false, null], "marked read at that moment, its result untouched");
+    assert.deepEqual(await gamesToPoll(new Date(now.getTime() + 60_000), [down.d.id]), [], "a minute on it holds no place");
+    assert.deepEqual((await gamesToPoll(new Date(now.getTime() + POLL_EVERY_MS + 60_000), [down.d.id])).map((g) => g.id), [down.gameId], "and it is due again after the usual interval");
+    const [read] = await db.select().from(schema.sportsFeedReads).where(and(eq(schema.sportsFeedReads.source, source), eq(schema.sportsFeedReads.sport, "nfl")));
+    assert.equal(read?.lastError, "the scoreboard is down", "the failure is on the record");
+  } finally {
+    await db.delete(schema.sportsFeedReads).where(eq(schema.sportsFeedReads.source, source));
+  }
+});
+
+test("the backstop reads each question's own answer: a second scoreboard with the loser's score wrong still settles who wins, and voids the margin", async () => {
+  const one = recorded("espn-nfl-scheduled", "nfl", () => new Date(Date.now() + 2 * H)).slice(9, 10);
+  assert.equal(one.length, 1);
+  await syncSchedule("nfl", new Date(), listing(one));
+  const { game, byKey } = await templatesOf(one[0]!.sourceId);
+  const made: Record<string, markets.DareRow> = {};
+  for (const key of ["home_wins", "margin"] as const) {
+    const d = await markets.draftFromTemplate({ templateId: byKey.get(key)!.id, creatorId: asker.user.id, groupId, denomId });
+    await open(d);
+    await enter(d, asker, 500n, key === "home_wins" ? 7000n : 20n);
+    await enter(d, friend, 500n, key === "home_wins" ? 3000n : 10n);
+    await db.update(schema.dares).set({ lockedAt: new Date(), resolvesBy: new Date(Date.now() - 30 * H) }).where(eq(schema.dares.id, d.id));
+    made[key] = d;
+  }
+  await db.update(schema.sportsGames).set({ startsAt: new Date(Date.now() - 30 * H), expectedEndAt: new Date(Date.now() - 27 * H), polledAt: null }).where(eq(schema.sportsGames.id, game.id));
+  const final = { ...recorded("espn-nfl-final", "nfl")[0]!, sourceId: one[0]!.sourceId, home: one[0]!.home, away: one[0]!.away };
+  const seen = new Date(Date.now() - AGREE_AFTER_MS - H);
+  const ids = [made.home_wins!.id, made.margin!.id];
+  await pollFinals(seen, { source: listing([final]), onlyIds: ids });
+  await db.update(schema.sportsGames).set({ finalSeenAt: seen, finalConfirmedAt: new Date(seen.getTime() + CONFIRM_AFTER_MS) }).where(eq(schema.sportsGames.id, game.id));
+  // The second source has the winner right and the loser's score off by three.
+  const winnerHome = final.homeScore! > final.awayScore!;
+  const off: FinalScore = winnerHome ? { home: final.homeScore!, away: Math.max(0, final.awayScore! - 3) } : { home: Math.max(0, final.homeScore! - 3), away: final.awayScore! };
+  const r = await feedBackstop(new Date(), { check: checkOf(off), onlyIds: ids });
+  assert.deepEqual([r.settled, r.voided, r.failed], [[made.home_wins!.id], [made.margin!.id], []], "who wins settles on the winner both name; the margin, answered differently, voids");
+  const won = (await markets.marketById(made.home_wins!.id))!;
+  assert.deepEqual([won.resolvedOutcome, won.feedEnding], [winnerHome ? 1n : 0n, "agreed"]);
 });

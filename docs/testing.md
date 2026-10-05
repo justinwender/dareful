@@ -1018,6 +1018,86 @@ The four positions under a thumb on a phone (the snap, the full position scrolli
 
 The page as the owner (the variable is not set on the local server during the suites); the two buttons on a phone; the chain's counts against the indexer in production. Items 171 to 173 and 184.
 
+## Session 38: first contact, on the iOS 26 and iOS 27 simulators
+
+**When:** October 4 to 5, 2026. **Who:** the "iPhone 17 Pro iOS 26" simulator (iOS 26.0) and the "iPhone 18 Pro" simulator (iOS 27.0), in Safari's private tabs, and the development build installed from Safari on iOS 26 ("Dareful local"); the production copy installed on iOS 26 for 1.1. Touches through the simulator tool, readings through the simulators' Web Inspector. Every account and question made for the runs was a fixture's, removed by the sweep; production was read, never written, for the model comparison and the lists.
+
+### Exercised
+
+- **1.1's two sequences** in the production copy, ten valid runs each in light and in dark on Now, People and You: with a keyboard up the visible part 488 of 812; after it, 874 tall with the tab bar at 775 to 874 every time. The run found the code screen's own focus dropping the root with no keyboard, fixed by `data-typing` and confirmed on the development build in the installed copy: arriving on the code screen by a tap from Now, its own focus left the root 875 tall with the sheet at the bottom edge and no keyboard; a tap on the boxes raised the keyboard and the flag (the root 812, the sheet above the keyboard); dismissing it returned the root to 875 and the sheet to the edge.
+- **Joining from a link as a guest, thirty runs**: ten each in an iOS 26 private tab, an iOS 27 private tab and the installed copy, against the development server. The first run on each surface was cold (a new private tab, a fresh install); runs two to ten forgot the guest in the same tab through the product's own "Not you?" and "Forget them" and cleared the phone's storage, so the page and the tip were a first visit each time but the browser's cache was warm. Taps are counted by the page: the primary ("I’m in at 50%, $5"), the name field and "Join as", with the tip's Done first on a first visit. Page load is the navigation's load event; "saved" is from the tap on "Join as" to the keeping step on screen, which follows the stored entry. The last column is the whole run from opening the link, paced by the simulator tool at several seconds an action, not by a person.
+
+| Surface | Run | Tip first | Taps to the entry | Page load (ms) | Saved after "Join as" (ms) | Link to saved, tool-paced (s) |
+| --- | --- | --- | --- | --- | --- | --- |
+| iOS 26, Safari private | 1 | yes | 3 and the name | 1780 | 1574 | 79 |
+| iOS 26, Safari private | 2 | no | 3 and the name | 1537 | 1439 | 117 |
+| iOS 26, Safari private | 3 | yes | 3 and the name | 924 | 1375 | 149 |
+| iOS 26, Safari private | 4 | yes | 3 and the name | 950 | 1431 | 110 |
+| iOS 26, Safari private | 5 | yes | 3 and the name | 911 | 1434 | 99 |
+| iOS 26, Safari private | 6 | yes | 3 and the name | 884 | 1493 | 99 |
+| iOS 26, Safari private | 7 | yes | 3 and the name | 771 | 1579 | 98 |
+| iOS 26, Safari private | 8 | yes | 3 and the name | 1001 | 1612 | 98 |
+| iOS 26, Safari private | 9 | yes | 3 and the name | 790 | 1365 | 108 |
+| iOS 26, Safari private | 10 | yes | 3 and the name | 798 | 1399 | 89 |
+| iOS 27, Safari private | 1 | yes | 3 and the name | 2232 | 1615 | 122 |
+| iOS 27, Safari private | 2 | yes | 3 and the name | 889 | 1506 | 76 |
+| iOS 27, Safari private | 3 | yes | 3 and the name | 1577 | 1855 | 80 |
+| iOS 27, Safari private | 4 | yes | 3 and the name | 1936 | 1830 | 80 |
+| iOS 27, Safari private | 5 | yes | 3 and the name | 1536 | 1827 | 79 |
+| iOS 27, Safari private | 6 | yes | 3 and the name | 1496 | 1637 | 80 |
+| iOS 27, Safari private | 7 | yes | 3 and the name | 1425 | 1507 | 80 |
+| iOS 27, Safari private | 8 | yes | 3 and the name | 1361 | 1547 | 80 |
+| iOS 27, Safari private | 9 | yes | 3 and the name | 1296 | 1381 | 79 |
+| iOS 27, Safari private | 10 | yes | 3 and the name | 1265 | 1428 | 80 |
+| iOS 26, installed copy | 1 | yes | 3 and the name | 1859 | 1502 | 91 |
+| iOS 26, installed copy | 2 | yes | 3 and the name | 1316 | 1468 | 135 |
+| iOS 26, installed copy | 3 | yes | 3 and the name | 1246 | 1427 | 129 |
+| iOS 26, installed copy | 4 | yes | 3 and the name | 1463 | 1425 | 111 |
+| iOS 26, installed copy | 5 | yes | 3 and the name | 1472 | 1341 | 120 |
+| iOS 26, installed copy | 6 | yes | 3 and the name | 1600 | 1773 | 111 |
+| iOS 26, installed copy | 7 | yes | 3 and the name | 1346 | 1342 | 120 |
+| iOS 26, installed copy | 8 | yes | 3 and the name | 1347 | 1406 | 110 |
+| iOS 26, installed copy | 9 | yes | 3 and the name | 1508 | 1578 | 111 |
+| iOS 26, installed copy | 10 | yes | 3 and the name | 1277 | 2100 | 121 |
+
+  Medians: page load 0.92 seconds in iOS 26 Safari, 1.46 in iOS 27 Safari and 1.41 in the installed copy; the entry saved 1.44, 1.58 and 1.45 seconds after "Join as".
+- **Sign in at the first step**, in the installed copy: "Sign in" sits directly under "Your name" at the same width (370 points); it opens "Sign in" with Email and Continue, "Continue with Google", "Use a phone number" (switching the field to a phone number and back) and Back, which returns to the name with nothing carried. Stopped there: no address, code or Google account was entered.
+- **Google in the installed copy**: from Dynamic's sheet, Google's sign-in page opened inside the app's own window, with the app's close at the top, and closing it returned to the app. Not signed in.
+- **The sheet by finger**, in iOS 26 Safari and the installed copy: raised to resting to tucked by two drags, then one long drag from raised straight to tucked; tucked, the handle row sat above Safari's toolbar and above the home indicator, and a tap on it raised the sheet; the page's room followed each position (485, 251 and 99 points in Safari; 549, 285 and 133 installed). In iOS 27 Safari one long drag tucked the draft's sheet.
+- **The last row**: Now with ten questions running in the installed copy, scrolled to the end, its last row ended at 621 against a tab bar from 775; in iOS 27 Safari the same, clear of the Start button. In starting a game with three questions, "Stakes, for all 3", its chips and "Back to who’s in" sat clear of the sheet.
+- **Asking**, in iOS 27 Safari: "Market type" and "AI market setup" with their chips; "How many slices will Sam eat?" switched the type to Pick a number; who's in started at "Whoever I send it to" (and in starting a game on iOS 26); the terms step showed the write-up's date picked as "Oct 5" with Tonight, This week and This month beside it, and a tap on Tonight picked it. An idea with a blank opened with "Who?" and the one person the account knew, the primary waiting, and a tap filled "Will Rae win the pong game?".
+- **A draft and a withdrawal**, in iOS 27 Safari: the draft on Now under Needs you ("You never sent this one", Finish), its page at rest with the terms on screen, "Discard it" on the page: the draft gone and Now without it. "Withdraw it" on a question nobody else was in asked once and called it off; Now was empty after.
+- **First-visit tips** on the link page, Now, What's on, the question step and a draft: one to three, a tap anywhere moving on, never over a sheet that was open.
+
+### Found and fixed during the session
+
+- The guest's page remounted the entry stage when the entry arrived, so the keeping step vanished after "Join as"; it now has one place while open.
+- The iOS 27 simulator says the browser is offline with the network up, so the offline bar stood on every screen and every tap was refused; the word is settled by a request first.
+- The first entry's primary was under the line at rest; a first entry opens raised.
+- The sheet took two drags to tuck from raised, which read as not tucking; a drag lands where the finger let it go.
+- Now's tenth row sat under the tab bar, and the start flow's stakes row under the sheet, because the page was held at its minimum height in the scrolling column; it grows with its content.
+- The draft's raised sheet ended short of "Share it first" and "Discard it" on a 714-point Safari screen (they sat at 695 to 739); they are on the page under the terms, and a draft rests.
+- A tip's ring slid while its cut-out jumped; they move together.
+- The chain backstop test failed once with the page suite running beside it: production's tick, which reads every game in the shared database once a minute, had marked the test's made-up game read; the test clears the mark before it reads, as it already did for the finals.
+
+### Not verified here
+
+Anything past Dynamic's step: making an account by email, by phone or with Google, signing in at the first step and the entry arriving under the account, and Google's return inside the installed app (items 190 to 194). The one card (195), which needs a Dynamic login on the device. "Share it first" (198), which signs. Everything on a phone.
+
+## Session 37: the two feed queues and the four pitch numbers
+
+**When:** October 3, 2026. **Who:** the suites against the shared database, in windows and rows of their own; production read once through the page's own function.
+
+### Exercised
+
+- **The backstop's one place** going to the question that can settle while an older one waits on its second source, and **a failed listing** giving its games' places up for ten minutes, both against the real database with recorded games under this run's prefix and no chain write.
+- **The four numbers** in a day in 2003 nobody else has rows in: one person who was in a friend's question before asking (not the one who asked first, not an excluded account), one set with two questions (not the set with a called-off one, not the set whose two were one game's), a rate of 50 from a vote's answer and the tiebreaker's void (the final score's void and an expiry in neither), two of photos and stickers (not the excluded account's photo, not a plain picture); the day before reads zero for all four.
+- **Production, read once** on October 3: since launch 3 people, 3 sets, 63 percent (5 of 8) and 11; in the last seven days 1, 1, 50 percent and 8.
+
+### Not verified here
+
+The four on the page itself: `/stats` answers the code screen locally, since `OWNER_USER_IDS` is not set on the development machine (item 188).
+
 ## Session 36: the field round, 1.1 in installed copies on the iOS 26 simulator
 
 **When:** October 3, 2026. **Who:** the "iPhone 17 Pro iOS 26" simulator (iOS 26.0), which the owner let Claude use: the deployed build installed from dareful.app with the owner's own session, and the current build installed from the local server as a visitor. Touches through the simulator tool; readings through the simulator's Web Inspector. The real localhost session in the development browser for the pace row.
@@ -1342,4 +1422,27 @@ Items the simulator covered are marked in place above (61, 66, 93, 98, 101, 113,
 184. **The chain's counts** (34): on `/stats` in production, expect the four counts and the two links opening the ledger and the questions contract on the explorer.
 185. **The roots in an installed copy on iOS 26** (36): after the deploy, in the installed app, on Now, People and You: the tab bar at the very bottom with no band at rest; focus a field, dismiss the keyboard, scroll: the tab bar where it was. Then with the keyboard up, go to the home screen and reopen from a notification onto a market: its sheet at the bottom edge. On the simulator the same after the deploy, with the readings.
 186. **The caret in a sheet's field** (36): in the installed app on iOS 26, open a question's link signed out, slide, tap the main button, tap "Your name". Expect the caret in the field. On the simulator it stood about 62 points above the empty field until the first letter; say which the phone does.
-187. **The pace row** (36): on the question step, "Just write it up" and "Ask me three things first" sit indented under Yes or no with no heading; pick A number or Pick one and they are gone; pick Yes or no and they are back with the choice kept.
+187. ~~**The pace row** (36)~~: superseded on 2026-10-04 by "AI market setup" for every type (item 196).
+188. **The four pitch numbers** (37): on `/stats` in production, at the end of the table: "Came by a link, then asked", "Sets with two or more questions", "Clean resolutions" as a percent and "Photos and stickers added", each with its definition, in both windows.
+189. **Joining from a link as a guest** (38): on the phone, open a question's link in Safari with no Dareful sign-in. Expect the thumb at 50% under "Slide to your prediction" and "I’m in at 50%, $5" on screen without a touch; tap it, type a name, tap "Join as …": the entry line, the guest line at the top, and "Keep your calls in an account" with an email field, "Continue with Google", "Use a phone number" and "Not now". "Not now" lowers the sheet and the entry stays.
+190. **Keeping it in an account by email** (38): from 189's step, an email address with no account, its code, Continue. Expect a new account under the name typed, no welcome screen, and the entry yours (your own avatar on the question, not the dashed one).
+191. **By phone** (38): the same with "Use a phone number" and a US number.
+192. **By Google, in Safari** (38): the same with "Continue with Google". Expect to come back to the question signed in with the entry yours, and nothing of Google's left in the address.
+193. **By Google, in the installed app** (38): the same inside the installed app. Expect Google's page inside the app and the return signed in. If it comes back signed out, or in Safari, say so: `GOOGLE_IN_INSTALLED_APP` takes Google out of the installed app.
+194. **Signing in at the first step** (38): with an existing account, open a link signed out, tap the primary, then "Sign in", and sign in by code. Expect the question with the entry you picked already in under your account, and no guest made.
+195. **The one card** (38): an account signed in by phone with no push and no email, on the phone that holds the login: the card at the top of Now once. "Add an email": a code to the address, then "Added."; reopen Now: no card. "Link Google": Google's page after Dynamic's check.
+196. **The question step** (38): "How many slices will Sam eat?" picks Pick a number; "Who wins tonight?" Pick one; "Will it rain?" Yes or no; a type you tapped yourself stays as you type. "AI market setup" under every type; Help define asks a number about its unit, source and rounding.
+197. **Decided** (38): on the terms step the date chip shows the write-up's date; tap Tonight and the date in the terms changes with it; edit the terms to name another date and Send it: refused at the field naming both dates.
+198. **A draft** (38): leave asking at the terms step. Expect a Needs you row "You never sent this one" with Finish for a day, then the draft on You under Drafts. Open it: the sheet at rest with the terms on screen; "Share it first" signs once and the question opens with nobody in and share, copy and the code there; on another draft "Discard it": gone from Now and You.
+199. **Withdraw** (38): a question you sent that nobody joined: "Withdraw it" under who's in asks once, and the question leaves Now; its link says it was called off.
+200. **The last row** (38): Now with more running than fit, scrolled to the end: the last row clear of the tab bar and the Start button. In starting a game with three questions, "Stakes, for all 3" and "Back to who’s in" clear of the sheet, at rest and raised.
+201. **Tucked** (38): on a question you are not in, one long drag down from raised: tucked, the handle row above the home indicator (in Safari, above the toolbar); a tap on it raises it.
+202. **Only the people in call it** (38): a question in a set of five with two in, past its close: the ballot for those two only; the others see where everyone landed and no vote, and Now gives the vote row to the two alone; the two agreeing decides it.
+203. **Add another** (38): on a game page with a question already sent, "Add another", pick one, Send it. Expect the game page with both, never the error card.
+204. **One set per pair** (38): People shows one row per set of people, and a pair reads "Rachel and you".
+205. **First-visit tips** (38): a screen opened for the first time on the account: up to three tips, a tap anywhere moving on, the ring staying on its control while the tip moves; never again on that screen.
+206. **Ideas** (38): What's on starts with Ideas; Now shows it under Running while fewer than three are running; an idea with a blank waits for a name.
+207. **The guest line** (38): as a guest in a question, the line at the top with the page starting under it, nothing behind it.
+208. **The write-ups after the switch** (38): ask three questions on production. Expect write-ups as good as before, each with a date matching its terms, and `model_escalated` in the usage table rarely.
+209. **Offline, really** (38): airplane mode on, tap something: the offline bar within a few seconds and "You’re offline. Try again once you’re back."; airplane mode off: the tap goes.
+210. **The Red Sox question after its correction** (38, on the owner's go-ahead): after `scripts/ops/resettle-feed.ts --apply`, the question settled for the Yankees, a confirmation waiting for each person who owes, and no new notice.

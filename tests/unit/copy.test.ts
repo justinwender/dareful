@@ -70,11 +70,11 @@ test("a first name is the first word only", () => {
 });
 
 test("a first name is never an email's local part", () => {
-  assert.equal(firstName("justin.wender"), "Justin");
+  assert.equal(firstName("robin.okafor"), "Robin");
   assert.equal(firstName("sam@example.com"), "Sam");
-  assert.equal(firstName("justin.wender+dynamic_test"), "Justin");
+  assert.equal(firstName("robin.okafor+dynamic_test"), "Robin");
   assert.equal(firstName("dana_q"), "Dana");
-  assert.equal(firstName("justin42.wender"), "Justin");
+  assert.equal(firstName("robin42.okafor"), "Robin");
   assert.equal(firstName("J.R. Smith"), "J.R.");
   assert.equal(firstName("Mary-Jane Watson"), "Mary-Jane");
   assert.equal(firstName("D’Arcy"), "D’Arcy");
@@ -90,19 +90,19 @@ test("what the app is: the owner's two sentences, and the four places read the o
   // The literal, so a change to the constant is seen here and not only echoed.
   assert.equal(ABOUT_FIRST, "Ask your friends what’ll happen, from who falls asleep first to who wins on Sunday.");
   assert.equal(ABOUT, "Ask your friends what’ll happen, from who falls asleep first to who wins on Sunday. Everyone makes their call, and Dareful keeps track of who’s got who.");
-  // The plain card's footer (and so the description on a dead link, share.ts) and the manifest say the first sentence alone.
+  // The plain card's footer (and so the description on a dead link, share.ts) says the first sentence alone; the manifest says the signed-out screen's line (the first-contact round).
   assert.equal(plainCard.footer, ABOUT_FIRST);
-  assert.equal(manifest().description, ABOUT_FIRST);
+  assert.equal(manifest().description, FIRST_LINE);
   // The signed-out screen says the owner's line under its turning questions (the field round, 1.9), from the one constant; it types no sentence of its own.
   assert.equal(FIRST_LINE, "Ask your friends. Everyone says how sure they are, with a beer or a few dollars riding on it, and Dareful keeps score.");
   const signedOut = readFileSync("src/components/home/signed-out.tsx", "utf8");
   assert.ok(/\{FIRST_LINE\}/.test(signedOut) && !/The dares, the rounds|No spreadsheet|Who’s got the next one/.test(signedOut), "the signed-out screen reads FIRST_LINE and types no sentence of its own");
 });
 
-test("the app's own description (the root layout's metadata) reads the first sentence from the constant", () => {
+test("the app's own description (the root layout's metadata) reads the signed-out screen's line from the constant", () => {
   // Read from the source: the layout imports the stylesheet and the fonts, which a node test cannot load.
   const layout = readFileSync("src/app/layout.tsx", "utf8");
-  assert.ok(/description: ABOUT_FIRST,/.test(layout) && !/A social ledger for friend groups/.test(layout), "the app's own description reads ABOUT_FIRST");
+  assert.ok(/description: FIRST_LINE,/.test(layout) && !/A social ledger for friend groups|description: ABOUT_FIRST/.test(layout), "the app's own description reads FIRST_LINE, the line 1.9 put on the signed-out screen");
 });
 
 test("the retired sentences are cut: the old signed-out line and the chalk 3.42 removed fail the build wherever they are typed", () => {
@@ -141,10 +141,11 @@ test("the asker's Close row gives the count as its reason, never the state as a 
 });
 
 test("a count of one takes the singular: one has called it, on Now and in the vote notice", () => {
-  const one = market({ state: "locked", votesCast: 1, saidBy: "Priya" });
+  const four = ["viewer", "a", "b", "c"].map(person);
+  const one = market({ state: "locked", votesCast: 1, saidBy: "Priya", people: four });
   assert.equal(needFromMarket(one, "viewer", false, t0, () => "tonight")?.context, "Priya says what happened · 1 of 4 has called it");
-  assert.equal(needFromMarket(market({ state: "locked", votesCast: 1 }), "viewer", false, t0, () => "tonight")?.context, "One of 4 has called it");
-  assert.equal(needFromMarket(market({ state: "locked", votesCast: 2 }), "viewer", false, t0, () => "tonight")?.context, "Two of 4 have called it");
+  assert.equal(needFromMarket(market({ state: "locked", votesCast: 1, people: four }), "viewer", false, t0, () => "tonight")?.context, "One of 4 has called it");
+  assert.equal(needFromMarket(market({ state: "locked", votesCast: 2, people: four }), "viewer", false, t0, () => "tonight")?.context, "Two of 4 have called it");
   const base = { voterName: "Gabe", title: "Can Theo clear the fence?", quorum: 5, threshold: 3, marketId: "m1", appUrl: "https://dareful.app" };
   assert.equal(voteRequest({ ...base, cast: 1, leading: 1 }).body, "1 of 5 has, and yours wouldn't decide it yet.");
   assert.equal(voteRequest({ ...base, cast: 2, leading: 2 }).body, "2 of 5 have, and yours could decide it.");

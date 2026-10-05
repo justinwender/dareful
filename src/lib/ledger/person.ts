@@ -241,7 +241,7 @@ export async function personView(me: UserRow, them: UserRow): Promise<PersonView
 
   const contextIds = Array.from(new Set(timeline.map(contextOf)));
   const [contextGroups, contextMembers] = await Promise.all([contextIds.length ? db.select().from(schema.groups).where(inArray(schema.groups.id, contextIds)) : Promise.resolve([]), membersOfGroups(contextIds)]);
-  const labels = new Map(contextGroups.map((g) => [g.id, { label: setLabel({ name: g.name, isDyad: g.isDyad, memberNames: (contextMembers.get(g.id) ?? []).filter((m) => m.userId).map((m) => m.displayName), viewerName: me.displayName }), unnamed: g.name === null && !g.isDyad, isDyad: g.isDyad }]));
+  const labels = new Map(contextGroups.map((g) => [g.id, { label: setLabel({ name: g.name, isDyad: g.isDyad, memberNames: (contextMembers.get(g.id) ?? []).map((m) => m.displayName), viewerName: me.displayName }), unnamed: g.name === null && !g.isDyad, isDyad: g.isDyad }]));
   for (const e of timeline) {
     const label = labels.get(contextOf(e))?.label ?? null;
     if (e.kind === "market") e.market = { ...e.market, groupName: label };

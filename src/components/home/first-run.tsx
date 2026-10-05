@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { IdeasTile } from "@/components/ideas/ideas-tile";
 import { CodeJoinCompact } from "@/components/home/code-join";
 import { GameRow, type GameRowData } from "@/components/on/game-row";
 import { ButtonLink } from "@/components/ui/button";
@@ -55,6 +56,8 @@ export function FirstRun({ games = [], viewerHue = "stone" }: { games?: GameRowD
           </ul>
         </section>
       )}
+      {/* Then the ideas tile (3.14, 3.47), with the games or without them. */}
+      <IdeasTile />
     </div>
   );
 }

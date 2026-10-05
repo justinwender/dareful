@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { currentUser } from "@/lib/auth/session";
 import { WriteUpInput, writeUp } from "@/lib/ledger/write-up";
+import { viewerZone } from "@/lib/ui/zone";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,7 @@ export async function POST(req: Request): Promise<Response> {
     async start(controller) {
       const send = (o: unknown) => controller.enqueue(encoder.encode(`${JSON.stringify(o)}\n`));
       try {
-        const result = await writeUp(body.data, me.id, (t) => send({ t }));
+        const result = await writeUp(body.data, me.id, await viewerZone(), (t) => send({ t }), () => send({ r: 1 }));
         send({ done: result });
       } catch (err) {
         console.error("the write-up stream failed", err);

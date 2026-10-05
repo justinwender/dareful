@@ -8,6 +8,7 @@ import { LinkPending } from "./link-pending";
 import { NOTHING_CAME_BACK, ProblemSummary } from "@/components/ledger/problem";
 import { GIVE_UP_MS, RUNNER_MS, STILL_GOING_MS, TRY_AGAIN_MS, waitStage, type WaitStage } from "@/lib/ui/motion";
 import { offlineNow, WORDS } from "@/lib/ui/errors";
+import { offlineSettled } from "@/lib/ui/connection";
 
 export { STILL_GOING_MS, TRY_AGAIN_MS, waitStage, type WaitStage };
 
@@ -98,12 +99,12 @@ export function useWaitStage(waiting: boolean): WaitStage {
 }
 
 /** The form a control submits: the one named on it, else the one it sits in. */
-function formOf(props: { form?: string }, last: React.MouseEvent<HTMLButtonElement> | null): HTMLFormElement | null {
+/** The form a control submits: the one it names, else the one it sits in. The control is kept from the tap itself, since an event's `currentTarget` is gone once the tap is handled. */
+function formOf(props: { form?: string }, el: HTMLButtonElement | null): HTMLFormElement | null {
   if (typeof document === "undefined") return null;
   const named = props.form ? document.getElementById(props.form) : null;
   if (named instanceof HTMLFormElement) return named;
-  const el = last?.currentTarget;
-  return el instanceof HTMLButtonElement ? el.form : null;
+  return el ? el.form : null;
 }
 
 /**
@@ -131,7 +132,7 @@ export function buttonWait(stage: WaitStage, kind: "write" | "read", gaveUp = fa
   return { block, pending, long, line: long ? (kind === "write" ? WORDS.writeStillGoing : "Still going.") : null, words: block ? NOTHING_CAME_BACK : null };
 }
 
-/** What a tap does on a phone with no network: nothing is sent, and the words say so (the field round, 1.6 as amended). Pure. */
+/** What a tap does on a phone with no network, once a request has settled it (`offlineSettled`): nothing is sent, and the words say so (the field round, 1.6 as amended; settled since the first-contact round). Pure. */
 export function tapGoes(offline: boolean): { send: boolean; words: string | null } {
   return offline ? { send: false, words: WORDS.offline } : { send: true, words: null };
 }
@@ -143,6 +144,7 @@ export function Button({ className, variant = "secondary", size, loading, disabl
   // Past ten seconds a read's control takes taps again, and the block under it offers the same tap as "Try again"; a write's does after a minute with no answer.
   const busy = Boolean(loading) && !block;
   const lastClick = React.useRef<React.MouseEvent<HTMLButtonElement> | null>(null);
+  const lastControl = React.useRef<HTMLButtonElement | null>(null);
   // Offline at the tap: nothing is sent, and the words stand under the control until a tap goes through.
   const [offline, setOffline] = React.useState<string | null>(null);
   return (
@@ -156,17 +158,24 @@ export function Button({ className, variant = "secondary", size, loading, disabl
           busy
             ? undefined
             : (e) => {
-                const go = tapGoes(offlineNow());
-                setOffline(go.words);
-                if (!go.send) {
-                  // A submit control's form is not sent either.
-                  e.preventDefault();
-                  return;
-                }
-                // Kept for "Try again": React reuses nothing of the event, and only its target is read later.
+                // Kept for "Try again": React reuses nothing of the event, and the control is read from the tap itself.
                 e.persist?.();
                 lastClick.current = e;
-                onClick?.(e);
+                lastControl.current = e.currentTarget;
+                if (!offlineNow()) {
+                  setOffline(null);
+                  onClick?.(e);
+                  return;
+                }
+                // The browser says offline: a request to this origin settles it before anything is sent (iOS 27 says
+                // offline with the network up). Nothing goes while it settles, a submit control's form included.
+                e.preventDefault();
+                const control = e.currentTarget;
+                void offlineSettled().then((off) => {
+                  const go = tapGoes(off);
+                  setOffline(go.words);
+                  if (go.send) retryOf({ type, form: formOf(props, control), click: onClick ? () => onClick(e) : null });
+                });
               }
         }
         type={busy && type === "submit" ? "button" : type}
@@ -181,7 +190,7 @@ export function Button({ className, variant = "secondary", size, loading, disabl
       </button>
       {long ? <span className="text-center text-caption text-ink-3">{line}</span> : null}
       {offline && !loading ? <ProblemSummary messages={[offline]} /> : null}
-      {block && words ? <ProblemSummary messages={[words]} retry={() => retryOf({ type, form: formOf(props, lastClick.current), click: lastClick.current && onClick ? () => onClick(lastClick.current as React.MouseEvent<HTMLButtonElement>) : null })} /> : null}
+      {block && words ? <ProblemSummary messages={[words]} retry={() => retryOf({ type, form: formOf(props, lastControl.current), click: lastClick.current && onClick ? () => onClick(lastClick.current as React.MouseEvent<HTMLButtonElement>) : null })} /> : null}
     </>
   );
 }

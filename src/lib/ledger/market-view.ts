@@ -13,7 +13,7 @@ import { denominationsByIds, type DenominationRow } from "./denominations";
 import { membersOfGroups, setFacts, type SetFacts } from "./groups";
 import { participantsOf, pidOf } from "./participants";
 import { inkOf, type InkName } from "@/lib/ui/ink";
-import { answersOf, stateOf, unitOf, VOID_OUTCOME, type DareRow, type MarketState, type PositionRow, type Unit } from "./markets";
+import { answersOf, stateOf, unitOf, voterIsIn, VOID_OUTCOME, type DareRow, type MarketState, type PositionRow, type Unit } from "./markets";
 import { answerShares, type Answer } from "./pick-one";
 
 export type MarketPerson = { id: string; displayName: string };
@@ -78,7 +78,7 @@ export async function marketCards(input: { viewerId: string; groupId?: string; w
 
   const [positions, votes, edges, groups, seats, said] = await Promise.all([
     db.select().from(schema.darePositions).where(and(inArray(schema.darePositions.dareId, ids), isNotNull(schema.darePositions.acknowledgedAt), isNull(schema.darePositions.dismissedAt))),
-    db.select({ dareId: schema.dareVotes.dareId, userId: schema.dareVotes.userId }).from(schema.dareVotes).where(inArray(schema.dareVotes.dareId, ids)),
+    db.select({ dareId: schema.dareVotes.dareId, userId: schema.dareVotes.userId }).from(schema.dareVotes).where(and(inArray(schema.dareVotes.dareId, ids), voterIsIn)),
     db.select().from(schema.obligations).where(and(eq(schema.obligations.origin, "dare"), inArray(schema.obligations.originId, ids))),
     db.select({ id: schema.groups.id, name: schema.groups.name }).from(schema.groups).where(inArray(schema.groups.id, groupIds)),
     // The seats, with their names and in one order everywhere (`membersOfGroups`): the account-holders are the set a sentence names.
@@ -91,7 +91,7 @@ export async function marketCards(input: { viewerId: string; groupId?: string; w
   const ghost = (id: string) => people.get(id)?.ghost === true;
   const denoms = await denominationsByIds(Array.from(new Set(dares.map((d) => d.denomId))));
   const memories = await frameOnMarkets(dares.filter((d) => ["resolved", "voided", "expired"].includes(stateOf(d))).map((d) => d.id));
-  const firstVotes = await db.select({ dareId: schema.dareVotes.dareId, userId: schema.dareVotes.userId, signedAt: schema.dareVotes.signedAt }).from(schema.dareVotes).where(inArray(schema.dareVotes.dareId, ids));
+  const firstVotes = await db.select({ dareId: schema.dareVotes.dareId, userId: schema.dareVotes.userId, signedAt: schema.dareVotes.signedAt }).from(schema.dareVotes).where(and(inArray(schema.dareVotes.dareId, ids), voterIsIn));
   const callerOf = new Map<string, string>();
   for (const v of [...firstVotes].sort((a, b) => a.signedAt.getTime() - b.signedAt.getTime())) if (!callerOf.has(v.dareId)) callerOf.set(v.dareId, v.userId);
 
@@ -132,7 +132,7 @@ export async function marketCards(input: { viewerId: string; groupId?: string; w
         .map((e) => ({ id: e.id, from: { id: e.fromUser, displayName: nameOf.get(e.fromUser) ?? "Someone" }, to: { id: e.toUser, displayName: nameOf.get(e.toUser) ?? "Someone" }, quantity: e.quantity ?? 1n })),
       votesCast: votes.filter((v) => v.dareId === d.id).length,
       saidBy: ((u) => (u ? (nameOf.get(u) ?? null) : null))(said.find((x) => x.dareId === d.id)?.userId),
-      needsYou: state === "open" && !iAmIn ? "Put your number in" : state === "locked" && !votes.some((v) => v.dareId === d.id && v.userId === input.viewerId) ? "Say how it came out" : null,
+      needsYou: state === "open" && !iAmIn ? "Put your number in" : state === "locked" && iAmIn && !votes.some((v) => v.dareId === d.id && v.userId === input.viewerId) ? "Say how it came out" : null,
       media: (memories.get(d.id) ?? []).map((m) => ({ id: m.id, author: m.author })),
       calledBy: state === "resolved" && callerOf.get(d.id) ? ((id) => (id === input.viewerId ? "You" : (nameOf.get(id) ?? "Someone").split(/\s+/)[0] ?? "Someone"))(callerOf.get(d.id) as string) : null,
     });

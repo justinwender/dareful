@@ -8,6 +8,7 @@ import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle
 import { db, schema } from "@/db";
 import { calibrationFor, headlineBin, wilson80, type CalibrationBin, type CalibrationRecord } from "./calibration";
 import { VOID_OUTCOME } from "./markets";
+import { CLEAN_COUNTED_ENDINGS, TWO_OR_MORE_IN } from "./settle";
 import { daysBetween } from "@/lib/ui/copy";
 import { markRefOf, type MarkRef } from "@/lib/ui/mark";
 import type { InkName } from "@/lib/ui/ink";
@@ -18,7 +19,7 @@ export const NUMBERS_FLOOR = 5;
 
 export type AskedQuestion = { dareId: string; title: string; clean: boolean; endedAt: Date };
 export type AskedRecord = {
-  /** The questions that ended by a quorum, by the tiebreaker or by the final score with an answer or a void, oldest first. Expiry, a removal and the final score's own void are not here (3.34). */
+  /** The questions two or more people were in that ended by a quorum, by the tiebreaker or by the final score with an answer or a void, oldest first. Expiry, a removal and the final score's own void are not here (3.34). */
   counted: AskedQuestion[];
   /** How many of those ended cleanly. */
   clean: number;
@@ -45,7 +46,7 @@ export async function askedRecord(creatorId: string): Promise<AskedRecord> {
   const rows = await db
     .select({ id: schema.dares.id, title: schema.dares.title, outcome: schema.dares.resolvedOutcome, by: schema.dares.resolvedBy, resolvedAt: schema.dares.resolvedAt })
     .from(schema.dares)
-    .where(and(eq(schema.dares.creatorId, creatorId), isNotNull(schema.dares.resolvedAt), inArray(schema.dares.resolvedBy, ["quorum", "arbitration", "feed", "expired"])))
+    .where(and(eq(schema.dares.creatorId, creatorId), isNotNull(schema.dares.resolvedAt), inArray(schema.dares.resolvedBy, [...CLEAN_COUNTED_ENDINGS, "expired"]), TWO_OR_MORE_IN))
     .orderBy(asc(schema.dares.resolvedAt));
   // The final score failing to settle one (a tie the contract cannot score, or two scoreboards disagreeing) counts against nobody (3.35, 3.40), like expiry.
   const counted = rows.filter((r) => r.by !== "expired" && !(r.by === "feed" && r.outcome === VOID_OUTCOME)).map((r) => ({ dareId: r.id, title: r.title, clean: r.outcome !== VOID_OUTCOME, endedAt: r.resolvedAt as Date }));

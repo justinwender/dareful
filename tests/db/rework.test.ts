@@ -79,19 +79,21 @@ test("a question's link lets an account-holder in; a draft's link goes nowhere",
 
 test("the sets offered under who's in: the last one asked first, described by names, offered a name on its second question, and never after two not-nows", async () => {
   const { g, d } = await open("Does the ferry run on Sunday?");
-  await joinByMarketLink(d.id, ben.user.id);
+  // A friend this file has not paired with ana before: the same people are one row since the first-contact round.
+  const bea = await tempSigner("Bea Ferry");
+  await joinByMarketLink(d.id, bea.user.id);
   const stranger = await tempSigner("Stranger");
-  const made = await setForPeople(ana.user.id, [ben.user.id, stranger.user.id]).catch(() => null);
+  const made = await setForPeople(ana.user.id, [bea.user.id, stranger.user.id]).catch(() => null);
   assert.equal(made, null, "someone ana shares nothing with cannot be put into a question by id alone");
   let mine = (await setsOf(ana)).find((x) => x.groupId === g.id);
-  assert.deepEqual([mine?.label, mine?.named, mine?.asked, mine?.offerName], ["Ben and you", false, 1, true]);
+  assert.deepEqual([mine?.label, mine?.named, mine?.asked, mine?.offerName], ["Bea and you", false, 1, true]);
   assert.equal((await setsOf(ana))[0]?.groupId, g.id, "the set asked most recently comes first, so it can be preselected");
   await dismissNamePrompt(g.id, ana.user.id);
   assert.equal((await setsOf(ana)).find((x) => x.groupId === g.id)?.offerName, true, "once is not never");
-  await dismissNamePrompt(g.id, ben.user.id);
+  await dismissNamePrompt(g.id, bea.user.id);
   assert.equal((await setsOf(ana)).find((x) => x.groupId === g.id)?.offerName, false);
   await nameGroup(g.id, ana.user.id, "  Ferry  people ");
-  mine = (await setsOf(ben)).find((x) => x.groupId === g.id);
+  mine = (await setsOf(bea)).find((x) => x.groupId === g.id);
   assert.deepEqual([mine?.label, mine?.named, mine?.offerName], ["Ferry people", true, false]);
 });
 
@@ -102,11 +104,15 @@ test("picking the same people again is the same set, not a second one; one other
   track.group((await setForPeople(ana.user.id, [cy.user.id, ben.user.id])).id);
   assert.equal((await setForPeople(ana.user.id, [cy.user.id, ben.user.id])).id, g.id);
   assert.equal((await setForPeople(ana.user.id, [ben.user.id, cy.user.id, ben.user.id])).id, g.id);
-  const two = await setForPeople(ana.user.id, [ben.user.id]);
-  assert.equal(two.isDyad, true);
-  // A set that has never asked anything is not asked what it is called: the question comes with its second one.
+  // One other person is the two of them: someone ana shares only a bigger set with gets a new two-person set, and
+  // picking them again is that one (one set per pair, the first-contact round).
   const dana = await tempSigner("Dana Q");
   await joinByMarketLink(d.id, dana.user.id);
+  const two = await setForPeople(ana.user.id, [dana.user.id]);
+  track.group(two.id);
+  assert.equal(two.isDyad, true);
+  assert.equal((await setForPeople(ana.user.id, [dana.user.id])).id, two.id, "the pair's one set");
+  // A set that has never asked anything is not asked what it is called: the question comes with its second one.
   const fresh = await setForPeople(ana.user.id, [ben.user.id, dana.user.id]);
   track.group(fresh.id);
   assert.notEqual(fresh.id, g.id);
@@ -156,6 +162,8 @@ test("after lock a number cannot move, and nothing can be put on it for nothing"
 
 test("what happened and somebody's case are different kinds, and the outcome proposal reads only the first", async () => {
   const { d } = await open();
+  // Only someone in a question says what happened (the first-contact round).
+  await markets.enterMarket({ dareId: d.id, userId: ana.user.id, stake: 1000n, value: 6000n, signature: await ana.ledger.signTypedData(markets.enterTypedData(d, 1000n, 6000n)) });
   await db.update(schema.dares).set({ lockedAt: new Date() }).where(eq(schema.dares.id, d.id));
   await markets.sayWhatHappened(d.id, ana.user.id, "It rained all Saturday.");
   await db.delete(schema.dareStatements).where(and(eq(schema.dareStatements.dareId, d.id), eq(schema.dareStatements.userId, ben.user.id)));
@@ -230,9 +238,15 @@ test("a question this person has acted on is running, and once it is over it jus
 });
 
 test("a third person joining a question asked between two makes the set the three of them, never a two-person set with three in it", async () => {
-  const two = await setForPeople(ana.user.id, [ben.user.id]);
+  // Someone ana shares only a bigger set with, so the pair's set is a real two-person set (one set per pair).
+  const { d: shared } = await open("Is the market open on Monday?");
+  const eli = await tempSigner("Eli Pier");
+  await joinByMarketLink(shared.id, eli.user.id);
+  await joinByMarketLink(shared.id, ben.user.id);
+  const two = await setForPeople(ana.user.id, [eli.user.id]);
   track.group(two.id);
   assert.equal(two.isDyad, true);
+  assert.equal((await setsOf(ana)).find((s) => s.groupId === two.id)?.label, "Eli and you", "a pair reads as its people, never Just you two");
   const usd = await ensureUsd(two.id, ana.user.id);
   const d0 = await markets.draftMarket({ creatorId: ana.user.id, groupId: two.id, denomId: usd.id, title: "Does the ferry run Sunday?", termsText: "Yes if one leaves the pier.", resolvesBy: new Date(Date.now() + 3_600_000) });
   const d = await markets.openMarket(d0.id, ana.user.id, await ana.ledger.signTypedData(markets.createTypedData(d0)));

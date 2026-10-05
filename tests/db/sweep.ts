@@ -21,6 +21,8 @@ async function main(): Promise<void> {
     ]),
   );
   await db.transaction(async (tx) => {
+    // Notices to or from a temporary person go first: one can point at a market or an obligation removed below.
+    await tx.delete(schema.notificationLog).where(or(inArray(schema.notificationLog.userId, u), inArray(schema.notificationLog.causedBy, u)));
     // Markets hang off groups and users; positions, votes, statements and minted-edge shadows hang off markets.
     const D = schema.dares;
     const asked = await tx.select({ id: D.id }).from(D).where(or(u.length ? inArray(D.creatorId, u) : sql`false`, g.length ? inArray(D.groupId, g) : sql`false`));
@@ -94,6 +96,8 @@ async function main(): Promise<void> {
     await tx.delete(schema.passThePhone).where(inArray(schema.passThePhone.userId, u));
     await tx.delete(schema.delegatedSignatures).where(inArray(schema.delegatedSignatures.userId, u));
     await tx.delete(schema.delegations).where(inArray(schema.delegations.userId, u));
+    // What a temporary person's screens reported about the device.
+    await tx.delete(schema.deviceStates).where(inArray(schema.deviceStates.userId, u));
     await tx.delete(schema.users).where(inArray(schema.users.id, u));
   });
   console.log(`swept ${u.length} temporary users, ${c.length} ghosts, ${g.length} groups`);

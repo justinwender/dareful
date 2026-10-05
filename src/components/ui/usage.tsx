@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { installedHere, report } from "@/lib/usage/client";
 import { causeOf, screenOf, type EventProps } from "@/lib/usage/events";
+import { offlineNow } from "@/lib/ui/errors";
 
 /**
  * A page a person opened from a link, said once per page load (the field round, 2026-10-02): the server counts
@@ -52,6 +53,6 @@ function useErrorShown(message: string | null | undefined): void {
   useEffect(() => {
     if (!message || message === last.current) return;
     last.current = message;
-    report("error_shown", { cause: causeOf(message, typeof navigator === "undefined" ? true : navigator.onLine), screen: screenOf(pathname) });
+    report("error_shown", { cause: causeOf(message, !offlineNow()), screen: screenOf(pathname) });
   }, [message, pathname]);
 }

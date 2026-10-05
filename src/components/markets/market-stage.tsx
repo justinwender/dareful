@@ -1,18 +1,21 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useDynamicContext } from "@dynamic-labs/sdk-react-core";
 import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/ledger/avatar";
 import { Chip, chipPress } from "@/components/ledger/chip";
-import { FIELD_PROBLEM_CLASS, Problem, ProblemSummary } from "@/components/ledger/problem";
+import { ProblemSummary } from "@/components/ledger/problem";
 import { signingProblem, useSigner } from "@/components/ledger/use-signer";
 import { Button } from "@/components/ui/button";
 import { Sheet } from "@/components/ui/sheet";
-import { SignInButton } from "@/components/auth/sign-in-button";
 import { withdrawHostedEntryAction } from "@/lib/actions/hand-over";
 import { PinnedSheet } from "@/components/ui/pinned-sheet";
-import { enterAsGhostAction, enterMarketAction, openMarketAction, suggestGhostNamesAction, forgetGhostAction } from "@/lib/actions/markets";
+import { attempt } from "@/lib/ui/attempt";
+import { AccountStep } from "@/components/auth/account-step";
+import { clearJoinHandoff, readJoinHandoff, resumeFrom } from "@/lib/ui/join-handoff";
+import { opensRaised, UNTOUCHED_PERCENT } from "@/lib/ui/entry-words";
+import { discardDraftAction, enterAsGhostAction, enterMarketAction, openMarketAction, openWithoutEntryAction, forgetGhostAction } from "@/lib/actions/markets";
 import { isIdentifier } from "@/lib/auth/login";
 import { daresTypes } from "@/lib/chain/typed-data";
 import type { Hue } from "@/lib/ui/hue";
@@ -91,6 +94,8 @@ export function MarketStage(props: {
   consent?: string | null;
   /** A pick-one question (3.30): its answers, in the asker's order, for the sheet's rows and the bars. */
   pickOne?: { answers: PickOneAnswer[] } | null;
+  /** A pick-one argument's side to start on (the first-contact round): the asker's own answer, or the other of two. */
+  defaultPick?: number | null;
   /** An argument: which side this person starts on, all the way, and which side is already taken. */
   argument?: {
     defaultPercent: number;
@@ -124,47 +129,35 @@ export function MarketStage(props: {
   const stageId = useId();
   const { handleLogOut } = useDynamicContext();
   const numberUnit = props.numberUnit ?? null;
-  // A ghost's name and number, typed on the way in (3.17); the number is hashed at the door and never kept.
+  // A guest's name, typed on the way in (3.17 as amended 2026-10-04): a name and nothing else; no number is asked of a guest.
   const [ghostName, setGhostName] = useState("");
-  const [ghostPhone, setGhostPhone] = useState("");
-  const [ghostMember, setGhostMember] = useState<string | null>(null);
-  /** "Is one of these you?" (3.17, frame 4): names for the letters typed so far, at most three, and nothing before the first letters. */
-  const [suggestions, setSuggestions] = useState<Array<{ claimId: string; name: string }>>([]);
-  /** The picked name's number check, at its field (3.17, frame 5; 5.1). */
-  const [phoneProblem, setPhoneProblem] = useState<string | null>(null);
-  const suggesting = ghost !== null && !ghost.known && !ghostMember && ghostName.trim().length >= 2;
-  useEffect(() => {
-    if (!suggesting) return;
-    let alive = true;
-    const t = setTimeout(() => {
-      suggestGhostNamesAction(dareId, ghostName.trim())
-        .then((r) => alive && setSuggestions(r))
-        .catch(() => alive && setSuggestions([]));
-    }, 200);
-    return () => {
-      alive = false;
-      clearTimeout(t);
-    };
-  }, [dareId, suggesting, ghostName]);
-  const shownSuggestions = suggesting ? suggestions : [];
+  /**
+   * Keeping your calls in an account (3.17 as amended 2026-10-04): "keep" replaces "Who's joining?" once a guest's
+   * entry has saved; "sign-in" is the same choices from "Who's joining?", where the entry picked goes in under the
+   * account once it exists.
+   */
+  const [accountStep, setAccountStep] = useState<"keep" | "sign-in" | null>(null);
   const pickOne = props.pickOne ?? null;
   const teams = props.teams ?? null;
   const shift = numberUnit?.margin ? BigInt(numberUnit.margin.shift) : null;
   // The pick, on a pick-one question (3.30): one answer and nothing else. Nothing is picked until a tap.
-  const [pick, setPick] = useState<number | null>(mine?.pick ?? null);
+  const [pick, setPick] = useState<number | null>(mine?.pick ?? props.defaultPick ?? null);
   const router = useRouter();
   const sign = useSigner();
   // A bound, unsigned position starts in the changing state: the numbers are there, and the tap that keeps them is the signature.
   const [changing, setChanging] = useState(mine?.unsigned === true);
+  // The thumb starts at 50% (3.13 as amended 2026-10-04), under "Slide to your prediction" until the first touch, and an untouched entry is 50%.
   const [value, setValue] = useState<number | null>(
-    numberUnit ? null : (mine?.percent ?? props.argument?.defaultPercent ?? null),
+    numberUnit ? null : (mine?.percent ?? props.argument?.defaultPercent ?? UNTOUCHED_PERCENT),
   );
+  const [touched, setTouched] = useState(mine !== null || (props.argument ?? null) !== null);
   // The number, on a number question (3.26): nothing prefilled, for the reason the odds line has no thumb.
   const [number, setNumber] = useState<bigint | null>(
     mine?.number !== undefined ? BigInt(mine.number) : null,
   );
-  // A pick-one sheet opens raised (3.30); the others raise on the first touch (3.13).
-  const [raised, setRaised] = useState(mine?.unsigned === true || (pickOne !== null && mine === null));
+  // A pick-one sheet opens raised (3.30); so does a first entry with the thumb at 50% (3.13 as amended 2026-10-04), since
+  // "I'm in at 50%" is the move and is under the line at rest; a number raises on the first touch.
+  const [raised, setRaised] = useState(() => opensRaised({ mine, number: numberUnit !== null, draft: state === "draft" }));
   // A row on Now that says Enter lands here with the sheet raised (the field round, 1.5): the address asks for it, and only while entering is the move.
   const hash = useHash();
   useEffect(() => {
@@ -228,6 +221,50 @@ export function MarketStage(props: {
     }
     await submitConfirmed(number);
   }
+  /**
+   * A draft, sent without entering it (the first-contact round, 2026-10-04): the Create signature alone, so the share,
+   * the copy and the code are there from creation and the asker enters any time before the close; or discarded,
+   * since a draft nobody saw goes for good.
+   */
+  const [draftMove, setDraftMove] = useState<"share" | "discard" | null>(null);
+  const [draftProblem, setDraftProblem] = useState<string | null>(null);
+  async function shareFirst() {
+    if (!signing?.create) return;
+    setDraftProblem(null);
+    setDraftMove("share");
+    const c = signing.create;
+    try {
+      const createSignature = await sign(
+        signing.ledgerWallet,
+        { domain: signing.domain, types: daresTypes, primaryType: "Create", message: { dareId: signing.dareOnchainId, groupId: c.groupId, kind: c.kind, pace: c.pace, termsHash: c.termsHash, denomId: c.denomId, range: BigInt(c.range), options: c.options, stalemate: signing.stalemate, resolvesBy: BigInt(c.resolvesBy) } },
+        "approve terms",
+        { action: "create", dareId },
+      );
+      const r = await attempt(() => openWithoutEntryAction(dareId, createSignature));
+      if ("error" in r) {
+        setDraftProblem(r.error);
+        setDraftMove(null);
+        return;
+      }
+      setDraftMove(null);
+      setRaised(false);
+      router.refresh();
+    } catch (err) {
+      setDraftProblem(signingProblem(err));
+      setDraftMove(null);
+    }
+  }
+  async function discard() {
+    setDraftProblem(null);
+    setDraftMove("discard");
+    const r = await attempt(() => discardDraftAction(dareId));
+    if ("error" in r) {
+      setDraftProblem(r.error);
+      setDraftMove(null);
+      return;
+    }
+    router.replace("/");
+  }
   async function submitConfirmed(confirmed: bigint | null) {
     void confirmed;
     // The contract refuses a stake of nothing, and one refused position fails the whole lock for everyone, so
@@ -253,23 +290,25 @@ export function MarketStage(props: {
       return;
     }
     if (ghost) {
-      // No signature: who they are goes in, with a number if they give one, and the browser keeps a token for the ghost (3.17). A picked name needs the number it joined with.
-      setPhoneProblem(null);
+      // No signature: who they are goes in with the number, and the browser keeps a token for the guest (3.17). A name is all a guest gives (amended 2026-10-04).
       if (!ghost.known && !ghostName.trim()) return setProblem("Say what your friends call you.");
       if (!ghost.known && isIdentifier(ghostName)) return setProblem("Say what your friends call you.");
-      if (!ghost.known && ghostMember && !ghostPhone.trim()) return setPhoneProblem("A picked name needs the number it joined with.");
       setStep("sending");
-      const r = await enterAsGhostAction(dareId, position, { name: ghost.known ? "" : ghostName.trim(), ...(!ghost.known && ghostPhone.trim() ? { phone: ghostPhone.trim() } : {}), ...(!ghost.known && ghostMember ? { memberClaimId: ghostMember } : {}) });
+      const r = await attempt(() => enterAsGhostAction(dareId, position, { name: ghost.known ? "" : ghostName.trim() }));
       if ("error" in r) {
-        if (r.at === "phone") setPhoneProblem(r.error);
-        else setProblem(`Your number didn’t send. ${r.error}`);
+        setProblem(`Your number didn’t send. ${r.error}`);
         setStep("idle");
         return;
       }
       setJustIn({ percent: value ?? 0, ...(numberUnit ? { number: signedValue.toString() } : {}), ...(pickOne ? { pick: Number(signedValue) } : {}), stake: stakeUnits, stakeWords: stakeWords(stakeUnits) });
       setChanging(false);
-      setRaised(false);
       setStep("idle");
+      // Saved first; then the sheet's next step offers to keep the call in an account (3.17 as amended), once, on the way in.
+      if (!ghost.known) {
+        setWhoStep(false);
+        setAccountStep("keep");
+        setRaised(true);
+      } else setRaised(false);
       router.refresh();
       return;
     }
@@ -352,6 +391,72 @@ export function MarketStage(props: {
       setStep("idle");
     }
   }
+  // A sign-in from a link's join flow (3.17 as amended 2026-10-04): the entry picked before "Sign in" goes in under the
+  // account the moment this screen has one, and a guest's entry kept in an account is signed once the device's claim
+  // has folded it in. Once each, from the handoff this tab carried across the sign-in (`src/lib/ui/join-handoff.ts`).
+  // A sign-in that never finished (Google's return refused, a reload halfway through a code) opens the guest's screen
+  // where they were, with what they picked and the name they typed, rather than starting over. The handoff is read
+  // after the screen has drawn, and what it says lands on the next frame, as a raise from the address does.
+  const [resume, setResume] = useState(false);
+  const resumed = useRef(false);
+  useEffect(() => {
+    if (resumed.current || state !== "open" || props.pastClose) return;
+    const h = readJoinHandoff(Date.now());
+    if (!h || h.dareId !== dareId) return;
+    const restore = (entry: NonNullable<typeof h.entry>) => {
+      if (entry.percent !== undefined) {
+        setValue(entry.percent);
+        setTouched(true);
+      }
+      if (entry.number !== undefined) setNumber(BigInt(entry.number));
+      if (entry.pick !== undefined) setPick(entry.pick);
+      setStake(entry.stake);
+    };
+    let apply: (() => void) | null = null;
+    if (ghost) {
+      if (h.entry && !ghost.known) {
+        const entry = h.entry;
+        apply = () => {
+          if (h.name) setGhostName(h.name);
+          restore(entry);
+          setWhoStep(true);
+          setAccountStep("sign-in");
+          setRaised(true);
+        };
+      } else if (h.keep && ghost.known) apply = () => (setAccountStep("keep"), setRaised(true));
+    } else if (signing) {
+      const go = resumeFrom(h, mine);
+      if (go === "done") {
+        resumed.current = true;
+        clearJoinHandoff();
+        return;
+      }
+      if (go === "enter" || go === "keep") {
+        const entry = go === "enter" ? h.entry : undefined;
+        apply = () => {
+          if (entry) restore(entry);
+          setRaised(true);
+          setResume(true);
+        };
+      }
+    }
+    if (!apply) return;
+    resumed.current = true;
+    const run = apply;
+    const frame = requestAnimationFrame(run);
+    return () => cancelAnimationFrame(frame);
+  }, [ghost, signing, state, props.pastClose, dareId, mine]);
+  useEffect(() => {
+    if (!resume) return;
+    // The state the handoff restored has landed: send it, once.
+    const frame = requestAnimationFrame(() => {
+      setResume(false);
+      clearJoinHandoff();
+      void submit();
+    });
+    return () => cancelAnimationFrame(frame);
+  });
+
 
   // The picture: the server's, or, for the seconds before it arrives, this person's column alone.
   const weights = picture?.kind === "weights" ? picture : null;
@@ -521,7 +626,8 @@ export function MarketStage(props: {
                 onClick={() => {
                   setChanging(false);
                   setRaised(false);
-                  setValue(shown?.percent ?? null);
+                  setValue(shown?.percent ?? UNTOUCHED_PERCENT);
+                  setTouched(shown !== null);
                   setNumber(shown?.number !== undefined ? BigInt(shown.number) : null);
                   setPick(shown?.pick ?? null);
                 }}
@@ -535,7 +641,7 @@ export function MarketStage(props: {
               onClick={submit}
               loading={step !== "idle"}
               // On the who's-joining step the chalk waits for the name alone, and for the number too only when a name was picked (3.17, amended).
-              disabled={!picked || blocked || (whoStep && (!ghostName.trim() || (ghostMember !== null && !ghostPhone.trim())))}
+              disabled={!picked || blocked || (whoStep && !ghostName.trim())}
               data-join-primary={whoStep ? "who" : undefined}
             >
               {!picked
@@ -557,11 +663,6 @@ export function MarketStage(props: {
                     : `I’m in${pickOne || teams ? ":" : " at"} ${pickWords(pick)}`}
             </Button>
           )}
-          {whoStep && ghost && !ghost.known ? (
-            <div className="flex justify-start" data-have-account="">
-              <SignInButton variant="tertiary" label="Have an account? Sign in" />
-            </div>
-          ) : null}
           {(props.signedInAs || ghost?.known) && !reading && !changing && state === "open" ? (
             // Signed in, on a link (3.17, frame 7): who this phone will join as, and the way to join as somebody else. A phone that remembers a ghost joins as them the same way, since the entry goes to the ghost it remembers whatever name is typed.
             <p className="flex items-center gap-1 text-caption text-ink-3" data-joining-as="">
@@ -574,7 +675,30 @@ export function MarketStage(props: {
           ) : null}
         </>
   );
-  const sheet = entering && !props.pastClose ? (
+  /** The entry as picked, for a sign-in that sends it once the account exists (`src/lib/ui/join-handoff.ts`). */
+  const pickedEntry = () =>
+    stakeUnits && /^\d{1,12}$/.test(stakeUnits)
+      ? { stake: stakeUnits, ...(pickOne ? (pick !== null ? { pick } : {}) : numberUnit ? (number !== null ? { number: number.toString() } : {}) : { percent: value ?? UNTOUCHED_PERCENT }) }
+      : undefined;
+  const sheet = accountStep && ghost ? (
+    // Keeping your calls in an account (3.17 as amended 2026-10-04): the sheet's next step, raised, until the person goes on or says not now.
+    <PinnedSheet
+      label={accountStep === "keep" ? "Keep your calls" : "Sign in"}
+      raised
+      low={
+        <AccountStep
+          mode={accountStep}
+          handoff={accountStep === "keep" ? { dareId, keep: true, ...(ghostName.trim() ? { name: ghostName.trim() } : {}) } : { dareId, ...(ghostName.trim() && !isIdentifier(ghostName) ? { name: ghostName.trim() } : {}), ...(pickedEntry() ? { entry: pickedEntry() } : {}) }}
+          onClose={() => {
+            // Not now, or back to the name: nothing is carried across a sign-in that is not happening.
+            clearJoinHandoff();
+            if (accountStep === "keep") setRaised(false);
+            setAccountStep(null);
+          }}
+        />
+      }
+    />
+  ) : entering && !props.pastClose ? (
     <PinnedSheet
       label="Your number"
       raised={raised}
@@ -595,7 +719,7 @@ export function MarketStage(props: {
             <span className="text-caption text-ink-2">{pickOne.answers.length} answers</span>
           )}
         </div>
-      ) : teams && numberUnit?.margin && shift !== null ? <TeamHeader mode="margin" value={number === null ? null : Number(number - shift)} away={teams.away} home={teams.home} /> : numberUnit ? <p className="text-body-strong text-ink">What’s your number?</p> : teams ? <TeamHeader mode="wins" value={value} away={teams.away} home={teams.home} /> : <OddsHeader value={value} />}
+      ) : teams && numberUnit?.margin && shift !== null ? <TeamHeader mode="margin" value={number === null ? null : Number(number - shift)} away={teams.away} home={teams.home} /> : numberUnit ? <p className="text-body-strong text-ink">What’s your number?</p> : teams ? <TeamHeader mode="wins" value={value} touched={touched} away={teams.away} home={teams.home} /> : <OddsHeader value={value} touched={touched} />}
       low={
         <>
           {numberUnit ? (
@@ -685,6 +809,7 @@ export function MarketStage(props: {
             hue={me.hue}
             onChange={(v) => {
               setValue(v);
+              setTouched(true);
               if (!raised) setRaised(true);
             }}
           />
@@ -695,6 +820,7 @@ export function MarketStage(props: {
             hue={me.hue}
             onChange={(v) => {
               setValue(v);
+              setTouched(true);
               if (!raised) setRaised(true);
             }}
           />
@@ -715,7 +841,7 @@ export function MarketStage(props: {
             />
           ) : null}
           {ghost && !ghost.known && whoStep ? (
-            // Who's joining? (3.17, frame 3): its own step after the number, the entry's summary on the right; a name, and a number if they give one, so the entry is theirs when they sign in with it. A picked name joins only with its number.
+            // Who's joining? (3.17, frame 3, as amended 2026-10-04): its own step after the number, the entry's summary on the right; a name and nothing else, with "Sign in" right below it, as plain to see as the field.
             <div className="flex flex-col gap-3" data-ghost-fields="">
               <div className="flex items-baseline justify-between gap-3">
                 <h2 className="text-body-strong text-ink">Who’s joining?</h2>
@@ -723,48 +849,18 @@ export function MarketStage(props: {
               </div>
               <label className="flex flex-col gap-1">
                 <span className="text-label text-ink-3">Your name</span>
-                <span className="relative">
-                  <input
-                    value={ghostName}
-                    onChange={(e) => {
-                      setGhostName(e.target.value);
-                      setGhostMember(null);
-                      setPhoneProblem(null);
-                    }}
-                    autoComplete="given-name"
-                    maxLength={40}
-                    aria-label="Your name"
-                    className="h-12 w-full rounded-button border border-line bg-ground px-4 text-body text-ink"
-                  />
-                  {ghostMember ? (
-                    // Picked from the names (3.17, frame 4): the check says so.
-                    <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="pointer-events-none absolute top-1/2 right-4 -translate-y-1/2 text-ink" data-picked-name="">
-                      <path d="M5 12.5l4.5 4.5L19 7.5" />
-                    </svg>
-                  ) : null}
-                </span>
+                <input
+                  value={ghostName}
+                  onChange={(e) => setGhostName(e.target.value)}
+                  autoComplete="given-name"
+                  maxLength={40}
+                  aria-label="Your name"
+                  className="h-12 w-full rounded-button border border-line bg-ground px-4 text-body text-ink"
+                />
               </label>
-              {shownSuggestions.length > 0 ? (
-                <div className="flex flex-col gap-2" data-name-suggestions="">
-                  <p className="text-label text-ink-3">Is one of these you?</p>
-                  <div className="flex flex-wrap gap-2">
-                    {shownSuggestions.map((m) => (
-                      <button key={m.claimId} type="button" onClick={() => (setGhostMember(m.claimId), setGhostName(m.name), setSuggestions([]))} {...chipPress(false)}>
-                        <Chip size={40} selected={false}>
-                          <Avatar name={m.name} hue="stone" size={24} ghost />
-                          {m.name}
-                        </Chip>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-              <label className="flex flex-col gap-1">
-                <span className="text-label text-ink-3">Your phone number</span>
-                <input value={ghostPhone} onChange={(e) => (setGhostPhone(e.target.value), setPhoneProblem(null))} type="tel" inputMode="tel" autoComplete="tel" maxLength={40} aria-label="Your phone number" aria-invalid={phoneProblem ? true : undefined} aria-describedby={phoneProblem ? "ghost-phone-problem" : undefined} className={`h-12 w-full rounded-button border border-line bg-ground px-4 text-body text-ink${phoneProblem ? ` ${FIELD_PROBLEM_CLASS}` : ""}`} />
-              </label>
-              <Problem id="ghost-phone-problem" message={phoneProblem} />
-              <p className="text-caption text-ink-3">Nothing gets sent to it. Sign in with this number later and your entries are waiting.</p>
+              <Button variant="secondary" onClick={() => setAccountStep("sign-in")} data-join-sign-in="">
+                Sign in
+              </Button>
             </div>
           ) : null}
           {unsigned ? <p className="text-body-sm text-ink-2">This was you before you signed in. Keep it, or change it.</p> : null}
@@ -777,9 +873,27 @@ export function MarketStage(props: {
     />
   ) : (props.closer ?? null);
 
+  // Share before entering, or let it go (the first-contact round): the asker's other two moves on a draft, on the page
+  // under the terms rather than in the sheet, whose raised position ends short of them on a 714-point Safari screen.
+  const draftMoves =
+    state === "draft" && signing?.create && !host ? (
+      <section className="flex flex-col gap-1" data-draft-moves="">
+        <div className="flex flex-wrap gap-x-4">
+          <Button variant="tertiary" onClick={() => void shareFirst()} loading={draftMove === "share"} disabled={step !== "idle" || draftMove === "discard"} data-share-first="">
+            Share it first
+          </Button>
+          <Button variant="tertiary" onClick={() => void discard()} loading={draftMove === "discard"} disabled={step !== "idle" || draftMove === "share"} data-discard-draft="">
+            Discard it
+          </Button>
+        </div>
+        <ProblemSummary messages={[draftProblem]} />
+      </section>
+    ) : null;
+
   return (
     <>
       {stage}
+      {draftMoves}
       {sheet}
       {/* "Not you?" (3.17, frame 7): a modal over the raised sheet, since signing this phone out is a moment worth a pause. */}
       <Sheet open={notYou} onClose={() => setNotYou(false)} labelledBy={`${stageId}-not-you`}>

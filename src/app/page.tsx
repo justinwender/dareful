@@ -7,6 +7,7 @@ import { InfoIcon } from "@/components/ui/info";
 import { NowContent } from "@/components/home/now-content";
 import { NowWaiting } from "@/components/home/now-arriving";
 import { SignedOut } from "@/components/home/signed-out";
+import { GuestLineFor } from "@/components/guest/guest-line";
 import { todayLabel } from "@/lib/ui/copy";
 import { NOW_COOKIE, nowHintOf } from "@/lib/ui/now-shell";
 import { TabBar } from "@/components/ui/tab-bar";
@@ -27,7 +28,16 @@ export const dynamic = "force-dynamic";
  */
 export default async function Now({ searchParams }: { searchParams: Promise<{ all?: string }> }) {
   const clock = await viewerClock();
-  if (!(await sessionUserId())) return <SignedOut />;
+  // Signed out: the screen goes out at once, and a guest's line (3.46) arrives behind it, so no query stands before the first frame (11.5).
+  if (!(await sessionUserId()))
+    return (
+      <>
+        <Suspense fallback={null}>
+          <GuestLineFor />
+        </Suspense>
+        <SignedOut />
+      </>
+    );
   const sp = await searchParams;
   const hint = nowHintOf((await cookies()).get(NOW_COOKIE)?.value);
   return (

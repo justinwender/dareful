@@ -49,7 +49,8 @@ test("a pick-one question carries two to six answers, a person answer is someone
   assert.equal(await code(() => markets.draftMarket({ ...base, answers: ["A", "B", "C", "D", "E", "F", "G"].map((text) => ({ text })) })), "bad_input", "seven is more than the sheet holds (3.29)");
   assert.equal(await code(() => markets.draftMarket({ ...base, answers: [{ text: "John" }, { text: "john" }] })), "bad_input", "two answers that say the same thing");
   assert.equal(await code(() => markets.draftMarket({ ...base, answers: [{ text: "John" }, { text: "Outsider", userId: outsider.user.id }] })), "bad_input", "a person answer is someone the asker knows here");
-  assert.equal(await code(() => markets.draftMarket({ ...base, pace: "argument", answers: [{ text: "John" }, { text: "Nobody" }] })), "bad_input", "an argument is yes or no");
+  // An argument may be one of its answers since the first-contact round (tests/db/first-contact.test.ts); never a number.
+  assert.equal(await code(() => markets.draftMarket({ ...base, kind: "numeric", pace: "argument", unit: { singular: "nap", plural: "naps" }, scale: { range: 10n, source: "asker" } })), "bad_input", "an argument is never a number");
   // The asker may be an answer themselves (3.38), and the words go in as typed.
   const d = await markets.draftMarket({ ...base, answers: [{ text: "Gabe", userId: gabe.user.id }, { text: "Priya", userId: priya.user.id }, { text: "Nobody" }] });
   assert.equal(d.kind, "categorical");

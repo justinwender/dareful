@@ -92,19 +92,20 @@ export async function createGroup(input: { name: string; createdBy: string; memb
 }
 
 /**
- * The implicit two-person group between two account-holders, created lazily on first obligation. The oldest
- * one wins: binding a ghost to someone the creator already had a dyad with leaves the pair with two, and
- * every caller must land on the same one (docs/decisions.md 2026-09-18).
+ * The pair's set, created lazily on first obligation as a two-person group. One set per pair (the first-contact
+ * round, 2026-10-04): any set whose current members are exactly these two is theirs, whatever made it (a dyad, or
+ * a question sent to whoever opened its link that one friend joined), the dyad first and then the oldest, so every
+ * caller lands on the same one (docs/decisions.md 2026-09-18). A dyad is made only when the pair has no set.
  */
 export async function ensureDyad(a: string, b: string): Promise<GroupRow> {
   if (a === b) throw new Error("a dyad needs two people");
   const found = await db.execute<{ id: string }>(sql`
     select g.id
     from ${schema.groups} g
-    join ${schema.groupMembers} x on x.group_id = g.id and x.user_id = ${a}
-    join ${schema.groupMembers} y on y.group_id = g.id and y.user_id = ${b}
-    where g.is_dyad
-    order by g.created_at asc
+    join ${schema.groupMembers} x on x.group_id = g.id and x.user_id = ${a} and x.left_at is null
+    join ${schema.groupMembers} y on y.group_id = g.id and y.user_id = ${b} and y.left_at is null
+    where (select count(*) from ${schema.groupMembers} m where m.group_id = g.id and m.left_at is null) = 2
+    order by g.is_dyad desc, g.created_at asc
     limit 1
   `);
   const hit = Array.from(found)[0];
@@ -318,8 +319,7 @@ export async function nameGroup(groupId: string, userId: string, rawName: string
 export function setLabel(input: { name: string | null; isDyad: boolean; memberNames: string[]; viewerName: string }): string {
   if (input.name) return input.name;
   const others = input.memberNames.filter((n) => n !== input.viewerName).map((n) => n.trim().split(/\s+/)[0] ?? n);
-  // A set's name follows its people (the field round): a dyad is "Just you two" only while it is two.
-  if (input.isDyad && others.length <= 1) return "Just you two";
+  // A two-person set reads as its other person, "Rachel and you", like every set nobody named (the first-contact round; "Just you two" is gone).
   if (others.length === 0) return "Just you";
   if (others.length <= 3) return `${others.join(", ")} and you`;
   return `${others.slice(0, 3).join(", ")} and ${others.length - 3} more`;
@@ -407,16 +407,48 @@ export async function peopleSetsFor(userId: string, viewerName: string): Promise
     membersOfGroups(ids),
     db.select({ groupId: schema.dares.groupId, createdAt: schema.dares.createdAt }).from(schema.dares).where(and(inArray(schema.dares.groupId, ids), sql`${schema.dares.creatorSignature} is not null`)),
   ]);
-  return groups
+  const sets = groups
     .map((g) => {
-      const people = (members.get(g.id) ?? []).filter((m) => m.userId !== null);
+      const everyone = members.get(g.id) ?? [];
+      const people = everyone.filter((m) => m.userId !== null);
       const mine = asked.filter((a) => a.groupId === g.id);
       const last = mine.reduce<Date | null>((m, a) => (m === null || a.createdAt > m ? a.createdAt : m), null);
-      return { groupId: g.id, label: setLabel({ name: g.name, isDyad: g.isDyad, memberNames: people.map((m) => m.displayName), viewerName }), named: g.name !== null, isDyad: g.isDyad, members: people, asked: mine.length, lastAskedAt: last, offerName: g.name === null && !g.isDyad && mine.length >= 1 && g.namePromptDismissals < 2, createdAt: g.createdAt };
+      // A guest is one of the set's people and is named with them: two sets that differ only by their guests read differently (the first-contact round).
+      return { groupId: g.id, label: setLabel({ name: g.name, isDyad: g.isDyad, memberNames: everyone.map((m) => m.displayName), viewerName }), named: g.name !== null, isDyad: g.isDyad, members: people, asked: mine.length, lastAskedAt: last, offerName: g.name === null && !g.isDyad && mine.length >= 1 && g.namePromptDismissals < 2, createdAt: g.createdAt, key: membershipKey(everyone) };
     })
-    .filter((s) => s.members.length >= 2)
+    .filter((s) => s.members.length >= 2);
+  return oneRowPerPeople(sets)
     .sort((a, b) => (b.lastAskedAt?.getTime() ?? 0) - (a.lastAskedAt?.getTime() ?? 0) || b.asked - a.asked || b.createdAt.getTime() - a.createdAt.getTime())
-    .map(({ createdAt: _createdAt, ...s }) => s);
+    .map(({ createdAt: _createdAt, key: _key, ...s }) => s);
+}
+
+/** Who a set is, as one string: its current members' ids, accounts and guests alike, in one order. */
+export function membershipKey(members: Array<{ userId: string | null; claimId: string | null }>): string {
+  return members
+    .map((m) => (m.userId ? `u:${m.userId}` : `c:${m.claimId}`))
+    .sort()
+    .join(",");
+}
+
+/**
+ * One row per set of people (the first-contact round, 2026-10-04): sets an unnamed occasion and a pair's dyad left
+ * with the same people read as one, the one a new question goes to (a named set first, then the dyad, then the
+ * oldest), dated by the latest question any of them asked and counting all of them. A named set is its own row.
+ */
+export function oneRowPerPeople<T extends { key: string; named: boolean; isDyad: boolean; createdAt: Date; asked: number; lastAskedAt: Date | null }>(sets: T[]): T[] {
+  const byKey = new Map<string, T[]>();
+  const out: T[] = [];
+  for (const s of sets) {
+    if (s.named) out.push(s);
+    else byKey.set(s.key, [...(byKey.get(s.key) ?? []), s]);
+  }
+  for (const same of byKey.values()) {
+    const [first] = [...same].sort((a, b) => Number(b.isDyad) - Number(a.isDyad) || a.createdAt.getTime() - b.createdAt.getTime());
+    if (!first) continue;
+    const last = same.reduce<Date | null>((m, s) => (s.lastAskedAt && (m === null || s.lastAskedAt > m) ? s.lastAskedAt : m), null);
+    out.push({ ...first, asked: same.reduce((n, s) => n + s.asked, 0), lastAskedAt: last });
+  }
+  return out;
 }
 
 /**

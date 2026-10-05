@@ -23,7 +23,10 @@ import { WhoStep, type Person, type SetOption, type Who } from "./who-step";
 import { refOfPicked, type PickedMark } from "@/lib/ui/mark";
 import { firstName } from "@/lib/ui/copy";
 import { MAX_ANSWER_LENGTH, MAX_ANSWERS, MIN_ANSWERS } from "@/lib/ledger/pick-one";
-import { CLOSINGS, closeMoment, nearestClosing, type Closing } from "@/lib/ledger/closings";
+import { DECIDE_BY_SPANS, LATEST_DAYS, addDays, deadlineMismatch, decideByDate, decideByMoment, dateWords, fromProposal, localDate, shortDateWords, swapDateWords, type DecideBy } from "@/lib/ledger/decide-by";
+import { kindForQuestion } from "@/lib/ui/question-shape";
+import { attempt } from "@/lib/ui/attempt";
+import { blankOf, type Idea } from "@/lib/ideas";
 
 type Unit = { kind: "usd" } | { kind: "existing"; id: string } | { kind: "new"; template: "beer" | "round" | "coffee" | "next_time"; label: string };
 const PRESETS = [
@@ -48,7 +51,7 @@ type Choice = { text: string; userId: string | null };
  */
 export type TemplateForAsking = { id: string; title: string; terms: string; kind: "binary" | "numeric" | "categorical"; gameName: string; /** "Sunday at 1pm": when it closes, in the asker's zone. */ closes: string; decidedByScore: boolean; /** "Off by 28 points or more scores nothing.", where the template sets a scale. */ scored: string | null };
 
-export function AskForm({ sets, people, initialLine = "", initialPace = "dare", me, screenTitle, gotCode = true, layer = false, stickers = [], canPaste = false, template = null, initialMark = null }: { sets: SetOption[]; people: Person[]; initialLine?: string; initialPace?: "dare" | "argument"; me: { id: string; name: string; hue: Hue }; /** The screen's name in its header; the form owns the screen so a picked mark can retint all of it (3.29). */ screenTitle: string; /** "Got a code?" beside the information icon on the question step (3.29, 10.3). */ gotCode?: boolean; /** Rendered in the ask layer (9.5), where the sheet sits in flow and Close sinks the layer. */ layer?: boolean; /** This person's stickers for the picker (3.28), and whether a cutout can be pasted at all. */ stickers?: Sticker[]; canPaste?: boolean; /** A public question (3.33): the flow starts at who's in, with the wording locked. */ template?: TemplateForAsking | null; /** A sticker just made from a photo (3.28): the question step opens with it as the mark. */ initialMark?: PickedMark | null }) {
+export function AskForm({ sets, people, initialLine = "", initialPace = "dare", me, screenTitle, gotCode = true, layer = false, stickers = [], canPaste = false, template = null, initialMark = null, idea = null }: { sets: SetOption[]; people: Person[]; initialLine?: string; initialPace?: "dare" | "argument"; me: { id: string; name: string; hue: Hue }; /** The screen's name in its header; the form owns the screen so a picked mark can retint all of it (3.29). */ screenTitle: string; /** "Got a code?" beside the information icon on the question step (3.29, 10.3). */ gotCode?: boolean; /** Rendered in the ask layer (9.5), where the sheet sits in flow and Close sinks the layer. */ layer?: boolean; /** This person's stickers for the picker (3.28), and whether a cutout can be pasted at all. */ stickers?: Sticker[]; canPaste?: boolean; /** A public question (3.33): the flow starts at who's in, with the wording locked. */ template?: TemplateForAsking | null; /** A sticker just made from a photo (3.28): the question step opens with it as the mark. */ initialMark?: PickedMark | null; /** An idea (3.47): its question, its kind and a number's unit; a blank leaves a name for the asker. */ idea?: Idea | null }) {
   const router = useRouter();
   type Step = "question" | "declined" | "criterion" | "subject" | "careful" | "who" | "terms";
   const [step, setStepRaw] = useState<Step>(template ? "who" : "question");
@@ -69,7 +72,10 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
   // Two paces, one object (PLANNING.md 8a): something that will happen, or a claim to settle now.
   const [pace, setPace] = useState<"dare" | "argument">(initialPace);
   // Yes or no, a number, or pick one (docs/design.md 3.26, 3.29). Chosen before the write-up, since the terms say how the answer is counted.
-  const [kind, setKind] = useState<"binary" | "numeric" | "categorical">("binary");
+  const [kind, setKind] = useState<"binary" | "numeric" | "categorical">(idea?.kind ?? "binary");
+  /** An idea's blank (3.47): the words around it, until a person is tapped or a name is typed; then the sentence is the ordinary question. */
+  const [blank, setBlank] = useState(idea ? blankOf(idea.text) : null);
+  const [slotName, setSlotName] = useState("");
   // The answers (3.29): two to six, in the asker's order; a person answer is anyone the asker knows here, or the asker.
   const [choices, setChoices] = useState<Choice[]>([{ text: "", userId: null }, { text: "", userId: null }]);
   // The mark (3.29), and the id the market will have, made here so the ink previewed is the ink stored.
@@ -77,12 +83,14 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
   const markName = mark ? (mark.kind === "emoji" ? (mark.name ? mark.name.charAt(0).toUpperCase() + mark.name.slice(1) : "Your mark") : "Your sticker") : null;
   const [pickingMark, setPickingMark] = useState(false);
   const [draftId] = useState(() => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : null));
-  const [unitWords, setUnitWords] = useState({ singular: "", plural: "" });
+  const [unitWords, setUnitWords] = useState(idea?.unit ?? { singular: "", plural: "" });
   const [scale, setScale] = useState("");
   const [modeChosen, setMode] = useState<"quick" | "careful">("quick");
   const [verdict, setVerdict] = useState<TriageResult | null>(null);
   const [criterion, setCriterion] = useState<string | null>(null);
   const [side, setSide] = useState<"yes" | "no">("yes");
+  /** A pick-one argument's side: the asker's own answer, by its place in the list. */
+  const [myAnswer, setMyAnswer] = useState(0);
   const [questions, setQuestions] = useState<string[]>([]);
   const [answers, setAnswers] = useState<Record<number, boolean>>({});
   /** How many answers there were the moment one was added, so the new row alone takes focus. */
@@ -93,12 +101,19 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
   useEffect(() => {
     here.current = { step, line };
   });
-  const [who, setWho] = useState<Who>(sets[0] ? { kind: "set", groupId: sets[0].groupId } : { kind: "link" });
+  // "Whoever I send it to" is where who's in starts, everywhere (the first-contact round, the owner's call).
+  const [who, setWho] = useState<Who>({ kind: "link" });
   const [scope, setScope] = useState<ScopeResult | null>(null);
   const scoping = useRef<Promise<void> | null>(null);
   const [title, setTitle] = useState("");
   const [terms, setTerms] = useState("");
-  const [closing, setClosing] = useState<Closing>("tomorrow");
+  // When it's decided (3.20 as amended 2026-10-04): Tonight, This week, This month or a date, starting from the date the write-up proposes.
+  const [decide, setDecide] = useState<DecideBy>({ key: "week" });
+  /** The write-up's own date, for the date chip, and the date the terms name now, so a change of chip changes the terms with it. */
+  const [proposedDate, setProposedDate] = useState<string | null>(null);
+  const termsDate = useRef<string | null>(null);
+  /** The type the question's shape last chose (`kindForQuestion`): it follows the shape when the shape changes, and the asker's own pick otherwise. */
+  const shapeKind = useRef<"binary" | "numeric" | "categorical" | null>(idea?.kind ?? null);
   const [unit, setUnit] = useState<Unit>({ kind: "usd" });
   const [blind, setBlind] = useState(false);
   const [fieldProblem, setFieldProblem] = useState<string | null>(null);
@@ -124,9 +139,10 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
   const [sent, setSent] = useState(false);
   const selectedSet = who.kind === "set" ? sets.find((s) => s.groupId === who.groupId) : undefined;
   const numeric = pace === "dare" && kind === "numeric";
-  const pickOne = pace === "dare" && kind === "categorical";
-  // Careful mode is yes-or-no's alone (its three questions are written for one, and only that write-up reads the answers): a mode chosen before the kind changed cannot send a number or a pick-one question down the careful path.
-  const mode: "quick" | "careful" = numeric || pickOne ? "quick" : modeChosen;
+  // An argument can be pick one, with each person's answer as an answer (the first-contact round); a number stays a dare's.
+  const pickOne = kind === "categorical";
+  // The setup applies to every type (the first-contact round): Help define the terms writes its three questions for the type chosen.
+  const mode: "quick" | "careful" = modeChosen;
   const filledChoices = choices.filter((c) => c.text.trim().length > 0);
   // The ink this market would get (1.8, 3.29): the mark's from the table, or a hash of the id for a hueless mark, balanced on the
   // who's-in step against the questions still open between the same people. The server computes it again the same way and stores that.
@@ -161,8 +177,13 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
       setScope(r);
       setTitle(r.title);
       setTerms(r.terms);
-      if (r.number) setUnitWords(r.number.unit);
-      setClosing(nearestClosing(r.resolvesInHours));
+      // A number idea carries its own unit to the terms (3.47); otherwise the write-up's.
+      if (r.number && !idea?.unit) setUnitWords(r.number.unit);
+      const at = new Date();
+      const start = fromProposal(r.decideBy, at, askerZone());
+      setProposedDate(r.decideBy);
+      termsDate.current = r.decideBy;
+      setDecide(start);
       setWritten((w) => (w ? { ...w, title: r.title, terms: r.terms, done: true, lastAt: Date.now() } : w));
     })();
   }
@@ -170,6 +191,11 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
   function toWho() {
     setFieldProblem(null);
     setProblem(null);
+    // An idea's blank, filled by a typed name: from here the sentence is the ordinary question (3.47).
+    if (blank) {
+      if (!slotName.trim()) return;
+      setBlank(null);
+    }
     if (line.trim().length < 3) return setFieldProblem(pace === "argument" ? "Say what you two disagree about, in a line." : numeric ? "Ask it in a line, like “How many shirts can Gabe wear at once.”" : pickOne ? "Ask it in a line, like “Who falls asleep first.”" : "Ask it in a line, like “John falls asleep during the movie.”");
     if (pickOne) {
       if (filledChoices.length < MIN_ANSWERS) return setProblem("It takes at least two answers.");
@@ -181,7 +207,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
       // The triage comes before anything else, and it matters more than the ruling: some things are not the app's to call.
       return startThinking(async () => {
         const asked = { step: "question", line };
-        const t = await triageAction(line);
+        const t = await attempt(() => triageAction(line));
         // A second tap, or a slow first one: only the answer to what is on screen, where it was asked, moves anything.
         if (!answerLands(asked, here.current)) return;
         if ("error" in t) return setFieldProblem(t.error);
@@ -197,7 +223,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
     if (mode === "careful") {
       return startThinking(async () => {
         const asked = { step: "question", line };
-        const q = await carefulQuestionsAction(line);
+        const q = await carefulQuestionsAction(line, undefined, numeric ? "numeric" : pickOne ? "categorical" : "binary", pickOne ? filledChoices.map((c) => c.text.trim()) : undefined);
         if (!answerLands(asked, here.current)) return;
         if ("error" in q) {
           setProblem(q.error);
@@ -226,12 +252,22 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
     setStep("terms");
   }
 
+  /** A decide-by chip: the date the terms name changes with it, so the two never disagree (the first-contact round). */
+  function pickDecide(next: DecideBy) {
+    const zone = askerZone();
+    const to = decideByDate(next, new Date(), zone);
+    const from = termsDate.current;
+    if (from && from !== to) setTerms((t) => swapDateWords(t, from, to));
+    termsDate.current = to;
+    setDecide(next);
+  }
+
   /** Sends a public question to one's own friends (3.33): the template's wording, the asker's people, stake and reveal. */
   function saveFromTemplate() {
     if (!template) return;
     setProblem(null);
     startSave(async () => {
-      const r = await draftFromTemplateAction({ templateId: template.id, who, unit, blind, id: draftId ?? undefined });
+      const r = await attempt(() => draftFromTemplateAction({ templateId: template.id, who, unit, blind, id: draftId ?? undefined }));
       if ("error" in r) return setProblem(r.error);
       setSent(true);
       // The new question replaces the ask flow in history: back from it never returns to the flow (docs/decisions.md 2026-09-27).
@@ -248,11 +284,17 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
     // The scale is the asker's when typed; otherwise the model's, if it passed the check; otherwise it has to be typed (3.26).
     if (numeric && !scale.trim() && !scope?.number?.model?.range) return setProblem("Say how far off scores nothing, like 20.");
     if (numeric && scale.trim() && !/^\s*[\d,]{1,11}\s*$/.test(scale)) return setProblem("The scale is a whole number, like 20.");
+    const zone = askerZone();
+    const now = new Date();
+    const decidedOn = decideByDate(decide, now, zone);
+    // The terms and the decide-by never disagree (the first-contact round): a deadline in the terms is the decide-by date.
+    const off = pace === "argument" ? null : deadlineMismatch(terms, decidedOn, now, zone);
+    if (off) return setProblem(`The terms say ${off}, and it’s decided ${dateWords(decidedOn)}. Make them match.`);
     startSave(async () => {
       const arguing = pace === "argument" && verdict?.kind === "ok";
       // The criterion has to be inside the terms: the terms are what is hashed, and what entering accepts.
       const finalTerms = arguing && criterion && !terms.includes(criterion) ? `${terms.trim()} Decided ${criterion}.` : terms;
-      const r = await draftMarketAction({
+      const r = await attempt(() => draftMarketAction({
         id: draftId ?? undefined,
         who,
         unit,
@@ -262,15 +304,15 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
         outcomeWords: !numeric && !pickOne && !arguing && scope?.outcomes ? scope.outcomes : undefined,
         answers: pickOne ? filledChoices.map((c) => ({ text: c.text.trim(), userId: c.userId })) : undefined,
         number: numeric ? { unit: { singular: unitWords.singular.trim().toLowerCase(), plural: unitWords.plural.trim().toLowerCase() || unitWords.singular.trim().toLowerCase() }, scale: scale.trim(), model: scope?.number?.model ?? null } : undefined,
-        resolvesBy: arguing ? null : closeMoment(closing, new Date(), Intl.DateTimeFormat().resolvedOptions().timeZone).toISOString(),
+        resolvesBy: arguing ? null : decideByMoment(decide, now, zone).toISOString(),
         blind: arguing ? false : blind,
         stalemate,
         mode,
         argument: arguing && verdict?.kind === "ok" ? { tier: verdict.tier, criterion } : undefined,
-      });
+      }));
       if ("error" in r) return setProblem(r.error);
       setSent(true);
-      router.replace(arguing ? `/m/${r.id}?side=${side}` : `/m/${r.id}`);
+      router.replace(arguing ? (pickOne ? `/m/${r.id}?pick=${myAnswer}` : `/m/${r.id}?side=${side}`) : `/m/${r.id}`);
     });
   }
 
@@ -320,14 +362,82 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
               <span className="text-caption text-ink-2">{mark ? `${markName} · tap to change` : "Optional"}</span>
             </span>
           </button>
+          {blank ? (
+            // An idea with a blank (3.47): the sentence with its slot, in the question's serif; a tap on the slot opens the keyboard on the name field below.
+            <div className="flex flex-col gap-2" data-idea-blank="">
+              <span className="text-label text-ink-2">Your question</span>
+              <p className="text-serif-l text-ink">
+                {blank.before}
+                <button type="button" onClick={() => document.getElementById("ask-slot-name")?.focus()} data-press="line" className="border-b-[1.5px] border-dashed border-line-strong text-ink-3 press-line">
+                  {slotName.trim() || "someone"}
+                </button>
+                {blank.after}
+              </p>
+            </div>
+          ) : (
           <div className="flex flex-col gap-2">
             <label htmlFor="ask-line" className="text-label text-ink-2">
               {pace === "argument" ? "What are you two arguing about?" : "Your question"}
             </label>
-            <textarea id="ask-line" rows={3} value={line} onChange={(e) => setLine(e.target.value)} maxLength={280} aria-invalid={fieldProblem ? true : undefined} aria-describedby={fieldProblem ? "ask-line-problem" : undefined} className={cn("field-sizing-content resize-none rounded-button border border-line bg-surface px-3 py-2 text-serif-l text-ink", fieldProblem && FIELD_PROBLEM_CLASS)} />
+            <textarea
+              id="ask-line"
+              rows={3}
+              value={line}
+              onChange={(e) => {
+                const next = e.target.value;
+                setLine(next);
+                // The type follows the question's shape when the shape changes, and the asker's own pick otherwise (the first-contact round).
+                const shaped = kindForQuestion(next);
+                if (shaped && shaped !== shapeKind.current) {
+                  shapeKind.current = shaped;
+                  setKind(pace === "argument" && shaped === "numeric" ? "binary" : shaped);
+                }
+              }}
+              maxLength={280} aria-invalid={fieldProblem ? true : undefined} aria-describedby={fieldProblem ? "ask-line-problem" : undefined} className={cn("field-sizing-content resize-none rounded-button border border-line bg-surface px-3 py-2 text-serif-l text-ink", fieldProblem && FIELD_PROBLEM_CLASS)} />
             <Problem id="ask-line-problem" message={fieldProblem} />
           </div>
+          )}
         </section>
+        {blank ? (
+          // Who? (3.47): the people the asker has shared questions with, a tap each, then a field for anyone or anything else.
+          <div className="flex flex-col gap-2" data-idea-who="">
+            <h2 className="text-label text-ink-3">Who?</h2>
+            <ul className="flex flex-wrap gap-1" aria-label="People you know here">
+              {people.slice(0, 8).map((p) => (
+                <li key={p.id}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLine(`${blank.before}${firstName(p.name)}${blank.after}`);
+                      setBlank(null);
+                      setSlotName("");
+                    }}
+                    data-press="line"
+                    className="flex w-14 flex-col items-center gap-1 rounded-button py-1 press-line"
+                    aria-label={`Ask it about ${firstName(p.name)}`}
+                  >
+                    <span className="flex h-11 w-11 items-center justify-center">
+                      <Avatar name={p.name} hue={p.hue} size={32} />
+                    </span>
+                    <span className="max-w-full truncate text-caption text-ink-2">{firstName(p.name)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <input
+              id="ask-slot-name"
+              value={slotName}
+              onChange={(e) => {
+                setSlotName(e.target.value);
+                setLine(`${blank.before}${e.target.value.trim()}${blank.after}`);
+              }}
+              maxLength={40}
+              placeholder="Or type a name"
+              aria-label="Or type a name"
+              className="h-11 rounded-button border border-line bg-ground px-4 text-body text-ink"
+            />
+          </div>
+        ) : null}
         <MarkPicker
           open={pickingMark}
           onClose={() => setPickingMark(false)}
@@ -349,46 +459,46 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
             </Chip>
           </button>
         </div>
-        {pace === "dare" ? (
-          <div className="flex flex-col gap-2">
-            <h2 className="text-label text-ink-3">How people answer</h2>
-            <div role="radiogroup" aria-label="How people answer" className="flex flex-wrap gap-2">
-              <button type="button" role="radio" aria-checked={kind === "binary"} onClick={() => setKind("binary")} {...chipPress(kind === "binary")}>
-                <Chip size={36} selected={kind === "binary"} choice>
-                  Yes or no
-                </Chip>
-              </button>
+        <div className="flex flex-col gap-2" data-market-type="">
+          <h2 className="text-label text-ink-3">Market type</h2>
+          <div role="radiogroup" aria-label="Market type" className="flex flex-wrap gap-2">
+            <button type="button" role="radio" aria-checked={kind === "binary"} onClick={() => setKind("binary")} {...chipPress(kind === "binary")}>
+              <Chip size={36} selected={kind === "binary"} choice>
+                Yes or no
+              </Chip>
+            </button>
+            {/* An argument is yes or no or pick one, each person's answer an answer (the first-contact round); a number is a dare's. */}
+            {pace === "dare" ? (
               <button type="button" role="radio" aria-checked={kind === "numeric"} onClick={() => setKind("numeric")} {...chipPress(kind === "numeric")}>
                 <Chip size={36} selected={kind === "numeric"} choice>
-                  A number
+                  Pick a number
                 </Chip>
               </button>
-              <button type="button" role="radio" aria-checked={kind === "categorical"} onClick={() => setKind("categorical")} {...chipPress(kind === "categorical")}>
-                <Chip size={36} selected={kind === "categorical"} choice>
-                  Pick one
+            ) : null}
+            <button type="button" role="radio" aria-checked={kind === "categorical"} onClick={() => setKind("categorical")} {...chipPress(kind === "categorical")}>
+              <Chip size={36} selected={kind === "categorical"} choice>
+                Pick one
+              </Chip>
+            </button>
+          </div>
+        </div>
+        {/* AI market setup (the first-contact round, the owner's labels): its own section with room above it, for every type, each choice keeping its line. */}
+        {paceRowShows(pace, kind) ? (
+          <div data-pace-row="" className="mt-2 flex flex-col gap-2">
+            <h2 className="text-label text-ink-3">AI market setup</h2>
+            <div role="group" aria-label="AI market setup" className="flex flex-wrap gap-2">
+              <button type="button" aria-pressed={mode === "quick"} onClick={() => setMode("quick")} {...chipPress(mode === "quick")}>
+                <Chip size={36} selected={mode === "quick"} choice>
+                  Quick setup
+                </Chip>
+              </button>
+              <button type="button" aria-pressed={mode === "careful"} onClick={() => setMode("careful")} {...chipPress(mode === "careful")}>
+                <Chip size={36} selected={mode === "careful"} choice>
+                  Help define the terms
                 </Chip>
               </button>
             </div>
-            {/* How the terms get written is part of the Yes or no choice (the field round, 2.6, as the owner ruled on 2026-10-03): careful mode's three
-                questions are written for a yes-or-no question and only that write-up reads the answers, so the row has no heading of its own (a heading made
-                it read as a peer of "How people answer"), sits indented under that chip, and stands only while it is the one selected. */}
-            {paceRowShows(pace, kind) ? (
-              <div data-pace-row="" className="ml-3 flex flex-col gap-2 border-l border-line pl-3">
-                <div role="group" aria-label="For a yes or no question" className="flex flex-wrap gap-2">
-                  <button type="button" aria-pressed={mode === "quick"} onClick={() => setMode("quick")} {...chipPress(mode === "quick")}>
-                    <Chip size={36} selected={mode === "quick"} choice>
-                      Just write it up
-                    </Chip>
-                  </button>
-                  <button type="button" aria-pressed={mode === "careful"} onClick={() => setMode("careful")} {...chipPress(mode === "careful")}>
-                    <Chip size={36} selected={mode === "careful"} choice>
-                      Ask me three things first
-                    </Chip>
-                  </button>
-                </div>
-                <p className="text-caption text-ink-3">{mode === "careful" ? "Three quick questions first, about fifteen seconds. For when a lot is riding on it, or it runs for weeks." : "One line in, terms out. Right for anything you’ll know tonight."}</p>
-              </div>
-            ) : null}
+            <p className="text-caption text-ink-3">{mode === "careful" ? "Three quick questions first, about fifteen seconds. For when a lot is riding on it, or it runs for weeks." : "One line in, terms out. Right for anything you’ll know tonight."}</p>
           </div>
         ) : null}
         {pickOne ? (
@@ -478,7 +588,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
           low={
             <>
               <ProblemSummary messages={[fieldProblem, problem]} />
-              <Button type="submit" form="ask-question" variant="primary" loading={thinking} disabled={pickOne && filledChoices.length < MIN_ANSWERS}>
+              <Button type="submit" form="ask-question" variant="primary" loading={thinking} disabled={(pickOne && filledChoices.length < MIN_ANSWERS) || (blank !== null && !slotName.trim())}>
                 {pace === "argument" ? "Check it." : mode === "careful" ? "Ask me" : "Next: who’s in"}
               </Button>
             </>
@@ -561,7 +671,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
     const name = subjectAsk;
     const answer = (kind: "person" | "pet" | "thing") =>
       startThinking(async () => {
-        const q = await carefulQuestionsAction(line, { name, kind });
+        const q = await carefulQuestionsAction(line, { name, kind }, numeric ? "numeric" : pickOne ? "categorical" : "binary", pickOne ? filledChoices.map((c) => c.text.trim()) : undefined);
         if ("error" in q || "ask" in q) {
           setProblem("error" in q ? q.error : "The questions didn’t come through. You can write the terms yourself on the next screen.");
           writeUp();
@@ -861,7 +971,24 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
               </>,
             )
           : null}
-        {pace === "argument"
+        {pace === "argument" && pickOne
+          ? row(
+              "Your side",
+              <>
+                {/* A pick-one argument (the first-contact round): each person's answer is an answer, and the asker's is theirs from the start. */}
+                <div role="group" aria-label="Your side" className="flex flex-wrap gap-2" data-argument-answers="">
+                  {filledChoices.map((c, i) => (
+                    <button key={i} type="button" aria-pressed={myAnswer === i} onClick={() => setMyAnswer(i)} {...chipPress(myAnswer === i)}>
+                      <Chip size={36} selected={myAnswer === i} choice>
+                        {c.text.trim()}
+                      </Chip>
+                    </button>
+                  ))}
+                </div>
+                <p className="text-caption text-ink-3">All the way, by default, so whoever’s wrong is out the whole thing.</p>
+              </>,
+            )
+          : pace === "argument"
           ? row(
               "Your side",
               <>
@@ -879,14 +1006,29 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
             )
           : row(
               "Decided",
-              <div className="flex flex-wrap gap-2">
-                {CLOSINGS.map((w) => (
-                  <button key={w.key} type="button" onClick={() => setClosing(w.key)} {...chipPress(closing === w.key)}>
-                    <Chip size={36} selected={closing === w.key} choice>
+              <div className="flex flex-wrap gap-2" data-decide-by={decide.key}>
+                {DECIDE_BY_SPANS.map((w) => (
+                  <button key={w.key} type="button" onClick={() => pickDecide({ key: w.key })} {...chipPress(decide.key === w.key)}>
+                    <Chip size={36} selected={decide.key === w.key} choice>
                       {w.label}
                     </Chip>
                   </button>
                 ))}
+                {/* A date (3.20 as amended): the write-up's date until another is picked, the phone's own date picker under the chip. */}
+                <label data-press={chipPress(decide.key === "date")["data-press"]} className={cn("relative", chipPress(decide.key === "date").className)} data-decide-date="">
+                  <Chip size={36} selected={decide.key === "date"} choice>
+                    {decide.key === "date" ? shortDateWords(decide.date) : proposedDate ? shortDateWords(proposedDate) : "A date"}
+                  </Chip>
+                  <input
+                    type="date"
+                    aria-label="Decided on a date"
+                    min={localDate(new Date(), askerZone())}
+                    max={addDays(localDate(new Date(), askerZone()), LATEST_DAYS)}
+                    value={decide.key === "date" ? decide.date : (proposedDate ?? "")}
+                    onChange={(e) => (e.target.value ? pickDecide({ key: "date", date: e.target.value }) : undefined)}
+                    className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                  />
+                </label>
               </div>,
             )}
         {row(
@@ -955,6 +1097,15 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
       />
     </div>,
   );
+}
+
+/** The asker's zone, as the browser has it: what a decide-by is measured in, here and when it is sent. */
+function askerZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
 }
 
 /** The words being written have a caret at their end (9.8): 2 by 20px in `--ink-2`, blinking on the loop, steady with Reduce Motion. */

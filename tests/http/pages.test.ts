@@ -565,7 +565,7 @@ test("a shared question answers a preview bot with the question, and nothing abo
   // line untouched; never the asker's full name, anyone else's, a number, what is riding, or the terms.
   assert.ok(r.text.includes("Priya asked the Question check"), "who asked, by first name, and which set, as a sentence names it (3.17: Priya asked the Friday crew)");
   assert.ok(r.text.includes("One friend is in"), "the count in words");
-  assert.ok(r.text.includes("Slide to pick your odds"), "the way in, without an account");
+  assert.ok(r.text.includes("Slide to your prediction") && /I’m in at 50%/.test(r.text), "the way in, without an account: the thumb at 50% under the prompt (3.13 as amended 2026-10-04)");
   // Distinctive spellings: a bare "83" turns up in script file names, and "$17" is how the page's own serialization writes a reference.
   for (const s of ["Raman", "83%", "8300", "17.00", "Kettles rarely", "kettle is descaled", "Dev"]) assert.ok(!r.html.includes(s), `the signed-out page leaks "${s}"`);
   const card = await get(`/m/${marketId}/opengraph-image`);
@@ -855,10 +855,10 @@ test("the bar is on the four roots and nowhere else, every other screen has a ba
 
 test("asking offers both paces and both ways of writing the terms, and the settler says up front what it will not call", async () => {
   const r = await get("/m/new", cAsker);
-  for (const t of ["Something that’ll happen", "Settle an argument", "Just write it up", "Ask me three things first"]) assert.ok(r.text.includes(t), t);
-  // The field round, 2.6, as ruled on 2026-10-03: the row has no heading of its own and sits indented inside the Yes or no choice, after its chips.
-  assert.ok(!r.text.includes("How the rules get written"), "no heading that reads as a peer of How people answer");
-  assert.ok(/Pick one(?:(?!<h2)[\s\S])*data-pace-row=""[^>]*class="[^"]*\bml-3\b[^"]*\bborder-l\b[^"]*\bpl-3\b[^"]*"(?:(?!<h2)[\s\S])*Just write it up(?:(?!<h2)[\s\S])*One line in, terms out\./.test(r.html), "the row follows the kind chips with no heading between, indented, with its line under it");
+  for (const t of ["Something that’ll happen", "Settle an argument", "Quick setup", "Help define the terms"]) assert.ok(r.text.includes(t), t);
+  // The first-contact round, the owner's labels: "Market type" with "Pick a number", then more room and the "AI market setup" heading over its two choices, each keeping its line.
+  assert.ok(r.text.includes("Market type") && r.text.includes("Pick a number") && !r.text.includes("How people answer") && !r.text.includes("How the rules get written"), "the type's label and its chips, in the owner's words");
+  assert.ok(/data-pace-row=""[^>]*class="[^"]*\bmt-2\b[^"]*"[^>]*>\s*<h2[^>]*>AI market setup<\/h2>(?:(?!<h2)[\s\S])*Quick setup(?:(?!<h2)[\s\S])*One line in, terms out\./.test(r.html), "the setup is a section of its own, with room above it and its line under the choices");
   // Start's "Settle an argument" row lands on the same screen, on the settler's pace.
   const arg = await get("/m/new?pace=argument", cAsker);
   assert.ok(/aria-pressed="true"[^>]*>\s*<span[^>]*>\s*Settle an argument/.test(arg.html) && arg.text.includes("What are you two arguing about?"), "the settler preselected");
@@ -903,8 +903,8 @@ test("a market's own screen is its ink: the ground, surface and line swapped for
 test("the market screen keeps its one move in the pinned sheet: the odds line before you are in, and no sheet once you are, with the icons on the who's-in row", async () => {
   const before = await get(`/m/${marketId}`, cFriend);
   assert.ok(/<section aria-label="Your number"/.test(before.html), "the sheet, labelled as the move");
-  assert.ok(before.text.includes("What are the odds?") && before.text.includes("Slide to answer") && before.text.includes("Slide to pick your odds"), "the odds line, untouched: no thumb, no number, the primary waiting");
-  assert.ok(before.html.includes('aria-valuetext="not picked yet"'), "nothing starts picked: a thumb parked at 50% anchors everyone on a coin flip");
+  assert.ok(before.text.includes("What are the odds?") && before.text.includes("Slide to your prediction") && /I’m in at 50%/.test(before.text), "the odds line, untouched: the thumb at 50% under the prompt, and the primary saying the 50% it would send (3.13 as amended 2026-10-04)");
+  assert.ok(before.html.includes('aria-valuetext="50%, '), "the thumb starts at 50%, the owner's call over the old rule that nothing starts picked");
   const after = await get(`/m/${marketId}`, cAsker);
   assert.ok(!/<section aria-label="Your number"/.test(after.html) && !/<section aria-label="Get people in"/.test(after.html), "once in, nothing is your move: no sheet (3.24)");
   assert.ok(!after.html.includes("data-stake-fact"), "the fact is the stake step's alone: nowhere once in");
@@ -914,7 +914,7 @@ test("the market screen keeps its one move in the pinned sheet: the odds line be
   assert.ok(after.html.includes('data-whos-in=""') && after.html.includes('data-share=""') && after.html.includes('data-copy=""') && after.html.includes('data-code=""'), "the icons end the who's-in row: share, copy, the code to scan (3.42)");
   assert.ok(after.text.includes("1 of 2 in") && !after.text.includes("Just you so far") && /data-share=""[^>]*bg-chalk/.test(after.html), "alone with someone named: the holdouts rule from the first entry, and share still the chalk (ruled 2026-09-27)");
   assert.ok(!after.text.includes("Send it to the chat") && !after.text.includes("Anyone with the link") && !after.text.includes("show a code"), "the four sentences and buttons are gone (4.9)");
-  assert.ok(!after.text.includes("Slide to pick your odds"), "the odds line has become the weight line");
+  assert.ok(!after.text.includes("Slide to your prediction"), "the odds line has become the weight line");
   assert.ok(!before.html.includes('data-whos-in=""') && before.text.includes("One friend is in. Where they landed shows once you are."), "before you're in: who is in and no number, and no icons, since sharing belongs to people who are in (3.38, 3.42)");
   for (const s of ["in 10", "Fine-tune", "Not once", "Every time"]) assert.ok(!after.text.includes(s) && !before.text.includes(s), `tenths copy "${s}" came back`);
 });
@@ -1004,20 +1004,22 @@ test("a market in voting can be watched: its pulse is Postgres only, answers the
   assert.equal(body.resolved, false);
   assert.match(body.pulse, /^v\[\] s\[\] e\[\] r0 p0 f0$/, "nothing said, nothing voted, nothing attached, no score");
   assert.equal(r.headers.get("cache-control"), "no-store");
-  await markets.sayWhatHappened(numberId, friend.user.id, "14, then a seam gave out");
+  await markets.sayWhatHappened(numberId, asker.user.id, "14, then a seam gave out");
   const again = (await (await fetch(`${BASE}/api/m/${numberId}/pulse`, { headers: { cookie: `dareful_session=${cFriend}` } })).json()) as { pulse: string };
   assert.notEqual(again.pulse, body.pulse, "what was said moves the pulse");
   assert.equal((await fetch(`${BASE}/api/m/${numberId}/pulse`, { headers: { cookie: `dareful_session=${cStranger}` } })).status, 404, "someone outside the group");
   assert.equal((await fetch(`${BASE}/api/m/${numberId}/pulse`)).status, 404, "signed out");
   assert.equal((await fetch(`${BASE}/api/m/00000000-0000-4000-8000-000000000000/pulse`, { headers: { cookie: `dareful_session=${cFriend}` } })).status, 404, "an id that matches nothing");
-  const page = await get(`/m/${numberId}`, cFriend);
+  const page = await get(`/m/${numberId}`, cAsker);
   assert.ok(page.text.includes("When it’s clear, say what it was.") && page.text.includes("Type what it was"), "closed, not yet known: the number field, empty (3.24)");
+  const outside = await get(`/m/${numberId}`, cFriend);
+  assert.ok(outside.status === 200 && !outside.text.includes("Type what it was") && !outside.text.includes("When it’s clear"), "someone in the set who never got in watches, and gets no ballot (the first-contact round)");
   await db.update(schema.dares).set({ lockedAt: null }).where(eq(schema.dares.id, numberId));
 });
 
 test("asking offers a number beside yes or no, and the question step carries the mark row with Optional said once", async () => {
   const r = await get("/m/new", cAsker);
-  for (const t of ["Yes or no", "A number", "Add a mark", "Optional", "Your question", "Next: who’s in", "Got a code?", "How people answer"]) assert.ok(r.text.includes(t), t);
+  for (const t of ["Yes or no", "Pick a number", "Add a mark", "Optional", "Your question", "Next: who’s in", "Got a code?", "Market type"]) assert.ok(r.text.includes(t), t);
   assert.ok(!r.text.includes("It picks this market") && !r.html.includes("John falls asleep during the movie"), "the retint shows what a mark does, and no example sits in the question (4.9)");
   assert.equal((r.text.match(/Optional/g) ?? []).length, 1, "Optional is said once, on the row, and never again (3.29)");
   assert.ok(!r.text.includes("Everyone puts their odds on it") && !r.text.includes("closest wins") && !r.text.includes("whoever's right is paid"), "no caption under the kind chips (3.29, 4.9, Round C)");
@@ -1408,12 +1410,12 @@ test("a locked pick-one question offers the answers as equal wells, and voting n
   assert.ok(!locked.text.includes("What was it") && !locked.text.includes("Type what it was"), "never the number field");
   const voting = await get(`/m/${pickVotingId}`, cFriend);
   assert.equal(voting.status, 200);
-  assert.ok(voting.text.includes("1 of 3 says You. One more and it settles.") || voting.text.includes("1 of 3 says Dev."), "the count line names the claimed answer (3.24)");
+  assert.ok(voting.text.includes("1 of 2 says You. One more and it settles.") || voting.text.includes("1 of 2 says Dev."), "the count line names the claimed answer, counted over the people in it (3.24; the first-contact round)");
   assert.ok(voting.text.includes("That’s right, You") || voting.text.includes("That’s right, Dev"), "the chalk repeats the answer");
   assert.ok(voting.text.includes("Not how I saw it"));
   assert.ok(voting.text.includes("Priya says you") || voting.text.includes("Priya says Dev"), "the claim card names the answer");
   const asNia = await get(`/m/${pickVotingId}`, cNia);
-  assert.ok(asNia.text.includes("1 of 3 says Dev. One more and it settles.") && asNia.text.includes("Priya says Dev"), "to someone else the person answer is their name");
+  assert.ok(asNia.status === 200 && !asNia.text.includes("One more and it settles.") && !asNia.text.includes("That’s right"), "someone in the set who never got in has no ballot and no count (the first-contact round)");
 });
 
 test("a settled pick-one question says the answer and who called it, shows everyone's pick with the called row washed, and never ranks", async () => {
@@ -1513,7 +1515,7 @@ test("a question from What's on: the two sides at the odds line's ends, a signed
   assert.ok(r.html.includes("data-consent-line") && r.text.includes("If nobody votes, the final score settles it."), "the consent line in the entry sheet, directly above the primary (3.35, 4.9)");
   assert.ok(r.text.includes("If it’s a tie") && r.text.includes("It’s void."), "the tie row (3.40): void, since the deployed contract cannot score the middle");
   assert.ok(r.html.includes(`data-part-of="${feedGameId}"`) && r.text.includes(`Part of ${feedAway} at ${feedHome}`), "the row back to the game page (3.33)");
-  assert.ok(r.text.includes("Slide to pick a side"), "the primary before any touch");
+  assert.ok(r.text.includes("Slide to your prediction") && r.text.includes("I’m in: Even"), "before any touch: the thumb at even under the prompt, and the primary saying it (3.13 as amended 2026-10-04)");
   assert.ok(!/spread|official|moneyline|underdog|favourite/i.test(r.text), "never a sportsbook's word");
   const m = await get(`/m/${feedMarginId}`, cAsker);
   assert.equal(m.status, 200);
@@ -1664,9 +1666,10 @@ test("the sets on a game, in sentences: a set of only the asker, a name that can
   assert.ok(one.text.includes("You asked. Everything closes at kickoff.") && !one.text.includes("asked Just you"), "a set of only the asker: nothing after asked, and never the chip's label after the verb");
   assert.ok(one.html.includes(`href="/m/${aloneId}"`) && /data-whos-in-count=""[^>]*>\s*Nobody’s in yet/.test(one.html), "the asker starts out in nothing: the row says nobody's in yet");
   // The question's own screen for its asker before anyone is in (a game opens every question with nobody in): never a count of zero (3.14), and no second sentence about where nobody landed.
+  // Since the first-contact round the asker has the who's-in row from creation (share before entering), so the count is the row's.
   const zero = await get(`/m/${aloneId}`, cNoor);
-  const beforeIn = /<section[^>]*data-friends-in=""[^>]*>[\s\S]*?<\/section>/.exec(zero.html)?.[0] ?? "";
-  assert.ok(zero.status === 200 && beforeIn.includes("Nobody’s in yet.") && !beforeIn.includes("0 friends") && !beforeIn.includes("Where they landed"), "before you're in with nobody in: one sentence, and never a zero");
+  const beforeIn = /<p[^>]*data-whos-in-count=""[^>]*>[\s\S]*?<\/p>/.exec(zero.html)?.[0] ?? "";
+  assert.ok(zero.status === 200 && beforeIn.includes("Nobody’s in yet.") && !beforeIn.includes("0 of") && !zero.text.includes("Where they landed"), "before you're in with nobody in: one sentence, and never a zero");
   assert.ok((/<button[^>]*data-share=""[^>]*>/.exec(one.html)?.[0] ?? "").includes("bg-chalk"), "and sending it is the chalk");
   const chips = /<div[^>]*role="group"[^>]*aria-label="Who you’re on this with"[^>]*>([\s\S]*?)<\/div>/.exec(one.html)?.[1] ?? "";
   assert.ok(chips.includes(`/on/${feedGameId}?g=${alone.id}`) && chips.includes(`/on/${feedGameId}?g=${named.id}`), "the chips that switch sets, in a group with a name a screen reader says");
@@ -1678,6 +1681,12 @@ test("the sets on a game, in sentences: a set of only the asker, a name that can
   assert.ok(gone.status === 200 && !gone.html.includes(`/m/${offId}"`) && gone.html.includes(`href="/m/${namedId}"`), "the address of the set with nothing standing opens the most recent set that has");
   const tab = await get("/on", cNoor);
   assert.ok(tab.text.includes("You’re on this · Papa’s birthday") && !tab.text.includes("You’re on this with Papa"), "the row, for a name that can't take the");
+  // Someone in the set who is not the asker, before anyone is in: the line under the stack is one sentence, never a zero.
+  const omar = await tempSigner("Omar Haddad");
+  await db.insert(schema.groupMembers).values({ groupId: named.id, userId: omar.user.id });
+  const theirs = await get(`/m/${namedId}`, await cookieFor(omar.user.id));
+  const friendsLine = /<section[^>]*data-friends-in=""[^>]*>[\s\S]*?<\/section>/.exec(theirs.html)?.[0] ?? "";
+  assert.ok(theirs.status === 200 && friendsLine.includes("Nobody’s in yet.") && !friendsLine.includes("0 friends") && !friendsLine.includes("Where they landed"), "for someone else in the set too: one sentence, never a zero");
 });
 
 test("the asker line is a sentence about the set on every screen that has one, and a row's shell says what the screen will say", async () => {
@@ -1764,7 +1773,7 @@ test("handing the phone over: the fourth icon for someone in while open, the fri
   const pass = await get(`/m/${marketId}/pass`, cAsker);
   assert.equal(pass.status, 200);
   assert.ok(pass.html.includes('data-pass-screen=""') && pass.html.includes('data-on-phone=""') && /On \w+’s phone/.test(pass.text) && pass.html.includes('data-pass-band=""'), "the friend's screen, named for whose phone it is");
-  assert.ok(pass.text.includes("Slide to pick your odds") && pass.text.includes("How it works") && !pass.text.includes("If it’s unclear"), "the entry sheet and the two facts");
+  assert.ok(pass.text.includes("Slide to your prediction") && pass.text.includes("How it works") && !pass.text.includes("If it’s unclear"), "the entry sheet and the two facts");
   for (const leak of ["83%", "8300", "You’re in at", "Where the stake sits", 'data-whos-in=""', "buckets", "Just you so far", "1 of 2 in"]) assert.ok(!pass.html.includes(leak), `nothing of anyone's answer on the friend's screen: "${leak}"`);
   const friendPass = await get(`/m/${marketId}/pass`, cFriend);
   assert.ok((friendPass.status === 307 || friendPass.status === 302) && friendPass.loc === `/m/${marketId}`, "someone not in cannot hand the phone over");

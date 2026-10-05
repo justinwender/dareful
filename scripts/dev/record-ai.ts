@@ -25,7 +25,7 @@ async function main(): Promise<void> {
   // `pickone` records only the pick-one calls (the categorical phase), leaving the earlier recordings as they are.
   if (process.argv.includes("pickone")) {
     const answers = ["John", "Priya", "Gabe", "Theo", "Nobody"];
-    await scopePickOne({ line: "who falls asleep first on movie night", answers, now });
+    await scopePickOne({ line: "who falls asleep first on movie night", answers, now, zone: "America/New_York" });
     const terms = "Whoever is first to be asleep on the couch, eyes shut and not answering, once the movie starts on Friday. If everyone makes it to the credits, Nobody.";
     await proposeAnswer({ title: "Who falls asleep first?", terms, answers, statements: [{ name: "Sam", said: "John was out twenty minutes in, snoring" }], now });
     await arbitrateAnswer({ title: "Who falls asleep first?", terms, answers, positions: [{ name: "Sam", answer: "John" }, { name: "Theo", answer: "Gabe" }, { name: "Maya", answer: "Nobody" }], updates: [{ name: "Sam", said: "John was out twenty minutes in, snoring" }, { name: "Theo", said: "Gabe had his eyes shut before John did" }], statements: [{ name: "Theo", said: "Gabe was not answering when I asked him about the popcorn" }, { name: "Sam", said: "Gabe answered the popcorn question, he was resting his eyes" }] });
@@ -43,7 +43,7 @@ async function main(): Promise<void> {
   }
   // `outcomes` records the write-up alone, now that it returns the outcomes in the question's own words (3.25).
   if (process.argv.includes("outcomes")) {
-    await scopeMarket({ line: "does John fall asleep during the movie on Friday", now });
+    await scopeMarket({ line: "does John fall asleep during the movie on Friday", now, zone: "America/New_York" });
     return;
   }
   // `evidence` records only the calls that carry a screenshot (the media phase), leaving the earlier recordings as they are.
@@ -56,14 +56,14 @@ async function main(): Promise<void> {
   }
   // `number` records only the number-market calls (Phase 5), leaving the earlier recordings as they are.
   if (process.argv.includes("number")) {
-    await scopeNumber({ line: "how many shirts can Gabe wear at once", now });
+    await scopeNumber({ line: "how many shirts can Gabe wear at once", now, zone: "America/New_York" });
     const unit = { singular: "shirt", plural: "shirts" };
     const terms = "Gabe puts on as many shirts as he can, one over another, on Friday night. The count is how many are on him at once when he stops or one tears.";
     await proposeNumber({ title: "How many shirts can Gabe wear at once?", terms, unit, statements: [{ name: "Sam", said: "14, then the seam on the fifteenth gave out" }], now });
     await arbitrateNumber({ title: "How many shirts can Gabe wear at once?", terms, unit, positions: [{ name: "Sam", number: "14" }, { name: "Theo", number: "12" }, { name: "Maya", number: "9" }], updates: [{ name: "Sam", said: "14, then the seam on the fifteenth gave out" }, { name: "Theo", said: "I counted 15 with the torn one" }], statements: [{ name: "Theo", said: "The torn one was on him when he stopped, so it counts" }, { name: "Sam", said: "The terms say on him at once when one tears, so the torn one is out" }] });
     return;
   }
-  await scopeMarket({ line: "does Riley finish the half marathon on Sunday", now });
+  await scopeMarket({ line: "does Riley finish the half marathon on Sunday", now, zone: "America/New_York" });
   await proposeOutcome({ title: "Does Riley finish the half marathon on Sunday?", terms: "Yes if Riley crosses the finish line of Sunday's half marathon, running or walking. No if Riley drops out or does not start.", statements: [{ name: "Sam", said: "Riley finished in 2:19, I was at the line" }], now });
   // What a response looks like when the model answers in prose and calls nothing: the case the parser must refuse.
   const prose = await new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }).messages.create({ model: MODELS.drafting, max_tokens: 60, messages: [{ role: "user", content: "Say hello in five words." }] });

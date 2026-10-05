@@ -277,7 +277,7 @@ test("a close chip's word is the word the screen reads back: Tonight ends today 
   assert.equal(nearestClosing(600), "month");
   assert.deepEqual(CLOSINGS.map((c) => c.label), ["Tonight", "Tomorrow", "This week", "This month"]);
   const form = readFileSync("src/components/markets/ask-form.tsx", "utf8");
-  assert.match(form, /closeMoment\(closing, new Date\(\), Intl\.DateTimeFormat\(\)\.resolvedOptions\(\)\.timeZone\)/, "the form asks the moment of the chip in the asker's own zone");
+  assert.match(form, /decideByMoment\(decide, now, zone\)/, "the form asks the moment of the decide-by in the asker's own zone (src/lib/ledger/decide-by.ts, the first-contact round)");
   assert.doesNotMatch(form, /hours \* 3_600_000/, "no chip is a count of hours any more");
 });
 

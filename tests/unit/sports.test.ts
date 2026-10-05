@@ -20,7 +20,7 @@ import { backstopResultNotice, backstopWarningNotice, clockWithDay, pushElseEmai
 import { BDL_PATHS, finalFrom, gamesUrl, parseGames, sameTeam } from "@/lib/sports/balldontlie";
 import { cardMeta, gameWhosIn, lineT, onePerQuestion, setsOnGames, yourEntry } from "@/lib/sports/cards";
 import { driveAnswer, gameOf, parseScoreboard, parseSummary, resultOf, scoreboardUrl, statusOf, summaryUrl } from "@/lib/sports/espn";
-import { AGREE_AFTER_MS, ALONE_AFTER_MS, backstopDecision, driveBackstopDecision, driveOutcome, fromStored, marginWords, outcomeFor, scoreLine, toStored, warnAt, WARN_BEFORE_MS } from "@/lib/sports/results";
+import { AGREE_AFTER_MS, ALONE_AFTER_MS, backstopDecision, driveBackstopDecision, driveOutcome, fromStored, marginWords, outcomeFor, outcomesAgree, scoreLine, toStored, warnAt, WARN_BEFORE_MS } from "@/lib/sports/results";
 import { askerName } from "@/lib/ledger/share";
 import { BOTH_CONSENT, CONSENT, consentFor, DRIVE_CONSENT, expectedEnd, marginShift, menuName, offersFirstDrive, SCALES, SLIDER_REACH, templatesFor, TIE_VOID, UNCLEAR_BY_SCORE, UNIT } from "@/lib/sports/templates";
 import { dayOf, DRIVE_ANSWERS, FeedError, isoDayOf, parseColor, parseScore, SPORTS } from "@/lib/sports/types";
@@ -498,4 +498,21 @@ test("the consent line on a game's terms step is true for every question chosen:
   assert.equal(consentFor([]), CONSENT, "nothing chosen reads as the common case");
   assert.ok(BOTH_CONSENT.startsWith("If nobody votes, ") && BOTH_CONSENT.includes("the final score settles") && BOTH_CONSENT.includes("the play-by-play settles the first drive"), "the line names both settlers and what each settles");
   for (const banned of ["spread", "moneyline", "wallet", "signature", "official"]) assert.ok(!BOTH_CONSENT.toLowerCase().includes(banned), `never "${banned}"`);
+});
+
+test("two scoreboards that name the same winner agree on who wins, though one has the loser's score wrong; the margin and the total still void", () => {
+  const whoWins = { key: "home_wins", shift: null, decidedByScore: true };
+  const margin = { key: "margin", shift: 30n, decidedByScore: true };
+  const total = { key: "total", shift: null, decidedByScore: true };
+  const espn = { home: 9, away: 2 };
+  const check = { home: 9, away: 0 };
+  assert.equal(outcomesAgree(whoWins, espn, check), true, "the Yankees won by either count");
+  assert.equal(outcomesAgree(whoWins, espn, { home: 1, away: 2 }), false, "a different winner is a real conflict");
+  assert.equal(outcomesAgree(margin, espn, check), false, "by 7 and by 9 are different answers");
+  assert.equal(outcomesAgree(total, espn, check), false, "11 and 9 are different answers");
+  assert.equal(outcomesAgree({ key: "first_drive", shift: null, decidedByScore: false }, espn, check), false, "a question the score does not decide compares the whole final");
+  const seen = new Date("2026-10-03T23:46:00Z");
+  const at = new Date(seen.getTime() + AGREE_AFTER_MS);
+  assert.deepEqual(backstopDecision({ finalSeenAt: seen, confirmedAt: seen, final: espn, check, now: at, same: (a, b) => outcomesAgree(whoWins, a, b) }), { act: "settle", final: espn, alone: false }, "settled on the scoreboard's final, a day on");
+  assert.deepEqual(backstopDecision({ finalSeenAt: seen, confirmedAt: seen, final: espn, check, now: at }), { act: "void", why: "conflict" }, "without the question's own rule, two different finals still void");
 });

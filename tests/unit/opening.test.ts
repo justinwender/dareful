@@ -135,7 +135,8 @@ test("Now's shell is decided from the cookie alone: the + and Got a code? for so
   const page = readFileSync("src/app/page.tsx", "utf8");
   assert.ok(page.includes("sessionUserId") && !page.includes("currentUser") && !page.includes("nowFor"), "the shell reads the cookie, never the account or Now");
   assert.match(page, /<Suspense fallback=\{<NowWaiting \/>\}>\s*<NowContent /);
-  assert.ok(page.indexOf("<TabBar") > page.indexOf("</Suspense>") && page.indexOf("<RootHeader") < page.indexOf("<Suspense"), "the header row and the tab bar are the shell's, around the content");
+  const content = page.indexOf("<Suspense fallback={<NowWaiting />}>");
+  assert.ok(page.indexOf("<TabBar") > page.indexOf("</Suspense>", content) && page.indexOf("<RootHeader") < content, "the header row and the tab bar are the shell's, around the content");
   const session = readFileSync("src/lib/auth/session.ts", "utf8");
   const cookieOnly = /export const sessionUserId = cache\(async function sessionUserId\(\)[\s\S]*?\n\}\);/.exec(session)?.[0] ?? "";
   assert.ok(cookieOnly.includes("jwtVerify") && !/\bdb\./.test(cookieOnly), "whose session it is comes from the cookie's own signature, with no query");

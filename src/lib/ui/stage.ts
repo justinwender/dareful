@@ -19,9 +19,11 @@ export function answerLands(asked: { step: string; line: string }, now: { step: 
 }
 
 /**
- * Whether the row that picks how the terms get written stands (the field round, 2.6, as ruled on 2026-10-03): it is part of the Yes or no
- * choice, under that chip and only while it is the one selected, on a dare. A number, a pick-one question and an argument never see it.
+ * Whether the AI market setup stands (the first-contact round, 2026-10-04, superseding the field round's 2.6): on every type of a
+ * dare, as a section of its own, since Help define the terms now asks its questions for a number and a pick-one question too. An
+ * argument has its own check and never sees it.
  */
 export function paceRowShows(pace: "dare" | "argument", kind: "binary" | "numeric" | "categorical"): boolean {
-  return pace === "dare" && kind === "binary";
+  void kind;
+  return pace === "dare";
 }

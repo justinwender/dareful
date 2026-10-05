@@ -14,7 +14,7 @@ import { agree, AGREE_AFTER_MS, ALONE_AFTER_MS } from "@/lib/sports/results";
 import type { CheckSource, FinalScore, Sport } from "@/lib/sports/types";
 import { keccak256, stringToHex, type Hex } from "viem";
 import { db, schema } from "@/db";
-import { arbitrate as askArbitrator, arbitrateAnswer, arbitrateNumber, ruleClaim } from "@/lib/ai/settler";
+import { arbitrate as askArbitrator, arbitrateAnswer, arbitrateNumber, ruleAnswerClaim, ruleClaim } from "@/lib/ai/settler";
 import { contracts } from "@/lib/chain/contracts";
 import { gasFor } from "@/lib/chain/gas";
 import { SendPending, submit, writeInFlight } from "@/lib/chain/relayer";
@@ -61,6 +61,15 @@ export async function afterEntry(dareId: string): Promise<{ locked: boolean }> {
 export async function proposeForArgument(dareId: string): Promise<void> {
   const d = await marketById(dareId);
   if (!d || d.pace !== "argument" || d.aiProposedAt || d.resolvedAt) return;
+  // A pick-one argument (the first-contact round): the ruling names one of the answers, each person's side.
+  if (d.kind === "categorical") {
+    const a = await ruleAnswerClaim({ title: d.title, terms: d.termsText, criterion: d.criterion, answers: d.outcomeLabels });
+    await db
+      .update(schema.dares)
+      .set({ aiOutcome: a.index === null ? VOID_OUTCOME : BigInt(a.index), aiConfidenceBps: a.confidencePercent * 100, aiRationale: a.rationale, aiProposedAt: new Date() })
+      .where(and(eq(schema.dares.id, d.id), isNull(schema.dares.aiProposedAt)));
+    return;
+  }
   const r = await ruleClaim({ title: d.title, terms: d.termsText, criterion: d.criterion });
   await db
     .update(schema.dares)
@@ -195,15 +204,29 @@ export async function completeExpire(dareId: string, now: Date = new Date()): Pr
 // ------------------------------------------------------------------------------------------------- the toll
 
 /**
- * The clean-resolution rate (PLANNING.md 8e): of the questions someone asked that ended, how many ended with an
- * answer. A quorum's vote to void and an arbitrator's finding that the terms could not decide it both count
- * against whoever wrote the terms. Expiry counts against nobody and is not in either number.
+ * The endings the clean-resolution rate reads: a vote (`quorum`, or `provisional` for a question with a guest in it,
+ * which its quorum decided here), the tiebreaker and the final score. Expiry, a removal and the final score's own
+ * void are in neither number (`cleanResolutionOf`).
+ */
+export const CLEAN_COUNTED_ENDINGS = ["quorum", "provisional", "arbitration", "feed"] as const;
+
+/**
+ * Only a question two or more people were in is counted (the first-contact round, 2026-10-04): with one person in,
+ * an ending says nothing about how the terms were written. "In" is a position that counts: acknowledged, not
+ * dismissed. Shared by the profile (`askedRecord`), the stats page and `cleanResolution`.
+ */
+export const TWO_OR_MORE_IN = sql`(select count(*) from dare_positions cp where cp.dare_id = ${schema.dares.id} and cp.acknowledged_at is not null and cp.dismissed_at is null) >= 2`;
+
+/**
+ * The clean-resolution rate (PLANNING.md 8e): of the questions someone asked that ended with two or more in, how
+ * many ended with an answer. A quorum's vote to void and an arbitrator's finding that the terms could not decide it
+ * both count against whoever wrote the terms. Expiry counts against nobody and is not in either number.
  */
 export async function cleanResolution(creatorId: string): Promise<{ ended: number; clean: number }> {
   const rows = await db
     .select({ outcome: schema.dares.resolvedOutcome, by: schema.dares.resolvedBy })
     .from(schema.dares)
-    .where(and(eq(schema.dares.creatorId, creatorId), isNotNull(schema.dares.resolvedAt), inArray(schema.dares.resolvedBy, ["quorum", "arbitration", "feed"])));
+    .where(and(eq(schema.dares.creatorId, creatorId), isNotNull(schema.dares.resolvedAt), inArray(schema.dares.resolvedBy, [...CLEAN_COUNTED_ENDINGS]), TWO_OR_MORE_IN));
   return cleanResolutionOf(rows);
 }
 
@@ -227,13 +250,25 @@ export const QUEUE_SCAN = 200;
 export { REMIND_AFTER_MS };
 
 /**
+ * How many votes a question's leading outcome has, counting only the people in it (the first-contact round,
+ * 2026-10-04): a vote from anyone else is set aside here as everywhere votes are read (`voterIsIn`).
+ */
+export const LEADING_VOTES = sql`(select max(x.c) from (select count(*) as c from ${schema.dareVotes} v where v.dare_id = ${schema.dares.id} and exists (select 1 from dare_positions vp where vp.dare_id = v.dare_id and vp.user_id = v.user_id and vp.acknowledged_at is not null and vp.dismissed_at is null) group by v.outcome) x)`;
+
+/** The leading outcome's count on one question, by the expression the decided queue reads. */
+export async function leadingVotesOn(dareId: string): Promise<number> {
+  const [row] = await db.select({ n: LEADING_VOTES }).from(schema.dares).where(eq(schema.dares.id, dareId)).limit(1);
+  return Number(row?.n ?? 0);
+}
+
+/**
  * The questions whose votes already decide them and whose resolution never landed. Decided means one outcome has
  * the threshold: a question with that many votes split between outcomes is not decided, and counting votes alone
  * put every split question in this list for good, holding a place against the ones the tick could finish (the
  * field round, 1.2's pattern).
  */
 export async function decidedUnresolved(mine: SQL | undefined, limit: number): Promise<Array<{ id: string }>> {
-  const leading = sql`(select max(x.c) from (select count(*) as c from ${schema.dareVotes} v where v.dare_id = ${schema.dares.id} group by v.outcome) x)`;
+  const leading = LEADING_VOTES;
   return db
     .select({ id: schema.dares.id })
     .from(schema.dares)

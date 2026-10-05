@@ -37,8 +37,8 @@ import { cn } from "@/lib/utils";
  */
 export type SheetPosition = "tucked" | "resting" | "raised" | "full";
 
-/** The sheet's measurements: the handle row, the resting part, everything laid out, and the two caps the screen allows. */
-export type SheetMeasure = { handle: number; rest: number; natural: number; raisedCap: number; fullCap: number };
+/** The sheet's measurements: the handle row, the resting part, everything laid out, the two caps the screen allows, and the padding under the content (24px and the home indicator's inset), which the strip at the foot covers. */
+export type SheetMeasure = { handle: number; rest: number; natural: number; raisedCap: number; fullCap: number; pad: number };
 
 /** The raised position shows at most this share of the screen; full reaches the status band less this much. */
 export const RAISED_SHARE = 0.72;
@@ -50,7 +50,8 @@ export const SNAP_PX = 24;
 export function visibleAt(position: SheetPosition, m: SheetMeasure): number {
   switch (position) {
     case "tucked":
-      return Math.min(m.handle, m.natural);
+      // The handle row stands above the strip at the foot, clear of the home indicator and the browser's toolbar, so a tucked sheet can always be brought back (the first-contact round: it sat under the strip, out of reach).
+      return Math.min(m.handle + m.pad, m.natural);
     case "resting":
       return Math.min(m.rest, m.natural);
     case "raised":
@@ -58,6 +59,16 @@ export function visibleAt(position: SheetPosition, m: SheetMeasure): number {
     case "full":
       return Math.min(m.natural, m.fullCap);
   }
+}
+
+/**
+ * The room the page leaves under its last element: whatever of the sheet stands at its position now, and 20px, so
+ * the last element scrolls clear of the sheet at every height and not only at rest (the first-contact round: a raised
+ * sheet covered "Stakes, for all 3"). Full stands as high as raised for this, since nothing scrolls clear of a sheet
+ * that reaches the top.
+ */
+export function roomFor(position: SheetPosition, m: SheetMeasure): number {
+  return visibleAt(position === "full" ? "raised" : position, m) + 20;
 }
 
 /** The positions a sheet has, lowest first: tucked and resting always; raised when there is more than the move; full when raised cannot show it all. Pure. */
@@ -68,15 +79,26 @@ export function positionsOf(m: SheetMeasure): SheetPosition[] {
   return out;
 }
 
-/** Where a drag that moved `moved` px (down positive) sends the sheet from `current`: one position by direction past the snap, else where it was. Pure. */
-export function nextPosition(current: SheetPosition, moved: number, available: SheetPosition[]): SheetPosition {
+/**
+ * Where a drag that moved `moved` px (down positive) sends the sheet from `current`: past the snap, one position in
+ * its direction at least, and as far as the finger took it, the position nearest where it let go (the first-contact
+ * round: a sheet that opens raised took two drags to tuck, and one long drag read as "it doesn't tuck"); else where it
+ * was. `yOf` is each position's offset; without it, one position. Pure.
+ */
+export function nextPosition(current: SheetPosition, moved: number, available: SheetPosition[], yOf?: (p: SheetPosition) => number): SheetPosition {
   const at = Math.max(0, available.indexOf(current));
-  if (moved < -SNAP_PX) return available[Math.min(at + 1, available.length - 1)] ?? current;
-  if (moved > SNAP_PX) return available[Math.max(at - 1, 0)] ?? current;
-  return available[at] ?? current;
+  if (Math.abs(moved) <= SNAP_PX) return available[at] ?? current;
+  const step = moved < 0 ? 1 : -1;
+  let to = Math.min(Math.max(at + step, 0), available.length - 1);
+  if (yOf) {
+    const released = yOf(available[at] ?? current) + moved;
+    const near = (i: number) => Math.abs(yOf(available[i] as SheetPosition) - released);
+    for (let i = to + step; i >= 0 && i < available.length && near(i) < near(to); i += step) to = i;
+  }
+  return available[to] ?? current;
 }
 
-const EMPTY: SheetMeasure = { handle: 0, rest: 0, natural: 0, raisedCap: 0, fullCap: 0 };
+const EMPTY: SheetMeasure = { handle: 0, rest: 0, natural: 0, raisedCap: 0, fullCap: 0, pad: 0 };
 
 export function PinnedSheet({
   label,
@@ -150,6 +172,7 @@ export function PinnedSheet({
       const moreH = more.current?.offsetHeight ?? 0;
       const natural = row.offsetHeight + all.offsetHeight + padB;
       const next: SheetMeasure = {
+        pad: padB,
         handle: row.offsetHeight,
         rest: natural - moreH,
         natural,
@@ -157,8 +180,8 @@ export function PinnedSheet({
         raisedCap: Math.round((document.getElementById("app") ?? root).clientHeight * RAISED_SHARE),
         fullCap: Math.max(0, el.offsetHeight),
       };
-      setM((was) => (was.handle === next.handle && was.rest === next.rest && was.natural === next.natural && was.raisedCap === next.raisedCap && was.fullCap === next.fullCap ? was : next));
-      if (!leaving && !inFlow) root.style.setProperty("--sheet-room", `${next.rest + 20}px`);
+      setM((was) => (was.handle === next.handle && was.rest === next.rest && was.natural === next.natural && was.raisedCap === next.raisedCap && was.fullCap === next.fullCap && was.pad === next.pad ? was : next));
+      if (!leaving && !inFlow) root.style.setProperty("--sheet-room", `${roomFor(positionRef.current, next)}px`);
     };
     const ro = new ResizeObserver(measure);
     ro.observe(el);
@@ -172,6 +195,12 @@ export function PinnedSheet({
     };
     // The host is a dependency: after a hard load the sheet moves into the layers host, and the nodes measured before that are gone.
   }, [leaving, inFlow, host, high, foot]);
+
+  // The room follows the sheet's settled position (the first-contact round): raised, the page's last element still scrolls clear of it.
+  useEffect(() => {
+    if (leaving || inFlow || m.natural === 0) return;
+    document.documentElement.style.setProperty("--sheet-room", `${roomFor(position, m)}px`);
+  }, [position, m, leaving, inFlow]);
 
   // A tap counts only on the control it began on (`taps.ts`): the sheet moves under a finger, and a control that
   // rises into the spot where the finger went down must not take its click.
@@ -246,7 +275,7 @@ export function PinnedSheet({
           pulled.current = 0;
           setDragging(false);
           const current = positionRef.current;
-          let to = nextPosition(current, moved, available);
+          let to = nextPosition(current, moved, available, yOf);
           // A tap on the grabber toggles resting and raised. With the pointer captured by this row the click never
           // reaches the button, so the tap is read here; the button's own click still serves the keyboard.
           if (wasDrag && Math.abs(moved) < 4 && onGrabber.current) {

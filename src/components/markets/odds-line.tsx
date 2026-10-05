@@ -3,6 +3,7 @@
 import { useId, useRef } from "react";
 import { hueStrokeVar, hueVar, type Hue } from "@/lib/ui/hue";
 import { band } from "./probability-entry";
+import { headerWords } from "@/lib/ui/entry-words";
 
 /** The thumb travels from 12px to the width minus 12px (3.13), so its centre sits over the segment it fills. */
 const thumbLeft = (v: number) => `calc(12px + (100% - 24px) * ${v / 100})`;
@@ -174,12 +175,12 @@ export function OddsLine({
 }
 
 /** The odds line's header row: the question on the left, the word for the number on the right. */
-export function OddsHeader({ value }: { value: number | null }) {
+export function OddsHeader({ value, touched = true }: { value: number | null; /** Before the first touch the thumb stands at 50% and the words ask for a slide (3.13 as amended 2026-10-04). */ touched?: boolean }) {
   return (
     <div className="flex items-baseline justify-between gap-3">
       <span className="text-body-strong text-ink">What are the odds?</span>
-      <span className="text-caption text-ink-2">
-        {value === null ? "Slide to answer" : band(value)}
+      <span className="text-caption text-ink-2" data-odds-words="">
+        {headerWords(touched, value, band)}
       </span>
     </div>
   );

@@ -24,20 +24,31 @@ export function isProvisional(d: Pick<DareRow, "lockedAt" | "onchainId">): boole
   return d.lockedAt !== null && d.onchainId === null;
 }
 
-/** Whose votes decide a provisional market: the account-holders in it, and its asker (who alone records the outcome when nobody else has an account). */
-export function provisionalVoters(d: Pick<DareRow, "creatorId">, positions: Array<Pick<PositionRow, "userId">>): string[] {
-  return Array.from(new Set([...positions.map((p) => p.userId).filter((x): x is string => x !== null), d.creatorId]));
+/**
+ * Whose votes decide a market: the account-holders in it (the first-contact round, 2026-10-04). The asker used to
+ * vote here whether or not they were in; only the people in a market call it now, everywhere.
+ */
+export function provisionalVoters(positions: Array<Pick<PositionRow, "userId">>): string[] {
+  return Array.from(new Set(positions.map((p) => p.userId).filter((x): x is string => x !== null)));
 }
 
 /** The contract's rule for the threshold, over the provisional quorum. */
 export const thresholdFor = (voters: number): number => Math.floor(voters / 2) + 1;
 
 /**
+ * Whether a market whose positions are all signed still locks here: the contract's threshold is a majority of
+ * everyone in the set, and with fewer people in than that the people in could never decide it on the chain.
+ */
+export function locksHere(peopleIn: number, setSize: number): boolean {
+  return peopleIn < thresholdFor(setSize);
+}
+
+/**
  * The lock, with no chain write: the moment is recorded, the room closes with the numbers, and the threshold is
  * the contract's rule over the account-holders who can vote. Idempotent.
  */
 export async function lockProvisional(d: Pick<DareRow, "id" | "creatorId">, positions: Array<Pick<PositionRow, "userId">>): Promise<{ threshold: number; voters: string[] }> {
-  const voters = provisionalVoters(d, positions);
+  const voters = provisionalVoters(positions);
   const threshold = thresholdFor(voters.length);
   const now = new Date();
   await db.update(schema.dares).set({ lockedAt: now, threshold }).where(and(eq(schema.dares.id, d.id), isNull(schema.dares.lockedAt)));

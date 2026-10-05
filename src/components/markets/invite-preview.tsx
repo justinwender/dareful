@@ -1,7 +1,8 @@
 "use client";
 
 import { attempt } from "@/lib/ui/attempt";
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { readJoinHandoff } from "@/lib/ui/join-handoff";
 import { Avatar } from "@/components/ledger/avatar";
 import { Chip } from "@/components/ledger/chip";
 import { MarkRefStamp } from "@/components/ledger/mark-stamp";
@@ -35,6 +36,19 @@ export type InvitePreviewData = {
 export function InvitePreview({ data, viewerName }: { data: InvitePreviewData; viewerName: string }) {
   const [problem, setProblem] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  // Signed in from this question's own join flow (3.17 as amended 2026-10-04): the person already chose to get in, so
+  // the join is theirs without a second tap, and the market's screen sends the entry they picked.
+  const joined = useRef(false);
+  useEffect(() => {
+    if (joined.current || data.finished) return;
+    const h = readJoinHandoff(Date.now());
+    if (!h || h.dareId !== data.dareId || (!h.entry && !h.keep)) return;
+    joined.current = true;
+    start(async () => {
+      const r = await attempt(() => joinMarketAction(data.dareId));
+      if (r && "error" in r) setProblem(r.error);
+    });
+  }, [data.dareId, data.finished]);
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-4 rounded-card border border-line bg-surface p-4">

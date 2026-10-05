@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "reach_card_at" timestamp with time zone;

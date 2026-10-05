@@ -3,6 +3,10 @@ import { JustHappened } from "@/components/home/just-happened";
 import { NeedsYou } from "@/components/home/needs-you";
 import { NowKnown } from "@/components/home/now-arriving";
 import { Running } from "@/components/home/running";
+import { ReachCard } from "@/components/home/reach-card";
+import { IdeasTile } from "@/components/ideas/ideas-tile";
+import { ideasOnNow } from "@/lib/ideas";
+import { owesReachCard } from "@/lib/ledger/reach";
 import { SignedOutBody } from "@/components/home/signed-out";
 import { rowData } from "@/components/on/game-row";
 import { currentUser } from "@/lib/auth/session";
@@ -29,7 +33,7 @@ export async function NowContent({ clock, showAll }: { clock: ViewerClock; showA
       </div>
     );
   const now = new Date(clock.now);
-  const home = await nowFor(user, { now, closes: (at) => closesLabel(at, now, clock.zone), zone: clock.zone });
+  const [home, owesCard] = await Promise.all([nowFor(user, { now, closes: (at) => closesLabel(at, now, clock.zone), zone: clock.zone }), owesReachCard(user.id)]);
   if (!home.hasAnything)
     return (
       <div data-now="empty" className="flex flex-1 flex-col">
@@ -40,11 +44,15 @@ export async function NowContent({ clock, showAll }: { clock: ViewerClock; showA
   return (
     <div data-now="full" className="flex flex-col gap-7 py-4">
       <NowKnown state="full" />
+      {/* The one card for an account the app cannot reach (the first-contact round, 2026-10-04; 4.7 as amended): above the sections, once. */}
+      {owesCard ? <ReachCard /> : null}
       <NeedsYou rows={home.needs} viewer={user} showAll={showAll} allHref="/?all=1" />
 
       <Running rows={home.running} viewerId={user.id} />
 
       <JustHappened rows={home.happened} viewerId={user.id} clock={clock} />
+      {/* Ideas, last, while fewer than three questions are running for this person (3.47, 3.14). */}
+      {ideasOnNow(home.running.length) ? <IdeasTile /> : null}
     </div>
   );
 }
