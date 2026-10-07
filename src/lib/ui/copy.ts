@@ -238,3 +238,22 @@ export function daysBetween(from: Date, to: Date, timeZone: string): number {
 export function dateLabel(at: Date, timeZone: string): string {
   return at.toLocaleDateString("en-US", { timeZone, weekday: "short", month: "short", day: "numeric" });
 }
+
+/**
+ * How many are in, for a count beside a clock: "3 of 6 in" while someone asked is still out, "4 in" once everyone
+ * named is in or when nobody was named (the field round, 2.7), and "nobody's in yet" before anyone is (3.14: never a
+ * zero). The second number only when it is real. Pure.
+ */
+export function inCount(people: number, groupSize: number): string {
+  if (people === 0) return "nobody’s in yet";
+  return groupSize > people ? `${people} of ${groupSize} in` : `${people} in`;
+}
+
+/**
+ * The set's size for that count: its account-holders, and the asker only once they are in, since nobody asks
+ * themselves (the second-pass round: a new game its asker had not entered read "0 of 1 in"). Pure.
+ */
+export function countedSetSize(memberIds: readonly string[], askerId: string, askerIn: boolean): number {
+  return memberIds.filter((id) => id !== askerId || askerIn).length;
+}
+

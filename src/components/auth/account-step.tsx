@@ -4,6 +4,7 @@ import { useId, useRef, useState } from "react";
 import { useConnectWithOtp, useSocialAccounts } from "@dynamic-labs/sdk-react-core";
 import type { ProviderEnum } from "@dynamic-labs/sdk-api-core";
 import { Button } from "@/components/ui/button";
+import { GoogleMark } from "@/components/auth/google-mark";
 import { FIELD_PROBLEM_CLASS, Problem } from "@/components/ledger/problem";
 import { codeOf, emailLooksRight, otpProblem, phoneDataOf } from "@/lib/auth/otp";
 import { googleOffered } from "@/lib/auth/google";
@@ -13,12 +14,14 @@ import { writeJoinHandoff, type JoinHandoff } from "@/lib/ui/join-handoff";
 const GOOGLE = "google" as ProviderEnum;
 
 /**
- * Keeping your calls in an account, in the entry sheet (the first-contact round, 2026-10-04; docs/design.md 3.17 as
- * amended): an email first, then Google, then a phone number, and a way out. After a guest's entry it is "Keep your
- * calls in an account" with "Not now"; at "Who's joining?" it is "Sign in" with "Back", and the entry picked goes in
- * under the account once it exists. The code is Dynamic's own one-time code; what happens after it (the session, a
- * new account's wallets and name) is the login's bootstrap, and the handoff carries the name typed and the entry
- * across it, in this tab only.
+ * Keeping your calls in an account, in the entry sheet (the first-contact rounds, 2026-10-04 and 2026-10-06;
+ * docs/design.md 3.17 as amended): "Continue with Google" first, the step's one chalk control with Google's mark at
+ * its left, since Google is one tap for most people and arrives with a verified email, which is what reminders need;
+ * then an email, then a phone number, and a way out. After a guest's entry it is "Keep your calls in an account" with
+ * "Not now"; from "I already have an account" it is "Sign in" with "Back", and the entry picked goes in under the
+ * account once it exists. The code is Dynamic's own one-time code; what happens after it (the session, a new
+ * account's wallets and name) is the login's bootstrap, and the handoff carries the name typed and the entry across
+ * it, in this tab only.
  */
 export function AccountStep({ mode, handoff, onClose }: { mode: "keep" | "sign-in"; /** What the sign-in carries across (`src/lib/ui/join-handoff.ts`), written before any code is asked for. */ handoff: Omit<JoinHandoff, "at">; onClose: () => void }) {
   const { connectWithEmail, connectWithSms, verifyOneTimePassword, retryOneTimePassword } = useConnectWithOtp();
@@ -28,6 +31,8 @@ export function AccountStep({ mode, handoff, onClose }: { mode: "keep" | "sign-i
   const [address, setAddress] = useState("");
   const [code, setCode] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
+  /** A Google sign-in that never opened: said under Google's button, never at the address field. */
+  const [googleProblem, setGoogleProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState<"send" | "check" | "again" | "google" | null>(null);
   const id = useId();
   const field = useRef<HTMLInputElement>(null);
@@ -88,6 +93,7 @@ export function AccountStep({ mode, handoff, onClose }: { mode: "keep" | "sign-i
 
   async function withGoogle() {
     setProblem(null);
+    setGoogleProblem(null);
     setBusy("google");
     remember();
     try {
@@ -95,7 +101,7 @@ export function AccountStep({ mode, handoff, onClose }: { mode: "keep" | "sign-i
       await signInWithSocialAccount(GOOGLE, { redirectUrl: window.location.href });
     } catch (err) {
       console.error("Google sign-in failed to start", err instanceof Error ? err.message : err);
-      setProblem("Google didn’t open. Try again, or use an email.");
+      setGoogleProblem("Google didn’t open. Try again, or use an email.");
       setBusy(null);
     }
   }
@@ -138,6 +144,15 @@ export function AccountStep({ mode, handoff, onClose }: { mode: "keep" | "sign-i
   return (
     <div className="flex flex-col gap-3" data-account-step="address">
       <h2 className="text-body-strong text-ink">{heading}</h2>
+      {google ? (
+        <>
+          <Button variant="primary" onClick={() => void withGoogle()} loading={busy === "google"} disabled={busy !== null && busy !== "google"} data-account-google="">
+            <GoogleMark />
+            Continue with Google
+          </Button>
+          <Problem id={`${problemId}-google`} message={googleProblem} />
+        </>
+      ) : null}
       <label className="flex flex-col gap-1">
         <span className="text-label text-ink-3">{via === "email" ? "Email" : "Phone number"}</span>
         <input
@@ -155,14 +170,10 @@ export function AccountStep({ mode, handoff, onClose }: { mode: "keep" | "sign-i
         />
       </label>
       <Problem id={problemId} message={problem} />
-      <Button variant="primary" onClick={() => void send()} loading={busy === "send"} disabled={busy !== null && busy !== "send"} data-account-continue="">
+      {/* With Google offered it is the step's chalk, and the address's Continue is a secondary; without it, the address leads. */}
+      <Button variant={google ? "secondary" : "primary"} onClick={() => void send()} loading={busy === "send"} disabled={busy !== null && busy !== "send"} data-account-continue="">
         Continue
       </Button>
-      {google ? (
-        <Button variant="secondary" onClick={() => void withGoogle()} loading={busy === "google"} disabled={busy !== null && busy !== "google"} data-account-google="">
-          Continue with Google
-        </Button>
-      ) : null}
       <Button variant="secondary" onClick={() => (setVia(via === "email" ? "phone" : "email"), setAddress(""), setProblem(null))} disabled={busy !== null} data-account-switch="">
         {via === "email" ? "Use a phone number" : "Use an email"}
       </Button>

@@ -14,7 +14,7 @@ import { PinnedSheet } from "@/components/ui/pinned-sheet";
 import { attempt } from "@/lib/ui/attempt";
 import { AccountStep } from "@/components/auth/account-step";
 import { clearJoinHandoff, readJoinHandoff, resumeFrom } from "@/lib/ui/join-handoff";
-import { opensRaised, UNTOUCHED_PERCENT } from "@/lib/ui/entry-words";
+import { GUEST_NAME_MAX, guestNameOf, keepOfferedHere, markKeepOffered, offersKeep, opensRaised, UNTOUCHED_PERCENT } from "@/lib/ui/entry-words";
 import { discardDraftAction, enterAsGhostAction, enterMarketAction, openMarketAction, openWithoutEntryAction, forgetGhostAction } from "@/lib/actions/markets";
 import { isIdentifier } from "@/lib/auth/login";
 import { daresTypes } from "@/lib/chain/typed-data";
@@ -84,6 +84,8 @@ export function MarketStage(props: {
   signedInAs?: string | null;
   /** A blind market (3.31): one line above the primary says what is about to happen before anyone commits. */
   blind?: boolean;
+  /** The viewer asked it: until they are in, the sheet rests so the share row is on screen (the second-pass round). */
+  asker?: boolean;
   picture: StagePicture | null;
   mark: string | null;
   /** A number question: what the number counts, and on a signed margin its shift and the two sides. Absent on a yes-or-no question. */
@@ -157,7 +159,7 @@ export function MarketStage(props: {
   );
   // A pick-one sheet opens raised (3.30); so does a first entry with the thumb at 50% (3.13 as amended 2026-10-04), since
   // "I'm in at 50%" is the move and is under the line at rest; a number raises on the first touch.
-  const [raised, setRaised] = useState(() => opensRaised({ mine, number: numberUnit !== null, draft: state === "draft" }));
+  const [raised, setRaised] = useState(() => opensRaised({ mine, number: numberUnit !== null, draft: state === "draft", asker: props.asker === true }));
   // A row on Now that says Enter lands here with the sheet raised (the field round, 1.5): the address asks for it, and only while entering is the move.
   const hash = useHash();
   useEffect(() => {
@@ -294,7 +296,7 @@ export function MarketStage(props: {
       if (!ghost.known && !ghostName.trim()) return setProblem("Say what your friends call you.");
       if (!ghost.known && isIdentifier(ghostName)) return setProblem("Say what your friends call you.");
       setStep("sending");
-      const r = await attempt(() => enterAsGhostAction(dareId, position, { name: ghost.known ? "" : ghostName.trim() }));
+      const r = await attempt(() => enterAsGhostAction(dareId, position, { name: ghost.known ? "" : guestNameOf(ghostName) }));
       if ("error" in r) {
         setProblem(`Your number didn’t send. ${r.error}`);
         setStep("idle");
@@ -303,8 +305,10 @@ export function MarketStage(props: {
       setJustIn({ percent: value ?? 0, ...(numberUnit ? { number: signedValue.toString() } : {}), ...(pickOne ? { pick: Number(signedValue) } : {}), stake: stakeUnits, stakeWords: stakeWords(stakeUnits) });
       setChanging(false);
       setStep("idle");
-      // Saved first; then the sheet's next step offers to keep the call in an account (3.17 as amended), once, on the way in.
-      if (!ghost.known) {
+      // Saved first; then the sheet's next step offers to keep the call in an account (3.17 as amended): after a new
+      // guest's first entry, and for a guest this phone remembers until it has come once here (the second-pass round).
+      if (offersKeep({ remembered: ghost.known !== null, offeredHere: keepOfferedHere() })) {
+        markKeepOffered();
         setWhoStep(false);
         setAccountStep("keep");
         setRaised(true);
@@ -571,6 +575,18 @@ export function MarketStage(props: {
   if (state === "locked") return stage;
 
   const entering = sheetPresent(reading, changing);
+  /** The who's-joining step (3.17): the consent line sits above the name there, out of the action group (the second-pass round). */
+  const joining = ghost !== null && !ghost.known && whoStep;
+  // The consent every entry gives (3.35, 4.9): one line in ink after the 16px ticket glyph, above the actions that give it, never between them.
+  const consentLine = props.consent ? (
+    <p className="flex items-center gap-2 text-body-sm text-ink" data-consent-line="">
+      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+        <path d="M4 9a2 2 0 0 0 2-2V6h12v1a2 2 0 0 0 2 2v6a2 2 0 0 0-2 2v1H6v-1a2 2 0 0 0-2-2z" />
+        <path d="M12 7v10" strokeDasharray="1.5 2.5" />
+      </svg>
+      <span>{props.consent}</span>
+    </p>
+  ) : null;
   /** The answer picked on a pick-one sheet, for the lowered bar (3.30). */
   const pickedAnswer: PickOneAnswer | null = pickOne && pick !== null ? (pickOne.answers.find((a) => a.index === pick) ?? null) : null;
   const foot = (
@@ -586,16 +602,7 @@ export function MarketStage(props: {
               <span>You see everyone’s once you’re in. Yours is final then.</span>
             </p>
           ) : null}
-          {props.consent ? (
-            // The consent every entry gives (3.35, 4.9): one line in ink after the 16px ticket glyph, directly above the button that gives it.
-            <p className="flex items-center gap-2 text-body-sm text-ink" data-consent-line="">
-              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
-                <path d="M4 9a2 2 0 0 0 2-2V6h12v1a2 2 0 0 0 2 2v6a2 2 0 0 0-2 2v1H6v-1a2 2 0 0 0-2-2z" />
-                <path d="M12 7v10" strokeDasharray="1.5 2.5" />
-              </svg>
-              <span>{props.consent}</span>
-            </p>
-          ) : null}
+          {joining ? null : consentLine}
           {problem && !problem.startsWith("Put") ? (
             <Button
               variant="tertiary"
@@ -641,8 +648,10 @@ export function MarketStage(props: {
               onClick={submit}
               loading={step !== "idle"}
               // On the who's-joining step the chalk waits for the name alone, and for the number too only when a name was picked (3.17, amended).
-              disabled={!picked || blocked || (whoStep && !ghostName.trim())}
+              disabled={!picked || blocked || (whoStep && !guestNameOf(ghostName))}
               data-join-primary={whoStep ? "who" : undefined}
+              // A long name wraps rather than being cut: the button names exactly what is saved.
+              className={whoStep ? "h-auto min-h-14 whitespace-normal break-words py-3 text-center" : undefined}
             >
               {!picked
                 ? pickOne
@@ -654,8 +663,8 @@ export function MarketStage(props: {
                       : "Slide to pick your odds"
                 : ghost && !ghost.known
                   ? whoStep
-                    ? ghostName.trim()
-                      ? `Join as ${ghostName.trim().split(/\s+/)[0]}`
+                    ? guestNameOf(ghostName)
+                      ? `Join as ${guestNameOf(ghostName)}`
                       : "Join"
                     : `I’m in${pickOne || teams ? ":" : " at"} ${pickWords(pick)}`
                   : state === "draft"
@@ -673,6 +682,13 @@ export function MarketStage(props: {
               </button>
             </p>
           ) : null}
+          {ghost && (whoStep || ghost.known) && !reading && !changing && state === "open" ? (
+            // Signing in, as a quiet text button under the main action (the second-pass round, the owner's screenshot): it
+            // never reads as the step after typing a name. A phone that remembers a guest offers it too.
+            <Button variant="tertiary" className="self-center" onClick={() => setAccountStep("sign-in")} disabled={step !== "idle"} data-join-sign-in="">
+              I already have an account
+            </Button>
+          ) : null}
         </>
   );
   /** The entry as picked, for a sign-in that sends it once the account exists (`src/lib/ui/join-handoff.ts`). */
@@ -688,7 +704,7 @@ export function MarketStage(props: {
       low={
         <AccountStep
           mode={accountStep}
-          handoff={accountStep === "keep" ? { dareId, keep: true, ...(ghostName.trim() ? { name: ghostName.trim() } : {}) } : { dareId, ...(ghostName.trim() && !isIdentifier(ghostName) ? { name: ghostName.trim() } : {}), ...(pickedEntry() ? { entry: pickedEntry() } : {}) }}
+          handoff={accountStep === "keep" ? { dareId, keep: true, ...((ghost.known?.name ?? guestNameOf(ghostName)) ? { name: ghost.known?.name ?? guestNameOf(ghostName) } : {}) } : { dareId, ...(guestNameOf(ghostName) && !isIdentifier(ghostName) ? { name: guestNameOf(ghostName) } : {}), ...(pickedEntry() ? { entry: pickedEntry() } : {}) }}
           onClose={() => {
             // Not now, or back to the name: nothing is carried across a sign-in that is not happening.
             clearJoinHandoff();
@@ -841,26 +857,24 @@ export function MarketStage(props: {
             />
           ) : null}
           {ghost && !ghost.known && whoStep ? (
-            // Who's joining? (3.17, frame 3, as amended 2026-10-04): its own step after the number, the entry's summary on the right; a name and nothing else, with "Sign in" right below it, as plain to see as the field.
+            // Who's joining? (3.17, frame 3, as amended 2026-10-04 and 2026-10-06): its own step after the number, the entry's summary on the right; the consent line above the name, out of the actions; then "Join as" with the whole name under the field and "I already have an account" under that, in the sheet's foot.
             <div className="flex flex-col gap-3" data-ghost-fields="">
               <div className="flex items-baseline justify-between gap-3">
                 <h2 className="text-body-strong text-ink">Who’s joining?</h2>
                 <span className="text-caption text-ink-2">{pickWords(pick)}</span>
               </div>
+              {consentLine}
               <label className="flex flex-col gap-1">
                 <span className="text-label text-ink-3">Your name</span>
                 <input
                   value={ghostName}
                   onChange={(e) => setGhostName(e.target.value)}
                   autoComplete="given-name"
-                  maxLength={40}
+                  maxLength={GUEST_NAME_MAX}
                   aria-label="Your name"
                   className="h-12 w-full rounded-button border border-line bg-ground px-4 text-body text-ink"
                 />
               </label>
-              <Button variant="secondary" onClick={() => setAccountStep("sign-in")} data-join-sign-in="">
-                Sign in
-              </Button>
             </div>
           ) : null}
           {unsigned ? <p className="text-body-sm text-ink-2">This was you before you signed in. Keep it, or change it.</p> : null}

@@ -12,7 +12,7 @@ import type { Completions } from "@/lib/chain/reconcile";
 import { completeClose } from "./closes";
 import { completeLock, marketById, reconcileFromIndexer } from "./markets";
 import { completeConfirm } from "./proposals";
-import { ensureDenomOnchain, ensureGroupOnchain } from "./registry";
+import { ensureDenomOnchain, ensureGroupOnchain, mirrorRegistration } from "./registry";
 import { completeExpire } from "./settle";
 
 const str = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
@@ -57,8 +57,12 @@ export const completions: Completions = {
   register: async (subject) => {
     const groupId = str(subject.groupId);
     const denomId = str(subject.denomId);
-    if (denomId) await ensureDenomOnchain(denomId);
-    else if (groupId) await ensureGroupOnchain(groupId);
+    // The people the registration was for (the second-pass round). A write the earlier build left in flight names
+    // the set alone: its own transaction carries its members, so finishing it registers nobody new here.
+    const userIds = Array.isArray(subject.userIds) ? subject.userIds.filter((x): x is string => typeof x === "string") : [];
+    if (userIds.length === 0) return mirrorRegistration({ groupId, denomId });
+    if (denomId) await ensureDenomOnchain(denomId, userIds);
+    else if (groupId) await ensureGroupOnchain(groupId, userIds);
     return true;
   },
   other: async () => true,

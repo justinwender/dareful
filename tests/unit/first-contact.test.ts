@@ -1,18 +1,19 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { KEYBOARD_SHARE, takesKeyboard, typingFromViewport, typingStarts } from "@/lib/ui/viewport";
 import { needFromMarket } from "@/lib/ledger/home";
-import { locksHere, provisionalVoters } from "@/lib/ledger/provisional";
+import { chainCarries, provisionalVoters, snapshotIsThePeopleIn } from "@/lib/ledger/provisional";
 import { inTheSnapshot } from "@/lib/ledger/markets";
 import { membershipKey, oneRowPerPeople, setLabel } from "@/lib/ledger/groups";
 import { HANDOFF_MS, parseHandoff, resumeFrom } from "@/lib/ui/join-handoff";
-import { SLIDE_PROMPT, UNTOUCHED_PERCENT, headerWords, opensRaised } from "@/lib/ui/entry-words";
+import { GUEST_NAME_MAX, SLIDE_PROMPT, UNTOUCHED_PERCENT, guestNameOf, headerWords, offersKeep, opensRaised } from "@/lib/ui/entry-words";
 import { codeOf, emailLooksRight, otpProblem, phoneDataOf } from "@/lib/auth/otp";
 import { googleOffered, withoutOauthParams } from "@/lib/auth/google";
 import { reachableBy } from "@/lib/auth/reach";
 import { nextPosition, roomFor, SNAP_PX, visibleAt, type SheetMeasure } from "@/components/ui/pinned-sheet";
-import { clampProposal, dateWords, deadlineMismatch, decideByDate, decideByMoment, DECIDE_BY_SPANS, fromProposal, LATEST_DAYS, shortDateWords, swapDateWords, termsDeadlines } from "@/lib/ledger/decide-by";
+import { addYears, clampProposal, datePhrase, dateWords, deadlineMismatch, decideByDate, decideByMoment, DECIDE_BY_SPANS, fromProposal, latestDate, longDateWords, pastTheLatest, shortDateWords, swapDateWords, termsDeadlines } from "@/lib/ledger/decide-by";
 import { kindForQuestion } from "@/lib/ui/question-shape";
 import { IDEAS, IDEA_GROUPS, blankOf, ideaById, ideaKindWords, ideasOnNow } from "@/lib/ideas";
 import { seenAlready, tipPlacement, tipsFor, tipTarget, TIPS_AT_MOST } from "@/lib/ui/tips";
@@ -26,6 +27,9 @@ import { answerIndexOf, clipWords, Triage } from "@/lib/ai/settler";
 import { HAS_DATE } from "@/lib/ai/markets";
 import { browserSaysOffline, browserWentOffline, offlineSettled, reachable, PROBE_PATH } from "@/lib/ui/connection";
 import { emailOfDynamicUser } from "@/lib/notify/channels";
+import { countedSetSize, inCount } from "@/lib/ui/copy";
+import { fitField, fittedHeight, sizesItself } from "@/lib/ui/fit-content";
+import { cardMeta } from "@/lib/sports/cards";
 import { suggestedNameOf } from "@/lib/auth/jwt";
 import { loginMethod } from "@/lib/auth/login";
 import { JwtVerifiedCredentialFormatEnum, JwtVerifiedCredentialFromJSON, JwtVerifiedCredentialToJSON, ProviderEnum, type JwtVerifiedCredential } from "@dynamic-labs/sdk-api-core";
@@ -65,13 +69,21 @@ test("the root reads the keyboard from one listener, mounted once beside the pre
   assert.ok(component.includes('vv?.addEventListener("resize", onViewport)'), "and the visible part of the screen moving");
 });
 
-test("a question locks here when the people in could never reach the chain's majority of the whole set", () => {
-  assert.equal(locksHere(2, 5), true, "the Lightning question: two in, a set of five, and the chain would want three");
-  assert.equal(locksHere(2, 4), true);
-  assert.equal(locksHere(3, 5), false, "three of five can reach the chain's three");
-  assert.equal(locksHere(3, 4), false);
-  assert.equal(locksHere(2, 2), false, "everyone in");
-  assert.equal(locksHere(2, 3), false, "two of three is the chain's majority");
+test("the chain keeps a question only when it would ask exactly the people in it, the asker counted as the contract counts them", () => {
+  assert.equal(chainCarries({ registered: [], inIt: ["0xa", "0xb"], asker: "0xa" }), true, "a set nobody has registered yet: the chain would ask the two people in, and nobody else");
+  assert.equal(chainCarries({ registered: ["0xa", "0xb"], inIt: ["0xa", "0xb"], asker: "0xa" }), true, "everyone it has registered is in");
+  assert.equal(chainCarries({ registered: ["0xa", "0xb", "0xc"], inIt: ["0xa", "0xb"], asker: "0xa" }), false, "someone registered in the set who never got in would be asked: decided here");
+  assert.equal(chainCarries({ registered: [], inIt: ["0xb", "0xc"], asker: "0xa" }), false, "the asker shared it and never got in, and the contract registers the asker: decided here");
+  assert.equal(chainCarries({ registered: ["0xab"], inIt: ["0xAb", "0xcd"], asker: "0xCD" }), true, "addresses compared whatever their case");
+});
+
+test("a lock's completion says loudly when the chain's voters are not the people in", () => {
+  assert.equal(snapshotIsThePeopleIn(["0xA", "0xb"], ["0xa", "0xB"]), true, "the same two people, whatever the case");
+  assert.equal(snapshotIsThePeopleIn(["0xa", "0xb", "0xc"], ["0xa", "0xb"]), false, "someone registered between the check and the lock is in the snapshot");
+  assert.equal(snapshotIsThePeopleIn(["0xa"], ["0xa", "0xb"]), false, "someone in is missing from it");
+  const markets = readFileSync("src/lib/ledger/markets.ts", "utf8");
+  const completion = markets.slice(markets.indexOf("export async function completeLock("), markets.indexOf("export async function quorumOf("));
+  assert.ok(completion.includes('if (!snapshotIsThePeopleIn(onchain.quorum, people.map((p) => p.wallet))) console.error("a lock\'s voters on the chain are not the people in"'), "the completion compares what the chain snapshotted with the people in, and logs when they differ");
 });
 
 test("only the people in a question vote: the asker who never got in is no voter, and a guest is none until they sign up", () => {
@@ -173,12 +185,23 @@ test("Google's return is finished at the root and its parameters come off the ad
   assert.ok(providers.includes("<OauthReturn />"), "the return is handled at the root");
 });
 
-test("a guest gives a name and nothing else, with Sign in right below it, and a saved guest entry leads to keeping it in an account", () => {
+test("a guest gives a name and nothing else, saved and said whole; Join as sits under it with I already have an account below and the consent line above, and an entry leads to keeping it in an account, once for a remembered guest", () => {
+  assert.equal(guestNameOf("  Justin incognito  "), "Justin incognito", "trimmed, and the whole of it: the owner's screenshot joined Justin incognito as Justin");
+  assert.equal(guestNameOf("x".repeat(GUEST_NAME_MAX + 5)), "x".repeat(GUEST_NAME_MAX), "at most forty characters, as the server keeps");
+  assert.equal(offersKeep({ remembered: false, offeredHere: true }), true, "a new guest's first entry: always");
+  assert.equal(offersKeep({ remembered: true, offeredHere: false }), true, "a guest this phone remembers: until it has come once here");
+  assert.equal(offersKeep({ remembered: true, offeredHere: true }), false, "and then not again");
   const stage = readFileSync("src/components/markets/market-stage.tsx", "utf8");
   assert.ok(!/Your phone number|Is one of these you\?|suggestGhostNamesAction/.test(stage), "no number and no suggested names for a guest");
-  assert.ok(stage.includes("enterAsGhostAction(dareId, position, { name: ghost.known ? \"\" : ghostName.trim() })"), "the entry sends a name and nothing else");
-  assert.ok(/<Button variant="secondary" onClick=\{\(\) => setAccountStep\("sign-in"\)\} data-join-sign-in="">\s*Sign in\s*<\/Button>/.test(stage), "Sign in is a full-width control right below the name");
-  assert.ok(stage.includes('setAccountStep("keep");'), "once saved, the sheet's next step is keeping the call in an account");
+  assert.ok(stage.includes('enterAsGhostAction(dareId, position, { name: ghost.known ? "" : guestNameOf(ghostName) })'), "the entry sends the name the button says, and nothing else");
+  assert.ok(stage.includes("? `Join as ${guestNameOf(ghostName)}`"), "the button names exactly what is saved");
+  assert.ok(stage.includes('className={whoStep ? "h-auto min-h-14 whitespace-normal break-words py-3 text-center" : undefined}'), "a long name wraps rather than being cut");
+  assert.ok(/<Button variant="tertiary" className="self-center" onClick=\{\(\) => setAccountStep\("sign-in"\)\} disabled=\{step !== "idle"\} data-join-sign-in="">\s*I already have an account\s*<\/Button>/.test(stage), "signing in is a quiet text button");
+  assert.ok(stage.includes('{ghost && (whoStep || ghost.known) && !reading && !changing && state === "open" ? ('), "on the join step, and for a phone that remembers the guest");
+  assert.ok(stage.indexOf("data-join-primary") < stage.indexOf("I already have an account"), "under the main action, never above it");
+  assert.ok(stage.includes("{joining ? null : consentLine}") && /\{consentLine\}\s*<label className="flex flex-col gap-1">\s*<span className="text-label text-ink-3">Your name<\/span>/.test(stage), "the consent line sits above the name on the join step, out of the actions");
+  assert.ok(stage.includes("if (offersKeep({ remembered: ghost.known !== null, offeredHere: keepOfferedHere() })) {") && stage.includes('setAccountStep("keep");'), "once saved, the sheet's next step is keeping the call in an account, by that rule");
+  assert.ok(readFileSync("src/lib/ledger/ghost-entry.ts", "utf8").includes("const name = guestNameOf(who.name);"), "the server saves the same name");
   const action = readFileSync("src/lib/actions/markets.ts", "utf8");
   assert.ok(action.includes("who: { name: who.data.name, phoneHash: null, memberClaimId: null }"), "the server reads no number from a guest");
   const boot = readFileSync("src/components/auth/wallet-bootstrap.tsx", "utf8");
@@ -209,13 +232,17 @@ test("a tucked sheet keeps its handle above the strip over the home indicator, a
 const NY = "America/New_York";
 const sunday = new Date("2026-10-04T23:30:00Z"); // 7:30pm Sunday, October 4, in New York
 
-test("decided by Tonight, This week, This month or a date: the write-up's date is moved into range, never refused, and the chips start from it", () => {
+test("decided by Tonight, This week, This month or a date: a date already past is today, one past the furthest a question can run is never moved to fit, and the chips start from the write-up's date", () => {
   assert.deepEqual(DECIDE_BY_SPANS.map((s) => s.label), ["Tonight", "This week", "This month"]);
   assert.equal(clampProposal("2026-10-13", sunday, NY), "2026-10-13");
-  assert.equal(clampProposal("2031-06-01", sunday, NY), "2029-10-03", "past three years is moved to the furthest the app accepts, never a failed write-up");
+  assert.equal(clampProposal("2031-06-01", sunday, NY), null, "past the furthest a question can run: no date to start on, never one moved to fit");
   assert.equal(clampProposal("2026-09-01", sunday, NY), "2026-10-04", "a date already past is today");
   assert.equal(clampProposal("Oct 13", sunday, NY), null, "not a date is no proposal");
-  assert.ok(LATEST_DAYS >= 3 * 365);
+  assert.equal(latestDate(sunday, NY), "2029-10-04", "three years on by the calendar, as a person and a model read it, not 1,095 days");
+  assert.equal(addYears("2028-02-29", 1), "2029-02-28", "a leap day falls back in a year without one");
+  assert.deepEqual(pastTheLatest("2056-10-04", sunday, NY), { knownBy: "2056-10-04", latest: "2029-10-04" });
+  assert.equal(pastTheLatest("2029-10-04", sunday, NY), null, "the furthest date itself fits");
+  assert.equal(longDateWords("2056-10-06"), "October 6, 2056", "a date years away says its year");
   assert.deepEqual(fromProposal("2026-10-13", sunday, NY), { key: "date", date: "2026-10-13" });
   assert.deepEqual(fromProposal("2026-10-04", sunday, NY), { key: "tonight" }, "today's date is Tonight");
   assert.deepEqual(fromProposal(null, sunday, NY), { key: "week" });
@@ -228,7 +255,7 @@ test("decided by Tonight, This week, This month or a date: the write-up's date i
 
 test("the terms and the decide-by never disagree: a deadline the terms name must be the decide-by date, and the chips change the terms' date with them", () => {
   const terms = "Yes if the package is on the porch by October 13. No if it isn't.";
-  assert.deepEqual(termsDeadlines(terms, sunday, NY), [{ said: "October 13", date: "2026-10-13" }]);
+  assert.deepEqual(termsDeadlines(terms, sunday, NY), [{ said: "October 13", date: "2026-10-13", yearless: true }]);
   assert.equal(deadlineMismatch(terms, "2026-10-13", sunday, NY), null);
   assert.equal(deadlineMismatch(terms, "2026-11-02", sunday, NY), "October 13", "Zach's question: Oct 13 in the terms and Nov 2 on the chip");
   assert.equal(deadlineMismatch("Counts if it snows before Thanksgiving.", "2026-11-26", sunday, NY), null, "no month and day, nothing to compare");
@@ -432,7 +459,9 @@ test("the entry sheet opens raised for a first entry, so the 50% it would send i
   assert.equal(opensRaised({ mine: null, number: false, draft: true }), false, "a draft rests: its terms stay on screen and its two moves are on the page");
   assert.equal(opensRaised({ mine: { unsigned: true }, number: false, draft: false }), true, "an entry waiting to be kept");
   assert.equal(opensRaised({ mine: {}, number: false, draft: false }), false, "once in, nothing raises it");
-  assert.ok(readFileSync("src/components/markets/market-stage.tsx", "utf8").includes('useState(() => opensRaised({ mine, number: numberUnit !== null, draft: state === "draft" }))'), "the sheet reads the rule");
+  assert.equal(opensRaised({ mine: null, number: false, draft: false, asker: true }), false, "the asker's own question rests until they are in, so its share row is on screen (the second-pass round)");
+  assert.ok(readFileSync("src/components/markets/market-stage.tsx", "utf8").includes('useState(() => opensRaised({ mine, number: numberUnit !== null, draft: state === "draft", asker: props.asker === true }))'), "the sheet reads the rule");
+  assert.ok(readFileSync("src/app/m/[id]/page.tsx", "utf8").includes("asker={d.creatorId === me.id}"), "and the page says who asked");
 });
 
 test("a pick-one argument's ruling names one of its answers by its words, and nothing it did not list", () => {
@@ -471,3 +500,100 @@ test("a triage with a long criterion or a fourth one is clipped, never thrown aw
   assert.equal(clipWords("short", 110), "short");
   assert.equal(clipWords("one two three four", 9), "one two");
 });
+
+test("Continue with Google leads the account step as its one chalk, with Google's own mark unmodified, then an email, a phone number and the way out; on Now's card Google leads too", () => {
+  const step = readFileSync("src/components/auth/account-step.tsx", "utf8");
+  const at = (needle: string) => step.indexOf(needle);
+  assert.ok(at("data-account-google") > 0 && at("data-account-google") < at("{via === \"email\" ? \"Email\" : \"Phone number\"}") && at("{via === \"email\" ? \"Email\" : \"Phone number\"}") < at("data-account-switch") && at("data-account-switch") < at("data-account-close"), "Google, then the address, then the phone, then the way out");
+  assert.ok(/<Button variant="primary" onClick=\{\(\) => void withGoogle\(\)\}[^>]*data-account-google="">\s*<GoogleMark \/>\s*Continue with Google/.test(step), "Google is the step's chalk, its mark at the left");
+  assert.ok(step.includes('<Button variant={google ? "secondary" : "primary"} onClick={() => void send()}'), "the address's Continue gives way to it, and leads only without it");
+  const card = readFileSync("src/components/home/reach-card.tsx", "utf8");
+  assert.ok(card.indexOf("data-reach-google") > 0 && card.indexOf("data-reach-google") < card.indexOf("data-reach-email") && /<GoogleMark \/>\s*Link Google/.test(card), "the card: Google first, with its mark, a secondary under Now's one chalk");
+  // Google's mark as Google's own configurator draws it, read from developers.google.com/identity/branding-guidelines on 2026-10-06: its colours and paths, hashed there and here.
+  const svg = readFileSync("public/brand/google-g.svg", "utf8");
+  const paths = [...svg.matchAll(/<path fill="([^"]+)" d="([^"]+)"\/>/g)].map((m) => `${m[1]}|${m[2]}`).join("\n");
+  assert.equal(createHash("sha256").update(paths).digest("hex"), "7b27de299a22bc1f085e9b332071ff0b141778a52e01053fd19035c5c8669ce1", "the mark is unmodified");
+  const mark = readFileSync("src/components/auth/google-mark.tsx", "utf8");
+  assert.ok(mark.includes('src="/brand/google-g.svg"') && mark.includes("width={20} height={20}"), "at Google's 20px");
+});
+
+test("Whoever I send it to stands first in who's in, above every set, and is where who's in starts, in asking and in starting a game", () => {
+  const who = readFileSync("src/components/markets/who-step.tsx", "utf8");
+  assert.ok(who.indexOf("Whoever I send it to</span>") > 0 && who.indexOf("Whoever I send it to</span>") < who.indexOf("{sets.map((s) => {"), "above every set");
+  assert.ok(readFileSync("src/components/markets/ask-form.tsx", "utf8").includes('const [who, setWho] = useState<Who>({ kind: "link" });'), "asking starts there");
+  assert.ok(readFileSync("src/components/on/start-game.tsx", "utf8").includes('useState<Who>(mode.kind === "add" ? { kind: "set", groupId: mode.groupId } : { kind: "link" })'), "and so does starting a game; adding one keeps the game's own people");
+});
+
+test("a question too far off to decide says so at Decided with its nearer version, picks no date for the asker and sends nothing until they choose", () => {
+  const form = readFileSync("src/components/markets/ask-form.tsx", "utf8");
+  assert.ok(form.includes("message={`That can’t be known until ${longDateWords(tooFar.knownBy)}, and the furthest a question can run is ${longDateWords(tooFar.latest)}.`}"), "said in plain words, at the field it is about");
+  assert.ok(/onClick=\{askNearer\} data-ask-nearer="">\s*Ask this instead\s*<\/Button>/.test(form), "one nearer version, taken whole with a tap");
+  assert.ok(form.includes("<Chip size={36} selected={!tooFar && decide.key === w.key} choice>") && form.includes("<Chip size={36} selected={!tooFar && decide.key === \"date\"} choice>"), "no date picked for the asker");
+  assert.ok(form.includes('if (tooFar && pace !== "argument") return setProblem("Pick when it’s decided.");'), "nothing sent until they choose");
+  assert.ok(form.includes("max={latestDate(new Date(), askerZone())}"), "the phone's date picker stops at the same furthest date");
+});
+
+test("the ask flow's fields grow with what they hold where the browser will not, and a reading wraps rather than being cut", () => {
+  assert.equal(fittedHeight({ scrollHeight: 112, offsetHeight: 84, clientHeight: 82 }), 114, "the content, its padding and the two borders");
+  const css = (globalThis as { CSS?: unknown }).CSS;
+  try {
+    (globalThis as { CSS?: unknown }).CSS = { supports: () => false };
+    assert.equal(sizesItself(), false, "Safari 26.0: no field-sizing");
+    const field = { style: { height: "82px" }, scrollHeight: 112, offsetHeight: 84, clientHeight: 82 };
+    fitField(field);
+    assert.equal(field.style.height, "114px", "so the height is set from the content");
+    (globalThis as { CSS?: unknown }).CSS = { supports: (p: string, v: string) => p === "field-sizing" && v === "content" };
+    assert.equal(sizesItself(), true, "Safari 27: the browser does it");
+    const native = { style: { height: "" }, scrollHeight: 112, offsetHeight: 84, clientHeight: 82 };
+    fitField(native);
+    assert.equal(native.style.height, "", "and nothing here touches it");
+  } finally {
+    (globalThis as { CSS?: unknown }).CSS = css;
+  }
+  const form = readFileSync("src/components/markets/ask-form.tsx", "utf8");
+  for (const [ref, value] of [["lineField", "line"], ["titleField", "title"], ["termsField", "terms"]]) {
+    assert.ok(form.includes(`const ${ref} = useFitsContent(${value});`) && form.includes(`ref={${ref}}`), `the ${value} field is fitted`);
+  }
+  const start = form.indexOf("That could be decided a few ways.");
+  const readings = form.slice(start, form.indexOf("const units = selectedSet?.units ?? [];", start));
+  assert.ok(readings.includes('className="h-auto min-h-12 whitespace-normal py-3 text-left"'), "each reading wraps inside its button");
+});
+
+test("the tiebreaker rules on Opus 5.5 with its effort said, room for its thinking and the API's fallback, voids unless what it has clearly supports one outcome, and names the outcome; everything else stays where it was", () => {
+  assert.equal(MODELS.tiebreaker, "claude-opus-5-5", "Opus 5.5 by default");
+  assert.deepEqual([MODELS.ruling, MODELS.drafting], ["claude-sonnet-5-5", "claude-haiku-4-5-20251001"], "the rest as routed before");
+  const settler = readFileSync("src/lib/ai/settler.ts", "utf8");
+  assert.equal(settler.split("model: MODELS.tiebreaker,").length - 1, 3, "the three tiebreaker calls: yes or no, a number, pick one");
+  assert.equal(settler.split("...TIEBREAKER_CALL,").length - 1, 3);
+  assert.ok(settler.includes('const TIEBREAKER_CALL = { maxTokens: 16_000, effort: "medium", fallback: true } as const;'), "medium said aloud, sixteen thousand of room, and the fallback");
+  for (const what of ["one outcome", "one number", "one of the listed answers"]) assert.ok(settler.includes(`unless what is in front of you clearly supports ${what} under the terms as recorded`), `the void rule, for ${what}`);
+  assert.equal(settler.split("When it does clearly support one, rule it, even when the answer is uncomfortable, and say in the ruling which").length - 1, 3, "and the outcome named when it rules");
+  assert.ok(/label: "rule claim",\s*model: MODELS\.ruling,/.test(settler), "an argument's proposed ruling, which the two can overrule, stays on the ruling model");
+  const client = readFileSync("src/lib/ai/client.ts", "utf8");
+  assert.ok(client.includes('if (req.fallback) return anthropic().beta.messages.create({ ...params, betas: [FALLBACK_BETA], fallbacks: "default" }, options);') && client.includes('export const FALLBACK_BETA = "server-side-fallback-2026-07-01";'), "the fallback asked for on the beta endpoint");
+  assert.ok(client.includes("...(req.effort ? { output_config: { effort: req.effort } } : {}),"), "the effort sent when it is said");
+});
+
+test("a deadline the terms name with its year is that date, one without agrees with the same month and day in a later year, a chip moves a written year with the date, and the refusal says the year when it is not this one's", () => {
+  // The simulator's case (the second-pass round): the nearer Mars question, decided October 6, 2029, refused against this year's October 6.
+  const terms = "Yes if any human sets foot on Mars by October 6, 2029. No if none do. We'll know by October 6.";
+  assert.deepEqual(termsDeadlines(terms, sunday, NY), [{ said: "October 6, 2029", date: "2029-10-06", yearless: false }, { said: "October 6", date: "2026-10-06", yearless: true }]);
+  assert.equal(deadlineMismatch(terms, "2029-10-06", sunday, NY), null, "the year written is the date, and the yearless October 6 is the same day");
+  assert.equal(deadlineMismatch("Decided by October 6, 2028.", "2029-10-06", sunday, NY), "October 6, 2028", "a written year that is not the decide-by's");
+  assert.equal(deadlineMismatch("Decided by October 13.", "2029-10-06", sunday, NY), "October 13", "another day, with or without a year");
+  assert.equal(swapDateWords("Yes if it lands by October 6, 2029. We know by October 6.", "2029-10-06", "2027-05-01"), "Yes if it lands by May 1, 2027. We know by May 1.");
+  assert.deepEqual([datePhrase("2029-10-06", sunday, NY), datePhrase("2026-10-13", sunday, NY)], ["October 6, 2029", "October 13"]);
+  for (const f of ["src/components/markets/ask-form.tsx", "src/lib/actions/markets.ts"]) assert.ok(/and it’s decided \$\{datePhrase\(/.test(readFileSync(f, "utf8")), `${f} says the year`);
+});
+
+test("a count beside a clock never counts an asker who is not in their own question, and says nobody is in rather than a zero: a new game reads nobody's in yet, never 0 of 1 in", () => {
+  assert.equal(countedSetSize(["tam"], "tam", false), 0, "the asker of a new game, not in it yet, asked nobody");
+  assert.equal(countedSetSize(["tam", "ana", "ben"], "tam", false), 2, "the rest of a named set are asked");
+  assert.equal(countedSetSize(["tam", "ana"], "tam", true), 2, "once in, the asker counts like anyone");
+  assert.equal(inCount(0, 0), "nobody’s in yet");
+  assert.deepEqual([inCount(1, 3), inCount(3, 3)], ["1 of 3 in", "3 in"], "the second number only while someone asked is still out");
+  const fresh = cardMeta({ key: "home_wins", state: "open", viewerIn: false, mine: null, inCount: 0, groupSize: countedSetSize(["tam"], "tam", false), votesCast: 0, proposed: false, voted: false, teams: { away: "LAC", home: "BUF" }, unit: null, answers: null, outcomeWords: null, feedEnding: null, resolvedBy: null, closest: null, votingEnds: null });
+  assert.equal(fresh.text, "Closes at kickoff · nobody’s in yet", "the simulator's new game, as Tam");
+  assert.ok(readFileSync("src/lib/ledger/market-view.ts", "utf8").includes("groupSize: countedSetSize(") && readFileSync("src/components/on/game-page.tsx", "utf8").includes("groupSize: Math.max(countedSetSize("), "Now and the game page count the set this way");
+});
+

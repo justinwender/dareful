@@ -28,6 +28,7 @@ const PRICE: Record<string, [number, number]> = {
   "claude-haiku-4-5-20251001": [1, 5],
   "claude-sonnet-5": [2, 10],
   "claude-sonnet-5-5": [2, 10],
+  "claude-opus-5-5": [4, 20],
   "claude-fable-5-1": [10, 50],
 };
 const BANNED = /\b(owes?|owed|debt|balance|outstanding|overdue|odds|price|wager|bet|gambl\w*|money|market)\b|—|the one picked|the chosen one/i;
@@ -93,8 +94,53 @@ async function proposals(): Promise<void> {
   console.log(JSON.stringify({ when: new Date().toISOString(), proposals: rows, triageAgain: triages }, null, 2));
 }
 
+/**
+ * Every tiebreaker ruling production has recorded, asked again with this round's instructions (void unless what is in
+ * front of it clearly supports one outcome under the recorded terms, and name that outcome) on Opus 5.5 and on Sonnet
+ * 5.5, each beside the recorded ruling, which stands (the second-pass round, 2026-10-06); `--part=rulings`. It reads
+ * production and the live API and writes nothing anywhere but the report it prints.
+ */
+async function rulingsAgain(): Promise<void> {
+  const ruled = await db.select().from(schema.dares).where(eq(schema.dares.resolvedBy, "arbitration")).orderBy(asc(schema.dares.resolvedAt));
+  const rows = [];
+  for (const d of ruled) {
+    const positions = await db.select().from(schema.darePositions).where(eq(schema.darePositions.dareId, d.id));
+    const said = await db.select().from(schema.dareStatements).where(eq(schema.dareStatements.dareId, d.id)).orderBy(asc(schema.dareStatements.statedAt));
+    const evidence = await db.select({ id: schema.media.id }).from(schema.media).where(and(eq(schema.media.dareId, d.id), eq(schema.media.role, "evidence")));
+    const ids = [...new Set([...positions.map((p) => p.userId), ...said.map((s) => s.userId)].filter((x): x is string => Boolean(x)))];
+    const users = ids.length ? await db.select({ id: schema.users.id, name: schema.users.displayName }).from(schema.users).where(inArray(schema.users.id, ids)) : [];
+    const claims = await db.select({ id: schema.participantClaims.id, name: schema.participantClaims.displayName }).from(schema.participantClaims).where(inArray(schema.participantClaims.id, positions.map((p) => p.claimId).filter((x): x is string => Boolean(x))));
+    const nameOf = (userId: string | null, claimId?: string | null) => ((users.find((u) => u.id === userId)?.name ?? claims.find((c) => c.id === claimId)?.name ?? "Someone").split(/\s+/)[0] ?? "Someone");
+    const updates = said.filter((s) => s.kind === "update").map((s) => ({ name: nameOf(s.userId), said: s.statement }));
+    const statements = said.filter((s) => s.kind === "statement").map((s) => ({ name: nameOf(s.userId), said: s.statement }));
+    const answers = answersOf(d);
+    const unit = unitOf(d);
+    const row: Record<string, unknown> = { id: d.id.slice(0, 8), title: d.title, kind: d.kind, recorded: { outcome: d.resolvedOutcome?.toString() ?? null, ruling: d.rulingText?.slice(0, 400) ?? null }, evidenceOnRecord: evidence.length, saidLines: updates.length, cases: statements.length };
+    for (const model of ["claude-opus-5-5", "claude-sonnet-5-5"] as const) {
+      (MODELS as { tiebreaker: string }).tiebreaker = model;
+      const r = await measured(async () => {
+        if (answers) {
+          const a = await arbitrateAnswer({ title: d.title, terms: d.termsText, answers: answers.map((x) => x.text), positions: positions.map((p) => ({ name: nameOf(p.userId, p.claimId), answer: answers[Number(p.value)]?.text ?? "?" })), updates, statements, evidence: [] });
+          return { outcome: a.outcome === "answer" && a.answer !== null ? String(a.answer) : "-1", ruling: a.ruling };
+        }
+        if (unit) {
+          const n = await arbitrateNumber({ title: d.title, terms: d.termsText, unit, positions: positions.map((p) => ({ name: nameOf(p.userId, p.claimId), number: p.value.toString() })), updates, statements, evidence: [] });
+          return { outcome: n.outcome === "number" && n.number !== null ? String(n.number) : "-1", ruling: n.ruling };
+        }
+        const a = await arbitrate({ title: d.title, terms: d.termsText, positions: positions.map((p) => ({ name: nameOf(p.userId, p.claimId), percent: Math.round(Number(p.value) / 100) })), updates, statements, evidence: [] });
+        return { outcome: a.outcome === "yes" ? "1" : a.outcome === "no" ? "0" : "-1", ruling: a.ruling };
+      });
+      row[model] = { outcome: r.value?.outcome ?? null, agreesWithRecorded: r.value ? r.value.outcome === (d.resolvedOutcome?.toString() ?? null) : null, ruling: r.value?.ruling ?? null, error: r.error, seconds: Math.round(r.seconds * 10) / 10, dollars: Math.round(r.spend.dollars * 10000) / 10000, models: r.spend.models };
+      console.error(`ruling ${rows.length + 1}/${ruled.length} on ${model}: ${r.value?.outcome ?? r.error}`);
+    }
+    rows.push(row);
+  }
+  console.log(JSON.stringify({ when: new Date().toISOString(), rulings: rows }, null, 2));
+}
+
 async function main(): Promise<void> {
   if (process.argv.includes("--part=proposals")) return proposals();
+  if (process.argv.includes("--part=rulings")) return rulingsAgain();
   const dares = await db.select().from(schema.dares).where(isNull(schema.dares.templateId)).orderBy(asc(schema.dares.createdAt));
   const questions = [];
   for (const d of dares) {

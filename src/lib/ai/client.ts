@@ -15,11 +15,14 @@ import { timed } from "@/lib/timing";
  * the questions under Help define the terms); Sonnet 5.5 weighs what people decide by (the argument's triage, the
  * outcome proposals, the tiebreaker's ruling) and writes the final terms under Help define the terms. Nothing
  * calls Fable. Both overridable. A Haiku answer that fails its shape or runs out of time is asked once more of
- * Sonnet, and that is counted (`model_escalated`).
+ * Sonnet, and that is counted (`model_escalated`). The tiebreaker's ruling, which people pay on and whose text is
+ * hashed onto the chain, is Opus 5.5's (the second-pass round, 2026-10-06), at an effort set here, with Anthropic's
+ * default fallback should Opus decline. All three overridable.
  */
 export const MODELS = {
   ruling: process.env.AI_MODEL_RULING || "claude-sonnet-5-5",
   drafting: process.env.AI_MODEL_DRAFTING || "claude-haiku-4-5-20251001",
+  tiebreaker: process.env.AI_MODEL_TIEBREAKER || "claude-opus-5-5",
 } as const;
 
 /** Why a drafting answer is asked again of the ruling model: it failed its shape, or it ran out of time. Anything else (an outage, a refusal) is not a reason. Pure, so it has a test. */
@@ -72,7 +75,7 @@ function anthropic(): Anthropic {
  * then parsed with the caller's Zod schema: a shape the model invented, or no tool call at all, throws and never
  * reaches the caller.
  */
-type StructuredRequest<T> = { label: string; model: string; system: string; user: string; toolName: string; toolDescription: string; inputSchema: Record<string, unknown>; shape: z.ZodType<T>; timeoutMs: number; maxTokens?: number; /** Screenshots attached to what happened, each labelled with who supplied it (`evidenceBlocks`). */ images?: EvidenceImage[]; /** Each piece of the answer's JSON as the model writes it (docs/design.md 9.8): given, the call streams; the parse at the end is the same. */ onDelta?: (partialJson: string) => void; /** The streamed answer starts over: a drafting answer failed and the ruling model is asked. */ onReset?: () => void; /** What a drafting answer must also have to stand (a write-up's date): without it the ruling model is asked once, and its answer stands either way. */ accept?: (value: T) => boolean };
+type StructuredRequest<T> = { label: string; model: string; system: string; user: string; toolName: string; toolDescription: string; inputSchema: Record<string, unknown>; shape: z.ZodType<T>; timeoutMs: number; maxTokens?: number; /** Screenshots attached to what happened, each labelled with who supplied it (`evidenceBlocks`). */ images?: EvidenceImage[]; /** Each piece of the answer's JSON as the model writes it (docs/design.md 9.8): given, the call streams; the parse at the end is the same. */ onDelta?: (partialJson: string) => void; /** The streamed answer starts over: a drafting answer failed and the ruling model is asked. */ onReset?: () => void; /** What a drafting answer must also have to stand (a write-up's date): without it the ruling model is asked once, and its answer stands either way. */ accept?: (value: T) => boolean; /** How hard the model thinks, said rather than left to its default (Opus 5.5 thinks always; its default is medium). */ effort?: "low" | "medium" | "high"; /** Should the model decline, the API's default fallback answers in the same call (the beta endpoint), rather than leaving the call failed. */ fallback?: boolean };
 
 export async function structured<T>(req: StructuredRequest<T>): Promise<T> {
   return withEscalation(req, (model) => structuredOnce(req, model));
@@ -109,22 +112,28 @@ export async function withEscalation<T>(req: Pick<StructuredRequest<T>, "label" 
   return value;
 }
 
+/** The beta that lets a call name the API's default fallback, should its model decline. */
+export const FALLBACK_BETA = "server-side-fallback-2026-07-01";
+
 async function structuredOnce<T>(req: StructuredRequest<T>, model: string): Promise<T> {
   if (req.onDelta) return structuredStream({ ...req, model }, req.onDelta);
   const content = req.images && req.images.length > 0 ? [{ type: "text" as const, text: req.user }, ...evidenceBlocks(req.images)] : req.user;
-  const ask = (forced: boolean) =>
-    anthropic().messages.create(
-      {
-        model,
-        max_tokens: req.maxTokens ?? 900,
-        system: forced ? req.system : `${req.system}\n\nAnswer by calling the ${req.toolName} tool exactly once, and write nothing else.`,
-        messages: [{ role: "user", content }],
-        tools: [{ name: req.toolName, description: req.toolDescription, input_schema: { type: "object", ...req.inputSchema } }],
-        tool_choice: forced ? { type: "tool", name: req.toolName } : { type: "auto" },
-      },
-      // A drafting call that times out goes to the ruling model at once rather than waiting out a second try of its own.
-      { timeout: req.timeoutMs, ...(model === MODELS.drafting ? { maxRetries: 0 } : {}) },
-    );
+  const ask = (forced: boolean) => {
+    const params = {
+      model,
+      max_tokens: req.maxTokens ?? 900,
+      system: forced ? req.system : `${req.system}\n\nAnswer by calling the ${req.toolName} tool exactly once, and write nothing else.`,
+      messages: [{ role: "user" as const, content }],
+      tools: [{ name: req.toolName, description: req.toolDescription, input_schema: { type: "object" as const, ...req.inputSchema } }],
+      tool_choice: forced ? { type: "tool" as const, name: req.toolName } : { type: "auto" as const },
+      ...(req.effort ? { output_config: { effort: req.effort } } : {}),
+    };
+    // A drafting call that times out goes to the ruling model at once rather than waiting out a second try of its own.
+    const options = { timeout: req.timeoutMs, ...(model === MODELS.drafting ? { maxRetries: 0 } : {}) };
+    // The tiebreaker's ruling asks for the API's default fallback, so a model that declines is answered for in the same call.
+    if (req.fallback) return anthropic().beta.messages.create({ ...params, betas: [FALLBACK_BETA], fallbacks: "default" }, options);
+    return anthropic().messages.create(params, options);
+  };
   const started = Date.now();
   const res = await timed(`ai ${req.label}`, async () => {
     if (!forcesTool(model)) return ask(false);

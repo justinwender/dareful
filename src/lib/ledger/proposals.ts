@@ -131,9 +131,9 @@ export async function confirmProposal(proposalId: string, debtorUserId: string, 
   const ok = await verifyTypedData({ ...typed, address: debtor.ledgerWallet as Address, signature });
   if (!ok) throw new ConfirmError("that did not come from your account", "bad_signature");
 
-  // Lazy registration: the first confirmed obligation in a group or a unit registers it.
-  await ensureGroupOnchain(proposal.groupId);
-  await ensureDenomOnchain(proposal.denomId);
+  // Lazy registration: the first confirmed obligation in a group or a unit registers it, with its two sides and nobody else.
+  await ensureGroupOnchain(proposal.groupId, [debtorUserId, proposal.toUser]);
+  await ensureDenomOnchain(proposal.denomId, [debtorUserId, proposal.toUser]);
 
   const { ledger } = contracts();
   const m = typed.message;
@@ -269,9 +269,15 @@ export async function confirmManyProposals(proposalIds: string[], debtorUserId: 
   const ok = await verifyTypedData({ ...typed, address: debtor.ledgerWallet as Address, signature });
   if (!ok) throw new ConfirmError("that did not come from your account", "bad_signature");
 
-  // ensureDenomOnchain registers its group first, and adds any member who has appeared since.
-  for (const groupId of new Set(proposals.map((p) => p.groupId))) await ensureGroupOnchain(groupId);
-  for (const denomId of new Set(proposals.map((p) => p.denomId))) await ensureDenomOnchain(denomId);
+  // Each set registers the debtor and the creditors whose obligations are in it, and nobody else; each unit's set the same.
+  // Every creditor here has an account: the batch's loader refuses a proposal without one.
+  const sidesIn = (pick: (p: (typeof proposals)[number]) => string) => {
+    const sides = new Map<string, Set<string>>();
+    for (const p of proposals) sides.set(pick(p), (sides.get(pick(p)) ?? new Set([debtorUserId])).add(p.toUser as string));
+    return sides;
+  };
+  for (const [groupId, who] of sidesIn((p) => p.groupId)) await ensureGroupOnchain(groupId, [...who]);
+  for (const [denomId, who] of sidesIn((p) => p.denomId)) await ensureDenomOnchain(denomId, [...who]);
 
   const { ledger } = contracts();
   const m = typed.message;

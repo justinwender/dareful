@@ -113,7 +113,7 @@ test("a link opened with no account: the thumb at 50% under the slide prompt, th
   assert.ok(!r.text.includes("Your phone number") && !r.text.includes("Have an account?"), "no number field and no old sign-in line");
 });
 
-test("a draft rests with its terms on screen, its other two moves on the page above the sheet, and a question nobody else joined is its asker's to withdraw", async () => {
+test("a draft rests with its terms on screen, its other two moves on the page under the question and above its terms, never in the sheet, and a question nobody else joined is its asker's to withdraw", async () => {
   const usd = await ensureUsd(groupId, asker.user.id);
   const draft = await markets.draftMarket({ creatorId: asker.user.id, groupId, denomId: usd.id, title: "Will the kettle boil before the toast pops?", termsText: "Yes if the kettle clicks off first, by ear. No if the toast pops first.", resolvesBy: new Date(Date.now() + 2 * 86_400_000) });
   const page = await get(`/m/${draft.id}`, cAsker);
@@ -122,6 +122,8 @@ test("a draft rests with its terms on screen, its other two moves on the page ab
   const sheet = page.html.indexOf("data-pinned-sheet=");
   assert.ok(moves > 0 && page.html.includes("data-share-first") && page.html.includes("data-discard-draft"), "Share it first and Discard it");
   assert.ok(sheet > 0 && moves < sheet, "on the page, never in the sheet whose raised position ends short of them");
+  const terms = page.html.indexOf(">Counts if<");
+  assert.ok(terms > 0 && moves < terms, "under the question and above the terms, so Share it first is on screen without scrolling (the second-pass round, on the iOS 27 simulator)");
   assert.ok(page.html.includes('data-pinned-sheet="low"'), "a draft rests, so the terms being approved are on screen");
   const open = await get(`/m/${openId}`, cAsker);
   assert.ok(open.html.includes("data-withdraw-market"), "nobody else is in: the asker may withdraw it");

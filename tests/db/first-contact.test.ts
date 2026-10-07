@@ -1,8 +1,8 @@
 /**
- * The first-contact round (2026-10-04), against the real database: only the people in a question call it. A member
- * of the set who never got in is refused a vote and a line about what happened, a vote someone outside signed is
- * counted nowhere, and a question whose people in are fewer than a majority of its set locks here, where a majority
- * of the people in decides. Rows are the temporary people's and removed after.
+ * The first-contact rounds (2026-10-04 and 2026-10-06), against the real database: only the people in a question
+ * call it. A member of the set who never got in is refused a vote and a line about what happened, a vote someone
+ * outside signed is counted nowhere, and a question goes on the chain only when the chain would ask exactly the
+ * people in it, and is decided here by a majority of them otherwise. Rows are the temporary people's and removed after.
  */
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
@@ -12,6 +12,10 @@ import { enterAsGhost } from "@/lib/ledger/ghost-entry";
 import { createGroup, createOccasionGroup, ensureDyad, peopleSetsFor } from "@/lib/ledger/groups";
 import * as markets from "@/lib/ledger/markets";
 import { isProvisional, thresholdFor } from "@/lib/ledger/provisional";
+import { registeredVoters } from "@/lib/ledger/registry";
+import { completions } from "@/lib/ledger/completions";
+import { confirmProposal, confirmTypedData, proposeCover } from "@/lib/ledger/proposals";
+import { cents, units } from "@/lib/money";
 import { leadingVotesOn } from "@/lib/ledger/settle";
 import { marketCards } from "@/lib/ledger/market-view";
 import { markReachCardShown, owesReachCard } from "@/lib/ledger/reach";
@@ -29,11 +33,13 @@ before(async () => {
 });
 after(cleanup);
 
-async function question(people: Signer[]) {
-  const g = await createGroup({ name: "first contact check (temporary)", createdBy: ana.user.id });
-  track.group(g.id);
-  await db.insert(schema.groupMembers).values(people.slice(1).map((p) => ({ groupId: g.id, userId: p.user.id })));
-  const usd = await ensureUsd(g.id, ana.user.id);
+async function question(people: Signer[], set?: { groupId: string; denomId: string }) {
+  const g = set ? { id: set.groupId } : await createGroup({ name: "first contact check (temporary)", createdBy: ana.user.id });
+  if (!set) {
+    track.group(g.id);
+    await db.insert(schema.groupMembers).values(people.slice(1).map((p) => ({ groupId: g.id, userId: p.user.id })));
+  }
+  const usd = set ? { id: set.denomId } : await ensureUsd(g.id, ana.user.id);
   const d0 = await markets.draftMarket({ creatorId: ana.user.id, groupId: g.id, denomId: usd.id, title: "Does John fall asleep during the movie?", termsText: "Yes if John is asleep at any point before the credits. No if he makes it.", resolvesBy: new Date(Date.now() + 3 * 86_400_000), stalemate: "void" });
   const d = await markets.openMarket(d0.id, ana.user.id, await ana.ledger.signTypedData(markets.createTypedData(d0)));
   const enter = async (who: Signer, value: bigint, stake = 1000n) => markets.enterMarket({ dareId: d.id, userId: who.user.id, stake, value, signature: await who.ledger.signTypedData(markets.enterTypedData(d, stake, value)) });
@@ -70,16 +76,74 @@ test("only the people in a question call it: a member of the set who never got i
   assert.deepEqual([done.resolvedBy, done.resolvedOutcome], ["provisional", 1n]);
 });
 
-test("a question with fewer people in than a majority of its set locks here, where a majority of the people in decides it, since the chain would ask the rest of the set", async () => {
-  const { d, enter, vote } = await question([ana, ben, cy, dee]);
-  await enter(ana, 7000n);
-  await enter(ben, 3000n);
-  await markets.lockMarket(d.id, ana.user.id);
-  const locked = (await markets.marketById(d.id))!;
-  assert.deepEqual([isProvisional(locked), locked.onchainId, locked.threshold], [true, null, thresholdFor(2)], "two of four in: the chain's three could never be reached, so it locks here and the two decide");
-  assert.equal(await codeOf(() => vote(dee, 0n)), "not_member", "the set's others are not asked");
-  assert.equal((await vote(ana, 0n)).resolved, false);
-  assert.equal((await vote(ben, 0n)).resolved, true);
+test("a question goes on the chain only when the chain would ask exactly the people in it, and is decided here by a majority of them otherwise", async () => {
+  const low = (wallets: readonly string[]) => wallets.map((w) => w.toLowerCase()).sort();
+  const gov = (...who: Signer[]) => low(who.map((s) => s.user.governanceWallet));
+  // A set of four nobody has registered: two in, and the chain's voters are those two and nobody else.
+  const first = await question([ana, ben, cy, dee]);
+  await first.enter(ana, 7000n);
+  await first.enter(ben, 3000n);
+  const lock = await markets.lockMarket(first.d.id, ana.user.id);
+  const onChain = (await markets.marketById(first.d.id))!;
+  assert.equal(isProvisional(onChain), false, "two of four in a set nobody registered: on the chain");
+  assert.deepEqual([low(lock.quorum), lock.threshold], [gov(ana, ben), thresholdFor(2)], "the chain asks the two people in, a majority of two");
+  assert.deepEqual(low(await registeredVoters(first.d.groupId)), gov(ana, ben), "and registered nobody else in the set");
+  assert.equal(await codeOf(() => first.vote(dee, 0n)), "not_member", "the set's others are not asked");
+  assert.equal((await first.vote(ana, 0n)).resolved, false);
+  assert.equal((await first.vote(ben, 0n)).resolved, true, "the two people in agree: decided on the chain");
+
+  // The same set again, with Ben registered there and not in: the chain would ask him, so it is decided here.
+  const again = await question([ana, ben, cy, dee], { groupId: first.d.groupId, denomId: first.d.denomId });
+  await again.enter(ana, 6000n);
+  await again.enter(cy, 2000n);
+  await markets.lockMarket(again.d.id, ana.user.id);
+  const here = (await markets.marketById(again.d.id))!;
+  assert.deepEqual([isProvisional(here), here.threshold], [true, thresholdFor(2)], "someone registered and not in: decided here, by a majority of the two in");
+  assert.deepEqual(low(await registeredVoters(again.d.groupId)), gov(ana, ben), "and its lock registered nobody");
+  assert.equal(await codeOf(() => again.vote(ben, 1n)), "not_member", "Ben, registered on the chain, is no voter here");
+  assert.equal((await again.vote(ana, 1n)).resolved, false);
+  assert.equal((await again.vote(cy, 1n)).resolved, true);
+
+  // Shared without entering: the contract would register the asker as a voter, so the two in decide it here.
+  const shared = await question([ana, ben, cy]);
+  await shared.enter(ben, 4000n);
+  await shared.enter(cy, 9000n);
+  await markets.lockMarket(shared.d.id, ana.user.id);
+  const sharedLocked = (await markets.marketById(shared.d.id))!;
+  assert.deepEqual([isProvisional(sharedLocked), sharedLocked.threshold], [true, thresholdFor(2)], "the asker never got in: decided here by the two who did");
+  assert.equal(await codeOf(() => shared.vote(ana, 1n)), "not_member", "and the asker is no voter");
+});
+
+test("a confirmation registers its two sides on the chain and nobody else in the set, and finishing a registration the earlier build left in flight registers nobody new", async () => {
+  const low = (wallets: readonly string[]) => wallets.map((w) => w.toLowerCase()).sort();
+  const g = await createGroup({ name: "first contact registry (temporary)", createdBy: ana.user.id });
+  track.group(g.id);
+  await db.insert(schema.groupMembers).values([ben, cy].map((p) => ({ groupId: g.id, userId: p.user.id })));
+  // A registration the deployed build left in flight names the set alone: finishing it registers nobody here.
+  const register = completions.register;
+  assert.ok(register);
+  assert.equal(await register({ groupId: g.id }, { hash: "0x00", blockNumber: 0n }), true);
+  assert.deepEqual(await registeredVoters(g.id), [], "nothing registered by finishing it");
+  const usd = await ensureUsd(g.id, ana.user.id);
+  const p = await proposeCover({ creditorId: ana.user.id, debtor: { kind: "user", userId: ben.user.id }, groupId: g.id, denomId: usd.id, quantity: units(12n), amountCents: cents(12n), settleExpected: true, memo: "first contact registry" });
+  await confirmProposal(p.id, ben.user.id, await ben.ledger.signTypedData(confirmTypedData(p, ana.ledger.address)));
+  assert.deepEqual(low(await registeredVoters(g.id)), low([ana, ben].map((s) => s.user.governanceWallet)), "the two sides of the cover, and not Cy, who is in the set and did nothing");
+});
+
+test("a guest is saved under the whole name they typed, as the button says it: Justin incognito, not Justin", async () => {
+  const { d } = await question([ana, ben]);
+  const r = await enterAsGhost({ dareId: d.id, who: { name: "  Justin incognito  ", phoneHash: null, memberClaimId: null }, tokens: [], stake: 1000n, value: 5000n });
+  const [claim] = await db.select({ name: schema.participantClaims.displayName }).from(schema.participantClaims).where(eq(schema.participantClaims.id, r.claimId));
+  assert.equal(claim?.name, "Justin incognito");
+});
+
+test("the server refuses a question closing more than three years out, whatever the phone sent, and takes one inside them", async () => {
+  const g = await createGroup({ name: "first contact far (temporary)", createdBy: ana.user.id });
+  track.group(g.id);
+  const usd = await ensureUsd(g.id, ana.user.id);
+  const draft = (resolvesBy: Date) => markets.draftMarket({ creatorId: ana.user.id, groupId: g.id, denomId: usd.id, title: "Are people living on Mars by 2060?", termsText: "Yes if at least one person is living on Mars by the end of 2059. No otherwise.", resolvesBy, stalemate: "void" });
+  assert.equal(await codeOf(() => draft(new Date(Date.now() + 4 * 365 * 86_400_000))), "bad_input", "four years out");
+  assert.ok((await draft(new Date(Date.now() + 2 * 365 * 86_400_000))).id, "two years out");
 });
 
 test("a game's question sent again after a send that failed before its signature is the same draft, never a second one beside it", async () => {

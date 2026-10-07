@@ -1,0 +1,51 @@
+{
+  "model": "claude-haiku-4-5-20251001",
+  "id": "msg_011CfmYoV5e65cB8HokpRZhi",
+  "type": "message",
+  "role": "assistant",
+  "content": [
+    {
+      "type": "tool_use",
+      "id": "toolu_0114r777pHtWU6Yb5y3CZGqS",
+      "name": "write_terms",
+      "input": {
+        "title": "Will people be living on Mars by 2060?",
+        "terms": "A person has to be on Mars and stay there for at least thirty days at some point before the end of 2060. That counts as living there. We'll know by the end of 2060.",
+        "ambiguous": false,
+        "criteria": [],
+        "decideBy": "2060-12-31",
+        "nearer": {
+          "title": "Will people be living on Mars by 2029?",
+          "terms": "A person has to be on Mars and stay there for at least thirty days at some point before the end of 2029. That counts as living there. We'll know by October 6.",
+          "decideBy": "2029-10-06"
+        },
+        "outcomes": {
+          "yesWell": "People living on Mars",
+          "noWell": "No one living on Mars",
+          "yesLine": "People were living on Mars.",
+          "noLine": "No one was living on Mars."
+        }
+      },
+      "caller": {
+        "type": "direct"
+      }
+    }
+  ],
+  "container": null,
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "stop_details": null,
+  "usage": {
+    "input_tokens": 1551,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "cache_creation": {
+      "ephemeral_5m_input_tokens": 0,
+      "ephemeral_1h_input_tokens": 0
+    },
+    "output_tokens": 332,
+    "service_tier": "standard",
+    "inference_geo": "not_available"
+  },
+  "diagnostics": null
+}

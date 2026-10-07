@@ -20,6 +20,29 @@ function listOfStrings(v: unknown): unknown {
   return v.split(/\n|;/).map((x) => x.replace(/^[\s\-*\d.)]+/, "").trim()).filter(Boolean);
 }
 
+/**
+ * One nearer version of a question that cannot be known before the latest date a question can run (the second-pass
+ * round, 2026-10-06): the same kind of question, measured over a time that ends by then, with its own title, terms
+ * and date. Read leniently: a malformed one is none, never a reason to refuse the write-up.
+ */
+export const Nearer = z
+  .object({
+    title: z.string().trim().min(3).max(120),
+    terms: z.string().trim().min(10).transform((t) => t.replace(/\s*\u2014\s*|\s+\u2013\s+/g, ", ")).pipe(z.string().max(700)),
+    decideBy: z.string().trim().max(32),
+  })
+  .nullish()
+  .catch(null);
+
+/** The furthest a question can run, as the write-up is told it: the date and its words, in the asker's calendar. */
+export type Latest = { date: string; words: string };
+/** The line that tells the model the furthest date, beside the asker's now. */
+export function latestLine(latest: Latest): string {
+  return `The latest date a question can be decided by is ${latest.words} (${latest.date}).`;
+}
+/** The tool's description of a nearer version, the same for every kind. */
+const NEARER_SCHEMA = { type: "object", properties: { title: { type: "string" }, terms: { type: "string" }, decideBy: { type: "string", description: "YYYY-MM-DD" } }, required: ["title", "terms", "decideBy"] } as const;
+
 export const Scope = z.object({
   /** The question as it appears on a card: short, in the group's own words, ending in a question mark. */
   title: z.string().trim().min(3).max(120),
@@ -30,8 +53,10 @@ export const Scope = z.object({
   ambiguous: z.boolean(),
   /** When ambiguous: up to three measurable ways to decide it, each a short phrase. Otherwise empty. */
   criteria: z.preprocess(listOfStrings, z.array(z.string().trim().min(3).max(90)).max(3)),
-  /** The date the group could first know, YYYY-MM-DD in the asker's zone. Read leniently: a date past what the app accepts is moved to it there (`clampProposal`), never a reason to refuse the write-up. */
+  /** The date the group could first know, YYYY-MM-DD in the asker's zone, even past the furthest a question can run, which is never a reason to refuse the write-up: the write-up then offers its nearer version (`datesOf`). */
   decideBy: z.string().trim().max(32).default(""),
+  /** A nearer version, only when the answer cannot be known before the latest date a question can run. */
+  nearer: Nearer,
   /**
    * The outcomes in the question's own words (docs/design.md 3.25): the two wells and the two settled lines. Each
    * short; any missing and the market says "Yes" and "No" instead. Never a reason to refuse the write-up.
@@ -52,6 +77,8 @@ Write:
 - ambiguous: true only if reasonable friends would disagree about what counts, so that the question cannot be settled as written. Most lines about a future event are not ambiguous: pick the obvious reading and state it in the terms. Set it sparingly.
 - criteria: only when ambiguous, up to three different measurable ways to decide it, each a short phrase. Otherwise an empty list.
 - decideBy: the date the group could first know the answer, as YYYY-MM-DD in their time zone: usually the day the thing itself happens, and today when they will know tonight.
+- decideBy is that date even when it is after the latest date in the message: never move it earlier to fit.
+- nearer: only when decideBy is after the latest date in the message, one nearer version of the same question that can be decided by then, measured over a time that ends by it (for a question about the next thirty years, how it goes over the coming year), with its own title, terms and decideBy. Otherwise leave nearer out.
 - In the terms, a deadline is that same date, written as the month and the day ("by October 13"). Never write any other date as the deadline.
 - If the line asks which of several things, or who, the yes is one named answer: write the terms about that answer by name, never about "the one picked" or "the chosen one".
 - outcomes: the two answers in the question's own words, as four short phrasings. yesWell and noWell are what someone taps to say what happened, two to five words, no full stop ("He fell asleep", "He stayed up"). yesLine and noLine are the settled headline, a short sentence with its full stop ("He did.", "He didn't."). Use the people and things in the question, never "yes" or "no" as the whole phrase.
@@ -83,9 +110,9 @@ function writerFor(answers: ReadonlyArray<unknown> | undefined): string {
   return answers && answers.length > 0 ? MODELS.ruling : MODELS.drafting;
 }
 
-export async function scopeMarket(input: { line: string; criterion?: string; answers?: Array<{ question: string; yes: boolean }>; now: Date; zone: string; /** The answer's JSON as it is written (9.8). */ onDelta?: (partialJson: string) => void; onReset?: () => void }): Promise<MarketScope> {
+export async function scopeMarket(input: { line: string; criterion?: string; answers?: Array<{ question: string; yes: boolean }>; now: Date; zone: string; /** The furthest a question can run, in the asker's calendar. */ latest: Latest; /** The answer's JSON as it is written (9.8). */ onDelta?: (partialJson: string) => void; onReset?: () => void }): Promise<MarketScope> {
   const answered = answeredBlock(input.answers);
-  const user = `<line>${input.line.slice(0, 280)}</line>\n${answered ? `${answered}Set ambiguous to false.\n` : ""}${input.criterion ? `The group chose to decide it by: <criterion>${input.criterion.slice(0, 120)}</criterion>. Write the terms around that and set ambiguous to false.\n` : ""}${nowLine(input.now, input.zone)}`;
+  const user = `<line>${input.line.slice(0, 280)}</line>\n${answered ? `${answered}Set ambiguous to false.\n` : ""}${input.criterion ? `The group chose to decide it by: <criterion>${input.criterion.slice(0, 120)}</criterion>. Write the terms around that and set ambiguous to false.\n` : ""}${nowLine(input.now, input.zone)}\n${latestLine(input.latest)}`;
   return structured({
     label: "scope market",
     model: writerFor(input.answers),
@@ -101,6 +128,7 @@ export async function scopeMarket(input: { line: string; criterion?: string; ans
         criteria: { type: "array", items: { type: "string" }, maxItems: 3 },
         decideBy: { type: "string", description: "YYYY-MM-DD" },
         outcomes: { type: "object", properties: { yesWell: { type: "string" }, noWell: { type: "string" }, yesLine: { type: "string" }, noLine: { type: "string" } }, required: ["yesWell", "noWell", "yesLine", "noLine"] },
+        nearer: NEARER_SCHEMA,
       },
       required: ["title", "terms", "ambiguous", "criteria", "decideBy", "outcomes"],
     },
@@ -134,6 +162,7 @@ export const NumberScope = z.object({
   high: z.number(),
   typical: z.number(),
   decideBy: z.string().trim().max(32).default(""),
+  nearer: Nearer,
 });
 export type MarketNumberScope = z.infer<typeof NumberScope>;
 
@@ -148,16 +177,18 @@ Write:
 - low and high: the whole numbers between which nearly every reasonable answer from a friend would fall. Not the extremes anyone could imagine; where sensible guesses land.
 - typical: your single most likely answer, a whole number between low and high.
 - decideBy: the date the group could first know the answer, as YYYY-MM-DD in their time zone: usually the day the thing itself happens, and today when they will know tonight.
+- decideBy is that date even when it is after the latest date in the message: never move it earlier to fit.
+- nearer: only when decideBy is after the latest date in the message, one nearer version of the same question that can be decided by then, measured over a time that ends by it (for a question about the next thirty years, how it goes over the coming year), counting the same unit, with its own title, terms and decideBy. Otherwise leave nearer out.
 - In the terms, a deadline is that same date, written as the month and the day ("by October 13"). Never write any other date as the deadline.
 
 Never mention odds, prices, markets, wagers, or money. These are friends.`;
 
-export async function scopeNumber(input: { line: string; answers?: Array<{ question: string; yes: boolean }>; now: Date; zone: string; onDelta?: (partialJson: string) => void; onReset?: () => void }): Promise<MarketNumberScope> {
+export async function scopeNumber(input: { line: string; answers?: Array<{ question: string; yes: boolean }>; now: Date; zone: string; latest: Latest; onDelta?: (partialJson: string) => void; onReset?: () => void }): Promise<MarketNumberScope> {
   return structured({
     label: "scope number",
     model: writerFor(input.answers),
     system: NUMBER_SCOPE_SYSTEM,
-    user: `<line>${input.line.slice(0, 280)}</line>\n${answeredBlock(input.answers)}${nowLine(input.now, input.zone)}`,
+    user: `<line>${input.line.slice(0, 280)}</line>\n${answeredBlock(input.answers)}${nowLine(input.now, input.zone)}\n${latestLine(input.latest)}`,
     toolName: "write_number_terms",
     toolDescription: "Record the question, its terms, its unit and where answers would land.",
     inputSchema: {
@@ -169,6 +200,7 @@ export async function scopeNumber(input: { line: string; answers?: Array<{ quest
         high: { type: "integer", minimum: 0 },
         typical: { type: "integer", minimum: 0 },
         decideBy: { type: "string", description: "YYYY-MM-DD" },
+        nearer: NEARER_SCHEMA,
       },
       required: ["title", "terms", "unit", "low", "high", "typical", "decideBy"],
     },
@@ -194,6 +226,7 @@ export const PickOneScope = z.object({
   title: z.string().trim().min(3).max(120),
   terms: z.string().trim().min(10).transform((t) => t.replace(/\s*\u2014\s*|\s+\u2013\s+/g, ", ")).pipe(z.string().max(700)),
   decideBy: z.string().trim().max(32).default(""),
+  nearer: Nearer,
 });
 export type MarketPickOneScope = z.infer<typeof PickOneScope>;
 
@@ -205,21 +238,23 @@ Write:
 - title: the question, short, in their words and tone, ending in a question mark ("Who falls asleep first?").
 - terms: how the group will know which answer happened, in one to three plain sentences: what counts, how it is judged, and by when. Say that if what happens is none of the listed answers, the question can't be settled. Friends will read this once; write it the way one of them would say it. No legal language.
 - decideBy: the date the group could first know the answer, as YYYY-MM-DD in their time zone: usually the day the thing itself happens, and today when they will know tonight.
+- decideBy is that date even when it is after the latest date in the message: never move it earlier to fit.
+- nearer: only when decideBy is after the latest date in the message, one nearer version of the same question that can be decided by then, measured over a time that ends by it (for a question about the next thirty years, how it goes over the coming year), with the same answers, with its own title, terms and decideBy. Otherwise leave nearer out.
 - In the terms, a deadline is that same date, written as the month and the day ("by October 13"). Never write any other date as the deadline.
 
 Never mention odds, prices, markets, wagers, or money. These are friends.`;
 
-export async function scopePickOne(input: { line: string; answers: string[]; edges?: Array<{ question: string; yes: boolean }>; now: Date; zone: string; onDelta?: (partialJson: string) => void; onReset?: () => void }): Promise<MarketPickOneScope> {
+export async function scopePickOne(input: { line: string; answers: string[]; edges?: Array<{ question: string; yes: boolean }>; now: Date; zone: string; latest: Latest; onDelta?: (partialJson: string) => void; onReset?: () => void }): Promise<MarketPickOneScope> {
   const answers = input.answers.slice(0, 6).map((a) => `<answer>${a.replace(/[<>]/g, "").slice(0, 40)}</answer>`).join("\n");
   return structured({
     label: "scope pick one",
     model: writerFor(input.edges),
     system: PICK_ONE_SCOPE_SYSTEM,
-    user: `<line>${input.line.slice(0, 280)}</line>\n${answers}\n${answeredBlock(input.edges)}${nowLine(input.now, input.zone)}`,
+    user: `<line>${input.line.slice(0, 280)}</line>\n${answers}\n${answeredBlock(input.edges)}${nowLine(input.now, input.zone)}\n${latestLine(input.latest)}`,
     toolName: "write_pick_one_terms",
     toolDescription: "Record the question and its terms.",
     inputSchema: {
-      properties: { title: { type: "string" }, terms: { type: "string" }, decideBy: { type: "string", description: "YYYY-MM-DD" } },
+      properties: { title: { type: "string" }, terms: { type: "string" }, decideBy: { type: "string", description: "YYYY-MM-DD" }, nearer: NEARER_SCHEMA },
       required: ["title", "terms", "decideBy"],
     },
     shape: PickOneScope,

@@ -48,6 +48,7 @@ import { markRefOf } from "@/lib/ui/mark";
 import { outcomeLine } from "@/lib/ui/outcome-words";
 import type { TeamFace } from "@/lib/ui/team";
 import { viewerClock } from "@/lib/ui/zone";
+import { countedSetSize } from "@/lib/ui/copy";
 
 /**
  * A game's link, for someone not in its set (docs/design.md 3.17, 3.33): the game, and the questions the link's own
@@ -213,7 +214,7 @@ export async function GamePage({ id, g, add, start }: { id: string; g: string | 
       viewerIn: mine !== null,
       mine: mine?.value ?? null,
       inCount: positions.length,
-      groupSize: Math.max(seats.length, positions.length),
+      groupSize: Math.max(countedSetSize(seats.flatMap((x) => (x.userId ? [x.userId] : [])), dare.creatorId, positions.some((p) => p.userId === dare.creatorId)), positions.length),
       votesCast: card?.votesCast ?? 0,
       proposed: dare.feedOutcome !== null,
       voted: false,
@@ -406,6 +407,10 @@ export async function GamePage({ id, g, add, start }: { id: string; g: string | 
       <div className="flex flex-col gap-7 py-2">
         <GameHeader game={header} caption={`${whoAsked} ${ahead ? `Everything closes at ${startWord(game.sport)}.` : `Everything closed at ${startWord(game.sport)}.`}`.trim()} right={ahead ? undefined : feedFinal ? scoreLine(feedFinal, game.homeShort, game.awayShort) : "Started"} />
         {chips}
+        {ahead ? (
+          // The who's-in row with the game as the unit (3.42): everyone in on any of its questions, the rest of the set's people dashed, and the one place the game is shared from, under the header so sharing a new game is on screen without scrolling (the second-pass round). The link is the game page's (3.33); a code is one question's, so there is none here.
+          <WhosInRow people={inIds.map((pid) => ({ name: people.get(pid)?.displayName ?? "Someone", hue: hueFor(pid), ghost: people.get(pid)?.ghost === true }))} holdouts={stillOut.map((uid) => ({ name: people.get(uid)?.displayName ?? "Someone", hue: hueFor(uid) }))} count={whosIn.count} share={{ url: shareUrl, title: game.name }} code={null} chalk={whosIn.chalk} />
+        ) : null}
         <section className="flex flex-col gap-[10px]">
           <SectionLabel>Questions</SectionLabel>
           {cardsList}
@@ -429,10 +434,6 @@ export async function GamePage({ id, g, add, start }: { id: string; g: string | 
               ))}
             </div>
           </section>
-        ) : null}
-        {ahead ? (
-          // The who's-in row with the game as the unit (3.42): everyone in on any of its questions, the rest of the set's people dashed, and the one place the game is shared from. The link is the game page's (3.33); a code is one question's, so there is none here.
-          <WhosInRow people={inIds.map((pid) => ({ name: people.get(pid)?.displayName ?? "Someone", hue: hueFor(pid), ghost: people.get(pid)?.ghost === true }))} holdouts={stillOut.map((uid) => ({ name: people.get(uid)?.displayName ?? "Someone", hue: hueFor(uid) }))} count={whosIn.count} share={{ url: shareUrl, title: game.name }} code={null} chalk={whosIn.chalk} />
         ) : null}
       </div>
     </Screen>

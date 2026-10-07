@@ -69,7 +69,9 @@ test("every sheet holds to 10.6: the groups in order, terms of five words, one s
   assert.equal(entry("market-open-pick", "How it settles")?.description, "A wrong pick settles with each right pick; all right or all wrong, nothing changes hands.");
   assert.ok(entry("market-open", "Not you?") && entry("market-open", "Where everyone landed")?.description.includes("in a blind market yours is final then"), "Not you? joined the open sheet, and the blind rule folded into where everyone landed");
   assert.equal(entry("market-link", "Get in as yourself"), undefined, "the signed-in line is not on the signed-out page's sheet");
-  assert.equal(entry("market-link", "Have an account? Sign in")?.description, "Under Join: signs you in before anything is sent, so you get in as yourself.");
+  assert.equal(entry("market-link", "I already have an account")?.description, "Under Join as: signs you in before anything is sent, so you get in as yourself.");
+  // The join step a guest meets since the first-contact rounds: a name and nothing else, so nothing about numbers or suggested names.
+  for (const gone of ["Have an account? Sign in", "Names after two letters", "A wrong number"]) assert.equal(entry("market-link", gone), undefined, gone);
   // While it's called: More holds nothing attached until the end (page.tsx gates it on `ended`); the sheet's second height and the source a What's on question waits on.
   assert.equal(entry("market-voting", "More")?.description, "What the stake is in, the group’s number exactly, and for the asker its colour.");
   assert.equal(entry("market-voting-number", "Not how I saw it")?.description, "Takes the number you saw as your vote, a note instead, or nobody can tell.");

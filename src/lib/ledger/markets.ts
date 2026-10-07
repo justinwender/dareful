@@ -37,11 +37,12 @@ import { MAX_ANSWER_LENGTH, MAX_ANSWERS, MIN_ANSWERS, PICK_ONE_CONFIDENCE, type 
 import { SPORT_MARK } from "@/lib/sports/templates";
 import { scaleAfterward } from "./scale";
 import { bufferToHex, bytes16ToUuid, dareOnchainId, denomOnchainId, groupOnchainId, hexToBuffer } from "./ids";
-import { ensureDenomOnchain, ensureGroupOnchain } from "./registry";
+import { ensureDenomOnchain, ensureGroupOnchain, registeredVoters } from "./registry";
 import { pidOf } from "./participants";
-import { isProvisional, lockProvisional, locksHere, provisionalVoters, settleProvisional } from "./provisional";
+import { chainCarries, isProvisional, lockProvisional, provisionalVoters, settleProvisional, snapshotIsThePeopleIn } from "./provisional";
 import { record } from "@/lib/usage";
 import { settledWord } from "@/lib/usage/events";
+import { LATEST_YEARS } from "./decide-by";
 
 export type DareRow = typeof schema.dares.$inferSelect;
 export type PositionRow = typeof schema.darePositions.$inferSelect;
@@ -256,6 +257,13 @@ export type DraftInput = {
   templateId?: string | null;
 };
 
+/** The latest moment a question may close, as the server checks it: three calendar years on, and a day for the asker's zone. Pure. */
+export function furthestClose(now: Date): number {
+  const later = new Date(now.getTime());
+  later.setUTCFullYear(later.getUTCFullYear() + LATEST_YEARS);
+  return later.getTime() + 86_400_000;
+}
+
 /** A draft: terms the creator can read and has not yet signed. Nobody else can see it. */
 export async function draftMarket(input: DraftInput): Promise<DareRow> {
   const title = input.title.trim();
@@ -264,6 +272,8 @@ export async function draftMarket(input: DraftInput): Promise<DareRow> {
   if (termsText.length < 3 || termsText.length > 800) throw new MarketError("The terms need a sentence.", "bad_input");
   const pace = input.pace ?? "dare";
   if (pace === "dare" && (!input.resolvesBy || input.resolvesBy.getTime() <= Date.now())) throw new MarketError("Pick a time that hasn't passed.", "bad_input");
+  // Nothing runs past the furthest a question can (the second-pass round): three years by the calendar, a day either side for the asker's zone.
+  if (pace === "dare" && input.resolvesBy && input.resolvesBy.getTime() > furthestClose(new Date())) throw new MarketError("That’s more than three years out. Pick an earlier date.", "bad_input");
   // The criterion a contestable claim is ruled against has to be inside the terms, because the terms are what is hashed and what entering accepts.
   if (input.criterion && !termsText.includes(input.criterion.trim())) throw new MarketError("The terms have to say how it's being decided.", "bad_input");
   if (!(await isMember(input.groupId, input.creatorId))) throw new MarketError("You're not in that group.", "not_member");
@@ -573,21 +583,24 @@ export async function lockMarket(dareId: string, byUserId: string | null, now: D
   const [creator] = await db.select().from(schema.users).where(eq(schema.users.id, d.creatorId)).limit(1);
   if (!creator) throw new MarketError("unknown creator", "not_found");
 
-  // Registration first: every account-holder in the group, and the unit. Both are idempotent.
-  await ensureGroupOnchain(d.groupId);
-  await ensureDenomOnchain(d.denomId);
-
-  const typed = createTypedData(d);
-  const { dares } = contracts();
-  const { publicClient } = relayer();
-  const quorumNow = (await publicClient.readContract({ address: contracts().ledger.address, abi: contracts().ledger.abi, functionName: "governanceOf", args: [typed.message.groupId] })) as readonly Address[];
-  // The quorum counts only the people in (the first-contact round, 2026-10-04). The contract asks a majority of
-  // everyone in the set, so with fewer in than that the people in could never decide it there: it locks here
-  // instead, where a majority of the people in decides, and settles as proposals each debtor confirms.
-  if (locksHere(positions.length, quorumNow.length)) {
+  // A question is decided by a majority of the people in it, and nobody else counts (the owner's rule, 2026-10-06).
+  // The chain keeps it only when it would ask exactly them: the deployed contract asks everyone ever registered in
+  // the set, the asker included. Anything else is decided here, by the same majority, and settles as proposals each
+  // debtor confirms; nothing is registered for it, so nobody joins the set's voters on the chain by its lock.
+  const inIt = positions.map((p) => p.userId as string);
+  const wallets = users.map((u) => u.governanceWallet);
+  if (!chainCarries({ registered: await registeredVoters(d.groupId), inIt: wallets, asker: creator.governanceWallet })) {
     const r = await lockProvisional(d, positions);
     return { txHash: "0x" as Hex, threshold: r.threshold, quorum: [] };
   }
+  // Registration: the people in, and the asker, who is one of them here, and the unit. Both are idempotent.
+  await ensureGroupOnchain(d.groupId, [...inIt, d.creatorId]);
+  await ensureDenomOnchain(d.denomId, [...inIt, d.creatorId]);
+
+  const typed = createTypedData(d);
+  const { dares } = contracts();
+  // The voters the contract will snapshot are the people in, as checked above.
+  const quorumNow = wallets;
 
   const dareStruct = {
     id: typed.message.dareId,
@@ -658,6 +671,10 @@ export async function completeLock(d: DareRow, minedIn?: bigint): Promise<{ thre
   await db.update(schema.roomCodes).set({ closedAt: new Date() }).where(and(eq(schema.roomCodes.dareId, d.id), isNull(schema.roomCodes.closedAt)));
   const onchain = (await publicClient.readContract({ address: dares.address, abi: dares.abi, functionName: "dareOf", args: [dareId], blockNumber: minedIn })) as { threshold: number; quorum: readonly Address[] };
   await db.update(schema.dares).set({ threshold: onchain.threshold }).where(eq(schema.dares.id, d.id));
+  // Only the people in decide it (2026-10-06): a registration landing between the lock's check and its send would
+  // have put someone else in the chain's snapshot, which no later step can take out, so it is said here, loudly.
+  const people = await db.select({ wallet: schema.users.governanceWallet }).from(schema.darePositions).innerJoin(schema.users, eq(schema.users.id, schema.darePositions.userId)).where(and(eq(schema.darePositions.dareId, d.id), isNotNull(schema.darePositions.acknowledgedAt), isNull(schema.darePositions.dismissedAt)));
+  if (!snapshotIsThePeopleIn(onchain.quorum, people.map((p) => p.wallet))) console.error("a lock's voters on the chain are not the people in", { dareId: d.id, snapshot: onchain.quorum.length, inIt: people.length });
   return onchain;
 }
 

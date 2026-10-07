@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { useDynamicContext, useIsLoggedIn, useSocialAccounts, useStepUpAuthentication, useUserUpdateRequest } from "@dynamic-labs/sdk-react-core";
 import type { ProviderEnum, TokenScope } from "@dynamic-labs/sdk-api-core";
 import { Button } from "@/components/ui/button";
+import { GoogleMark } from "@/components/auth/google-mark";
 import { FIELD_PROBLEM_CLASS, Problem } from "@/components/ledger/problem";
 import { reachCardShownAction } from "@/lib/actions/reach";
 import { codeOf, emailLooksRight, otpProblem } from "@/lib/auth/otp";
@@ -108,16 +109,18 @@ export function ReachCard() {
         </>
       ) : stage === "ask" ? (
         <>
-          <p className="text-body-strong text-ink">Add an email or link Google</p>
+          <p className="text-body-strong text-ink">Link Google or add an email</p>
           <Problem id={problemId} message={problem} />
-          <Button variant="secondary" onClick={() => setStage("email")} disabled={busy !== null} data-reach-email="">
-            Add an email
-          </Button>
+          {/* Google first, with its mark (the second-pass round): one tap, and it arrives with a verified email. A secondary here, since Now's one chalk is the Start button. */}
           {googleOffered(installedHere()) ? (
             <Button variant="secondary" onClick={() => void withGoogle()} loading={busy === "google"} disabled={busy !== null && busy !== "google"} data-reach-google="">
+              <GoogleMark />
               Link Google
             </Button>
           ) : null}
+          <Button variant="secondary" onClick={() => setStage("email")} disabled={busy !== null} data-reach-email="">
+            Add an email
+          </Button>
           <Button variant="tertiary" className="self-start" onClick={() => setGone(true)} disabled={busy !== null}>
             Not now
           </Button>

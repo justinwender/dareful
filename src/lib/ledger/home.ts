@@ -6,6 +6,7 @@
  * The rows are assembled here as data so the ordering rule and the "nothing counts, nothing ages" rule have tests.
  */
 import { draftOnNow } from "./drafts";
+import { inCount } from "@/lib/ui/copy";
 import { and, desc, eq, inArray, isNotNull, isNull, ne, or } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { inkOf, type InkName } from "@/lib/ui/ink";
@@ -84,10 +85,8 @@ const word = (n: number) => WORDS[n] ?? String(n);
  * "time's up" is computed when the screen is read: the deadline arriving is a consequence of their own act, and
  * it is the only row here that time produces (PLANNING.md 8d; docs/decisions.md 2026-09-19).
  */
-/** "3 of 6 in" while someone asked is still out, "4 in" once everyone named is in or when nobody was named (the field round, 2.7): the second number only when it is real. */
-export function inCount(people: number, groupSize: number): string {
-  return groupSize > people ? `${people} of ${groupSize} in` : `${people} in`;
-}
+/** The count beside a clock lives with the copy, where the game's cards read it too (the second-pass round). */
+export { inCount };
 
 export function needFromMarket(m: Pick<MarketCardData, "dare" | "state" | "people" | "groupSize" | "votesCast" | "saidBy">, viewerId: string, voted: boolean, now: Date, closes: (at: Date) => string): Omit<Extract<NeedRow, { question: true }>, "groupId"> | null {
   const d = m.dare;

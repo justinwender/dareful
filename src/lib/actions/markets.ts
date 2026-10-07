@@ -28,7 +28,7 @@ import { regionFromHeaders, tryHashPhone } from "@/lib/auth/phone";
 import { addClaimToken, clearClaimTokens, readClaimTokens } from "@/lib/auth/claim-cookie";
 import { enterAsGhost, removeGhostEntry } from "@/lib/ledger/ghost-entry";
 import { discardDraft } from "@/lib/ledger/drafts";
-import { dateWords, deadlineMismatch, localDate } from "@/lib/ledger/decide-by";
+import { datePhrase, deadlineMismatch, localDate } from "@/lib/ledger/decide-by";
 import { leaveEntry } from "@/lib/ledger/claims";
 import { archiveMarkets, removeMarkets, SWIPE_AT_MOST } from "@/lib/ledger/now-swipes";
 import { db, schema } from "@/db";
@@ -136,7 +136,7 @@ export async function draftMarketAction(input: z.infer<typeof Draft>): Promise<{
       const zone = await viewerZone();
       const decided = localDate(new Date(d.resolvesBy), zone);
       const off = deadlineMismatch(d.terms, decided, new Date(), zone);
-      if (off) return { error: `The terms say ${off}, and it’s decided ${dateWords(decided)}. Make them match.` };
+      if (off) return { error: `The terms say ${off}, and it’s decided ${datePhrase(decided, new Date(), zone)}. Make them match.` };
     }
     if (d.who.kind === "set" && !(await isMember(d.who.groupId, user.id))) return { error: "You're not one of those people." };
     if (d.who.kind !== "set" && d.unit.kind === "existing") return { error: "That unit isn't around any more. Pick another." };

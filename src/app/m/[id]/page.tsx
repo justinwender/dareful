@@ -550,6 +550,7 @@ export default async function MarketPage({
           : null
       }
       signedInAs={mine ? null : firstName(me.displayName)}
+      asker={d.creatorId === me.id}
       blind={d.revealMode === "blind"}
       picture={picture}
       numberUnit={numberUnit}
@@ -1165,6 +1166,8 @@ export default async function MarketPage({
 
           {endedBody}
 
+          {/* A draft's moves first, under the question, so "Share it first" is on screen without scrolling (the second-pass round); then its terms. */}
+          {state === "draft" ? stage : null}
           {state === "draft" ? details : null}
 
           {state === "open" ? (
@@ -1234,7 +1237,6 @@ export default async function MarketPage({
           ) : null}
 
 
-          {state === "draft" ? stage : null}
           {callSheet}
           {headsUp}
           {/* A market in voting goes stale on screen: a light poll of Postgres, never the indexer, while it is locked and this screen is visible. */}

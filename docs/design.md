@@ -51,6 +51,8 @@ Round D), following the phone's setting, with an Appearance row on You.
 
 ### What changed in this revision
 
+Amended 2026-10-06 by the second-pass round, in dated notes at the ends of 3.17 (joining: the votes line above the name, Join as the whole name, "I already have an account" under it, and Google first in keeping an entry), 3.20 ("Whoever I send it to" first), 3.24 (a draft's moves above its terms, and the asker's sheet resting), 3.29 (a question too far out, and the year in the terms' date), 3.33 (the share row under the header), 3.42 (the count), 4.5 (Google's mark) and 4.7 (the card, Google first).
+
 Amended 2026-10-04 by the first-contact round, in dated notes at the ends of 3.13 (the line starts at 50%), 3.14 and 3.47 (ideas), 3.15 (drafts and who votes), 3.17 (joining: the name, then keeping it in an account), 3.24 (the room, tucked and the long drag), 3.29 (asking: the labels, the type from the shape, decided by, who's in, drafts), 3.42 (the row from creation), 3.46, 4.7 (the one card) and 10.9 (the ring).
 
 Amended 2026-10-03 after the runs on the iOS 26 simulator, in dated notes before 3.16 (the pace row under its chip) and at 9.3 (the root a pixel taller than the large viewport).
@@ -1276,6 +1278,8 @@ with "Have an account? Sign in" made a 48px secondary above the fields.)
 
 (Amended 2026-10-04, the first-contact round, the owner's brief; this supersedes the fifteenth session's two equal choices above. **Who's joining?** holds "Your name" and, directly under it at the field's width, the 48px secondary "Sign in". A guest gives a name and nothing else: no number, and no names suggested. The chalk is "Join as Sam". **The entry is saved first.** The sheet's next step, raised, is "Keep your calls in an account": an email field with Continue as the primary, then "Continue with Google", then "Use a phone number" (which switches the field, and back with "Use an email"), and the tertiary "Not now". An address leads to its code: "The code sent to …", Continue, "Send a new code" and Back. **Sign in at the first step** opens the same fields under "Sign in", with Back, and the entry picked goes in under the account once it exists. A phone that remembers a guest still joins as them ("Joining as Noah · Not you?"), and the keeping step follows a first entry only. On the simulators, three taps and the name from the link to the entry (four on a first visit, with the tip), and the entry saved about a second and a half after "Join as".)
 
+(Amended 2026-10-06, the second-pass round, the owner's screenshots; this supersedes the layout in the note above. **Who's joining?** is the heading with the entry on its right, then the consent line (the ticket glyph and "If nobody votes, the final score settles it."), then "Your name", then the chalk "Join as" with the whole name as it will be saved ("Join as Justin incognito": trimmed, at most 40 characters, wrapping onto a second line rather than cut), then the 44px tertiary "I already have an account", centred. The consent line is never between the actions. A phone that remembers a guest shows "I already have an account" under "Joining as Noah · Not you?" too, and the keeping step follows that guest's entry until it has come once on the phone. **Keep your calls in an account** leads with "Continue with Google" as the chalk, Google's G at 20px at its left (4.5); then the email, whose Continue is a secondary while Google is offered; then "Use a phone number"; then "Not now". Signing in is the same step with Back.)
+
 ### 3.18 Person row
 
 56px minimum height, 12px gap, 36px avatar, name in `body` 600, and the person's open
@@ -1341,6 +1345,8 @@ a requirement, and nothing is created by naming.
 The ask flow's pinned action is the sheet (3.24) with the chalk "Set the terms" and nothing
 else. The dashed "Someone else" row already says more people can come, and once it's sent the
 who's-in row's icons are how they do (3.42).
+
+(Amended 2026-10-06, the second-pass round, the owner's call: **whoever I send it to** is the first row, above every set, and selected to start with, in asking and in starting a game. The sets follow it in the order above, none preselected.)
 
 ### 3.21 Shared-context band
 
@@ -1686,6 +1692,8 @@ the entry line (3.38), on the claimant's screen and the voter's alike; the pictu
 (Corrected 2026-10-03, the owner's reading of 3.42 and of this section: the close belongs in the sheet for every market someone can close, the asker on any open market with two in and anyone in once it is stuck past its close time. It is the sheet's main action when everyone asked is in or when the market is stuck, and otherwise a secondary that asks once, under one line saying what closing now costs: "Everyone you asked is in.", "Close it now and John and Maya can’t get in.", "Whoever isn’t in yet can’t get in after." where nobody was named, and "Time’s up, and nothing closed it. Anyone in it can." once stuck. While someone is changing their own entry the entry sheet stands in its place. The note above, which built it for the stuck case alone, is superseded. The calls-are-in stretch stays next round's.)
 
 (Amended 2026-10-04, the first-contact round, from the simulators. **The room follows the sheet.** The page's last element scrolls clear of the sheet at every position, by what shows at that position and 20px (full counts as raised); and the page grows with its content and is never held at its minimum height, which had put Now's last row under the tab bar and "Stakes, for all 3" under the sheet. **Tucked** shows the handle row and the strip over the home indicator, above Safari's toolbar too, and a tap on it raises the sheet. **A drag lands where the finger let it go**: past 24px it moves at least one position, and as far as the position nearest where it was released, so one long drag from raised tucks it. A draft's "Share it first" and "Discard it" sit on the page under its terms, never in the sheet, since on a 714-point Safari screen the raised sheet ended short of them.)
+
+(Amended 2026-10-06, the second-pass round, from the simulators: a draft's "Share it first" and "Discard it" sit on the page directly under the question, above its terms, so they are on a 714-point screen without scrolling; and on a question its asker has not entered, the entry sheet rests, so the who's-in row with share stands above it in view. A first entry by anyone else still opens raised.)
 
 ### 3.25 The question band and the market screen
 
@@ -2113,6 +2121,8 @@ mark".
 
 (Amended 2026-10-04, the first-contact round, the owner's brief. **The labels**: "Market type" over "Yes or no", "Pick a number" and "Pick one"; more space; then "AI market setup" over "Quick setup" and "Help define the terms", each keeping its caption, for every type (Help define asks about the unit, the source and the rounding for a number, and about the answers and a tie for pick one). Every row of chips wraps. **The type follows the question's shape** until the asker picks one: which and who are pick one, how many and how much a number, a whether question yes or no; nothing is ever written about "the one picked". **An argument may be pick one**, each person's answer an answer, with "Your side" marking the asker's; never a number. **Who's in starts at "Whoever I send it to"**, here and in starting a game. **Decided** is "Tonight", "This week", "This month" or a date: the date chip carries the write-up's date with the phone's own date picker under it, choosing a chip changes the date in the terms, and a deadline the terms name must be the decided date, refused at the field otherwise ("The terms say October 13, and it's decided November 2. Make them match."). **A draft** carries "Share it first" (sent without entering, so the share, the copy and the code are there from creation and the asker enters any time before the close) and "Discard it", on the page under its terms. **A question nobody else got into** is its asker's to withdraw from its own screen, asked once.)
 
+(Amended 2026-10-06, the second-pass round, the owner's brief. **A question too far out.** A question runs at most three calendar years, to the day, in the asker's zone. When the write-up's date is past that it is never moved: no decided chip is picked, the line at the field says "That can't be known until October 6, 2056, and the furthest a question can run is October 6, 2029.", and under it is one nearer version measurable in time, a card with its title and terms and the secondary "Ask this instead", which puts it in the step; the asker may also pick a date, and the date picker stops at the furthest one. **The terms' date and the decided date** are compared with their years where the terms write one, and the line names the year when the decided date is not this year's ("The terms say October 6, 2029, and it's decided October 6, 2030. Make them match.").)
+
 ### 3.30 Pick one: entering
 
 Pick one means choosing one answer and nothing else. There is no confidence and no odds line.
@@ -2465,6 +2475,8 @@ came from a game, carries one 44px row under its band, "Part of Chiefs at Bills"
 with one question is that question everywhere, apart from this page.
 
 **Once the game is over**, the page is the night (3.37, frame D).
+
+(Amended 2026-10-06, the second-pass round, from the simulators: before kickoff the who's-in row with share sits directly under the header and its chips, above the questions, so sharing a new game is on screen without scrolling.)
 
 ### 3.34 You: how your calls land
 
@@ -3369,6 +3381,8 @@ theirs takes messages. A person hears about a question at most once per six hour
 
 (Amended 2026-10-02, the field round, part 2: a count on Now's rows names its second number only when it is real, "3 of 6 in" while someone named is still out and "4 in" once everyone named is in or when nobody was named (`inCount`), as the who's-in row already did.)
 
+(Amended 2026-10-06, the second-pass round, from the simulators: a count beside a clock, on Now's rows and on a game's cards (3.33), leaves the asker out of the people asked until they are in, and reads "nobody's in yet" before anyone is: "Closes at kickoff · nobody's in yet", never "0 of 1 in".)
+
 (Amended 2026-10-03, the owner's rule on late closes: the close time ends editing whether or not the close has run. Past it nobody gets in or changes a number, and the screen offers neither: an entry's caption reads "final", Change is not drawn, and someone not in has no entry sheet. At any close after it an entry last changed after it does not count; for a game the close time is its start. With fewer than two entries that count, the question ends as an expiry: nothing scored, no toll. The tertiary "Close it with 4" under the row is gone: the close is in the sheet, 3.24.)
 
 (Amended 2026-10-04, the first-contact round: the asker has the row from creation, before entering, with share as the chalk while nobody is in and the count "Nobody's in yet."; "Withdraw it" sits under it while nobody else is in.)
@@ -3709,6 +3723,8 @@ the screen: red behind the remove glyph and amber behind the archive glyph, in N
 action (3.15) and nowhere else, never as text, never on a market, never beside a number. "No red
 and no green anywhere in the product" reads with that one square excepted.)
 
+(Amended 2026-10-06, the second-pass round: Google's G beside "Continue with Google" and "Link Google" is the third exception. It is Google's mark, drawn from Google's own file at 20px and never redrawn or tinted, as Google's branding guidelines require, so its red, yellow, green and blue appear there and nowhere else. It is not a colour of ours: never a state, never on a market, never beside a number.)
+
 ### 4.6 Copy rules
 
 The aggregate of everyone's numbers is called the group's number, and the words around it stay
@@ -3859,6 +3875,8 @@ Two rules generalise out of this and apply everywhere:
   behind You.
 
 (Amended 2026-10-04, the first-contact round: an account the app cannot reach (no push on any device, no email, no Google) sees one card at the top of Now, once, "Add an email or link Google" with "Add an email", "Link Google" and "Not now". It is the one thing above "Needs you", it is drawn only on the phone that holds the login, and it never comes back.)
+
+(Amended 2026-10-06, the second-pass round: the card reads "Link Google or add an email", with "Link Google" first, carrying Google's mark (4.5), then "Add an email", both secondaries since the Start button is Now's chalk, then "Not now".)
 
 ### 4.8 The style budget
 

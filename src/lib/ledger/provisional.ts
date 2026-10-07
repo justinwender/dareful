@@ -36,11 +36,27 @@ export function provisionalVoters(positions: Array<Pick<PositionRow, "userId">>)
 export const thresholdFor = (voters: number): number => Math.floor(voters / 2) + 1;
 
 /**
- * Whether a market whose positions are all signed still locks here: the contract's threshold is a majority of
- * everyone in the set, and with fewer people in than that the people in could never decide it on the chain.
+ * Whether the chain can carry a question every position of which is signed (the second-pass round, 2026-10-06): a
+ * question is decided by a majority of the people in it, and the deployed contract asks a majority of everyone ever
+ * registered in its set, with the asker registered whether or not they are in. Only when that is exactly the people
+ * in does the chain ask the same people for the same majority; otherwise the question is decided here, as a guest's
+ * is. The set's size plays no part: the people in are the voters either way, and this only says where it is kept.
  */
-export function locksHere(peopleIn: number, setSize: number): boolean {
-  return peopleIn < thresholdFor(setSize);
+export function chainCarries(input: { registered: readonly string[]; inIt: readonly string[]; asker: string }): boolean {
+  const inIt = new Set(input.inIt.map((w) => w.toLowerCase()));
+  const asked = new Set([...input.registered, ...input.inIt, input.asker].map((w) => w.toLowerCase()));
+  return asked.size === inIt.size && [...asked].every((w) => inIt.has(w));
+}
+
+/**
+ * Whether the voters the chain snapshotted at a lock are exactly the people in it. The lock checks the set before it
+ * sends (`chainCarries`); a registration that lands between that check and the lock widens the snapshot, so the
+ * completion reads it again and says so loudly when it differs. Pure.
+ */
+export function snapshotIsThePeopleIn(snapshot: readonly string[], inIt: readonly string[]): boolean {
+  const named = new Set(snapshot.map((w) => w.toLowerCase()));
+  const people = new Set(inIt.map((w) => w.toLowerCase()));
+  return named.size === people.size && [...named].every((w) => people.has(w));
 }
 
 /**

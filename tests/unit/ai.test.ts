@@ -8,6 +8,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { answerFrom } from "@/lib/ai/client";
 import { AnswerProposal, PickOneScope, Proposal, Scope, plainPickOneScope, plainScope } from "@/lib/ai/markets";
+import { datesOf } from "@/lib/ledger/write-up";
 import { AnswerArbitration } from "@/lib/ai/settler";
 
 type Recorded = { content: Array<{ type: string; name?: string; input?: Record<string, unknown> }> };
@@ -75,3 +76,23 @@ test("a recorded answer proposal names one of the answers by its number, and a r
   assert.ok(a.ruling.length >= 20);
   assert.throws(() => answerFrom(load("propose-answer"), "propose_outcome", Proposal, "t"), /did not answer/, "an answer proposal is not a yes-or-no one");
 });
+
+// Recorded on 2026-10-06 with the furthest date in the prompt (scripts/dev/record-ai.ts far): two questions that cannot be
+// known for decades. The write-up keeps their real dates and offers one nearer version each (the second-pass round).
+test("a question that cannot be known for decades keeps its real date and offers one nearer version that fits, read from the recorded write-ups; a nearer one that does not fit is no offer", () => {
+  const recordedOn = new Date("2026-10-06T16:00:00Z");
+  const NY = "America/New_York";
+  const country = datesOf(answerFrom(load("scope-pick-one-far"), "write_pick_one_terms", PickOneScope, "t"), recordedOn, NY);
+  assert.equal(country.decideBy, null, "no date to start on, never one moved to fit");
+  assert.deepEqual([country.tooFar?.knownBy, country.tooFar?.latest], ["2056-10-06", "2029-10-06"]);
+  assert.equal(country.tooFar?.nearer?.decideBy, "2029-10-06", "the nearer version is decided by the furthest date");
+  assert.match(country.tooFar?.nearer?.title ?? "", /3 years|three years/, "measured over the coming years");
+  const mars = datesOf(answerFrom(load("scope-market-far"), "write_terms", Scope, "t"), recordedOn, NY);
+  assert.deepEqual([mars.decideBy, mars.tooFar?.knownBy, mars.tooFar?.nearer?.decideBy], [null, "2060-12-31", "2029-10-06"]);
+  // A write-up with no date at all (the earlier recording) has nothing to start on and nothing too far.
+  assert.deepEqual(datesOf(answerFrom(load("scope-market"), "write_terms", Scope, "t"), recordedOn, NY), { decideBy: null, tooFar: null });
+  // One field varied: a nearer version whose own date is past the furthest date is not offered.
+  const late = answerFrom(withInput(load("scope-pick-one-far"), { nearer: { title: "Which country grows the most by 2033?", terms: "Growth from now to the start of 2033, on World Bank figures.", decideBy: "2033-01-01" } }), "write_pick_one_terms", PickOneScope, "t");
+  assert.equal(datesOf(late, recordedOn, NY).tooFar?.nearer, null);
+});
+

@@ -15,6 +15,7 @@ import { participantsOf, pidOf } from "./participants";
 import { inkOf, type InkName } from "@/lib/ui/ink";
 import { answersOf, stateOf, unitOf, voterIsIn, VOID_OUTCOME, type DareRow, type MarketState, type PositionRow, type Unit } from "./markets";
 import { answerShares, type Answer } from "./pick-one";
+import { countedSetSize } from "@/lib/ui/copy";
 
 export type MarketPerson = { id: string; displayName: string };
 export type MarketCardData = {
@@ -120,7 +121,7 @@ export async function marketCards(input: { viewerId: string; groupId?: string; w
       at: d.resolvedAt ?? d.lockedAt ?? d.createdAt,
       groupName: groups.find((g) => g.id === d.groupId)?.name ?? null,
       set: setFacts(groups.find((g) => g.id === d.groupId)?.name ?? null, seats.get(d.groupId) ?? []),
-      groupSize: (seats.get(d.groupId) ?? []).filter((s) => s.userId !== null).length,
+      groupSize: countedSetSize((seats.get(d.groupId) ?? []).flatMap((s) => (s.userId ? [s.userId] : [])), d.creatorId, ps.some((p) => p.userId === d.creatorId)),
       denomination,
       people: ps.map((p) => ({ id: pidOf(p), name: nameOf.get(pidOf(p)) ?? "Someone", ghost: ghost(pidOf(p)), percent: show && !unit && !answers ? percentOf(p) : null, number: show && unit ? p.value.toString() : null, pick: show && answers ? Number(p.value) : null })),
       outcome: state === "resolved" && !unit && !answers && d.resolvedOutcome !== null && d.resolvedOutcome !== VOID_OUTCOME ? (Number(d.resolvedOutcome) as 0 | 1) : null,

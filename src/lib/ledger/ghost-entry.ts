@@ -18,6 +18,7 @@ import { confidenceFor, marketById, MarketError, MAX_POSITIONS, pastItsClose, po
 import { pidOf } from "./participants";
 import { hashToken, newToken } from "./tokens";
 import { record } from "@/lib/usage";
+import { guestNameOf } from "@/lib/ui/entry-words";
 
 export const MAX_GHOSTS_PER_MARKET = 10;
 
@@ -76,7 +77,7 @@ async function claimFor(d: { id: string; groupId: string; creatorId: string }, w
     await checkPickedNumber(who.memberClaimId, who.phoneHash);
     return { claimId: who.memberClaimId, viaToken: false };
   }
-  const name = who.name.trim().slice(0, 40);
+  const name = guestNameOf(who.name);
   if (!name) throw new MarketError("Say what your friends call you.", "bad_input");
   // An address, a tag, a number or a handle is not a name here either (the same rule as the sign-up step), and it would be printed on every card the ghost is on.
   if (isIdentifier(name)) throw new MarketError("Say what your friends call you.", "bad_input");

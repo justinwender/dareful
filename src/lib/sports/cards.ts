@@ -9,6 +9,7 @@ import { unitPhrase } from "@/lib/ledger/number-axis";
 import { leanPill } from "@/lib/ui/team";
 import type { FeedEnding } from "./results";
 import type { TemplateKey } from "./templates";
+import { inCount } from "@/lib/ui/copy";
 
 export type CardInput = {
   key: TemplateKey;
@@ -48,7 +49,7 @@ export function yourEntry(input: Pick<CardInput, "key" | "mine" | "teams" | "uni
 
 /** The meta line under a card, by state (3.33), and the mark that heads it (3.23). */
 export function cardMeta(input: CardInput): CardMeta {
-  const count = `${input.inCount} of ${input.groupSize} in`;
+  const count = inCount(input.inCount, input.groupSize);
   if (input.state === "draft") return { mark: "draft", text: "You never sent this one" };
   if (input.state === "open") return input.viewerIn ? { mark: "in", text: `${yourEntry(input)} · ${count}` } : { mark: "open", text: `Closes at kickoff · ${count}` };
   if (input.state === "locked") {

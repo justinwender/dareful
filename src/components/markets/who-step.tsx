@@ -14,10 +14,10 @@ export type Who = { kind: "set"; groupId: string } | { kind: "people"; userIds: 
 const COUNT = ["", "", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"];
 
 /**
- * Who's in (docs/design.md 3.20, 3.38): the heading and its caption, the rows of saved sets (the last one
- * preselected, since the common case is the same people as last time), the naming prompt under a set asking its
- * second question, the dashed "Someone else" row with the people the asker knows, and "Whoever I send it to". The
- * same step in the ask flow and in starting a game (3.33); the parent renders what stands above it and the sheet.
+ * Who's in (docs/design.md 3.20, 3.38, as amended 2026-10-04 and 2026-10-06): the heading and its caption,
+ * "Whoever I send it to" first and chosen to start with, then the rows of saved sets, the naming prompt under a set
+ * asking its second question, and the dashed "Someone else" row with the people the asker knows. The same step in
+ * the ask flow and in starting a game (3.33); the parent renders what stands above it and the sheet.
  */
 export function WhoStep({ sets, people, who, onWho, argument = false, hue = "stone" }: { sets: SetOption[]; people: Person[]; who: Who; onWho: (who: Who) => void; argument?: boolean; /** The asker's hue, for the selection ring on the chosen row (3.20). */ hue?: Hue }) {
   const [picking, setPicking] = useState(sets.length === 0 && people.length > 0);
@@ -41,6 +41,14 @@ export function WhoStep({ sets, people, who, onWho, argument = false, hue = "sto
         <p className="text-body-sm text-ink-2">{argument ? "An argument is between two of you. Everyone else you’re on this with can watch, and helps call it." : "Everyone you pick gets the link. Nobody needs an account to look."}</p>
       </div>
       <div role="radiogroup" aria-label="Who's in" className="flex flex-col gap-2">
+        {/* "Whoever I send it to" first, above every set (the second-pass round, the owner's call): the default, and where who's in starts. */}
+        <button type="button" role="radio" aria-checked={who.kind === "link"} onClick={() => (onWho({ kind: "link" }), setPicking(false))} data-press={who.kind === "link" ? "fill" : "line"} className={cn("grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-card border border-dashed border-line-strong px-[14px] py-3 text-left", who.kind === "link" ? "bg-surface press-fill" : "press-line")}>
+          <span className="flex min-w-0 flex-col">
+            <span className="text-body-strong text-ink">Whoever I send it to</span>
+            <span className="text-caption text-ink-3">You get a link and a code. Whoever joins is in.</span>
+          </span>
+          {circle(who.kind === "link")}
+        </button>
         {sets.map((s) => {
           const on = who.kind === "set" && who.groupId === s.groupId;
           const label = named[s.groupId] ?? s.label;
@@ -132,13 +140,6 @@ export function WhoStep({ sets, people, who, onWho, argument = false, hue = "sto
           </div>
         ) : null}
 
-        <button type="button" role="radio" aria-checked={who.kind === "link"} onClick={() => (onWho({ kind: "link" }), setPicking(false))} data-press={who.kind === "link" ? "fill" : "line"} className={cn("grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-card border border-dashed border-line-strong px-[14px] py-3 text-left", who.kind === "link" ? "bg-surface press-fill" : "press-line")}>
-          <span className="flex min-w-0 flex-col">
-            <span className="text-body-strong text-ink">Whoever I send it to</span>
-            <span className="text-caption text-ink-3">You get a link and a code. Whoever joins is in.</span>
-          </span>
-          {circle(who.kind === "link")}
-        </button>
       </div>
     </>
   );

@@ -1,0 +1,43 @@
+{
+  "model": "claude-haiku-4-5-20251001",
+  "id": "msg_011CfmYoHd4U5ZWUDK3XomJQ",
+  "type": "message",
+  "role": "assistant",
+  "content": [
+    {
+      "type": "tool_use",
+      "id": "toolu_01LAAiev5SzME9r2q3e1pPWZ",
+      "name": "write_pick_one_terms",
+      "input": {
+        "title": "Which country grows its economy the most over the next 30 years?",
+        "terms": "The answer is whoever has the highest real GDP growth rate over the 30-year period starting now. We'll compare cumulative growth to October 6, 2056 using official World Bank data or equivalent international sources. If none of these four countries ends up with the highest growth, the question can't be settled.",
+        "decideBy": "2056-10-06",
+        "nearer": {
+          "title": "Which country grows its economy the most over the next 3 years?",
+          "terms": "The answer is whoever has the highest real GDP growth rate over the three-year period from now through October 6, 2029. We'll compare cumulative growth using official World Bank data or equivalent international sources. If none of these four countries ends up with the highest growth, the question can't be settled.",
+          "decideBy": "2029-10-06"
+        }
+      },
+      "caller": {
+        "type": "direct"
+      }
+    }
+  ],
+  "container": null,
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "stop_details": null,
+  "usage": {
+    "input_tokens": 1291,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "cache_creation": {
+      "ephemeral_5m_input_tokens": 0,
+      "ephemeral_1h_input_tokens": 0
+    },
+    "output_tokens": 278,
+    "service_tier": "standard",
+    "inference_geo": "not_available"
+  },
+  "diagnostics": null
+}

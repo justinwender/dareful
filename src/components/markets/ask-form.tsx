@@ -23,9 +23,10 @@ import { WhoStep, type Person, type SetOption, type Who } from "./who-step";
 import { refOfPicked, type PickedMark } from "@/lib/ui/mark";
 import { firstName } from "@/lib/ui/copy";
 import { MAX_ANSWER_LENGTH, MAX_ANSWERS, MIN_ANSWERS } from "@/lib/ledger/pick-one";
-import { DECIDE_BY_SPANS, LATEST_DAYS, addDays, deadlineMismatch, decideByDate, decideByMoment, dateWords, fromProposal, localDate, shortDateWords, swapDateWords, type DecideBy } from "@/lib/ledger/decide-by";
+import { DECIDE_BY_SPANS, latestDate, datePhrase, deadlineMismatch, decideByDate, decideByMoment, fromProposal, localDate, longDateWords, shortDateWords, swapDateWords, type DecideBy } from "@/lib/ledger/decide-by";
 import { kindForQuestion } from "@/lib/ui/question-shape";
 import { attempt } from "@/lib/ui/attempt";
+import { useFitsContent } from "@/lib/ui/fit-content";
 import { blankOf, type Idea } from "@/lib/ideas";
 
 type Unit = { kind: "usd" } | { kind: "existing"; id: string } | { kind: "new"; template: "beer" | "round" | "coffee" | "next_time"; label: string };
@@ -107,10 +108,20 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
   const scoping = useRef<Promise<void> | null>(null);
   const [title, setTitle] = useState("");
   const [terms, setTerms] = useState("");
+  // The three fields grow with what they hold where the browser will not (Safari 26.0 has no `field-sizing`).
+  const lineField = useFitsContent(line);
+  const titleField = useFitsContent(title);
+  const termsField = useFitsContent(terms);
   // When it's decided (3.20 as amended 2026-10-04): Tonight, This week, This month or a date, starting from the date the write-up proposes.
   const [decide, setDecide] = useState<DecideBy>({ key: "week" });
   /** The write-up's own date, for the date chip, and the date the terms name now, so a change of chip changes the terms with it. */
   const [proposedDate, setProposedDate] = useState<string | null>(null);
+  /**
+   * A question that cannot be known before the furthest a question can run (the second-pass round, 2026-10-06): no
+   * date is picked for it, one plain line says so at Decided with the nearer version under it, and nothing is sent
+   * until the asker takes that version or picks a date themselves. The date is never moved without them.
+   */
+  const [tooFar, setTooFar] = useState<ScopeResult["tooFar"]>(null);
   const termsDate = useRef<string | null>(null);
   /** The type the question's shape last chose (`kindForQuestion`): it follows the shape when the shape changes, and the asker's own pick otherwise. */
   const shapeKind = useRef<"binary" | "numeric" | "categorical" | null>(idea?.kind ?? null);
@@ -160,6 +171,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
     lastWriteUp.current = { chosen, source };
     setWritten({ title: "", terms: "", done: false, failed: false, lastAt: null });
     setScope(null);
+    setTooFar(null);
     const asked = questions.map((question, i) => ({ question, yes: answers[i] ?? false })).filter((_, i) => i in answers);
     const body = { line: source ?? line, criterion: chosen, answers: mode === "careful" && pace === "dare" ? asked : undefined, kind: (pickOne ? "categorical" : numeric ? "numeric" : "binary") as "binary" | "numeric" | "categorical", choices: pickOne ? filledChoices.map((c) => c.text.trim()) : undefined };
     scoping.current = (async () => {
@@ -184,6 +196,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
       setProposedDate(r.decideBy);
       termsDate.current = r.decideBy;
       setDecide(start);
+      setTooFar(r.tooFar);
       setWritten((w) => (w ? { ...w, title: r.title, terms: r.terms, done: true, lastAt: Date.now() } : w));
     })();
   }
@@ -260,6 +273,20 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
     if (from && from !== to) setTerms((t) => swapDateWords(t, from, to));
     termsDate.current = to;
     setDecide(next);
+    // A date the asker picked themselves: theirs, so the too-far line has done its work.
+    setTooFar(null);
+  }
+
+  /** The nearer version, taken whole: its question, its terms and its date, which fits. */
+  function askNearer() {
+    const n = tooFar?.nearer;
+    if (!n) return;
+    setTitle(n.title);
+    setTerms(n.terms);
+    setProposedDate(n.decideBy);
+    termsDate.current = n.decideBy;
+    setDecide(fromProposal(n.decideBy, new Date(), askerZone()));
+    setTooFar(null);
   }
 
   /** Sends a public question to one's own friends (3.33): the template's wording, the asker's people, stake and reveal. */
@@ -284,12 +311,14 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
     // The scale is the asker's when typed; otherwise the model's, if it passed the check; otherwise it has to be typed (3.26).
     if (numeric && !scale.trim() && !scope?.number?.model?.range) return setProblem("Say how far off scores nothing, like 20.");
     if (numeric && scale.trim() && !/^\s*[\d,]{1,11}\s*$/.test(scale)) return setProblem("The scale is a whole number, like 20.");
+    // Nothing goes out on a date too far off to decide, and nothing picks one for the asker (the second-pass round).
+    if (tooFar && pace !== "argument") return setProblem("Pick when it’s decided.");
     const zone = askerZone();
     const now = new Date();
     const decidedOn = decideByDate(decide, now, zone);
     // The terms and the decide-by never disagree (the first-contact round): a deadline in the terms is the decide-by date.
     const off = pace === "argument" ? null : deadlineMismatch(terms, decidedOn, now, zone);
-    if (off) return setProblem(`The terms say ${off}, and it’s decided ${dateWords(decidedOn)}. Make them match.`);
+    if (off) return setProblem(`The terms say ${off}, and it’s decided ${datePhrase(decidedOn, now, zone)}. Make them match.`);
     startSave(async () => {
       const arguing = pace === "argument" && verdict?.kind === "ok";
       // The criterion has to be inside the terms: the terms are what is hashed, and what entering accepts.
@@ -393,7 +422,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
                   setKind(pace === "argument" && shaped === "numeric" ? "binary" : shaped);
                 }
               }}
-              maxLength={280} aria-invalid={fieldProblem ? true : undefined} aria-describedby={fieldProblem ? "ask-line-problem" : undefined} className={cn("field-sizing-content resize-none rounded-button border border-line bg-surface px-3 py-2 text-serif-l text-ink", fieldProblem && FIELD_PROBLEM_CLASS)} />
+              ref={lineField} maxLength={280} aria-invalid={fieldProblem ? true : undefined} aria-describedby={fieldProblem ? "ask-line-problem" : undefined} className={cn("field-sizing-content resize-none rounded-button border border-line bg-surface px-3 py-2 text-serif-l text-ink", fieldProblem && FIELD_PROBLEM_CLASS)} />
             <Problem id="ask-line-problem" message={fieldProblem} />
           </div>
           )}
@@ -776,7 +805,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
       <div className="flex min-w-0 flex-col gap-1">
         <span className="text-caption text-ink-3">Your question</span>
         {step === "terms" && scope ? (
-          <textarea id="ask-title" rows={2} value={title} onChange={(e) => setTitle(e.target.value)} maxLength={140} aria-label="The question" className="field-sizing-content resize-none rounded-button border border-line bg-surface px-3 py-2 text-serif-l text-ink" />
+          <textarea id="ask-title" ref={titleField} rows={2} value={title} onChange={(e) => setTitle(e.target.value)} maxLength={140} aria-label="The question" className="field-sizing-content resize-none rounded-button border border-line bg-surface px-3 py-2 text-serif-l text-ink" />
         ) : (
           <span className="text-serif-l text-ink">{step === "terms" && written?.title ? written.title : verdict?.kind === "ok" && pace === "argument" ? verdict.claim : line}</span>
         )}
@@ -886,9 +915,11 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
         <div className="flex flex-col gap-3 rounded-card border border-dashed border-line-strong p-4">
           <p className="text-body-strong text-ink">That could be decided a few ways. Pick one, so nobody argues about it later.</p>
           {scope.criteria.map((c) => (
+            // A reading is a sentence: it wraps inside its button rather than being cut at both ends (the second-pass round, iOS 26).
             <Button
               key={c}
               variant="secondary"
+              className="h-auto min-h-12 whitespace-normal py-3 text-left"
               disabled={waiting}
               onClick={() => {
                 writeUp(c);
@@ -937,7 +968,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
           "Counts if",
           scope ? (
             <>
-              <textarea id="ask-terms" rows={3} value={terms} onChange={(e) => setTerms(e.target.value)} maxLength={800} aria-label="Counts if" className="field-sizing-content -mx-1 resize-none rounded-button bg-transparent px-1 text-body text-ink" />
+              <textarea id="ask-terms" ref={termsField} rows={3} value={terms} onChange={(e) => setTerms(e.target.value)} maxLength={800} aria-label="Counts if" className="field-sizing-content -mx-1 resize-none rounded-button bg-transparent px-1 text-body text-ink" />
               <p className="text-caption text-ink-3">{scope.plain ? "The write-up didn’t come through, so this is your line as you typed it. Change it however you like." : "Written up from your line. Change anything; everyone sees exactly this before they’re in."}</p>
             </>
           ) : (
@@ -1006,30 +1037,47 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
             )
           : row(
               "Decided",
-              <div className="flex flex-wrap gap-2" data-decide-by={decide.key}>
+              <>
+              <div className="flex flex-wrap gap-2" data-decide-by={tooFar ? "none" : decide.key}>
                 {DECIDE_BY_SPANS.map((w) => (
-                  <button key={w.key} type="button" onClick={() => pickDecide({ key: w.key })} {...chipPress(decide.key === w.key)}>
-                    <Chip size={36} selected={decide.key === w.key} choice>
+                  <button key={w.key} type="button" onClick={() => pickDecide({ key: w.key })} {...chipPress(!tooFar && decide.key === w.key)}>
+                    <Chip size={36} selected={!tooFar && decide.key === w.key} choice>
                       {w.label}
                     </Chip>
                   </button>
                 ))}
                 {/* A date (3.20 as amended): the write-up's date until another is picked, the phone's own date picker under the chip. */}
-                <label data-press={chipPress(decide.key === "date")["data-press"]} className={cn("relative", chipPress(decide.key === "date").className)} data-decide-date="">
-                  <Chip size={36} selected={decide.key === "date"} choice>
-                    {decide.key === "date" ? shortDateWords(decide.date) : proposedDate ? shortDateWords(proposedDate) : "A date"}
+                <label data-press={chipPress(!tooFar && decide.key === "date")["data-press"]} className={cn("relative", chipPress(!tooFar && decide.key === "date").className)} data-decide-date="">
+                  <Chip size={36} selected={!tooFar && decide.key === "date"} choice>
+                    {tooFar ? "A date" : decide.key === "date" ? shortDateWords(decide.date) : proposedDate ? shortDateWords(proposedDate) : "A date"}
                   </Chip>
                   <input
                     type="date"
                     aria-label="Decided on a date"
                     min={localDate(new Date(), askerZone())}
-                    max={addDays(localDate(new Date(), askerZone()), LATEST_DAYS)}
+                    max={latestDate(new Date(), askerZone())}
                     value={decide.key === "date" ? decide.date : (proposedDate ?? "")}
                     onChange={(e) => (e.target.value ? pickDecide({ key: "date", date: e.target.value }) : undefined)}
                     className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
                   />
                 </label>
-              </div>,
+              </div>
+              {tooFar ? (
+                // Too far off to decide (the second-pass round): said in plain words, with one nearer version that can be.
+                <div className="flex flex-col gap-3" data-too-far="">
+                  <Problem id="decided-too-far" message={`That can’t be known until ${longDateWords(tooFar.knownBy)}, and the furthest a question can run is ${longDateWords(tooFar.latest)}.`} />
+                  {tooFar.nearer ? (
+                    <div className="flex flex-col gap-2 rounded-card border border-line px-[14px] py-3" data-nearer="">
+                      <p className="text-body-strong text-ink">{tooFar.nearer.title}</p>
+                      <p className="text-body-sm text-ink-2">{tooFar.nearer.terms}</p>
+                      <Button variant="secondary" size="inline" className="self-start" onClick={askNearer} data-ask-nearer="">
+                        Ask this instead
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              </>,
             )}
         {row(
           "Stakes",

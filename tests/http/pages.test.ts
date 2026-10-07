@@ -1946,7 +1946,7 @@ test("at sign-in, an entry made from a link is a row on the claimant screen, pre
 
 // ------------------------------------------------------------------------------------------------- the usage door (the field round)
 
-test("the usage door counts a link opened once per device, refuses a link-preview fetcher and every name the browser may not report, and sets the device's cookie", async () => {
+test("the usage door counts a link opened once per device, refuses a link-preview fetcher and every name the browser may not report, and sets the device's cookie", async (t) => {
   const U = schema.usageEvents;
   const body = { name: "link_opened", props: { link: "market", signedIn: false, installed: true }, dareId: marketId };
   const post = (headers: Record<string, string>, b: unknown = body) => fetch(`${BASE}/api/usage`, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(b), redirect: "manual" });
@@ -1961,6 +1961,9 @@ test("the usage door counts a link opened once per device, refuses a link-previe
   assert.equal(first.status, 204);
   const cookie = /dareful_device=([0-9a-f-]{36})/.exec(first.headers.get("set-cookie") ?? "")?.[1];
   assert.ok(cookie, "the device's cookie");
+  // Everything this test's own device reported goes when it ends, pass or fail: a row a broken door let through
+  // with no question on it belongs to no market the cleanup removes, and would sit in production's counts.
+  t.after(() => db.delete(U).where(eq(U.deviceId, cookie as string)));
   const rows = await db.select().from(U).where(and(eq(U.dareId, marketId), eq(U.deviceId, cookie as string)));
   assert.equal(rows.length, 1);
   assert.deepEqual(rows[0]?.props, { link: "market", signedIn: false, installed: true });
@@ -1976,8 +1979,8 @@ test("the usage door counts a link opened once per device, refuses a link-previe
   for (const b of [{ name: "asked", props: { kind: "binary", pace: "dare", source: "direct", mark: "none" }, dareId: marketId }, { name: "signed_in", props: { method: "phone" } }, { name: "page", props: {} }, { name: "share", props: { icon: "Will John fall asleep?" }, dareId: marketId }]) {
     assert.equal((await post({ "user-agent": ua, cookie: `dareful_device=${cookie}` }, b)).status, 204);
   }
-  const all = await db.select({ name: U.name }).from(U).where(and(eq(U.dareId, marketId), eq(U.deviceId, cookie as string), isNull(U.userId)));
-  assert.deepEqual(all.map((r) => r.name), ["link_opened"], "nothing but the one open from this device while nobody was signed in");
+  const all = await db.select({ name: U.name }).from(U).where(and(eq(U.deviceId, cookie as string), isNull(U.userId)));
+  assert.deepEqual(all.map((r) => r.name), ["link_opened"], "nothing but the one open from this device while nobody was signed in, on the question or off it");
   assert.equal((await db.select({ id: U.id }).from(U).where(eq(U.name, "page"))).length, 0);
 });
 
