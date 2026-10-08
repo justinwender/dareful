@@ -28,7 +28,7 @@ export default async function WhatsOnPage() {
   const now = new Date(clock.now);
   const on = await whatsOn(me, now, clock.zone);
   const hue = hueFor(me.id);
-  const row = (g: (typeof on.days)[number]["games"][number]) => rowData(g.game, clock.zone, g.asked, g.yours[0] ? { line: onThisLine(g.yours[0].set, me.id), groupId: g.yours[0].groupId } : null);
+  const row = (g: (typeof on.days)[number]["games"][number]) => rowData(g.game, clock.zone, g.asked, g.yours[0] ? { line: onThisLine(g.yours[0].set, me.id), groupId: g.yours[0].groupId } : null, now);
   const nothing = on.days.length === 0;
   return (
     <Screen root>

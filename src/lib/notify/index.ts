@@ -15,7 +15,7 @@ import { firstName } from "@/lib/ui/copy";
 import { sendEmail, sendPush } from "./channels";
 import { positionsOf } from "@/lib/ledger/markets";
 import { record } from "@/lib/usage";
-import { allInNotice, backstopResultNotice, backstopWarningNotice, closedNotice, deadlineNotice, voteReminderNotice, votingOpenedNotice, enteredFromNotice, rulingNotice, joinedNotice, nettedNotice, nudgeNotice, nudgeSeq, nudgeTargets, openedNotice, pinLockedNotice, pushElseEmail, recipientsAfterVote, resultNotice, voteRequest, type BackstopHow, type Notice, type WarningFlavour, FALLBACK_ZONE, REMIND_AFTER_MS, reminderSendTime, reminderZone } from "./messages";
+import { backstopResultNotice, backstopWarningNotice, closedNotice, deadlineNotice, voteReminderNotice, votingOpenedNotice, enteredFromNotice, rulingNotice, joinedNotice, nettedNotice, nudgeNotice, nudgeSeq, nudgeTargets, openedNotice, pinLockedNotice, pushElseEmail, recipientsAfterVote, resultNotice, voteRequest, type BackstopHow, type Notice, type WarningFlavour, FALLBACK_ZONE, REMIND_AFTER_MS, reminderSendTime, reminderZone } from "./messages";
 
 /** Claims the (person, market, kind, count) slot; false if it was already told. This is what makes a retry silent. */
 export async function claimNotice(userId: string, dareId: string, kind: "vote_request" | "result" | "opened" | "joined" | "nudge" | "deadline" | "ruling" | "backstop_warning" | "backstop_result" | "entered_from" | "voting_opened" | "vote_reminder" | "all_in", seq: number, causedBy: string): Promise<string | null> {
@@ -330,7 +330,7 @@ async function quorumUserIds(d: DareRow): Promise<string[]> {
  * locked question not yet asked, within a minute, with `claimed` since it holds the claim already. A lock still on
  * its way is not yet a close: nothing is claimed, and the tick sends once the mirror is written.
  */
-export async function notifyVotingOpened(dareId: string, causedBy: string | null, by: "asker" | "time" | "both_in", opts: { claimed?: boolean; actorName?: string } = {}): Promise<void> {
+export async function notifyVotingOpened(dareId: string, causedBy: string | null, by: "asker" | "time" | "both_in" | "happened" | "final", opts: { claimed?: boolean; actorName?: string } = {}): Promise<void> {
   try {
     const d = await marketById(dareId);
     if (!d || !d.lockedAt || d.resolvedAt) return;
@@ -370,7 +370,8 @@ export async function notifyVoteReminder(dareId: string, now: Date = new Date())
     const out = quorum.filter((id) => !voted.has(id));
     if (out.length === 0) return { sent: 0, waiting: 0 };
     const zones = new Map((await db.select({ id: schema.users.id, zone: schema.users.zone }).from(schema.users).where(inArray(schema.users.id, out))).map((u) => [u.id, u.zone]));
-    const due = new Date(d.lockedAt.getTime() + REMIND_AFTER_MS);
+    // Twelve hours into voting, which opens when it has happened (the games-and-the-reveal round).
+    const due = new Date((d.voteAskedAt ?? d.lockedAt).getTime() + REMIND_AFTER_MS);
     const name = await nameOf(d.creatorId);
     let sent = 0;
     let waiting = 0;
@@ -391,22 +392,3 @@ export async function notifyVoteReminder(dareId: string, now: Date = new Date())
   }
 }
 
-/**
- * The asker hears once when the last person they asked is in (the field round, 1.8): everyone the set holds has a
- * number on it, the set is more than the asker, the question is still open (an argument locks on its second
- * entry and says so instead), and the last in was somebody else, since one's own entry is no news.
- */
-export async function notifyAllIn(dareId: string, lastInId: string): Promise<void> {
-  try {
-    const d = await marketById(dareId);
-    if (!d || d.lockedAt || d.resolvedAt || lastInId === d.creatorId) return;
-    const asked = (await accountHolders(d.groupId)).filter((id) => id !== d.creatorId);
-    if (asked.length === 0) return;
-    const inIt = new Set((await positionsOf(d.id)).map((p) => p.userId));
-    if (!asked.every((id) => inIt.has(id))) return;
-    const id = await claimNotice(d.creatorId, dareId, "all_in", 0, lastInId);
-    if (id) await deliver(d.creatorId, id, allInNotice({ lastName: await nameOf(lastInId), title: d.title, count: inIt.size, marketId: d.id, appUrl: APP_URL() }));
-  } catch (err) {
-    console.error("the all-in notice failed", { dareId, err });
-  }
-}

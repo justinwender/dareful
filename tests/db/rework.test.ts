@@ -10,9 +10,9 @@ import { ensureUsd } from "@/lib/ledger/denominations";
 import { createOccasionGroup, dismissNamePrompt, isMember, nameGroup, peopleSetsFor, setForPeople } from "@/lib/ledger/groups";
 import { homeFor } from "@/lib/ledger/home";
 import * as markets from "@/lib/ledger/markets";
-import { claimNotice, notifyAllIn, notifyJoined, notifyOpened, sendNudge } from "@/lib/notify";
+import { claimNotice, notifyJoined, notifyOpened, sendNudge } from "@/lib/notify";
 import { CODE_GUESSES_PER_HOUR, joinByCode, joinByMarketLink, roomCodeFor } from "@/lib/ledger/rooms";
-import { cleanup, codeOf, tempSigner, track, type Signer } from "./fixture";
+import { cleanup, codeOf, itHappened, tempSigner, track, type Signer } from "./fixture";
 
 let ana: Signer, ben: Signer, cy: Signer;
 before(async () => {
@@ -165,6 +165,7 @@ test("what happened and somebody's case are different kinds, and the outcome pro
   // Only someone in a question says what happened (the first-contact round).
   await markets.enterMarket({ dareId: d.id, userId: ana.user.id, stake: 1000n, value: 6000n, signature: await ana.ledger.signTypedData(markets.enterTypedData(d, 1000n, 6000n)) });
   await db.update(schema.dares).set({ lockedAt: new Date() }).where(eq(schema.dares.id, d.id));
+  await itHappened(d.id);
   await markets.sayWhatHappened(d.id, ana.user.id, "It rained all Saturday.");
   await db.delete(schema.dareStatements).where(and(eq(schema.dareStatements.dareId, d.id), eq(schema.dareStatements.userId, ben.user.id)));
   const rows = await db.select().from(schema.dareStatements).where(eq(schema.dareStatements.dareId, d.id));
@@ -257,20 +258,3 @@ test("a third person joining a question asked between two makes the set the thre
   assert.ok(mine && mine.label !== "Just you two" && /Cy/.test(mine.label), `the set reads as its people: ${mine?.label}`);
 });
 
-test("the asker hears once when the last person asked is in, never for their own entry, and not while someone is still out", async () => {
-  const { d } = await open();
-  await joinByMarketLink(d.id, ben.user.id);
-  await joinByMarketLink(d.id, cy.user.id);
-  const enter = async (who: Signer, bps: bigint) => markets.enterMarket({ dareId: d.id, userId: who.user.id, stake: 1000n, value: bps, signature: await who.ledger.signTypedData(markets.enterTypedData(d, 1000n, bps)) });
-  const rows = () => db.select({ userId: schema.notificationLog.userId, causedBy: schema.notificationLog.causedBy }).from(schema.notificationLog).where(and(eq(schema.notificationLog.dareId, d.id), eq(schema.notificationLog.kind, "all_in")));
-  await enter(ben, 7000n);
-  await notifyAllIn(d.id, ben.user.id);
-  assert.deepEqual(await rows(), [], "Cy is still out");
-  await enter(cy, 3000n);
-  await notifyAllIn(d.id, cy.user.id);
-  assert.deepEqual((await rows()).map((r) => [r.userId, r.causedBy]), [[ana.user.id, cy.user.id]], "told once, as Cy's doing");
-  await enter(ana, 5000n);
-  await notifyAllIn(d.id, ana.user.id);
-  await notifyAllIn(d.id, cy.user.id);
-  assert.equal((await rows()).length, 1, "never a second, and never for the asker's own entry");
-});

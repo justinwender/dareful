@@ -32,7 +32,7 @@ test("the close is a hard cutoff: past its own time a question takes no entry an
 
 const dare = { id: "d1", title: "Does John fall asleep?", creatorId: "creator", resolvesBy: new Date(t0.getTime() + 3_600_000), createdAt: t0, lockedAt: null as Date | null };
 const person = (id: string) => ({ id, name: id, ghost: false, percent: null, number: null, pick: null });
-const market = (over: Record<string, unknown>) => ({ state: "open", people: [person("creator")], groupSize: 4, votesCast: 0, saidBy: null, unit: null, pickOne: null, ...over, dare: { ...dare, ...((over.dare as object) ?? {}) } }) as never;
+const market = (over: Record<string, unknown>) => ({ state: "open", people: [person("creator")], votesCast: 0, saidBy: null, unit: null, pickOne: null, votingOpen: true, ...over, dare: { ...dare, ...((over.dare as object) ?? {}) } }) as never;
 const closes = () => "tonight";
 const past = { dare: { resolvesBy: new Date(t0.getTime() - minute) } };
 
@@ -45,9 +45,8 @@ test("Now: the asker's Close on time's up is offered only with two or more in; a
   // A ghost counts like anyone: two in is the asker and someone from the link.
   const ghost = needFromMarket(market({ ...past, people: [person("creator"), { ...person("gabe"), ghost: true }] }), "creator", false, t0, closes);
   assert.equal(ghost?.kind, "lock");
-  // Everyone in is still the asker's Close before the time, and reads as the count.
-  const everyone = needFromMarket(market({ groupSize: 2, people: [person("creator"), person("gabe")] }), "creator", false, t0, closes);
-  assert.deepEqual([everyone?.kind, everyone?.context], ["lock", "2 in"]);
+  // Before the time there is no Close row however many are in: nobody is asked by name (the games-and-the-reveal round), and the close is the sheet's.
+  assert.equal(needFromMarket(market({ people: [person("creator"), person("gabe")] }), "creator", false, t0, closes), null);
 });
 
 test("Now: past the close there is no Enter row, since the entry would be refused; before it there is", () => {
@@ -109,7 +108,7 @@ test("a photo from a game's night goes on the earliest question this person is i
   assert.equal(nightPhotoTarget([q("unsent", 0, null)], new Map([["unsent", [{ userId: "gabe" }]]]), "gabe"), null, "a question never sent takes no photo");
   // The night's screen hands the picker that question, and says a photo that did not go up (the sheets audit, 2026-09-29).
   const page = readFileSync("src/components/on/game-page.tsx", "utf8");
-  assert.ok(page.includes("const photoTarget = nightPhotoTarget(running, positionsOfMarket, me.id);") && page.includes("dareId={photoTarget?.dare.id ?? ids[0] ?? \"\"}"), "the night's PhotoAdding is given the rule's question");
+  assert.ok(page.includes("const photoTarget = nightPhotoTarget(questions, positionsByQuestion, me.id);") && page.includes("dareId={photoTarget?.dare.id ?? ids[0] ?? \"\"}"), "the night's PhotoAdding is given the rule's question");
   assert.ok(page.includes("{canAddPhoto ? <PhotoProblem /> : null}"), "the block under the photos is drawn on the night");
 });
 
@@ -120,7 +119,7 @@ test("a photo that did not go up is said with Try again; a full album is a refus
 });
 
 test("the deadlock sheet is never offered on a question the feed settles: the first drive too, whose tiebreaker is the play-by-play", () => {
-  const page = readFileSync("src/app/m/[id]/page.tsx", "utf8");
+  const page = readFileSync("src/app/m/[id]/market-screen.tsx", "utf8");
   assert.ok(page.includes('d.stalemate === "arbitrate" && mine && counted.length > 1 && !decidedByFeed'), "the split sheet tests the feed flag, which the first drive carries and the score flag does not");
   assert.ok(!page.includes("counted.length > 1 && !decidedByScore"), "and not the score flag");
 });

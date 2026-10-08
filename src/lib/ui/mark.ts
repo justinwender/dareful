@@ -27,3 +27,10 @@ export function refOfPicked(m: PickedMark | null): MarkRef | null {
   if (!m) return null;
   return m.kind === "emoji" ? { kind: "emoji", value: m.value } : { kind: "sticker", id: m.id };
 }
+
+/** Pure: the sticker named in the address as the preset mark, when it is one of this person's own; anything else is no mark. */
+export function initialStickerMark(param: string | undefined, mine: ReadonlyArray<{ id: string; ink: InkName | null }>): PickedMark | null {
+  if (!param || !/^[0-9a-f-]{36}$/i.test(param)) return null;
+  const s = mine.find((x) => x.id === param.toLowerCase());
+  return s ? { kind: "sticker", id: s.id, ink: s.ink } : null;
+}

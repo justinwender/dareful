@@ -14,7 +14,7 @@ import * as markets from "@/lib/ledger/markets";
 import { personView } from "@/lib/ledger/person";
 import { marketShare } from "@/lib/ledger/share";
 import { plainCard } from "@/lib/ui/share-card";
-import { cleanup, tempSigner, track, type Signer } from "./fixture";
+import { cleanup, itHappened, tempSigner, track, type Signer } from "./fixture";
 
 let ana: Signer, ben: Signer, cy: Signer, outsider: Signer;
 before(async () => {
@@ -63,6 +63,8 @@ test("a market says what it needs from the person looking, and nothing once they
   assert.equal((await card(ana, d.id))?.needsYou, null);
   await enter(ben, 1000n, 3500n);
   await db.update(schema.dares).set({ lockedAt: new Date() }).where(eq(schema.dares.id, d.id));
+  assert.equal((await card(ben, d.id))?.needsYou, null, "calls are in: nothing is anyone's move until it has happened");
+  await itHappened(d.id);
   assert.equal((await card(ben, d.id))?.needsYou, "Say how it came out");
   await db.insert(schema.dareVotes).values({ dareId: d.id, userId: ben.user.id, outcome: 1n, signature: Buffer.from("00", "hex") });
   assert.equal((await card(ben, d.id))?.needsYou, null);

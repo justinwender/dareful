@@ -80,12 +80,18 @@ test("the schedule read writes games and their questions; a market drafted from 
   assert.deepEqual([margin.kind, margin.range, margin.rangeSource, margin.outcomeLabels, margin.typical], ["numeric", SCALES.nfl.margin, "template", ["point", "points"], null], "the template's scale, as the template's");
   const total = await markets.draftFromTemplate({ templateId: byKey.get("total")!.id, creatorId: asker.user.id, groupId, denomId });
   assert.deepEqual([total.range, total.typical], [SCALES.nfl.total, SCALES.nfl.totalTypical]);
-  // A game that has started is no longer askable; nor is one whose time the source has not confirmed.
+  // A game that has started is askable until its final (section 5): the question waits for its first call to set its
+  // close, and the first drive is not asked, being over by then. Once the final is in it is too late, in the game's own words.
   const started = recorded("espn-nfl-scheduled", "nfl", () => new Date(Date.now() - H)).slice(2, 3);
   await syncSchedule("nfl", new Date(), listing(started));
   const late = await templatesOf(started[0]!.sourceId);
+  const during = await markets.draftFromTemplate({ templateId: late.byKey.get("home_wins")!.id, creatorId: asker.user.id, groupId, denomId });
+  assert.deepEqual([during.resolvesBy, during.closesAfterFirst], [null, true], "asked while the game is on: no close until the first call");
+  assert.equal(await said(() => markets.draftFromTemplate({ templateId: late.byKey.get("first_drive")!.id, creatorId: asker.user.id, groupId, denomId })), "The first drive is over by now.");
+  const ended = parseScoreboard("nfl", fixture("espn-nfl-final")).find((x) => x.completed)!;
+  await db.update(schema.sportsGames).set({ finalSeenAt: new Date(), homeScore: ended.homeScore, awayScore: ended.awayScore, completed: true, status: "final" }).where(eq(schema.sportsGames.id, late.game.id));
   // The refusal is the game's, in its own words: the draft's own past-close refusal must not be what answers here.
-  assert.equal(await said(() => markets.draftFromTemplate({ templateId: late.byKey.get("home_wins")!.id, creatorId: asker.user.id, groupId, denomId })), "That game has started, so it's too late to ask.", "too late, and said so");
+  assert.equal(await said(() => markets.draftFromTemplate({ templateId: late.byKey.get("total")!.id, creatorId: asker.user.id, groupId, denomId })), "That game is over, so it's too late to ask.", "too late, and said so");
   await db.update(schema.sportsGames).set({ timeValid: false }).where(eq(schema.sportsGames.id, game.id));
   assert.equal(await code(() => markets.draftFromTemplate({ templateId: wins.id, creatorId: friend.user.id, groupId, denomId })), "bad_input", "no confirmed start time");
   await db.update(schema.sportsGames).set({ timeValid: true }).where(eq(schema.sportsGames.id, game.id));

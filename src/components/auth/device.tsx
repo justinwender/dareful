@@ -3,7 +3,6 @@
 import { createContext, use, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useDynamicContext, useUserWallets } from "@dynamic-labs/sdk-react-core";
 import { Button } from "@/components/ui/button";
-import { AlertGlyph } from "@/components/ledger/problem";
 import { deviceState, type DeviceState, type Me } from "@/lib/auth/device";
 import type { SessionFacts } from "@/lib/auth/session-facts";
 
@@ -65,7 +64,7 @@ export function useDevice(): { state: DeviceState; me: Me | null; signIn: () => 
 }
 
 /**
- * Says so at the top of every screen, from the moment it loads, with the one thing to do about it. Reports
+ * Says so at the top of every screen, from the moment it loads, in one line with the one thing to do about it. Reports
  * what it saw to the server once per load, because which of these states real phones land in is exactly what
  * nobody could see from the database.
  */
@@ -81,21 +80,15 @@ export function DeviceNotice() {
   }, [me, state]);
 
   if (!me || state === "checking" || state === "ready" || state === "other-account") return null;
+  // One quiet line at the top (the games-and-the-reveal round: it was a card 154 points tall on a game's question,
+  // which pushed the share row under the sheet), drawn as the guest line is (3.46): the words on the left, the one
+  // thing to do about it on the right, a 1px line under it. One line at every width an iPhone has.
   return (
-    <div role="status" className="mx-auto w-full max-w-[430px] px-5 pt-3">
-      <div className="flex flex-col gap-3 rounded-button border border-line-strong bg-surface-2 px-[14px] py-3">
-        <p className="flex gap-2 text-body-sm text-ink">
-          <AlertGlyph />
-          <span>
-            {state === "signed-out"
-              ? "This device hasn’t checked it’s you yet. A quick code lets you vote, enter and say yep from here."
-              : "Something’s wrong with your sign-in on this device, and waiting won’t fix it. Signing in again usually does."}
-          </span>
-        </p>
-        <Button variant="secondary" size="inline" onClick={() => void signIn()}>
-          {state === "signed-out" ? "Get a code" : "Sign in again"}
-        </Button>
-      </div>
+    <div role="status" className="mx-auto flex min-h-11 w-full max-w-[430px] items-center justify-between gap-3 border-b border-line pr-2 pl-5" data-device-notice={state}>
+      <p className="min-w-0 truncate text-body-sm text-ink-2">{state === "signed-out" ? "This device hasn’t checked it’s you." : "Your sign-in here isn’t working."}</p>
+      <Button variant="tertiary" size="tertiary" className="shrink-0 text-ink" onClick={() => void signIn()}>
+        {state === "signed-out" ? "Get a code" : "Sign in again"}
+      </Button>
     </div>
   );
 }

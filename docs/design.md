@@ -1348,6 +1348,8 @@ who's-in row's icons are how they do (3.42).
 
 (Amended 2026-10-06, the second-pass round, the owner's call: **whoever I send it to** is the first row, above every set, and selected to start with, in asking and in starting a game. The sets follow it in the order above, none preselected.)
 
+(Amended 2026-10-07, the games-and-the-reveal round, the owner's call: **asking and starting a game have no who's-in step.** A question goes to whoever its asker sends it to: the flow is the question step, then the terms, and "Send it" opens it as sent, on the market's own screen with share, copy and the code in view. Starting a game goes from the menu to the terms step. Sets still form from the people who join. Picking people who already have accounts, the naming prompt and the balance this step carried (1.8) wait for a design; until then a new question's ink is balanced against nothing.)
+
 ### 3.21 Shared-context band
 
 On the person view, directly under the open-obligations header: a 13px `--ink-2` heading ("Where
@@ -1469,6 +1471,8 @@ people's timing.
 weight line, and from the details sheet's first view. Three numbers on one screen (a suggestion,
 yours, the group's) was one too many, and the suggestion anchored everyone who saw it before
 choosing.
+
+(Amended 2026-10-07, the games-and-the-reveal round, built to 3.6, 3.13, 3.22 and 3.31 as the fifteenth session wrote them: from the close the picture keeps its place and every share takes its owner's colour and avatar, on the odds line, a number's columns and the pick-one bars, under "Who said what", with the roll call (3.6) under it; before the close it stays anonymous. From the simulators: the viewer's own avatar carries their initial, never the "Y" of "You"; a guest's share is stone like their avatar (6.4); and the revealed avatars sit below the group's number, so they never cover its pill.)
 
 ### 3.23 The state mark
 
@@ -1694,6 +1698,8 @@ the entry line (3.38), on the claimant's screen and the voter's alike; the pictu
 (Amended 2026-10-04, the first-contact round, from the simulators. **The room follows the sheet.** The page's last element scrolls clear of the sheet at every position, by what shows at that position and 20px (full counts as raised); and the page grows with its content and is never held at its minimum height, which had put Now's last row under the tab bar and "Stakes, for all 3" under the sheet. **Tucked** shows the handle row and the strip over the home indicator, above Safari's toolbar too, and a tap on it raises the sheet. **A drag lands where the finger let it go**: past 24px it moves at least one position, and as far as the position nearest where it was released, so one long drag from raised tucks it. A draft's "Share it first" and "Discard it" sit on the page under its terms, never in the sheet, since on a 714-point Safari screen the raised sheet ended short of them.)
 
 (Amended 2026-10-06, the second-pass round, from the simulators: a draft's "Share it first" and "Discard it" sit on the page directly under the question, above its terms, so they are on a 714-point screen without scrolling; and on a question its asker has not entered, the entry sheet rests, so the who's-in row with share stands above it in view. A first entry by anyone else still opens raised.)
+
+(Amended 2026-10-07, the games-and-the-reveal round. **Calls are in**, built to this section and 3.42 as the fifteenth session wrote them: a market closes on the first of its asker, as many of the people in saying calls are in as it takes to settle a vote among them, its close time, or a game's start; the line names who has said it and, after "when", who could close it ("when Tam and Gabe say so too" when it takes everyone left, never "two of Tam and Gabe"), and never counts. With nobody asked by name, the asker's close is a secondary once two are in, under "Whoever isn't in yet can't get in after.", and the main action only once the market is stuck past its close time; the line "Everyone you asked is in." is gone. **It's happened** is the same 48px secondary as "Calls are in", in a sheet that keeps its handle; before it, or the final score, or the date in the terms, nobody can vote or say what happened, and the sheet says "Voting opens once it's happened." The ballot then names who opened it ("Gabe says it's happened."). The quorum is the people in.)
 
 ### 3.25 The question band and the market screen
 
@@ -2123,6 +2129,8 @@ mark".
 
 (Amended 2026-10-06, the second-pass round, the owner's brief. **A question too far out.** A question runs at most three calendar years, to the day, in the asker's zone. When the write-up's date is past that it is never moved: no decided chip is picked, the line at the field says "That can't be known until October 6, 2056, and the furthest a question can run is October 6, 2029.", and under it is one nearer version measurable in time, a card with its title and terms and the secondary "Ask this instead", which puts it in the step; the asker may also pick a date, and the date picker stops at the furthest one. **The terms' date and the decided date** are compared with their years where the terms write one, and the line names the year when the decided date is not this year's ("The terms say October 6, 2029, and it's decided October 6, 2030. Make them match.").)
 
+(Amended 2026-10-07, the games-and-the-reveal round, the owner's brief. **A question that names a game.** When a question asked here names both teams of a game played before it is decided, the terms step asks once, in a card at its top: the game and when ("Timberwolves at Pacers, on now." or "Fri 7:30pm"), "Let the final score settle it" as a secondary and "Keep it as it is" as a tertiary. Taking it asks that game's question in its place (the total for a number, who wins otherwise) and opens it on the game page; keeping it changes nothing and the card does not come back for that question.)
+
 ### 3.30 Pick one: entering
 
 Pick one means choosing one answer and nothing else. There is no confidence and no odds line.
@@ -2298,6 +2306,8 @@ eye starts, and leaves the two tabs about people together. Its icon is a ticket 
 the other tab icons at a 1.8px stroke on a 24px grid. It is shell furniture, like the three
 existing tab icons, so the closed set of eight structural icons does not change.
 
+(Amended 2026-10-07, the games-and-the-reveal round, the owner's brief. **Every game until its final.** What's on lists a game until its final is in, "Live" while it is being played, and anyone may start a question on it until then; the first drive is not offered once the game has started. A question started after the start closes five minutes after its first entry and never after the final: its clock waits for the first entry, its words are "Closes 5 minutes after the first call", and the late-close rule counts entries against that close time. While the game is on, the page's "Everything closed at kickoff." is not drawn.)
+
 ### 3.33 The game page
 
 Tapping a game opens its page: a header with the two teams and the time, then a stack of cards,
@@ -2437,6 +2447,8 @@ at kickoff."; these are the words for each.
 A sport not in the table waits until its words are written here; the feed's period names are
 mapped to these, never shown raw.
 
+(Amended 2026-10-07, the games-and-the-reveal round, read from the source's live scoreboards that night: baseball between halves of an inning is "Middle 7th" and "End 7th"; hockey's break after a period is "1st intermission"; and football and basketball between quarters (the feed's "End of 3rd", over a clock of 0.0) have no words in the table, so the score stands alone until the next quarter starts. The live score is read for a game only while someone has it open, at most every thirty seconds, and shows nothing once a read is older than ninety seconds.)
+
 **Once started** (frames B and C). "Questions" in `label`, then one card per running question in
 the menu's order, and within one menu row the most recent set first. A card is one `button` on
 `--surface` with a 1px line and radius 12: the question's 40px stamp on its field, the question
@@ -2477,6 +2489,8 @@ with one question is that question everywhere, apart from this page.
 **Once the game is over**, the page is the night (3.37, frame D).
 
 (Amended 2026-10-06, the second-pass round, from the simulators: before kickoff the who's-in row with share sits directly under the header and its chips, above the questions, so sharing a new game is on screen without scrolling.)
+
+(Amended 2026-10-07, the games-and-the-reveal round: **built in full**, not the smaller version above. A game is one page for each person across their sets, each card naming its people only when there is more than one set; one question is open at a time in place, with the page's one sheet its own; a link to any question on a game, and its code's six letters, open the page with that question open; "Add another" offers a menu question already asked in another set first ("Rae already asked who wins.", "Go to that one", "Ask your own"); share, copy and the code on a game question send the game page with the game's tile. An asker's own unsent question on a game opens on their game page. The "Part of Chiefs at Bills" row on a question's own screen is superseded: a question on a game is always shown on its page.)
 
 ### 3.34 You: how your calls land
 
@@ -2739,6 +2753,8 @@ finding says so in the caption: "The terms didn't decide it. Nothing changes han
 **Expired** (frame D): the expired mark and "Closed for good Sun at 9am"; the outcome line
 "Never settled." with the caption "Nobody said what happened before it closed for good."; then
 as voided.
+
+(Amended 2026-10-07, the games-and-the-reveal round: that caption is for an expiry under the void rule, a market that closed and then heard nothing. A market that ended because fewer than two were in at its close time (the late-close rule of 2026-10-03, and a game's question five minutes after its first entry) never closed, so "Never settled." stands alone. "Nobody else got in.", 3.15's words for a removed question, is proposed to the owner as its caption. A guest who was in sees no who's-in row on a void or an expiry, as anyone in sees none.)
 
 **Someone who wasn't in** (frame B): the same screen with no add anywhere. The frame shows, the
 empty slot and the add tile never do, and share is on the who's-in row as for everyone.
@@ -3387,6 +3403,8 @@ theirs takes messages. A person hears about a question at most once per six hour
 
 (Amended 2026-10-04, the first-contact round: the asker has the row from creation, before entering, with share as the chalk while nobody is in and the count "Nobody's in yet."; "Withdraw it" sits under it while nobody else is in.)
 
+(Amended 2026-10-07, the games-and-the-reveal round, the owner's call: with nobody asked by name there are **no holdouts**. The count is "N in", "Just you so far" while the asker is alone, and "Nobody's in yet." before anyone, with no second number; the dashed avatars of people asked and the nudge to enter are gone, and the asker's "Close it with 4" asks once with "Whoever isn't in yet can't get in after." in place of names. The nudge to vote stays, beside each person in who hasn't. On a question on a game, share, copy and the code send the game page.)
+
 ### 3.43 I got this one
 
 Logging a cover lives on the person view, because a cover is always between you and one person,
@@ -3566,6 +3584,8 @@ nothing to dismiss. Signing up from it comes back to the screen it was tapped on
 3.17), on modal sheets, on the opening (11), and for anyone signed in.
 
 (Built 2026-10-04, the first-contact round, as drawn: a fixed layer the page starts under, drawn once the guest is in and never on the link page before.)
+
+(Amended 2026-10-07, the games-and-the-reveal round, the owner's finding: the notice at the top of a signed-in phone that has not checked its code ("This device hasn't checked it's you.", with "Get a code") takes this line's form: one row of the shell, 44px, the words in `body-sm` `--ink-2` on the left, cut short rather than wrapped, and the tertiary on the right. It was a card 154 points tall on a game question and pushed the share row under the sheet.)
 
 ### 3.47 Ideas
 
@@ -4166,6 +4186,8 @@ so, because the asker would otherwise reasonably wonder.
 
 ---
 
+(Amended 2026-10-07, the games-and-the-reveal round: the asker's notice when the last person they asked is in is gone, since nobody is asked by name. Voting opened goes out when it has happened: the final score, the date in the terms, or someone in saying "It's happened", named in the notice.)
+
 ## 5. Errors and waiting
 
 (Amended 2026-10-02, the field round, part 1: three notices for voting. Voting opened: everyone in the quorum but the person whose act closed it, whichever path closed it, named for what they did ("JP closed “…”", "Time’s up on JP’s “…”", "Rae is in on “…”"), landing on the ballot; sent by the action that closed it and, for every path it did not, by the tick within a minute, once per question. Everyone asked is in: the asker, once, when the last person they asked gets in, never for their own entry. The twelve-hour reminder: once, by push and by email, to everyone still to vote twelve hours into voting, held to 9am in the asker's zone when it would fall between 11pm and 9am, never a second. The reminder is a notice sent because time passed, which Principle 1 forbids; the owner ruled it in on 2026-10-02 for the first week with real groups, where nobody came back to vote without being told (docs/decisions.md). It is the one exception, and it is named.)
@@ -4310,6 +4332,8 @@ None of it announces itself: no toast, no "updated", and nothing moves under a f
 mid-gesture.
 
 ---
+
+(Amended 2026-10-07, the games-and-the-reveal round, the field round's 3.2: **pulling draws the tally** in place of the line. Under the status band the logo's strokes draw one at a time with the pull, from the opening's own paths and timing; the fifth crosses them as the pull is let go past 72px, never while it is held; the count redraws in a loop while the screen is read; and the tally settles and retracts once it has. It sits on its own 44px patch of ground, the status band's paint with its grain lined up with the screen's, because once let go the page springs back under it and its strokes must never cross a line of text. Under Reduce Motion it is a still mark that fades. The re-read on return keeps the 2px line, since nobody pulled.)
 
 ## 6. The shell: four destinations and one button
 

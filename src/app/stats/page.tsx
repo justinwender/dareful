@@ -7,6 +7,9 @@ import { isOwner } from "@/lib/usage/owner";
 import { countStats, PERCENT_STATS, snapshots, STATS, windowFor } from "@/lib/usage/stats";
 import { onchainCounts, ONCHAIN_COUNT_CAP } from "@/lib/ledger/envio";
 import { explorerAddressUrl } from "@/lib/chain/explorer";
+import { isNotNull } from "drizzle-orm";
+import { db, schema } from "@/db";
+import { bufferToHex, questionGroupOnchainId } from "@/lib/ledger/ids";
 
 export const metadata: Metadata = { title: "Dareful", robots: { index: false, follow: false } };
 
@@ -21,7 +24,14 @@ export default async function StatsPage() {
   if (!me || !isOwner(me.id)) notFound();
   const now = new Date();
   // The chain's counts are the indexer's; a read that fails says so and never takes the page down.
-  const [launch, week, days, chain] = await Promise.all([countStats(windowFor("launch", now)), countStats(windowFor("week", now)), snapshots(60), onchainCounts().catch(() => null)]);
+  // A question's own group is told from a set by the question's own id (the games-and-the-reveal round), which only Postgres can turn back into the uuid it was made from.
+  const onchainIds = await db.select({ id: schema.dares.id, onchainId: schema.dares.onchainId }).from(schema.dares).where(isNotNull(schema.dares.onchainId));
+  const uuidOf = new Map(onchainIds.map((r) => [bufferToHex(r.onchainId as Buffer).toLowerCase(), r.id]));
+  const questionGroupOf = (dareId: string) => {
+    const id = uuidOf.get(dareId.toLowerCase());
+    return id ? questionGroupOnchainId(id) : "";
+  };
+  const [launch, week, days, chain] = await Promise.all([countStats(windowFor("launch", now)), countStats(windowFor("week", now)), snapshots(60), onchainCounts(questionGroupOf).catch(() => null)]);
   const chainId = Number(process.env.MONAD_CHAIN_ID ?? 10143);
   const contracts = [
     { label: "The ledger", address: process.env.DAREFUL_LEDGER_ADDRESS ?? null },
@@ -69,10 +79,12 @@ export default async function StatsPage() {
               <dd className="text-right tabular-nums">{upTo(chain.obligations)}</dd>
               <dt>Questions closed onto it</dt>
               <dd className="text-right tabular-nums">{upTo(chain.questions)}</dd>
-              <dt>Members registered</dt>
-              <dd className="text-right tabular-nums">{upTo(chain.members)}</dd>
-              <dt>Groups registered</dt>
-              <dd className="text-right tabular-nums">{upTo(chain.groups)}</dd>
+              <dt>People registered</dt>
+              <dd className="text-right tabular-nums">{upTo(chain.people)}</dd>
+              <dt>Sets registered</dt>
+              <dd className="text-right tabular-nums">{upTo(chain.sets)}</dd>
+              <dt>Questions in a group of their own</dt>
+              <dd className="text-right tabular-nums">{upTo(chain.questionGroups)}</dd>
             </dl>
           ) : (
             <p className="text-body-sm text-ink-2">The chain’s counts couldn’t be read just now.</p>

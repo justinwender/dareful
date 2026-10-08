@@ -3,16 +3,17 @@
  * reaches the chain (PLANNING.md 5b). Ids are deterministic from the offchain uuids, so a client can sign over them
  * before the registration transaction exists. Only account-holders register, and only the people acting (the
  * second-pass round, 2026-10-06): the two sides of a confirmation, or the people in a question and its asker at its
- * lock. The deployed contract asks a question's vote of everyone ever registered in its set, so registering anyone
+ * lock. The deployed contract asks a question's vote of everyone ever registered in its group, so registering anyone
  * else (someone who only opened the link, say) would make them a voter on a question they never entered. A ghost
- * registers once they bind and act.
+ * registers once they bind and act. A question whose set has anyone else registered gets a group of its own, of
+ * exactly its people in (`ensureQuestionGroupOnchain`, the games-and-the-reveal round, 2026-10-07).
  */
 import { eq, inArray } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { contracts } from "@/lib/chain/contracts";
 import { gasFor } from "@/lib/chain/gas";
 import { relayer, submit } from "@/lib/chain/relayer";
-import { denomOnchainId, groupOnchainId, hexToBuffer } from "./ids";
+import { denomOnchainId, groupOnchainId, hexToBuffer, questionGroupOnchainId } from "./ids";
 import type { Address, Hex } from "viem";
 
 async function accountHolders(userIds: readonly string[]) {
@@ -106,6 +107,76 @@ export async function ensureDenomOnchain(denomId: string, userIds: readonly stri
   }
   await db.update(schema.denominations).set({ onchainId: hexToBuffer(onchainId) }).where(eq(schema.denominations.id, denomId));
   return onchainId;
+}
+
+/**
+ * A question's own group (the games-and-the-reveal round, 2026-10-07): registered at its lock with exactly its people
+ * in, and its unit inside it, so the voters the contract snapshots are them and nobody else. Nothing about it lives
+ * offchain but the id, which is the question's. Members cannot come off the chain, so a group an earlier attempt left
+ * with anyone else in it can never carry this question: null then, and the question is decided here. Idempotent: a
+ * retry adds whoever is missing and registers the unit once.
+ */
+export async function ensureQuestionGroupOnchain(dareId: string, denomId: string, userIds: readonly string[]): Promise<Hex | null> {
+  const [denom] = await db.select().from(schema.denominations).where(eq(schema.denominations.id, denomId)).limit(1);
+  if (!denom) throw new Error(`unknown denomination ${denomId}`);
+  const members = await accountHolders(userIds);
+  if (members.length === 0) throw new Error(`question ${dareId} has nobody to register`);
+  const { ledger } = contracts();
+  const { publicClient } = relayer();
+  const groupId = questionGroupOnchainId(dareId);
+  const subject = { questionId: dareId, userIds: members.map((m) => m.id) };
+  const exists = await publicClient.readContract({ address: ledger.address, abi: ledger.abi, functionName: "groupExists", args: [groupId] });
+  if (!exists) {
+    await submit({
+      label: `createGroup for question ${dareId}`,
+      address: ledger.address,
+      abi: ledger.abi,
+      functionName: "createGroup",
+      args: [groupId, members.map((m) => ({ ledger: m.ledger as Address, governance: m.governance as Address }))],
+      gas: gasFor.createGroup(members.length),
+      write: { kind: "register", subject },
+    });
+  } else {
+    const there = (await publicClient.readContract({ address: ledger.address, abi: ledger.abi, functionName: "governanceOf", args: [groupId] })) as readonly Address[];
+    if (!onlyThesePeople(there, members.map((m) => m.governance))) return null;
+    for (const m of members) {
+      if (there.some((w) => w.toLowerCase() === m.governance.toLowerCase())) continue;
+      await submit({
+        label: `addMember for question ${dareId} ${m.ledger}`,
+        address: ledger.address,
+        abi: ledger.abi,
+        functionName: "addMember",
+        args: [groupId, { ledger: m.ledger as Address, governance: m.governance as Address }],
+        gas: gasFor.addMember(),
+        write: { kind: "register", subject },
+      });
+    }
+  }
+  const unit = denomOnchainId(denomId);
+  let registered = true;
+  try {
+    await publicClient.readContract({ address: ledger.address, abi: ledger.abi, functionName: "denomOf", args: [groupId, unit] });
+  } catch {
+    registered = false;
+  }
+  if (!registered) {
+    await submit({
+      label: `createDenom for question ${dareId}`,
+      address: ledger.address,
+      abi: ledger.abi,
+      functionName: "createDenom",
+      args: [groupId, unit, denom.quantifiable],
+      gas: gasFor.createDenom(),
+      write: { kind: "register", subject },
+    });
+  }
+  return groupId;
+}
+
+/** Whether a group already on the chain names nobody outside the people in: only then can it carry the question. Pure. */
+export function onlyThesePeople(registered: readonly string[], inIt: readonly string[]): boolean {
+  const people = new Set(inIt.map((w) => w.toLowerCase()));
+  return registered.every((w) => people.has(w.toLowerCase()));
 }
 
 /**

@@ -31,13 +31,15 @@ function rememberGuest(screen: string): void {
   }
 }
 
-/** Whether a control is on the screen to point at: drawn, visible, and inside the viewport. */
+/** Whether a control is on the screen to point at: drawn, visible, inside the viewport, and not under a layer (the pinned sheet over the foot of a market, which held the who's-in row under it on the simulators). */
 function onScreen(selector: string): boolean {
   const el = document.querySelector<HTMLElement>(selector);
   if (!el) return false;
   const r = el.getBoundingClientRect();
   if (r.width === 0 || r.height === 0) return false;
   if (r.bottom <= 0 || r.top >= window.innerHeight || r.right <= 0 || r.left >= window.innerWidth) return false;
+  const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+  if (hit && !el.contains(hit) && !hit.contains(el)) return false;
   return getComputedStyle(el).visibility !== "hidden";
 }
 
@@ -80,11 +82,12 @@ export function FirstTips() {
     return () => clearTimeout(timer);
   }, [pathname, me, tipsSeen]);
 
-  // Measures the control and the tip, and places both (the cut-out, the ring, the tip, its caret).
+  // Measures the control and the tip, and places both (the cut-out, the ring, the tip, its caret); again whenever the
+  // page moves under it, since a line arriving at the top after the tip showed (this device's notice, a guest's line)
+  // would otherwise leave the ring where the control used to be (the games-and-the-reveal round, on the simulator).
   useLayoutEffect(() => {
     if (!tips) return;
-    // Measured on the next frame, once the tip itself has a size to measure; until then it is drawn hidden.
-    const frame = requestAnimationFrame(() => {
+    const measure = () => {
       const tip = tips[at];
       const el = tip ? document.querySelector<HTMLElement>(tip.target) : null;
       if (!tip || !el) return setTips(null);
@@ -93,8 +96,22 @@ export function FirstTips() {
       const box: Box = { x: r.left, y: r.top, width: r.width, height: r.height };
       const size = tipBox.current ? { width: tipBox.current.offsetWidth, height: tipBox.current.offsetHeight } : { width: TIP_MAX_WIDTH, height: 96 };
       setPlace(tipPlacement(box, Math.min(radius, Math.min(r.width, r.height) / 2), { width: window.innerWidth, height: window.innerHeight }, size));
-    });
-    return () => cancelAnimationFrame(frame);
+    };
+    // Measured on the next frame, once the tip itself has a size to measure; until then it is drawn hidden.
+    let frame = requestAnimationFrame(measure);
+    const again = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(measure);
+    };
+    const watch = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(again);
+    const app = document.getElementById("app");
+    if (watch && app) for (const child of Array.from(app.children)) watch.observe(child);
+    window.addEventListener("resize", again);
+    return () => {
+      cancelAnimationFrame(frame);
+      watch?.disconnect();
+      window.removeEventListener("resize", again);
+    };
   }, [tips, at]);
 
   if (!tips || !tips[at]) return null;

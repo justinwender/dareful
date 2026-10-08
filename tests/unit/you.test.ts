@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { aboutPercent, askedCaption, askedHeadline, callLine, callsCaption, callsHeadline, earlyTitle, headerCaption, numbersCaption, numbersEarly, numbersHeadline, pickOneCaption, plotDots, sinceLabel } from "@/lib/ledger/you";
-import { initialStickerMark } from "@/app/m/new/page";
+import { initialStickerMark } from "@/lib/ui/mark";
 
 const zone = "America/New_York";
 const now = new Date("2026-09-27T20:00:00Z"); // Sunday afternoon in New York

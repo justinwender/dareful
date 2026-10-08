@@ -4,7 +4,7 @@ import { pendingCopy, SendPending } from "@/lib/chain/relayer";
 
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
-import { notifyAfterVote, notifyJoined, notifyOpened, notifyRuling, sendNudge, voteCounts, type NudgeResult, type VoteCounts, notifyVotingOpened, notifyAllIn } from "@/lib/notify";
+import { notifyAfterVote, notifyJoined, notifyOpened, notifyRuling, sendNudge, voteCounts, type NudgeResult, type VoteCounts, notifyVotingOpened } from "@/lib/notify";
 import { carefulQuestions, declined, SUBJECT_KINDS, triage } from "@/lib/ai/settler";
 import { afterEntry, arbitrateMarket, proposeForArgument, stateCase } from "@/lib/ledger/settle";
 import { isHex, type Hex } from "viem";
@@ -26,7 +26,8 @@ import { WORDS } from "@/lib/ui/errors";
 import { headers } from "next/headers";
 import { regionFromHeaders, tryHashPhone } from "@/lib/auth/phone";
 import { addClaimToken, clearClaimTokens, readClaimTokens } from "@/lib/auth/claim-cookie";
-import { enterAsGhost, removeGhostEntry } from "@/lib/ledger/ghost-entry";
+import { enterAsGhost, ghostPositionFor, removeGhostEntry } from "@/lib/ledger/ghost-entry";
+import { sayCallsAreIn, sayItHappened, takeBackCallsAreIn, type Sayer } from "@/lib/ledger/calls";
 import { discardDraft } from "@/lib/ledger/drafts";
 import { datePhrase, deadlineMismatch, localDate } from "@/lib/ledger/decide-by";
 import { leaveEntry } from "@/lib/ledger/claims";
@@ -35,7 +36,9 @@ import { db, schema } from "@/db";
 import { and, asc, eq } from "drizzle-orm";
 import { denominationById, ensureUnitInGroup, ensureUsd } from "@/lib/ledger/denominations";
 import { createOccasionGroup, isMember, setForPeople } from "@/lib/ledger/groups";
-import { answersOf, callToOutcome, castVote, draftAlreadySaved, draftFromTemplate, draftMarket, enterMarket, lockMarket, MarketError, marketById, openMarket, sayWhatHappened, stateOf, unitOf, VOID_OUTCOME, pickInk } from "@/lib/ledger/markets";
+import { gameById, gameNamedIn } from "@/lib/sports";
+import { answersOf, callToOutcome, castVote, createFields, createTypedData, draftAlreadySaved, draftFromTemplate, draftMarket, enterMarket, lockMarket, MarketError, marketById, openMarket, sayWhatHappened, stateOf, unitOf, VOID_OUTCOME, pickInk, votingOpenNow } from "@/lib/ledger/markets";
+import type { CreateFields } from "@/lib/chain/typed-data";
 import { MAX_ANSWER_LENGTH, MAX_ANSWERS, MIN_ANSWERS } from "@/lib/ledger/pick-one";
 
 const uuid = z.string().uuid();
@@ -114,8 +117,19 @@ const Draft = z.object({
     .optional(),
 });
 
-/** Saves the draft and sends the creator to it; they read the terms there and sign to open it. */
-export async function draftMarketAction(input: z.infer<typeof Draft>): Promise<{ id: string } | { error: string }> {
+/** What the asker signs to open a question as it is sent (the games-and-the-reveal round): its `Create` over its set, the numbers as strings. */
+export type ToSign = { dareOnchainId: Hex; fields: CreateFields; stalemate: number };
+const toSign = (row: Parameters<typeof createTypedData>[0]): ToSign => {
+  const m = createTypedData(row).message;
+  return { dareOnchainId: m.dareId, fields: createFields(m), stalemate: m.stalemate };
+};
+
+/**
+ * Saves the question and hands back what its asker signs to open it, so it opens as it is sent, with share, copy and
+ * the code in view (the games-and-the-reveal round, 2026-10-07). A signature that never comes leaves it a draft, whose
+ * own screen offers "Share it first".
+ */
+export async function draftMarketAction(input: z.infer<typeof Draft>): Promise<{ id: string; create: ToSign | null } | { error: string }> {
   const user = await currentUser();
   if (!user) return { error: WORDS.signedOut };
   const parsed = Draft.safeParse(input);
@@ -124,8 +138,9 @@ export async function draftMarketAction(input: z.infer<typeof Draft>): Promise<{
   try {
     // A second tap on "Send it" carries the id the first one saved under: the draft is already there.
     if (d.id) {
-      const saved = draftAlreadySaved(await marketById(d.id), user.id);
-      if (saved === "saved") return { id: d.id };
+      const existing = await marketById(d.id);
+      const saved = draftAlreadySaved(existing, user.id);
+      if (saved === "saved" && existing) return { id: d.id, create: existing.pace === "argument" ? null : toSign(existing) };
       if (saved === "taken") return { error: "That one’s already sent. Ask it again from the start." };
     }
     if (d.argument?.tier === "contestable" && !d.argument.criterion) return { error: "Pick how it's being decided first." };
@@ -183,7 +198,8 @@ export async function draftMarketAction(input: z.infer<typeof Draft>): Promise<{
       revealMode: d.blind ? "blind" : "open",
       zone: await viewerZone(),
     });
-    return { id: row.id };
+    // An argument opens with its asker's side, entered on its own screen; anything else opens as it is sent.
+    return { id: row.id, create: row.pace === "argument" ? null : toSign(row) };
   } catch (err) {
     if (!(err instanceof MarketError)) console.error("draft failed", err);
     return { error: say(err, "Couldn't save that.") };
@@ -195,7 +211,28 @@ export async function draftMarketAction(input: z.infer<typeof Draft>): Promise<{
  * the asker's; the question, its terms, its kind, its scale, its close and its tiebreaker are the template's,
  * copied on the server and never taken from the client.
  */
-export async function draftFromTemplateAction(input: { templateId: string; who: z.infer<typeof Who>; unit: z.infer<typeof Unit>; blind?: boolean; id?: string }): Promise<{ id: string } | { error: string }> {
+/**
+ * A game the question being asked names (the games-and-the-reveal round, section 6): two teams that play before it is
+ * decided, offered once on the terms step so the final score settles it. With the game, the question that asks it
+ * there: the total for a number, who wins otherwise.
+ */
+export async function gameNamedAction(rawLine: string, rawUntil: string, rawKind: "binary" | "numeric" | "categorical"): Promise<{ gameId: string; name: string; when: string; templateId: string } | null> {
+  const user = await currentUser();
+  if (!user) return null;
+  const line = z.string().trim().min(6).max(280).safeParse(rawLine);
+  const until = z.string().datetime().safeParse(rawUntil);
+  if (!line.success || !until.success) return null;
+  const now = new Date();
+  const game = await gameNamedIn(line.data, new Date(until.data), now).catch(() => null);
+  if (!game) return null;
+  const found = await gameById(game.id);
+  const template = found?.templates.find((t) => t.key === (rawKind === "numeric" ? "total" : "home_wins"));
+  if (!template) return null;
+  const zone = await viewerZone();
+  return { gameId: game.id, name: game.name, when: game.startsAt.getTime() <= now.getTime() ? "on now" : `${game.startsAt.toLocaleDateString("en-US", { timeZone: zone, weekday: "short" })} ${game.startsAt.toLocaleTimeString("en-US", { timeZone: zone, hour: "numeric", minute: "2-digit" }).replace(":00", "").replace(" ", "").toLowerCase()}`, templateId: template.id };
+}
+
+export async function draftFromTemplateAction(input: { templateId: string; who: z.infer<typeof Who>; unit: z.infer<typeof Unit>; blind?: boolean; id?: string }): Promise<{ id: string; create?: ToSign } | { error: string }> {
   const user = await currentUser();
   if (!user) return { error: WORDS.signedOut };
   const parsed = z.object({ templateId: uuid, who: Who, unit: Unit, blind: z.boolean().default(false), id: z.string().uuid().optional() }).safeParse(input);
@@ -214,7 +251,8 @@ export async function draftFromTemplateAction(input: { templateId: string; who: 
     if (!denom) return { error: "That unit isn't around any more. Pick another." };
     const row = await draftFromTemplate({ templateId: d.templateId, creatorId: user.id, groupId, denomId: denom.id, zone: await viewerZone(), id: d.id });
     if (d.blind) await db.update(schema.dares).set({ revealMode: "blind" }).where(and(eq(schema.dares.id, row.id), eq(schema.dares.creatorId, user.id)));
-    return { id: row.id };
+    // What its asker signs to open it as it is sent, as a question from the ask flow (the games-and-the-reveal round).
+    return { id: row.id, create: toSign(row) };
   } catch (err) {
     if (!(err instanceof MarketError)) console.error("draft from a game's question failed", err);
     return { error: say(err, "Couldn't save that.") };
@@ -228,15 +266,15 @@ const Position = z
 const valueOf = (p: z.infer<typeof Position>): bigint => (p.number !== undefined ? BigInt(p.number) : p.answer !== undefined ? BigInt(p.answer) : BigInt(p.valueBps ?? 0));
 
 /** The creator's two signatures: one opens the market, one is their own position. Either failing leaves it a draft or open with nobody in. */
-export async function openMarketAction(rawId: string, createSignature: string, rawPosition: z.infer<typeof Position>, enterSignature: string): Promise<{ ok: true } | { error: string }> {
+export async function openMarketAction(rawId: string, createSignature: string, rawPosition: z.infer<typeof Position>, enterSignature: string, questionSignature?: string | null): Promise<{ ok: true } | { error: string }> {
   const user = await currentUser();
   if (!user) return { error: WORDS.signedOut };
   const id = uuid.safeParse(rawId);
   const position = Position.safeParse(rawPosition);
-  if (!id.success || !position.success || !isHex(createSignature) || !isHex(enterSignature)) return { error: "That didn't come through. Try again." };
+  if (!id.success || !position.success || !isHex(createSignature) || !isHex(enterSignature) || (questionSignature && !isHex(questionSignature))) return { error: "That didn't come through. Try again." };
   try {
     await openMarket(id.data, user.id, createSignature as Hex);
-    await enterMarket({ dareId: id.data, userId: user.id, stake: BigInt(position.data.stake), value: valueOf(position.data), signature: enterSignature as Hex });
+    await enterMarket({ dareId: id.data, userId: user.id, stake: BigInt(position.data.stake), value: valueOf(position.data), signature: enterSignature as Hex, questionSignature: (questionSignature as Hex | null | undefined) ?? null });
   } catch (err) {
     return { error: say(err, "That didn't go through. Try again.") };
   }
@@ -283,14 +321,14 @@ export async function discardDraftAction(rawId: string): Promise<{ ok: true } | 
   return { ok: true };
 }
 
-export async function enterMarketAction(rawId: string, rawPosition: z.infer<typeof Position>, signature: string): Promise<{ ok: true } | { error: string }> {
+export async function enterMarketAction(rawId: string, rawPosition: z.infer<typeof Position>, signature: string, questionSignature?: string | null): Promise<{ ok: true } | { error: string }> {
   const user = await currentUser();
   if (!user) return { error: WORDS.signedOut };
   const id = uuid.safeParse(rawId);
   const position = Position.safeParse(rawPosition);
-  if (!id.success || !position.success || !isHex(signature)) return { error: "That didn't come through. Try again." };
+  if (!id.success || !position.success || !isHex(signature) || (questionSignature && !isHex(questionSignature))) return { error: "That didn't come through. Try again." };
   try {
-    await enterMarket({ dareId: id.data, userId: user.id, stake: BigInt(position.data.stake), value: valueOf(position.data), signature: signature as Hex });
+    await enterMarket({ dareId: id.data, userId: user.id, stake: BigInt(position.data.stake), value: valueOf(position.data), signature: signature as Hex, questionSignature: (questionSignature as Hex | null | undefined) ?? null });
   } catch (err) {
     return { error: say(err, "That didn't go through. Try again.") };
   }
@@ -305,8 +343,8 @@ export async function enterMarketAction(rawId: string, rawPosition: z.infer<type
   revalidatePath(`/m/${id.data}`);
   revalidatePath("/");
   after(() => notifyJoined(id.data, user.id));
-  // An argument's second entry opens its voting; otherwise the asker hears once when the last person asked is in (the field round, 1.8).
-  after(() => (lockedNow ? notifyVotingOpened(id.data, user.id, "both_in") : notifyAllIn(id.data, user.id)));
+  // An argument's second entry opens its voting. Nobody is asked by name any more (the games-and-the-reveal round), so no entry is the last of them.
+  if (lockedNow) after(() => notifyVotingOpened(id.data, user.id, "both_in"));
   // A model is never on the critical path: the ballot is open already, and the proposal arrives when it arrives.
   if (lockedNow) after(() => proposeForArgument(id.data).catch((err: unknown) => console.error("the ruling on an argument did not come through", err)));
   return { ok: true };
@@ -390,8 +428,84 @@ export async function lockMarketAction(rawId: string): Promise<{ ok: true; /** S
     }
     return { error: say(err, "Closing it didn’t go through. Nothing changed.") };
   }
-  // Voting opened by a person's hand: everyone else in it hears now (the field round, 1.8). A close that found fewer than two entries that count ended it instead, and there is nothing to vote on.
-  if (!expired) after(() => notifyVotingOpened(id.data, user.id, "asker"));
+  // Calls are in now, and the vote waits for the thing to happen (the games-and-the-reveal round): only a close made once
+  // its decided date has passed opens the vote at once, and then everyone else in it hears now (the field round, 1.8).
+  if (!expired) after(async () => {
+    const d = await marketById(id.data);
+    if (d && (await votingOpenNow(d))) await notifyVotingOpened(id.data, user.id, "asker");
+  });
+  revalidatePath(`/m/${id.data}`);
+  return { ok: true };
+}
+
+/** Who is saying it on this market: the signed-in person, or the guest this browser holds there. */
+async function sayerOn(dareId: string): Promise<Sayer | null> {
+  const user = await currentUser();
+  if (!user) return guestOn(dareId);
+  return { userId: user.id };
+}
+
+/** The guest this browser holds on the market, by its tokens, or nobody. */
+async function guestOn(dareId: string): Promise<Sayer | null> {
+  const ghost = await ghostPositionFor(dareId, await readClaimTokens());
+  return ghost ? { claimId: ghost.claimId } : null;
+}
+
+/**
+ * "Calls are in" (the games-and-the-reveal round; docs/design.md 3.24, 3.42): someone in an open market says it can
+ * close. It closes once as many of the people in have said it as it takes to settle a vote.
+ */
+export async function callsAreInAction(rawId: string): Promise<{ ok: true; closed: boolean; pending?: true } | { error: string }> {
+  const id = uuid.safeParse(rawId);
+  if (!id.success) return { error: "That one doesn't exist." };
+  const who = await sayerOn(id.data);
+  if (!who) return { error: "Only the people in it can say that." };
+  try {
+    const r = await sayCallsAreIn(id.data, who);
+    revalidatePath(`/m/${id.data}`);
+    return { ok: true, closed: r.closed };
+  } catch (err) {
+    if (err instanceof SendPending && err.kind !== "register") {
+      revalidatePath(`/m/${id.data}`);
+      return { ok: true, closed: true, pending: true };
+    }
+    return { error: say(err, "That didn’t go through. Try again.") };
+  }
+}
+
+/** "Take it back": unsaying calls are in while it is still open. */
+export async function takeBackCallsAction(rawId: string): Promise<{ ok: true } | { error: string }> {
+  const id = uuid.safeParse(rawId);
+  if (!id.success) return { error: "That one doesn't exist." };
+  const who = await sayerOn(id.data);
+  if (!who) return { error: "Only the people in it can say that." };
+  try {
+    await takeBackCallsAreIn(id.data, who);
+  } catch (err) {
+    return { error: say(err, "That didn’t go through. Try again.") };
+  }
+  revalidatePath(`/m/${id.data}`);
+  return { ok: true };
+}
+
+/**
+ * "It's happened" (the games-and-the-reveal round; docs/design.md 3.24): the vote opens for everyone at once, and
+ * everyone else in it with an account hears it is their turn, named for who said it.
+ */
+export async function itHappenedAction(rawId: string): Promise<{ ok: true } | { error: string }> {
+  const id = uuid.safeParse(rawId);
+  if (!id.success) return { error: "That one doesn't exist." };
+  const who = await sayerOn(id.data);
+  if (!who) return { error: "Only the people in it can say that." };
+  try {
+    const first = await sayItHappened(id.data, who);
+    if (first) {
+      const guestName = "claimId" in who ? (await db.select({ name: schema.participantClaims.displayName }).from(schema.participantClaims).where(eq(schema.participantClaims.id, who.claimId)).limit(1))[0]?.name : undefined;
+      after(() => notifyVotingOpened(id.data, "userId" in who ? who.userId : null, "happened", guestName ? { actorName: guestName } : {}));
+    }
+  } catch (err) {
+    return { error: say(err, "That didn’t go through. Try again.") };
+  }
   revalidatePath(`/m/${id.data}`);
   return { ok: true };
 }

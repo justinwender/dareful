@@ -10,7 +10,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { redirect } from "next/navigation";
 import { countedAtClose, lastChanged } from "@/lib/ledger/markets";
-import { closeLine } from "@/components/markets/market-actions";
+import { callsLine, STUCK_LINE } from "@/lib/ui/calls-words";
 import { buttonWait, tapGoes } from "@/components/ui/button";
 import { KEYS_MISSING_WORDS, signerFailure, signInAbandoned } from "@/lib/auth/device";
 import { FALLBACK_ZONE, reminderSendTime, reminderZone } from "@/lib/notify/messages";
@@ -35,13 +35,14 @@ test("the close time ends editing: at a close after it, an entry last changed af
   assert.equal(lastChanged(changedLate).getTime(), after.getTime());
 });
 
-test("the close's line in the sheet says what closing now costs, by who is still out", () => {
-  assert.equal(closeLine({ stuck: true, everyoneIn: false, leftOut: ["John"] }), "Time’s up, and nothing closed it. Anyone in it can.");
-  assert.equal(closeLine({ stuck: false, everyoneIn: true, leftOut: [] }), "Everyone you asked is in.");
-  assert.equal(closeLine({ stuck: false, everyoneIn: false, leftOut: ["John"] }), "Close it now and John can’t get in.");
-  assert.equal(closeLine({ stuck: false, everyoneIn: false, leftOut: ["John", "Maya"] }), "Close it now and John and Maya can’t get in.");
-  assert.equal(closeLine({ stuck: false, everyoneIn: false, leftOut: ["John", "Maya", "Gabe"] }), "Close it now and John, Maya and Gabe can’t get in.");
-  assert.equal(closeLine({ stuck: false, everyoneIn: false, leftOut: [] }), "Whoever isn’t in yet can’t get in after.");
+test("the close's line in the sheet names who has said calls are in and who it closes on, never a count; the asker's says what closing now costs; stuck, anyone in can", () => {
+  assert.equal(STUCK_LINE, "Time’s up, and nothing closed it. Anyone in it can.");
+  assert.equal(callsLine({ said: [], could: ["Gabe", "you"], need: 2, asker: false }), "When enough of you say calls are in, it closes early.", "before anyone has");
+  assert.equal(callsLine({ said: ["Theo", "Maya"], could: ["Gabe", "John", "you"], need: 1, asker: false }), "Theo and Maya say calls are in. It closes when Gabe, John or you say so too.", "the session's own sentence");
+  assert.equal(callsLine({ said: ["Theo"], could: ["Gabe", "John", "Maya", "you"], need: 2, asker: false }), "Theo says calls are in. It closes when two of Gabe, John, Maya and you say so too.", "when it takes two");
+  assert.equal(callsLine({ said: ["Theo", "You"], could: ["Gabe", "John"], need: 1, asker: false }), "You and Theo say calls are in. It closes when Gabe or John says so too.", "once you have, it leads with you");
+  assert.equal(callsLine({ said: [], could: [], need: 2, asker: true }), "Whoever isn’t in yet can’t get in after.", "the asker's: what closing now costs, where nobody was named");
+  assert.equal(callsLine({ said: ["Theo"], could: ["Gabe"], need: 1, asker: true }), "Theo says calls are in. Whoever isn’t in yet can’t get in after.", "and who has said it");
 });
 
 test("Still going cannot run for good: a write with no answer after a minute gives way to the words for a failure, and offline at the tap nothing is sent", () => {

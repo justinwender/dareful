@@ -124,25 +124,33 @@ export async function dareByOnchainId(dareId: string): Promise<EnvioDare | null>
 }
 
 const Ids = z.array(z.object({ id: z.string() }));
-const OnchainCounts = z.object({ Obligation: Ids, Dare: Ids, Member: Ids, Group: Ids });
+const OnchainCounts = z.object({ Obligation: Ids, Dare: z.array(z.object({ id: z.string(), groupId: z.string() })), Member: z.array(z.object({ id: z.string(), ledger: z.string() })), Group: Ids });
 /** How many rows of each kind one read asks for; a count that reaches it is said as "or more". */
 export const ONCHAIN_COUNT_CAP = 1000;
 
 /**
  * What the contracts hold, counted from the indexer (the field round, 3.1): obligations minted, questions closed
- * onto the chain, members and groups registered. Every account is in these, test accounts included: the chain
- * has no notion of an excluded account.
+ * onto the chain, the people registered and the groups. Every account is in these, test accounts included: the
+ * chain has no notion of an excluded account. A question created in a group of its own (the games-and-the-reveal
+ * round, 2026-10-07) is a group too, and its people are members of it, so groups are counted as sets and as
+ * questions' own, and people once each however many groups they are in.
  */
-export async function onchainCounts(): Promise<{ obligations: number; questions: number; members: number; groups: number }> {
+export async function onchainCounts(questionGroupOf: (dareId: string) => string): Promise<{ obligations: number; questions: number; people: number; sets: number; questionGroups: number }> {
   const data = await query(
     `query OnchainCounts($n: Int!) {
       Obligation(limit: $n) { id }
-      Dare(limit: $n) { id }
-      Member(limit: $n) { id }
+      Dare(limit: $n) { id groupId }
+      Member(limit: $n) { id ledger }
       Group(limit: $n) { id }
     }`,
     { n: ONCHAIN_COUNT_CAP },
     OnchainCounts,
   );
-  return { obligations: data.Obligation.length, questions: data.Dare.length, members: data.Member.length, groups: data.Group.length };
+  return onchainTally(data, questionGroupOf);
+}
+
+/** The counts from what the indexer answered: a question's own group is one its own question was created in. Pure. */
+export function onchainTally(data: { Obligation: Array<{ id: string }>; Dare: Array<{ id: string; groupId: string }>; Member: Array<{ ledger: string }>; Group: Array<{ id: string }> }, questionGroupOf: (dareId: string) => string): { obligations: number; questions: number; people: number; sets: number; questionGroups: number } {
+  const own = new Set(data.Dare.filter((d) => d.groupId.toLowerCase() === questionGroupOf(d.id).toLowerCase()).map((d) => d.groupId.toLowerCase()));
+  return { obligations: data.Obligation.length, questions: data.Dare.length, people: new Set(data.Member.map((m) => m.ledger.toLowerCase())).size, sets: data.Group.length - own.size, questionGroups: own.size };
 }

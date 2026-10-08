@@ -7,4 +7,4 @@ export default async function AskPage({ searchParams }: { searchParams: Promise<
   return <AskScreen searchParams={searchParams} />;
 }
 
-export { initialStickerMark } from "@/components/markets/ask-screen";
+export { initialStickerMark } from "@/lib/ui/mark";

@@ -6,7 +6,7 @@
  */
 import { randomBytes, randomUUID } from "node:crypto";
 import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
-import { eq, inArray, like, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, like, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import * as claims from "@/lib/ledger/claims";
 import { ensureUsd } from "@/lib/ledger/denominations";
@@ -109,6 +109,14 @@ export async function proposal(id: string) {
   return (await db.select().from(schema.obligationProposals).where(eq(schema.obligationProposals.id, id)))[0];
 }
 
+/**
+ * The vote opens once the thing has happened (the games-and-the-reveal round): the final score, the decided date, or
+ * anyone in saying so. A test about the vote itself says so first, as anyone in could; the gate has its own tests.
+ */
+export async function itHappened(dareId: string): Promise<void> {
+  await db.update(schema.dares).set({ happenedAt: new Date() }).where(and(eq(schema.dares.id, dareId), isNull(schema.dares.happenedAt)));
+}
+
 export async function codeOf(fn: () => Promise<unknown>): Promise<string | null> {
   try {
     await fn();
@@ -163,6 +171,7 @@ async function removeEverything(): Promise<void> {
       // Photos on a market (memories and evidence) hang off the market and go before it.
       await tx.delete(schema.media).where(inArray(schema.media.dareId, ids));
       await tx.delete(schema.dareVotes).where(inArray(schema.dareVotes.dareId, ids));
+      await tx.delete(schema.dareCloseCalls).where(inArray(schema.dareCloseCalls.dareId, ids));
       await tx.delete(schema.dareStatements).where(inArray(schema.dareStatements.dareId, ids));
       await tx.delete(schema.darePositions).where(inArray(schema.darePositions.dareId, ids));
       await tx.delete(schema.obligations).where(inArray(schema.obligations.originId, ids));

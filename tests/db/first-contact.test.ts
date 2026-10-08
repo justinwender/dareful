@@ -13,6 +13,9 @@ import { createGroup, createOccasionGroup, ensureDyad, peopleSetsFor } from "@/l
 import * as markets from "@/lib/ledger/markets";
 import { isProvisional, thresholdFor } from "@/lib/ledger/provisional";
 import { registeredVoters } from "@/lib/ledger/registry";
+import { contracts } from "@/lib/chain/contracts";
+import { relayer } from "@/lib/chain/relayer";
+import { bufferToHex, denomOnchainId, groupOnchainId, questionGroupOnchainId, uuidToBytes16 } from "@/lib/ledger/ids";
 import { completions } from "@/lib/ledger/completions";
 import { confirmProposal, confirmTypedData, proposeCover } from "@/lib/ledger/proposals";
 import { cents, units } from "@/lib/money";
@@ -20,7 +23,7 @@ import { leadingVotesOn } from "@/lib/ledger/settle";
 import { marketCards } from "@/lib/ledger/market-view";
 import { markReachCardShown, owesReachCard } from "@/lib/ledger/reach";
 import { discardDraft, unsentDrafts } from "@/lib/ledger/drafts";
-import { cleanup, codeOf, tempSigner, track, type Signer } from "./fixture";
+import { cleanup, codeOf, itHappened, tempSigner, track, type Signer } from "./fixture";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { and, eq } from "drizzle-orm";
@@ -42,8 +45,12 @@ async function question(people: Signer[], set?: { groupId: string; denomId: stri
   const usd = set ? { id: set.denomId } : await ensureUsd(g.id, ana.user.id);
   const d0 = await markets.draftMarket({ creatorId: ana.user.id, groupId: g.id, denomId: usd.id, title: "Does John fall asleep during the movie?", termsText: "Yes if John is asleep at any point before the credits. No if he makes it.", resolvesBy: new Date(Date.now() + 3 * 86_400_000), stalemate: "void" });
   const d = await markets.openMarket(d0.id, ana.user.id, await ana.ledger.signTypedData(markets.createTypedData(d0)));
-  const enter = async (who: Signer, value: bigint, stake = 1000n) => markets.enterMarket({ dareId: d.id, userId: who.user.id, stake, value, signature: await who.ledger.signTypedData(markets.enterTypedData(d, stake, value)) });
-  const vote = async (who: Signer, outcome: bigint) => markets.castVote({ dareId: d.id, userId: who.user.id, outcome, signature: await who.governance.signTypedData(markets.voteTypedData((await markets.marketById(d.id))!, outcome)) });
+  // Every entry signs the terms over the question's own group too (the games-and-the-reveal round); `question: false` is an entry made before it.
+  const enter = async (who: Signer, value: bigint, stake = 1000n, opts: { question?: boolean } = {}) => markets.enterMarket({ dareId: d.id, userId: who.user.id, stake, value, signature: await who.ledger.signTypedData(markets.enterTypedData(d, stake, value)), questionSignature: opts.question === false ? null : await who.ledger.signTypedData(markets.questionCreateTypedData(d)) });
+  const vote = async (who: Signer, outcome: bigint) => {
+    await itHappened(d.id);
+    return markets.castVote({ dareId: d.id, userId: who.user.id, outcome, signature: await who.governance.signTypedData(markets.voteTypedData((await markets.marketById(d.id))!, outcome)) });
+  };
   return { d, enter, vote };
 }
 
@@ -76,42 +83,71 @@ test("only the people in a question call it: a member of the set who never got i
   assert.deepEqual([done.resolvedBy, done.resolvedOutcome], ["provisional", 1n]);
 });
 
-test("a question goes on the chain only when the chain would ask exactly the people in it, and is decided here by a majority of them otherwise", async () => {
+test("every question with two or more in and every entry signed is decided and settled on the chain, its voters exactly the people in: in its set's own group when that is them, else in a group of its own", async () => {
   const low = (wallets: readonly string[]) => wallets.map((w) => w.toLowerCase()).sort();
   const gov = (...who: Signer[]) => low(who.map((s) => s.user.governanceWallet));
-  // A set of four nobody has registered: two in, and the chain's voters are those two and nobody else.
+  const { dares } = contracts();
+  const onChain = async (dareId: string) => {
+    const row = (await markets.marketById(dareId))!;
+    const read = (await relayer().publicClient.readContract({ address: dares.address, abi: dares.abi, functionName: "dareOf", args: [bufferToHex(row.onchainId as Buffer)] })) as { creator: string; groupId: string; quorum: readonly string[]; threshold: number };
+    return { row, read };
+  };
+  // A set of four nobody has registered: two in, created in the set's own group, which then holds those two alone.
   const first = await question([ana, ben, cy, dee]);
   await first.enter(ana, 7000n);
   await first.enter(ben, 3000n);
   const lock = await markets.lockMarket(first.d.id, ana.user.id);
-  const onChain = (await markets.marketById(first.d.id))!;
-  assert.equal(isProvisional(onChain), false, "two of four in a set nobody registered: on the chain");
+  const one = await onChain(first.d.id);
+  assert.equal(isProvisional(one.row), false, "two of four in a set nobody registered: on the chain");
+  assert.equal(bufferToHex(one.row.chainGroup as Buffer).toLowerCase(), groupOnchainId(first.d.groupId).toLowerCase(), "in the set's own group, since that is exactly the two");
   assert.deepEqual([low(lock.quorum), lock.threshold], [gov(ana, ben), thresholdFor(2)], "the chain asks the two people in, a majority of two");
   assert.deepEqual(low(await registeredVoters(first.d.groupId)), gov(ana, ben), "and registered nobody else in the set");
   assert.equal(await codeOf(() => first.vote(dee, 0n)), "not_member", "the set's others are not asked");
   assert.equal((await first.vote(ana, 0n)).resolved, false);
   assert.equal((await first.vote(ben, 0n)).resolved, true, "the two people in agree: decided on the chain");
 
-  // The same set again, with Ben registered there and not in: the chain would ask him, so it is decided here.
+  // The same set again, with Ben registered there and not in: a group of its own, of Ana and Cy, with Ana as its creator.
   const again = await question([ana, ben, cy, dee], { groupId: first.d.groupId, denomId: first.d.denomId });
   await again.enter(ana, 6000n);
   await again.enter(cy, 2000n);
-  await markets.lockMarket(again.d.id, ana.user.id);
-  const here = (await markets.marketById(again.d.id))!;
-  assert.deepEqual([isProvisional(here), here.threshold], [true, thresholdFor(2)], "someone registered and not in: decided here, by a majority of the two in");
-  assert.deepEqual(low(await registeredVoters(again.d.groupId)), gov(ana, ben), "and its lock registered nobody");
-  assert.equal(await codeOf(() => again.vote(ben, 1n)), "not_member", "Ben, registered on the chain, is no voter here");
+  const lockAgain = await markets.lockMarket(again.d.id, ana.user.id);
+  const two = await onChain(again.d.id);
+  assert.equal(isProvisional(two.row), false, "someone registered in the set and not in: still on the chain");
+  assert.equal(two.read.groupId.toLowerCase(), questionGroupOnchainId(again.d.id).toLowerCase(), "in a group of its own");
+  assert.equal(bufferToHex(two.row.chainGroup as Buffer).toLowerCase(), questionGroupOnchainId(again.d.id).toLowerCase(), "and the row says which");
+  assert.deepEqual([low(lockAgain.quorum), low(two.read.quorum), two.read.threshold], [gov(ana, cy), gov(ana, cy), thresholdFor(2)], "its voters on the chain are the two people in, a majority of two");
+  assert.equal(two.read.creator.toLowerCase(), ana.ledger.address.toLowerCase(), "the asker, who is in, stands as its creator");
+  assert.deepEqual(low(await registeredVoters(again.d.groupId)), gov(ana, ben), "and the set's own group gained nobody");
+  assert.equal(await codeOf(() => again.vote(ben, 1n)), "not_member", "Ben, registered in the set, is no voter here");
   assert.equal((await again.vote(ana, 1n)).resolved, false);
-  assert.equal((await again.vote(cy, 1n)).resolved, true);
+  assert.equal((await again.vote(cy, 1n)).resolved, true, "the two in agree: decided on the chain");
+  assert.equal((await markets.marketById(again.d.id))!.resolvedBy, "quorum");
+  // Settled there too: the one edge, from the lower score to the higher, is minted in the question's own group.
+  const minted = await db.select({ id: schema.obligations.id }).from(schema.obligations).where(and(eq(schema.obligations.origin, "dare"), eq(schema.obligations.originId, again.d.id)));
+  assert.equal(minted.length, 1, "Cy said 20% and Ana 60% on a yes: one edge, Cy to Ana");
+  const { ledger } = contracts();
+  const ob = (await relayer().publicClient.readContract({ address: ledger.address, abi: ledger.abi, functionName: "obligationOf", args: [uuidToBytes16(minted[0]!.id)] })) as { tokenId: bigint };
+  const ownToken = await relayer().publicClient.readContract({ address: ledger.address, abi: ledger.abi, functionName: "fungibleId", args: [questionGroupOnchainId(again.d.id), denomOnchainId(again.d.denomId), cy.ledger.address] });
+  assert.equal(ob.tokenId, ownToken, "minted in the question's own group, Cy's to Ana");
 
-  // Shared without entering: the contract would register the asker as a voter, so the two in decide it here.
+  // Shared without entering: the two who got in decide it, on the chain, with the first of them as its creator there.
   const shared = await question([ana, ben, cy]);
   await shared.enter(ben, 4000n);
   await shared.enter(cy, 9000n);
   await markets.lockMarket(shared.d.id, ana.user.id);
-  const sharedLocked = (await markets.marketById(shared.d.id))!;
-  assert.deepEqual([isProvisional(sharedLocked), sharedLocked.threshold], [true, thresholdFor(2)], "the asker never got in: decided here by the two who did");
+  const three = await onChain(shared.d.id);
+  assert.equal(isProvisional(three.row), false, "the asker never got in, and it is on the chain all the same");
+  assert.deepEqual([low(three.read.quorum), three.read.threshold], [gov(ben, cy), thresholdFor(2)], "its voters are the two who got in");
+  assert.equal(three.read.creator.toLowerCase(), ben.ledger.address.toLowerCase(), "the first of them in stands as its creator, since the asker cannot");
   assert.equal(await codeOf(() => shared.vote(ana, 1n)), "not_member", "and the asker is no voter");
+
+  // Entries made before the round carry no signature over the question's own group: with a wider set, decided here.
+  const before = await question([ana, ben, cy, dee], { groupId: first.d.groupId, denomId: first.d.denomId });
+  await before.enter(ana, 6000n, 1000n, { question: false });
+  await before.enter(dee, 2000n, 1000n, { question: false });
+  await markets.lockMarket(before.d.id, ana.user.id);
+  const legacy = (await markets.marketById(before.d.id))!;
+  assert.deepEqual([isProvisional(legacy), legacy.threshold], [true, thresholdFor(2)], "nobody in it signed over its own group and its set is wider: decided here, by a majority of the two in");
 });
 
 test("a confirmation registers its two sides on the chain and nobody else in the set, and finishing a registration the earlier build left in flight registers nobody new", async () => {

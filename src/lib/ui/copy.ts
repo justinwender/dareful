@@ -213,8 +213,9 @@ export function nobodyYetLine(threshold: number): string {
 }
 
 export function lockedLabel(at: Date, now: Date, timeZone: string): string {
-  if (dayNumber(now, timeZone) === dayNumber(at, timeZone)) return `locked at ${clockOf(at, timeZone)}`;
-  return `locked ${at.toLocaleDateString("en-US", { timeZone, weekday: "short", month: "short", day: "numeric" })}`;
+  // "Lock" is out in every sense (the fifteenth session, item 1): the entry line's caption after the close reads "closed at 10:40pm".
+  if (dayNumber(now, timeZone) === dayNumber(at, timeZone)) return `closed at ${clockOf(at, timeZone)}`;
+  return `closed ${at.toLocaleDateString("en-US", { timeZone, weekday: "short", month: "short", day: "numeric" })}`;
 }
 
 /**
@@ -240,20 +241,17 @@ export function dateLabel(at: Date, timeZone: string): string {
 }
 
 /**
- * How many are in, for a count beside a clock: "3 of 6 in" while someone asked is still out, "4 in" once everyone
- * named is in or when nobody was named (the field round, 2.7), and "nobody's in yet" before anyone is (3.14: never a
- * zero). The second number only when it is real. Pure.
+ * How many are in, for a count beside a clock: "4 in", and "nobody's in yet" before anyone is (3.14: never a zero).
+ * A question goes to whoever its asker sends it to (the games-and-the-reveal round, 2026-10-07), so there is no list
+ * of people asked to count against, and no second number. Pure.
  */
-export function inCount(people: number, groupSize: number): string {
-  if (people === 0) return "nobody’s in yet";
-  return groupSize > people ? `${people} of ${groupSize} in` : `${people} in`;
+export function inCount(people: number): string {
+  return people === 0 ? "nobody’s in yet" : `${people} in`;
 }
 
-/**
- * The set's size for that count: its account-holders, and the asker only once they are in, since nobody asks
- * themselves (the second-pass round: a new game its asker had not entered read "0 of 1 in"). Pure.
- */
-export function countedSetSize(memberIds: readonly string[], askerId: string, askerIn: boolean): number {
-  return memberIds.filter((id) => id !== askerId || askerIn).length;
-}
 
+/** The stretch after the close (docs/design.md 3.23, 3.24, the fifteenth session): the words beside the calls-are-in mark, and once it has happened. */
+export const CALLS_ARE_IN = "Calls are in";
+export const IT_HAPPENED = "It’s happened";
+/** A question started on a game already being played (the games-and-the-reveal round, section 5): its close, until its first call sets it. */
+export const FIRST_CALL_CLOSE = "Closes 5 minutes after the first call";

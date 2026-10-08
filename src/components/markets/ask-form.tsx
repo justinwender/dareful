@@ -13,13 +13,16 @@ import { streamWriteUp } from "@/lib/ui/write-up-stream";
 import { MOTION, waitStage } from "@/lib/ui/motion";
 import { answerLands, paceRowShows } from "@/lib/ui/stage";
 import { PinnedSheet } from "@/components/ui/pinned-sheet";
-import { carefulQuestionsAction, draftFromTemplateAction, draftMarketAction, scopeMarketAction, triageAction, type ScopeResult, type TriageResult } from "@/lib/actions/markets";
+import { carefulQuestionsAction, draftFromTemplateAction, draftMarketAction, gameNamedAction, openWithoutEntryAction, scopeMarketAction, triageAction, type ScopeResult, type ToSign, type TriageResult } from "@/lib/actions/markets";
+import { useSigner } from "@/components/ledger/use-signer";
+import { createMessage, daresTypes } from "@/lib/chain/typed-data";
+import type { TypedDataDomain } from "viem";
 import { emojiInk } from "@/lib/ui/emoji-ink";
 import type { Hue } from "@/lib/ui/hue";
 import { inkFor, inkRoomStyleText, type InkName } from "@/lib/ui/ink";
 import { cn } from "@/lib/utils";
 import { MarkPicker, type Sticker } from "./mark-picker";
-import { WhoStep, type Person, type SetOption, type Who } from "./who-step";
+import type { Person, SetOption } from "./who";
 import { refOfPicked, type PickedMark } from "@/lib/ui/mark";
 import { firstName } from "@/lib/ui/copy";
 import { MAX_ANSWER_LENGTH, MAX_ANSWERS, MIN_ANSWERS } from "@/lib/ledger/pick-one";
@@ -52,20 +55,22 @@ type Choice = { text: string; userId: string | null };
  */
 export type TemplateForAsking = { id: string; title: string; terms: string; kind: "binary" | "numeric" | "categorical"; gameName: string; /** "Sunday at 1pm": when it closes, in the asker's zone. */ closes: string; decidedByScore: boolean; /** "Off by 28 points or more scores nothing.", where the template sets a scale. */ scored: string | null };
 
-export function AskForm({ sets, people, initialLine = "", initialPace = "dare", me, screenTitle, gotCode = true, layer = false, stickers = [], canPaste = false, template = null, initialMark = null, idea = null }: { sets: SetOption[]; people: Person[]; initialLine?: string; initialPace?: "dare" | "argument"; me: { id: string; name: string; hue: Hue }; /** The screen's name in its header; the form owns the screen so a picked mark can retint all of it (3.29). */ screenTitle: string; /** "Got a code?" beside the information icon on the question step (3.29, 10.3). */ gotCode?: boolean; /** Rendered in the ask layer (9.5), where the sheet sits in flow and Close sinks the layer. */ layer?: boolean; /** This person's stickers for the picker (3.28), and whether a cutout can be pasted at all. */ stickers?: Sticker[]; canPaste?: boolean; /** A public question (3.33): the flow starts at who's in, with the wording locked. */ template?: TemplateForAsking | null; /** A sticker just made from a photo (3.28): the question step opens with it as the mark. */ initialMark?: PickedMark | null; /** An idea (3.47): its question, its kind and a number's unit; a blank leaves a name for the asker. */ idea?: Idea | null }) {
+export function AskForm({ signing, people, initialLine = "", initialPace = "dare", me, screenTitle, gotCode = true, layer = false, stickers = [], canPaste = false, template = null, initialMark = null, idea = null }: { /** What the asker signs with as the question is sent (the games-and-the-reveal round). */ signing: { domain: TypedDataDomain; ledgerWallet: string }; people: Person[]; initialLine?: string; initialPace?: "dare" | "argument"; me: { id: string; name: string; hue: Hue }; /** The screen's name in its header; the form owns the screen so a picked mark can retint all of it (3.29). */ screenTitle: string; /** "Got a code?" beside the information icon on the question step (3.29, 10.3). */ gotCode?: boolean; /** Rendered in the ask layer (9.5), where the sheet sits in flow and Close sinks the layer. */ layer?: boolean; /** This person's stickers for the picker (3.28), and whether a cutout can be pasted at all. */ stickers?: Sticker[]; canPaste?: boolean; /** A public question (3.33): the flow starts at who's in, with the wording locked. */ template?: TemplateForAsking | null; /** A sticker just made from a photo (3.28): the question step opens with it as the mark. */ initialMark?: PickedMark | null; /** An idea (3.47): its question, its kind and a number's unit; a blank leaves a name for the asker. */ idea?: Idea | null }) {
   const router = useRouter();
-  type Step = "question" | "declined" | "criterion" | "subject" | "careful" | "who" | "terms";
-  const [step, setStepRaw] = useState<Step>(template ? "who" : "question");
+  const sign = useSigner();
+  // Asking skips "Who's in" (the games-and-the-reveal round, 2026-10-07, the owner's call): every question goes to whoever the asker sends it to.
+  type Step = "question" | "declined" | "criterion" | "subject" | "careful" | "terms";
+  const [step, setStepRaw] = useState<Step>(template ? "terms" : "question");
   /** Where the person is and what they typed, as of now, for an answer that arrives late (`answerLands`). */
-  const here = useRef<{ step: Step; line: string }>({ step: template ? "who" : "question", line: initialLine.slice(0, 280) });
+  const here = useRef<{ step: Step; line: string }>({ step: template ? "terms" : "question", line: initialLine.slice(0, 280) });
   /** Advancing moves the step's content 24px left under a band that holds still; back mirrors it (9.8). */
   const setStep = (next: Step, back = false) => withViewTransition(() => setStepRaw(next), { back });
-  const previous: Record<Step, Step | null> = { question: null, declined: "question", criterion: "question", subject: "question", careful: "question", who: template ? null : "question", terms: "who" };
+  const previous: Record<Step, Step | null> = { question: null, declined: "question", criterion: "question", subject: "question", careful: "question", terms: template ? null : "question" };
   const stepBack = () => {
     const to = previous[step];
     if (to) setStep(to, true);
   };
-  const infoKey = step === "question" ? "ask-question" : step === "who" ? "ask-who" : step === "terms" ? "ask-terms" : "ask-careful";
+  const infoKey = step === "question" ? "ask-question" : step === "terms" ? "ask-terms" : "ask-careful";
   /** A named subject the model could not place (a person, a pet, a thing): asked in one tap before the three questions. */
   const [subjectAsk, setSubjectAsk] = useState<string | null>(null);
   /** What the name turned out to be (3.44), shown collapsed on the careful step with Change. */
@@ -102,8 +107,8 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
   useEffect(() => {
     here.current = { step, line };
   });
-  // "Whoever I send it to" is where who's in starts, everywhere (the first-contact round, the owner's call).
-  const [who, setWho] = useState<Who>({ kind: "link" });
+  // Whoever the asker sends it to (the games-and-the-reveal round): a set of one that grows as people join.
+  const who = { kind: "link" } as const;
   const [scope, setScope] = useState<ScopeResult | null>(null);
   const scoping = useRef<Promise<void> | null>(null);
   const [title, setTitle] = useState("");
@@ -123,6 +128,10 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
    */
   const [tooFar, setTooFar] = useState<ScopeResult["tooFar"]>(null);
   const termsDate = useRef<string | null>(null);
+  /** A game the question names (section 6), asked about once as the terms step opens, and the asker's "Keep it as it is". */
+  const [namedGame, setNamedGame] = useState<{ gameId: string; name: string; when: string; templateId: string } | null>(null);
+  const [gameDismissed, setGameDismissed] = useState(false);
+  const gameAsked = useRef(false);
   /** The type the question's shape last chose (`kindForQuestion`): it follows the shape when the shape changes, and the asker's own pick otherwise. */
   const shapeKind = useRef<"binary" | "numeric" | "categorical" | null>(idea?.kind ?? null);
   const [unit, setUnit] = useState<Unit>({ kind: "usd" });
@@ -145,10 +154,20 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
     }, 500);
     return () => clearInterval(timer);
   }, [writing]);
+  // Once the terms step opens on a question asked here (not What's on's, not an argument), ask once whether it names a game being played or starting before it is decided (section 6).
+  useEffect(() => {
+    if (step !== "terms" || template || pace === "argument" || gameAsked.current) return;
+    gameAsked.current = true;
+    const until = decideByMoment(decide, new Date(), askerZone()).toISOString();
+    void gameNamedAction(line, until, kind)
+      .then((g) => setNamedGame(g))
+      .catch(() => undefined);
+  }, [step, template, pace, decide, line, kind]);
   const [saving, startSave] = useTransition();
   /** The draft is saved and its screen is on its way: "Send it" holds until the address has moved on, so one question is sent once. */
   const [sent, setSent] = useState(false);
-  const selectedSet = who.kind === "set" ? sets.find((s) => s.groupId === who.groupId) : undefined;
+  // A new question's set is its own (whoever it is sent to), so no saved set's units or open inks apply to it.
+  const noUnits: SetOption["units"] = [];
   const numeric = pace === "dare" && kind === "numeric";
   // An argument can be pick one, with each person's answer as an answer (the first-contact round); a number stays a dare's.
   const pickOne = kind === "categorical";
@@ -159,8 +178,8 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
   // who's-in step against the questions still open between the same people. The server computes it again the same way and stores that.
   const previewInk = useMemo<InkName | null>(() => {
     if (!mark || !draftId) return null;
-    return inkFor({ markInk: mark.kind === "emoji" ? emojiInk(mark.value) : mark.ink, id: draftId, takenInGroup: step === "question" ? [] : (selectedSet?.takenInks ?? []) }).ink;
-  }, [mark, draftId, step, selectedSet]);
+    return inkFor({ markInk: mark.kind === "emoji" ? emojiInk(mark.value) : mark.ink, id: draftId, takenInGroup: [] }).ink;
+  }, [mark, draftId]);
 
   /**
    * The write-up starts when the question step's Next is tapped and streams into the terms step as it is written
@@ -230,7 +249,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
         if (t.tier === "contestable") return setStep("criterion");
         setCriterion(null);
         writeUp(undefined, t.claim);
-        setStep("who");
+        toTerms();
       });
     }
     if (mode === "careful") {
@@ -241,7 +260,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
         if ("error" in q) {
           setProblem(q.error);
           writeUp();
-          return setStep("who");
+          return toTerms();
         }
         if ("ask" in q) {
           // What the name is comes first, in one tap; the questions are written with the answer (docs/decisions.md 2026-09-27).
@@ -254,13 +273,11 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
       });
     }
     writeUp();
-    setStep("who");
+    toTerms();
   }
 
   function toTerms() {
-    setProblem(null);
-    if (who.kind === "people" && who.userIds.length === 0) return setProblem("Pick someone, or just send the link around.");
-    // The terms step opens at once and the write-up streams into it (9.8); What's on wrote a public question's wording (3.33).
+    // The terms step opens at once and the write-up streams into it (9.8).
     setUnit({ kind: "usd" });
     setStep("terms");
   }
@@ -340,9 +357,36 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
         argument: arguing && verdict?.kind === "ok" ? { tier: verdict.tier, criterion } : undefined,
       }));
       if ("error" in r) return setProblem(r.error);
+      // It opens as it is sent (the games-and-the-reveal round): the asker's Create, signed here, and the question's own screen with share, copy and the code in view. A signature that does not come leaves it a draft, whose screen offers "Share it first".
+      if (r.create) await openAsSent(r.id, r.create);
       setSent(true);
       router.replace(arguing ? (pickOne ? `/m/${r.id}?pick=${myAnswer}` : `/m/${r.id}?side=${side}`) : `/m/${r.id}`);
     });
+  }
+
+  /** The question asked on the game it names (section 6): the game's own question, opened as it is sent, on the game page. */
+  function attachToGame() {
+    const g = namedGame;
+    if (!g) return;
+    setProblem(null);
+    startSave(async () => {
+      const r = await attempt(() => draftFromTemplateAction({ templateId: g.templateId, who, unit, blind, id: draftId ?? undefined }));
+      if ("error" in r) return setProblem(r.error);
+      if (r.create) await openAsSent(r.id, r.create);
+      setSent(true);
+      router.replace(`/on/${g.gameId}?q=${r.id}`);
+    });
+  }
+
+  /** Signs the asker's Create and opens the question; false leaves it a draft. */
+  async function openAsSent(id: string, create: ToSign): Promise<boolean> {
+    try {
+      const signature = await sign(signing.ledgerWallet, { domain: signing.domain, types: daresTypes, primaryType: "Create", message: createMessage(create.dareOnchainId, create.fields, create.stalemate) }, "approve terms", { action: "create", dareId: id });
+      const opened = await attempt(() => openWithoutEntryAction(id, signature));
+      return !("error" in opened);
+    } catch {
+      return false;
+    }
   }
 
   const wrap = (children: ReactNode) => (
@@ -618,7 +662,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
             <>
               <ProblemSummary messages={[fieldProblem, problem]} />
               <Button type="submit" form="ask-question" variant="primary" loading={thinking} disabled={(pickOne && filledChoices.length < MIN_ANSWERS) || (blank !== null && !slotName.trim())}>
-                {pace === "argument" ? "Check it." : mode === "careful" ? "Ask me" : "Next: who’s in"}
+                {pace === "argument" ? "Check it." : mode === "careful" ? "Ask me" : "Set the terms"}
               </Button>
             </>
           }
@@ -682,7 +726,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
               onClick={() => {
                 setCriterion(c);
                 writeUp(c, verdict.claim);
-                setStep("who");
+                toTerms();
               }}
             >
               {c}
@@ -704,7 +748,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
         if ("error" in q || "ask" in q) {
           setProblem("error" in q ? q.error : "The questions didn’t come through. You can write the terms yourself on the next screen.");
           writeUp();
-          return setStep("who");
+          return toTerms();
         }
         setSubjectKind(kind);
         // Changing the answer rewrites the questions; answers to questions that survive the rewrite are kept (3.44).
@@ -781,10 +825,10 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
               disabled={!done}
               onClick={() => {
                 writeUp();
-                setStep("who");
+                toTerms();
               }}
             >
-              Next: who’s in
+              Set the terms
             </Button>
           }
         />
@@ -817,28 +861,8 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
     </div>
   );
 
-  if (step === "who") {
-    return wrap(
-      <div className="flex flex-col gap-6">
-        {question}
-        <WhoStep sets={sets} people={people} who={who} onWho={setWho} argument={pace === "argument"} hue={me.hue} />
-        <PinnedSheet
-          label="Next"
-          low={
-            <>
-              <ProblemSummary messages={[problem]} />
-              <Button variant="primary" onClick={toTerms}>
-                Set the terms
-              </Button>
-            </>
-          }
-        />
-      </div>,
-    );
-  }
-
   if (template) {
-    const units = selectedSet?.units ?? [];
+    const units = noUnits;
     const unitChip = (u: Unit, label: string, key: string) => {
       const selected = u.kind === unit.kind && (u.kind === "usd" || (u.kind === "existing" && unit.kind === "existing" && u.id === unit.id) || (u.kind === "new" && unit.kind === "new" && u.template === unit.template));
       return (
@@ -936,7 +960,7 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
     );
   }
 
-  const units = selectedSet?.units ?? [];
+  const units = noUnits;
   const unitChip = (u: Unit, label: string, key: string) => {
     const selected = u.kind === unit.kind && (u.kind === "usd" || (u.kind === "existing" && unit.kind === "existing" && u.id === unit.id) || (u.kind === "new" && unit.kind === "new" && u.template === unit.template));
     return (
@@ -959,6 +983,18 @@ export function AskForm({ sets, people, initialLine = "", initialPace = "dare", 
   return wrap(
     <div className="flex flex-col gap-6">
       {question}
+      {namedGame && !gameDismissed ? (
+        // A question about a game (section 6): offered once, while it is being asked, so the final score settles it.
+        <section className="flex flex-col gap-3 rounded-card border border-line bg-surface px-4 py-3" data-attach-game={namedGame.gameId}>
+          <p className="text-body-sm text-ink">{`${namedGame.name}, ${namedGame.when}.`}</p>
+          <Button variant="secondary" loading={saving} onClick={attachToGame}>
+            Let the final score settle it
+          </Button>
+          <Button variant="tertiary" className="self-start" disabled={saving} onClick={() => setGameDismissed(true)}>
+            Keep it as it is
+          </Button>
+        </section>
+      ) : null}
       <p aria-live="polite" className="sr-only">
         {scope ? "The terms are written" : "Writing the terms"}
       </p>

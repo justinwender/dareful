@@ -8,6 +8,7 @@
  *   npm run test:audit -- unit db      only those layers
  *   npm run test:audit -- --only=id    one mutant
  *   npm run test:audit -- http --from=id   that layer from one mutant on (after a run that stopped)
+ *   npm run test:audit -- --ids=file       the mutants named in a file, one id to a line (a round's own scope)
  *
  * The working tree is restored after every mutant and verified byte-for-byte at the end. HTTP mutants need the
  * dev server running (it recompiles the mutated file on the next request), and the runner asks it before and
@@ -22,6 +23,8 @@ import { MUTANTS, type Mutant } from "./mutants";
 const args = process.argv.slice(2);
 const only = args.find((a) => a.startsWith("--only="))?.slice(7);
 const from = args.find((a) => a.startsWith("--from="))?.slice(7);
+const idsFile = args.find((a) => a.startsWith("--ids="))?.slice(6);
+const wanted = idsFile ? new Set(readFileSync(idsFile, "utf8").split(/\s+/).filter(Boolean)) : null;
 const BASE = process.env.TEST_BASE_URL ?? "http://localhost:3000";
 
 /** Whether the app under the http tests answers at all. Synchronous, like the rest of the runner. */
@@ -97,7 +100,8 @@ function applyMutant(m: Mutant): () => void {
 }
 
 const sleep = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
-const inLayers = MUTANTS.filter((m) => (only ? m.id === only : layers.length === 0 || layers.some((l) => m.suite.includes(`/${l}/`))));
+const inLayers = MUTANTS.filter((m) => (only ? m.id === only : (wanted === null || wanted.has(m.id)) && (layers.length === 0 || layers.some((l) => m.suite.includes(`/${l}/`)))));
+if (wanted) for (const id of wanted) if (!MUTANTS.some((m) => m.id === id)) throw new Error(`--ids: no mutant ${id}`);
 if (from && !inLayers.some((m) => m.id === from)) throw new Error(`--from=${from}: no such mutant in the layers chosen`);
 const chosen = from ? inLayers.slice(inLayers.findIndex((m) => m.id === from)) : inLayers;
 const ids = new Set<string>();
@@ -160,7 +164,7 @@ if (serverGone) {
 }
 
 // A run from part-way through, or one the server left, has not seen every mutant: the baseline's "never killed" would accuse tests the missing ones cover.
-if (!only && !from && !serverGone) {
+if (!only && !from && !wanted && !serverGone) {
   for (const suite of new Set(chosen.map((m) => m.suite))) {
     const baseline = runTests(suite, null);
     for (const [name, passed] of baseline) {

@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { pullStartsHere } from "./handle";
 import { scrollTopOf } from "@/lib/ui/scroller";
+import { TALLY_TIMING } from "@/lib/ui/opening";
+import { PullTally } from "./pull-tally";
 
 /** How far a finger has to pull from the top before letting go re-reads the screen. */
 export const PULL_TO_REFRESH_PX = 72;
@@ -14,10 +16,12 @@ const RETURN_AFTER_MS = 2_000;
  * Refresh (docs/decisions.md, Phase 5), three pieces, because pulling only helps someone who thinks to pull:
  *
  *   1. Pull-to-refresh from the top of any scrolling screen. The installed app has no browser around the page, so
- *      the gesture does not exist unless the app provides it. A 2px line under the status band fills with the
- *      pull, in ink, and runs while the screen is being re-read, the same runner a working button carries (5.2).
+ *      the gesture does not exist unless the app provides it. The tally under the status band draws with the pull,
+ *      crosses as it is let go past the threshold, counts while the screen is being re-read and settles once it has (`PullTally`;
+ *      the field round's 3.2, built in the games-and-the-reveal round).
  *   2. A re-read whenever the app comes back to the foreground after more than a moment away, which covers
- *      switching to Messages and back, and a page restored from the back-forward cache.
+ *      switching to Messages and back, and a page restored from the back-forward cache. Nobody pulled, so it runs
+ *      the 2px line under the status band (`TopRunner`) while it reads, never the tally.
  *
  * Both re-read the current screen through the router, which is one server render of exactly what is shown and
  * never a reload. A touch that starts on a sheet, pinned or modal, or in the ask layer belongs to it
@@ -32,10 +36,42 @@ export function Refresh() {
   const startY = useRef<number | null>(null);
   const hiddenAt = useRef<number | null>(null);
   const refresh = () => start(() => router.refresh());
+  // Whether the read in flight was asked for by a pull: only a pull draws the tally (the field round's 3.2); a re-read
+  // nobody pulled for (a return to the app, a page back from the cache) runs the 2px line, as it always has (5.5).
+  const [byPull, setByPullState] = useState(false);
+  const byPullRef = useRef(false);
+  const setByPull = (v: boolean) => {
+    byPullRef.current = v;
+    setByPullState(v);
+  };
+  // Once the screen has been read again the tally settles and retracts over a stroke's time, then goes.
+  const [settling, setSettling] = useState(false);
+  const wasPending = useRef(false);
+  // Before paint, so the frame between the count and the settle is never drawn empty (a blink, on the simulator).
+  useLayoutEffect(() => {
+    if (pending) wasPending.current = true;
+    else if (wasPending.current) {
+      wasPending.current = false;
+      if (!byPullRef.current) return;
+      setSettling(true);
+      const t = setTimeout(() => {
+        setSettling(false);
+        setByPull(false);
+      }, TALLY_TIMING.stroke * 2);
+      return () => clearTimeout(t);
+    }
+  }, [pending]);
   const setPulled = (p: number) => {
     pullRef.current = p;
     setPull(p);
   };
+  // Letting go past the threshold crosses the fifth stroke over a stroke's time, and then the count runs (3.2).
+  const [crossing, setCrossing] = useState(false);
+  useEffect(() => {
+    if (!crossing) return;
+    const t = setTimeout(() => setCrossing(false), TALLY_TIMING.stroke);
+    return () => clearTimeout(t);
+  }, [crossing]);
 
   useEffect(() => {
     const onPage = (t: EventTarget | null) => !(t instanceof Element) || pullStartsHere(t.closest("[data-layer]")?.getAttribute("data-layer") ?? null, t.closest("[role=dialog]") !== null);
@@ -56,7 +92,11 @@ export function Refresh() {
       const far = pullRef.current >= 1;
       startY.current = null;
       setPulled(0);
-      if (far) refresh();
+      if (far) {
+        setByPull(true);
+        setCrossing(true);
+        refresh();
+      }
     };
     window.addEventListener("touchstart", onStart, { passive: true });
     window.addEventListener("touchmove", onMove, { passive: true });
@@ -77,11 +117,16 @@ export function Refresh() {
         hiddenAt.current = Date.now();
         return;
       }
-      if (hiddenAt.current !== null && Date.now() - hiddenAt.current >= RETURN_AFTER_MS) refresh();
+      if (hiddenAt.current !== null && Date.now() - hiddenAt.current >= RETURN_AFTER_MS) {
+        setByPull(false);
+        refresh();
+      }
       hiddenAt.current = null;
     };
     const onPageShow = (e: PageTransitionEvent) => {
-      if (e.persisted) refresh();
+      if (!e.persisted) return;
+      setByPull(false);
+      refresh();
     };
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("pageshow", onPageShow);
@@ -92,8 +137,10 @@ export function Refresh() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- see above
   }, []);
 
-  if (pull === 0 && !pending) return null;
-  return <TopRunner state={pending ? "running" : "pulling"} pull={pull} />;
+  if (pull === 0 && !pending && !settling && !crossing) return null;
+  if (pending && !byPull && !crossing) return <TopRunner state="running" />;
+  // The tally (the field round's 3.2): drawn with the pull, crossed as it is let go, counting while the screen is read again, settling once it has.
+  return <PullTally phase={crossing ? "crossing" : pending ? "loading" : settling ? "settling" : "pulling"} pull={pull} />;
 }
 
 /** The 2px line under the status band (5.5, 9.4): filling with a pull, or running while something is being read. */

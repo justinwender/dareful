@@ -210,3 +210,44 @@ export function launchImageLinks(): Array<{ url: string; media: string }> {
   for (const d of LAUNCH_DEVICES) for (const scheme of SCHEMES) out.push({ url: launchImagePath(d, scheme), media: launchImageMedia(d, scheme) });
   return out;
 }
+
+/**
+ * The tally on pull-to-refresh (the field round's 3.2, built in the games-and-the-reveal round, 2026-10-07): the
+ * opening's five strokes and its count's timing, read out of the design's own style and mark above so the two never
+ * drift. As a list is pulled the four uprights draw one at a time with the finger; letting go past the threshold
+ * crosses the fifth; while the screen is read again the count redraws in a loop; when it has arrived it settles and
+ * retracts. Under Reduce Motion it is a still mark that fades.
+ */
+export type TallyStroke = { left: number; top: number; width: number; height: number; rotate: number; viewBox: string; d: string; transform: string | null };
+
+/** The count's four values, from the design's style. */
+export const TALLY_TIMING = ((css: string) => {
+  const ms = (name: string) => Number(new RegExp(`--tally-${name}: (\\d+)ms`).exec(css)?.[1] ?? 0);
+  return { beat: ms("beat"), stroke: ms("stroke"), pace: ms("pace"), curve: /--tally-curve: (cubic-bezier\([^)]*\))/.exec(css)?.[1] ?? "ease" };
+})(OPENING_CSS);
+
+/** The five strokes in the logo's 120px box, from the design's style (their boxes) and mark (their paths). */
+export const TALLY_STROKES: TallyStroke[] = [1, 2, 3, 4, 5].map((n) => {
+  const box = new RegExp(`#opening \\.s${n} \\{ left: ([\\d.]+)px; top: ([\\d.]+)px; width: ([\\d.]+)px; height: ([\\d.]+)px; transform: rotate\\((-?[\\d.]+)deg\\)`).exec(OPENING_CSS);
+  const svg = new RegExp(`<div class="s s${n}"><svg viewBox="([^"]+)"[^>]*><path d="([^"]+)"(?: transform="([^"]+)")?`).exec(OPENING_MARK);
+  return { left: Number(box?.[1] ?? 0), top: Number(box?.[2] ?? 0), width: Number(box?.[3] ?? 0), height: Number(box?.[4] ?? 0), rotate: Number(box?.[5] ?? 0), viewBox: svg?.[1] ?? "0 0 1 1", d: svg?.[2] ?? "", transform: svg?.[3] ?? null };
+});
+
+/** How long the loop's count takes, and the rest it holds the whole tally before counting again. */
+export const TALLY_LOOP_MS = TALLY_TIMING.beat + 4 * TALLY_TIMING.pace + TALLY_TIMING.stroke + TALLY_TIMING.pace;
+
+/**
+ * The loop while the screen is read again, as keyframes: each stroke draws in its turn of the count, the whole tally
+ * holds for a pace, and the count starts over. The crossing stroke draws across; the uprights top to bottom.
+ */
+export function pullTallyCss(): string {
+  const { beat, stroke, pace, curve } = TALLY_TIMING;
+  const pct = (t: number) => `${((t / TALLY_LOOP_MS) * 100).toFixed(2)}%`;
+  const frames = [0, 1, 2, 3, 4].map((k) => {
+    const start = beat + k * pace;
+    const hidden = k === 4 ? "inset(0 100% 0 0)" : "inset(0 0 100% 0)";
+    return `@keyframes tally-loop-${k + 1}{0%,${pct(start)}{clip-path:${hidden}}${pct(start + stroke)},99.9%{clip-path:inset(0 0 0 0)}100%{clip-path:${hidden}}}`;
+  });
+  const runs = [1, 2, 3, 4, 5].map((n) => `[data-tally="loading"] .t${n}{animation:tally-loop-${n} ${TALLY_LOOP_MS}ms ${curve} 0ms infinite both}`);
+  return `${frames.join("")}${runs.join("")}[data-tally] .t5{transition:clip-path ${stroke}ms ${curve}}[data-tally]{transition:opacity ${TALLY_TIMING.stroke}ms ${curve},transform ${TALLY_TIMING.stroke}ms ${curve}}@media (prefers-reduced-motion: reduce){[data-tally] .t1,[data-tally] .t2,[data-tally] .t3,[data-tally] .t4,[data-tally] .t5{animation:none!important;clip-path:none!important;transition:none}}`;
+}

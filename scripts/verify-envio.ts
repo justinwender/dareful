@@ -5,7 +5,8 @@
  *   npm run verify:envio
  */
 import { encodeAbiParameters, keccak256, type Address, type Hex } from "viem";
-import { like } from "drizzle-orm";
+import { isNotNull, like } from "drizzle-orm";
+import { denomOnchainId, questionGroupOnchainId } from "../src/lib/ledger/ids";
 import { db, schema } from "../src/db";
 import { contracts } from "../src/lib/chain/contracts";
 import { relayer } from "../src/lib/chain/relayer";
@@ -63,6 +64,8 @@ async function main(): Promise<void> {
   const groups = await db.select().from(schema.groups);
   const denoms = await db.select().from(schema.denominations);
   const toHex = (b: Buffer | null): Hex => `0x${(b ?? Buffer.alloc(0)).toString("hex")}` as Hex;
+  // Questions created in a group of their own: their chain group is not their set's.
+  const ownGroups = (await db.select({ id: schema.dares.id, groupId: schema.dares.groupId, denomId: schema.dares.denomId, chainGroup: schema.dares.chainGroup }).from(schema.dares).where(isNotNull(schema.dares.chainGroup))).filter((q) => toHex(q.chainGroup).toLowerCase() === questionGroupOnchainId(q.id).toLowerCase());
 
   let checked = 0;
   let mismatches = 0;
@@ -80,12 +83,17 @@ async function main(): Promise<void> {
         envio.set(k, (envio.get(k) ?? 0n) + BigInt(r.remaining));
         totalOpen += BigInt(r.remaining);
       }
-      // The chain's view for every registered (group, denom) in both directions.
-      for (const g of groups) {
-        if (!g.onchainId) continue;
-        const gid = toHex(g.onchainId);
-        for (const d of denoms.filter((x) => x.groupId === g.id && x.onchainId)) {
-          const did = toHex(d.onchainId);
+      // The chain's view for every registered (group, denom) in both directions: each set's own group with its units,
+      // and each question created in a group of its own with its one unit (the games-and-the-reveal round, 2026-10-07).
+      const places = [
+        ...groups.filter((g) => g.onchainId).flatMap((g) => denoms.filter((x) => x.groupId === g.id && x.onchainId).map((d) => ({ name: g.name ?? "a set", gid: toHex(g.onchainId), label: d.label, did: toHex(d.onchainId) }))),
+        ...ownGroups.flatMap((q) => {
+          const d = denoms.find((x) => x.id === q.denomId);
+          return d ? [{ name: `question ${q.id.slice(0, 8)}`, gid: toHex(q.chainGroup), label: d.label, did: denomOnchainId(d.id) }] : [];
+        }),
+      ];
+      for (const { name, gid, label, did } of places) {
+        {
           for (const [debtor, creditor] of [[a, b], [b, a]] as const) {
             const bal = await publicClient.readContract({ address: ledger.address, abi: ledger.abi, functionName: "balanceOf", args: [creditor.ledgerWallet as Address, fungibleId(gid, did, debtor.ledgerWallet as Address)] });
             const k = `${gid}|${did}|${debtor.ledgerWallet}|${creditor.ledgerWallet}`;
@@ -93,7 +101,7 @@ async function main(): Promise<void> {
             checked++;
             if (seen !== bal) {
               mismatches++;
-              console.error(`MISMATCH ${g.name}/${d.label} ${debtor.displayName} -> ${creditor.displayName}: envio ${seen}, chain ${bal}`);
+              console.error(`MISMATCH ${name}/${label} ${debtor.displayName} -> ${creditor.displayName}: envio ${seen}, chain ${bal}`);
             }
           }
         }

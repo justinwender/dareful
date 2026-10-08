@@ -27,7 +27,7 @@ import { db, schema } from "@/db";
 import { contracts } from "@/lib/chain/contracts";
 import { gasFor } from "@/lib/chain/gas";
 import { relayer, SendPending, submit } from "@/lib/chain/relayer";
-import { daresDomain, daresTypes, Kind, Pace, Stalemate, VOID } from "@/lib/chain/typed-data";
+import { daresDomain, daresTypes, Kind, Pace, Stalemate, VOID, type CreateFields } from "@/lib/chain/typed-data";
 import { denominationById } from "./denominations";
 import { dareByOnchainId } from "./envio";
 import { isMember, peopleForUser } from "./groups";
@@ -36,13 +36,14 @@ import { MAX_NUMBER } from "./scoring";
 import { MAX_ANSWER_LENGTH, MAX_ANSWERS, MIN_ANSWERS, PICK_ONE_CONFIDENCE, type Answer } from "./pick-one";
 import { SPORT_MARK } from "@/lib/sports/templates";
 import { scaleAfterward } from "./scale";
-import { bufferToHex, bytes16ToUuid, dareOnchainId, denomOnchainId, groupOnchainId, hexToBuffer } from "./ids";
-import { ensureDenomOnchain, ensureGroupOnchain, registeredVoters } from "./registry";
+import { bufferToHex, bytes16ToUuid, dareOnchainId, denomOnchainId, groupOnchainId, hexToBuffer, questionGroupOnchainId } from "./ids";
+import { ensureDenomOnchain, ensureGroupOnchain, ensureQuestionGroupOnchain, registeredVoters } from "./registry";
 import { pidOf } from "./participants";
-import { chainCarries, isProvisional, lockProvisional, provisionalVoters, settleProvisional, snapshotIsThePeopleIn } from "./provisional";
+import { chainCarries, creatorFor, isProvisional, lockProvisional, provisionalVoters, settleProvisional, snapshotIsThePeopleIn, whereItLocks } from "./provisional";
 import { record } from "@/lib/usage";
 import { settledWord } from "@/lib/usage/events";
 import { LATEST_YEARS } from "./decide-by";
+import { votingOpen } from "./voting-open";
 
 export type DareRow = typeof schema.dares.$inferSelect;
 export type PositionRow = typeof schema.darePositions.$inferSelect;
@@ -159,6 +160,28 @@ export async function votesOf(dareId: string): Promise<VoteRow[]> {
 /** What a vote or a line about what happened from someone not in it is told. */
 export const ONLY_THOSE_IN = "Only the people in it can call it.";
 
+/** What a vote before it has happened is told: the sheet's own line (docs/design.md 3.24). */
+export const VOTING_WAITS = "Voting opens once it’s happened.";
+
+/** A game's clock for the vote: when its final was seen and when it was expected to end. Null off a game. */
+export async function gameClockOf(d: Pick<DareRow, "templateId">): Promise<{ finalSeenAt: Date | null; expectedEndAt: Date } | null> {
+  if (!d.templateId) return null;
+  const [g] = await db.select({ finalSeenAt: schema.sportsGames.finalSeenAt, expectedEndAt: schema.sportsGames.expectedEndAt }).from(schema.publicQuestions).innerJoin(schema.sportsGames, eq(schema.sportsGames.id, schema.publicQuestions.gameId)).where(eq(schema.publicQuestions.id, d.templateId)).limit(1);
+  return g ?? null;
+}
+
+/** Whether a question's game is over (section 5): its final is in or the scoreboard calls it complete. False off a game. */
+export async function gameOverFor(d: Pick<DareRow, "templateId">): Promise<boolean> {
+  if (!d.templateId) return false;
+  const [g] = await db.select({ finalSeenAt: schema.sportsGames.finalSeenAt, completed: schema.sportsGames.completed }).from(schema.publicQuestions).innerJoin(schema.sportsGames, eq(schema.sportsGames.id, schema.publicQuestions.gameId)).where(eq(schema.publicQuestions.id, d.templateId)).limit(1);
+  return g ? gameIsOver(g) : false;
+}
+
+/** Whether the vote is open on this market now (`votingOpen`), reading its game's clock where it has one. */
+export async function votingOpenNow(d: DareRow, now: Date = new Date()): Promise<boolean> {
+  return votingOpen(d, await gameClockOf(d), now);
+}
+
 // ---------------------------------------------------------------------------------------------- typed data
 
 export function termsHash(termsText: string): Hex {
@@ -172,7 +195,9 @@ export function termsHash(termsText: string): Hex {
  * that moment exists (docs/decisions.md 2026-09-21).
  */
 function requireResolvesBy(d: DareRow): bigint {
-  if (d.pace === "argument") return 0n;
+  // A question started on a game already being played (the games-and-the-reveal round, section 5) has no close time
+  // until its first call, five minutes after which it closes, so its asker signs zero, as an argument's does.
+  if (d.pace === "argument" || d.closesAfterFirst) return 0n;
   if (!d.resolvesBy) throw new MarketError("this one has no deadline yet", "wrong_state");
   return BigInt(Math.floor(d.resolvesBy.getTime() / 1000));
 }
@@ -199,6 +224,23 @@ export function createTypedData(d: DareRow) {
       resolvesBy: requireResolvesBy(d),
     },
   };
+}
+
+/**
+ * The same `Create`, over the question's own group (the games-and-the-reveal round, 2026-10-07): what every entry
+ * signs beside its `Enter`. The deployed contract asks a question's vote of everyone registered in the group it is
+ * created in, and takes as its creator anyone registered there who signed `Create`; so when the set's registered
+ * voters are not exactly the people in, the question is created in a group of exactly them, with whoever is in as
+ * its creator on the chain. The message names no member and no number: it is the asker's terms, agreed to again.
+ */
+export function questionCreateTypedData(d: DareRow) {
+  const typed = createTypedData(d);
+  return { ...typed, message: { ...typed.message, groupId: questionGroupOnchainId(d.id) } };
+}
+
+/** A `Create` message's fields as a page sends them to the browser, the numbers as strings. */
+export function createFields(c: ReturnType<typeof createTypedData>["message"]): CreateFields {
+  return { groupId: c.groupId, kind: c.kind, pace: c.pace, termsHash: c.termsHash, denomId: c.denomId, range: c.range.toString(), options: c.options, resolvesBy: c.resolvesBy.toString() };
 }
 
 /** What a participant signs: their stake, their number (basis points, the whole number on a number market, or the answer's index on a pick-one market, with everything on it), and their consent to the stalemate rule, in one signature. */
@@ -255,6 +297,8 @@ export type DraftInput = {
   answers?: Array<{ text: string; userId?: string | null }> | null;
   /** A What's on market (3.33): the public question it copies. Set only by `draftFromTemplate`. */
   templateId?: string | null;
+  /** Started on a game already being played (section 5): it closes five minutes after its first call. Set only by `draftFromTemplate`. */
+  closesAfterFirst?: boolean;
 };
 
 /** The latest moment a question may close, as the server checks it: three calendar years on, and a day for the asker's zone. Pure. */
@@ -271,7 +315,7 @@ export async function draftMarket(input: DraftInput): Promise<DareRow> {
   if (title.length < 3 || title.length > 140) throw new MarketError("Ask it in a line.", "bad_input");
   if (termsText.length < 3 || termsText.length > 800) throw new MarketError("The terms need a sentence.", "bad_input");
   const pace = input.pace ?? "dare";
-  if (pace === "dare" && (!input.resolvesBy || input.resolvesBy.getTime() <= Date.now())) throw new MarketError("Pick a time that hasn't passed.", "bad_input");
+  if (pace === "dare" && !input.closesAfterFirst && (!input.resolvesBy || input.resolvesBy.getTime() <= Date.now())) throw new MarketError("Pick a time that hasn't passed.", "bad_input");
   // Nothing runs past the furthest a question can (the second-pass round): three years by the calendar, a day either side for the asker's zone.
   if (pace === "dare" && input.resolvesBy && input.resolvesBy.getTime() > furthestClose(new Date())) throw new MarketError("That’s more than three years out. Pick an earlier date.", "bad_input");
   // The criterion a contestable claim is ruled against has to be inside the terms, because the terms are what is hashed and what entering accepts.
@@ -347,6 +391,7 @@ export async function draftMarket(input: DraftInput): Promise<DareRow> {
       markValue: emoji ?? sticker?.id ?? null,
       outcomeWords: kind === "binary" && input.outcomeWords ? input.outcomeWords.map((w) => w.trim()) : null,
       templateId: input.templateId ?? null,
+      closesAfterFirst: input.closesAfterFirst === true,
     })
     .returning();
   if (!row) throw new MarketError("Couldn't save that.", "chain");
@@ -366,8 +411,12 @@ export async function draftFromTemplate(input: { templateId: string; creatorId: 
   const { template: t, game } = row;
   const now = input.now ?? new Date();
   if (!game.timeValid) throw new MarketError("That game doesn't have a confirmed start time yet.", "bad_input");
-  if (game.startsAt.getTime() <= now.getTime()) throw new MarketError("That game has started, so it's too late to ask.", "bad_input");
   if (game.status === "postponed" || game.status === "canceled") throw new MarketError("That game is off.", "bad_input");
+  // Anyone can start a question on a game until its final (the games-and-the-reveal round, section 5); once it has
+  // started, the question closes five minutes after its first call, and the first drive is not asked, being over by then.
+  if (gameIsOver(game)) throw new MarketError("That game is over, so it's too late to ask.", "bad_input");
+  const live = game.startsAt.getTime() <= now.getTime();
+  if (live && t.key === "first_drive") throw new MarketError("The first drive is over by now.", "bad_input");
   const words = t.outcomeWords && t.outcomeWords.length === 4 ? (t.outcomeWords as [string, string, string, string]) : null;
   const mark = SPORT_MARK[game.sport as keyof typeof SPORT_MARK];
   return draftMarket({
@@ -383,13 +432,33 @@ export async function draftFromTemplate(input: { templateId: string; creatorId: 
     typical: t.typical,
     answers: t.kind === "categorical" ? t.outcomeLabels.map((text) => ({ text })) : null,
     outcomeWords: t.kind === "binary" ? words : null,
-    resolvesBy: game.startsAt,
+    resolvesBy: live ? null : game.startsAt,
+    closesAfterFirst: live,
     stalemate: "arbitrate",
     revealMode: "open",
     mark: mark ? { kind: "emoji", value: mark } : null,
     zone: input.zone ?? null,
     templateId: t.id,
   });
+}
+
+/** Whether a game is over for asking and entering (section 5): its final is in, or the scoreboard says it is complete. Pure. */
+export function gameIsOver(game: { finalSeenAt: Date | null; completed: boolean }): boolean {
+  return game.finalSeenAt !== null || game.completed;
+}
+
+/** How long after its first call a question started on a game being played closes (section 5). */
+export const FIRST_CALL_WINDOW_MS = 5 * 60_000;
+
+/** The close a first call sets on such a question: five minutes on. Pure. */
+export function closeAfterFirstCall(firstCallAt: Date): Date {
+  return new Date(firstCallAt.getTime() + FIRST_CALL_WINDOW_MS);
+}
+
+/** On a question started during a game, the first call sets its close time (section 5), once. */
+export async function startFirstCallClock(d: Pick<DareRow, "id" | "closesAfterFirst" | "resolvesBy">, at: Date): Promise<void> {
+  if (!d.closesAfterFirst || d.resolvesBy) return;
+  await db.update(schema.dares).set({ resolvesBy: closeAfterFirstCall(at) }).where(and(eq(schema.dares.id, d.id), isNull(schema.dares.resolvesBy)));
 }
 
 /** The creator's signature opens the market. Verified here against their ledger wallet; verified again onchain at lock. */
@@ -443,12 +512,14 @@ export function pastItsClose(d: Pick<DareRow, "pace" | "resolvesBy">, now: Date)
   return d.pace !== "argument" && d.resolvesBy !== null && d.resolvesBy.getTime() <= now.getTime();
 }
 
-export async function enterMarket(input: { dareId: string; userId: string; stake: bigint; value: bigint; signature: Hex; /** The host, when the entry was made on a friend's phone (3.45); the person themselves otherwise. */ enteredBy?: string }): Promise<PositionRow> {
+export async function enterMarket(input: { dareId: string; userId: string; stake: bigint; value: bigint; signature: Hex; /** The host, when the entry was made on a friend's phone (3.45); the person themselves otherwise. */ enteredBy?: string; /** The entrant's `Create` over the question's own group (`questionCreateTypedData`); a page from before the round sends none. */ questionSignature?: Hex | null }): Promise<PositionRow> {
   const d = await marketById(input.dareId);
   if (!d) throw new MarketError("That one doesn't exist.", "not_found");
   if (stateOf(d) !== "open") throw new MarketError(stateOf(d) === "draft" ? "It isn't open yet." : "Numbers are locked.", "wrong_state");
   // Past its time and not yet locked: the same refusal as after the lock, since to the person it is the same fact.
   if (pastItsClose(d, new Date())) throw new MarketError("Numbers are locked.", "wrong_state");
+  // A question started during a game closes at its final at the latest (section 5).
+  if (d.closesAfterFirst && (await gameOverFor(d))) throw new MarketError("Numbers are locked.", "wrong_state");
   if (!(await isMember(d.groupId, input.userId))) throw new MarketError("This one is for the people in its group.", "not_member");
   if (!valueAllowed(d.kind, input.value, d.outcomeLabels.length)) throw new MarketError(d.kind === "numeric" ? "Any whole number, up to nine digits." : d.kind === "categorical" ? "Pick one of the answers." : "A number from 0 to 100.", "bad_input");
   const denom = await denominationById(d.denomId);
@@ -461,6 +532,9 @@ export async function enterMarket(input: { dareId: string; userId: string; stake
   if (!user) throw new MarketError("unknown user", "not_found");
   const ok = await verifyTypedData({ ...enterTypedData(d, input.stake, input.value), address: user.ledgerWallet as Address, signature: input.signature });
   if (!ok) throw new MarketError("That didn't come from your account.", "bad_signature");
+  // The terms agreed to again over the question's own group (the games-and-the-reveal round): checked like the entry, and kept from an earlier entry when a change sends none.
+  const question = input.questionSignature ?? null;
+  if (question && !(await verifyTypedData({ ...questionCreateTypedData(d), address: user.ledgerWallet as Address, signature: question }))) throw new MarketError("That didn't come from your account.", "bad_signature");
 
   const existing = await positionsOf(d.id);
   // On a blind market an entry is final once made (3.22, 3.31): you see everyone's once you're in, so nobody may change theirs after seeing the others. Keeping a bound ghost's unsigned numbers as they are is the signature, not a change.
@@ -475,10 +549,12 @@ export async function enterMarket(input: { dareId: string; userId: string; stake
   const now = new Date();
   const [row] = await db
     .insert(schema.darePositions)
-    .values({ dareId: d.id, userId: input.userId, stake: input.stake, value: input.value, confidenceBps: d.kind === "categorical" ? confidenceFor(d) : null, enterSignature: hexToBuffer(input.signature), enteredBy: input.enteredBy ?? input.userId, acknowledgedAt: now, dismissedAt: null, changedAt: now })
-    .onConflictDoUpdate({ target: [schema.darePositions.dareId, schema.darePositions.userId], set: { stake: input.stake, value: input.value, confidenceBps: d.kind === "categorical" ? confidenceFor(d) : null, enterSignature: hexToBuffer(input.signature), enteredBy: input.enteredBy ?? input.userId, dismissedAt: null, changedAt: now } })
+    .values({ dareId: d.id, userId: input.userId, stake: input.stake, value: input.value, confidenceBps: d.kind === "categorical" ? confidenceFor(d) : null, enterSignature: hexToBuffer(input.signature), questionSignature: question ? hexToBuffer(question) : null, enteredBy: input.enteredBy ?? input.userId, acknowledgedAt: now, dismissedAt: null, changedAt: now })
+    .onConflictDoUpdate({ target: [schema.darePositions.dareId, schema.darePositions.userId], set: { stake: input.stake, value: input.value, confidenceBps: d.kind === "categorical" ? confidenceFor(d) : null, enterSignature: hexToBuffer(input.signature), ...(question ? { questionSignature: hexToBuffer(question) } : {}), enteredBy: input.enteredBy ?? input.userId, dismissedAt: null, changedAt: now } })
     .returning();
   if (!row) throw new MarketError("Couldn't save that.", "chain");
+  // The first call on a question started during a game sets its close, five minutes on (section 5).
+  await startFirstCallClock(d, now);
   // Counted as an entry the first time, never on a change (the field round); on a friend's phone it is counted as pass the phone.
   if (!held) await record("entered", { as: input.enteredBy && input.enteredBy !== input.userId ? "pass_the_phone" : "account" }, { userId: input.userId }, { dareId: d.id });
   // The group's number at this moment, for the line a slow question gets. The aggregate and a headcount only:
@@ -539,7 +615,7 @@ export async function markExpired(dareId: string, now: Date): Promise<boolean> {
 }
 
 /** `byUserId` null is the app itself: an argument locks the moment its second person is in, and the scheduler locks a question whose time has come. */
-export async function lockMarket(dareId: string, byUserId: string | null, now: Date = new Date()): Promise<{ txHash: Hex; threshold: number; quorum: Address[]; /** The close found fewer than two entries that count, so the question ended as an expiry instead. */ expired?: true }> {
+export async function lockMarket(dareId: string, byUserId: string | null, now: Date = new Date(), /** Enough of the people in said calls are in (the games-and-the-reveal round): the app closes it for them. */ how?: "calls"): Promise<{ txHash: Hex; threshold: number; quorum: Address[]; /** The close found fewer than two entries that count, so the question ended as an expiry instead. */ expired?: true }> {
   const d = await marketById(dareId);
   if (!d) throw new MarketError("That one doesn't exist.", "not_found");
   // A second tap on Close, or a close the time made while the first was on its way, finds it closed: that is the
@@ -572,7 +648,7 @@ export async function lockMarket(dareId: string, byUserId: string | null, now: D
   if (positions.length < 2) throw new MarketError("It takes two to close it.", "wrong_state");
   // Nothing goes onchain for a position nobody signed (PLANNING.md section 4): a ghost's number, or one bound to
   // an account but never signed, makes the market provisional. It locks here, and its transfers become proposals.
-  await record("closed", { by: byUserId !== null ? "asker" : d.pace === "argument" ? "both_in" : "time", game: d.templateId !== null }, { userId: byUserId }, { dareId: d.id });
+  await record("closed", { by: how === "calls" ? "calls" : byUserId !== null ? "asker" : d.pace === "argument" ? "both_in" : "time", game: d.templateId !== null }, { userId: byUserId }, { dareId: d.id });
   if (positions.some((p) => !p.userId || !p.enterSignature)) {
     const r = await lockProvisional(d, positions);
     return { txHash: "0x" as Hex, threshold: r.threshold, quorum: [] };
@@ -583,31 +659,48 @@ export async function lockMarket(dareId: string, byUserId: string | null, now: D
   const [creator] = await db.select().from(schema.users).where(eq(schema.users.id, d.creatorId)).limit(1);
   if (!creator) throw new MarketError("unknown creator", "not_found");
 
-  // A question is decided by a majority of the people in it, and nobody else counts (the owner's rule, 2026-10-06).
-  // The chain keeps it only when it would ask exactly them: the deployed contract asks everyone ever registered in
-  // the set, the asker included. Anything else is decided here, by the same majority, and settles as proposals each
-  // debtor confirms; nothing is registered for it, so nobody joins the set's voters on the chain by its lock.
+  // A question is decided by a majority of the people in it, and nobody else counts (the owner's rule, 2026-10-06),
+  // and every one of them all of whose entries are signed is decided and settled on the chain (the owner's rule,
+  // 2026-10-07). The deployed contract asks everyone ever registered in the group a question is created in, and
+  // takes as its creator anyone registered there who signed `Create`. So a question is created in its set's own
+  // group when that is exactly the people in (the asker one of them, whose signature opened it), and otherwise in a
+  // group of its own registered now with exactly the people in, with whoever is in as its creator on the chain, by
+  // the `Create` each entry signs over that group. Only a question none of whose entries carry that signature (all
+  // made before this round) and whose set is wider is still decided here.
   const inIt = positions.map((p) => p.userId as string);
   const wallets = users.map((u) => u.governanceWallet);
-  if (!chainCarries({ registered: await registeredVoters(d.groupId), inIt: wallets, asker: creator.governanceWallet })) {
-    const r = await lockProvisional(d, positions);
-    return { txHash: "0x" as Hex, threshold: r.threshold, quorum: [] };
-  }
-  // Registration: the people in, and the asker, who is one of them here, and the unit. Both are idempotent.
-  await ensureGroupOnchain(d.groupId, [...inIt, d.creatorId]);
-  await ensureDenomOnchain(d.denomId, [...inIt, d.creatorId]);
-
+  const signer = creatorFor(positions, d.creatorId);
+  const where = whereItLocks({ setCarries: chainCarries({ registered: await registeredVoters(d.groupId), inIt: wallets, asker: creator.governanceWallet }), questionSigner: signer !== null });
   const typed = createTypedData(d);
+  let groupId: Hex = typed.message.groupId;
+  let creatorWallet = creator.ledgerWallet as Address;
+  let creatorSignature: Hex = bufferToHex(d.creatorSignature);
+  if (where === "set") {
+    // Registration: the people in, and the asker, who is one of them here, and the unit. Both are idempotent.
+    await ensureGroupOnchain(d.groupId, [...inIt, d.creatorId]);
+    await ensureDenomOnchain(d.denomId, [...inIt, d.creatorId]);
+  } else {
+    const own = where === "question" && signer ? await ensureQuestionGroupOnchain(d.id, d.denomId, inIt) : null;
+    if (!own || !signer) {
+      if (where === "question") console.error("a question's own group on the chain names someone not in it, so it is decided here", { dareId: d.id });
+      const r = await lockProvisional(d, positions);
+      return { txHash: "0x" as Hex, threshold: r.threshold, quorum: [] };
+    }
+    groupId = own;
+    creatorWallet = ledgerOf.get(signer.userId as string) as Address;
+    creatorSignature = bufferToHex(signer.questionSignature as Buffer);
+  }
+
   const { dares } = contracts();
   // The voters the contract will snapshot are the people in, as checked above.
   const quorumNow = wallets;
 
   const dareStruct = {
     id: typed.message.dareId,
-    groupId: typed.message.groupId,
+    groupId,
     kind: typed.message.kind,
     pace: typed.message.pace,
-    creator: creator.ledgerWallet as Address,
+    creator: creatorWallet,
     termsHash: typed.message.termsHash,
     denomId: typed.message.denomId,
     range: typed.message.range,
@@ -635,7 +728,7 @@ export async function lockMarket(dareId: string, byUserId: string | null, now: D
       address: dares.address,
       abi: dares.abi,
       functionName: "create",
-      args: [dareStruct, ps, sigs, bufferToHex(d.creatorSignature)],
+      args: [dareStruct, ps, sigs, creatorSignature],
       gas: gasFor.create(ps.length, quorumNow.length),
       write: { kind: "create", subject: { dareId: d.id }, actor: byUserId },
     });
@@ -669,8 +762,9 @@ export async function completeLock(d: DareRow, minedIn?: bigint): Promise<{ thre
   const dareId = createTypedData(d).message.dareId;
   await db.update(schema.dares).set({ onchainId: hexToBuffer(dareId), lockedAt: new Date() }).where(and(eq(schema.dares.id, d.id), isNull(schema.dares.lockedAt)));
   await db.update(schema.roomCodes).set({ closedAt: new Date() }).where(and(eq(schema.roomCodes.dareId, d.id), isNull(schema.roomCodes.closedAt)));
-  const onchain = (await publicClient.readContract({ address: dares.address, abi: dares.abi, functionName: "dareOf", args: [dareId], blockNumber: minedIn })) as { threshold: number; quorum: readonly Address[] };
-  await db.update(schema.dares).set({ threshold: onchain.threshold }).where(eq(schema.dares.id, d.id));
+  const onchain = (await publicClient.readContract({ address: dares.address, abi: dares.abi, functionName: "dareOf", args: [dareId], blockNumber: minedIn })) as { threshold: number; quorum: readonly Address[]; groupId: Hex };
+  // Which group it was created in, as the chain says: its set's own, or its own of exactly the people in (the games-and-the-reveal round).
+  await db.update(schema.dares).set({ threshold: onchain.threshold, chainGroup: hexToBuffer(onchain.groupId) }).where(eq(schema.dares.id, d.id));
   // Only the people in decide it (2026-10-06): a registration landing between the lock's check and its send would
   // have put someone else in the chain's snapshot, which no later step can take out, so it is said here, loudly.
   const people = await db.select({ wallet: schema.users.governanceWallet }).from(schema.darePositions).innerJoin(schema.users, eq(schema.users.id, schema.darePositions.userId)).where(and(eq(schema.darePositions.dareId, d.id), isNotNull(schema.darePositions.acknowledgedAt), isNull(schema.darePositions.dismissedAt)));
@@ -707,6 +801,7 @@ export async function sayWhatHappened(dareId: string, userId: string, statement:
   if (!d) throw new MarketError("That one doesn't exist.", "not_found");
   if (stateOf(d) !== "locked") throw new MarketError("There’s nothing to call on this one right now.", "wrong_state");
   if (!(await positionsOf(d.id)).some((p) => p.userId === userId)) throw new MarketError(ONLY_THOSE_IN, "not_member");
+  if (!(await votingOpenNow(d))) throw new MarketError(VOTING_WAITS, "wrong_state");
   const text = statement.trim().slice(0, 280);
   if (text.length < 2) throw new MarketError("Say what happened in a line.", "bad_input");
   await db
@@ -733,10 +828,12 @@ export async function castVote(input: { dareId: string; userId: string; outcome:
   if (stateOf(d) !== "locked") throw new MarketError(d.resolvedAt ? "It's already decided." : "It isn't locked yet.", "wrong_state");
   if (!outcomeAllowed(d.kind, input.outcome, d.outcomeLabels.length)) throw new MarketError(d.kind === "numeric" ? "A whole number, or nobody can tell." : d.kind === "categorical" ? "One of the answers, or nobody can tell." : "Yes, no, or nobody can tell.", "bad_input");
 
-  const [user] = await db.select().from(schema.users).where(eq(schema.users.id, input.userId)).limit(1);
-  if (!user) throw new MarketError("unknown user", "not_found");
   // Only the people in it vote (the first-contact round, 2026-10-04): a member of the set who never got in is refused here, before any signature is read.
   if (!(await positionsOf(d.id)).some((p) => p.userId === input.userId)) throw new MarketError(ONLY_THOSE_IN, "not_member");
+  // The vote waits for the thing to happen (the games-and-the-reveal round): the final score, the decided date, or someone in saying so opens it.
+  if (!(await votingOpenNow(d))) throw new MarketError(VOTING_WAITS, "wrong_state");
+  const [user] = await db.select().from(schema.users).where(eq(schema.users.id, input.userId)).limit(1);
+  if (!user) throw new MarketError("unknown user", "not_found");
   const quorum = await quorumOf(d);
   if (!quorum.includes(user.governanceWallet.toLowerCase() as Address)) throw new MarketError("This one was locked before you joined the group, so it isn't yours to call.", "not_member");
   const ok = await verifyTypedData({ ...voteTypedData(d, input.outcome), address: user.governanceWallet as Address, signature: input.signature });

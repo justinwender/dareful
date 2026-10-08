@@ -77,8 +77,10 @@ export async function enterFromHost(input: { dareId: string; hostId: string; fri
     return { ok: false, refused: err instanceof MarketError ? err.message : "That didn't go through. Try again." };
   }
   if (!signature) return { ok: false, refused: "Their setup isn't reachable right now. They can get in from their own phone." };
+  // The terms over the question's own group, beside the entry, as every entry carries them (the games-and-the-reveal round). Without it the entry still stands.
+  const question = await delegatedSignatureFor(input.friendId, { action: "create_question", dareId: input.dareId }, input.request, input.deps ?? {}).catch(() => null);
   try {
-    const position = await enterMarket({ dareId: input.dareId, userId: input.friendId, stake: input.stake, value: input.value, signature, enteredBy: input.hostId });
+    const position = await enterMarket({ dareId: input.dareId, userId: input.friendId, stake: input.stake, value: input.value, signature, enteredBy: input.hostId, questionSignature: question });
     return { ok: true, position };
   } catch (err) {
     return { ok: false, refused: err instanceof MarketError ? err.message : "That didn't go through. Try again." };

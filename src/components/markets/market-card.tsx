@@ -11,7 +11,7 @@ import { ObligationToken } from "@/components/ledger/obligation-token";
 import { StateMark, type MarketMark } from "@/components/ledger/state-mark";
 import { When } from "@/components/ledger/when";
 import type { DenominationRow } from "@/lib/ledger/denominations";
-import { gotSentence } from "@/lib/ui/copy";
+import { gotSentence, inCount } from "@/lib/ui/copy";
 import { hueFor } from "@/lib/ui/hue";
 import type { InkName } from "@/lib/ui/ink";
 import type { MarkRef } from "@/lib/ui/mark";
@@ -39,7 +39,6 @@ export type MarketCardProps = {
   viewerId: string;
   /** Everyone in it. Percents are only present when numbers may be shown. */
   people: Array<{ id: string; name: string; percent: number | null; /** A ghost: in it without an account (PLANNING.md section 4). */ ghost?: boolean }>;
-  groupSize: number;
   outcome: 0 | 1 | null;
   /** The outcome in the market's words ("He did."), or "Yes." and "No." (3.25). */
   outcomeLine?: string | null;
@@ -95,7 +94,7 @@ export function MarketCard(p: MarketCardProps) {
           <div className="flex items-center gap-3">
             <AvatarStack people={p.people.map((x) => ({ name: x.name, hue: hueFor(x.id), ghost: x.ghost }))} size={26} ring="var(--surface)" />
             <span className="text-body-sm text-ink-2">
-              {p.people.length} of {p.groupSize} in
+              {inCount(p.people.length)}
             </span>
           </div>
         ) : p.state === "expired" ? (

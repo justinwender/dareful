@@ -264,9 +264,10 @@ export async function pushElseEmail(push: () => Promise<boolean>, email: () => P
  * it, whichever way it closed. The asker closed it, the time the asker set came, or an argument's second person
  * got in; each names who, since every one of these is someone having done something.
  */
-export function votingOpenedNotice(input: { by: "asker" | "time" | "both_in"; name: string; title: string; marketId: string; appUrl: string }): Notice {
+export function votingOpenedNotice(input: { by: "asker" | "time" | "both_in" | "happened" | "final"; name: string; title: string; marketId: string; appUrl: string }): Notice {
   const t = short(input.title);
-  const title = input.by === "asker" ? `${input.name} closed “${t}”` : input.by === "both_in" ? `${input.name} is in on “${t}”` : `Time’s up on ${input.name}’s “${t}”`;
+  // The vote opens when it has happened (the games-and-the-reveal round): someone in says so, the final is in, or the decided date comes.
+  const title = input.by === "asker" ? `${input.name} closed “${t}”` : input.by === "both_in" ? `${input.name} is in on “${t}”` : input.by === "happened" ? `${input.name} says “${t}” has happened` : input.by === "final" ? `The final is in on ${input.name}’s “${t}”` : `Time’s up on ${input.name}’s “${t}”`;
   const body = input.by === "both_in" ? "It’s between the two of you now. Say how it came out." : "Say what happened. Everyone’s call together settles it.";
   return { title, body, url: `${input.appUrl}/m/${input.marketId}#ballot` };
 }
@@ -278,11 +279,6 @@ export function voteReminderNotice(input: { name: string; title: string; cast: n
     body: `${input.cast} of ${input.quorum} ${input.cast === 1 ? "has called it" : "have called it"}. Yours is still to come.`,
     url: `${input.appUrl}/m/${input.marketId}#ballot`,
   };
-}
-
-/** The asker hears once when the last person they asked gets in (the field round, 1.8). */
-export function allInNotice(input: { lastName: string; title: string; count: number; marketId: string; appUrl: string }): Notice {
-  return { title: "Everyone you asked is in", body: `${input.lastName} made ${input.count} on “${short(input.title)}”.`, url: `${input.appUrl}/m/${input.marketId}` };
 }
 
 /** How long into voting the reminder goes out (the field round, 1.8). */

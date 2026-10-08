@@ -14,7 +14,7 @@ import { hashAsksFor } from "@/lib/ui/hash";
 import { mayClose } from "@/lib/ledger/markets";
 import { closesClock, TIMES_UP } from "@/lib/ui/copy";
 import { startWord } from "@/lib/sports/types";
-import { allInNotice, reminderSendTime, voteReminderNotice, votingOpenedNotice } from "@/lib/notify/messages";
+import { reminderSendTime, voteReminderNotice, votingOpenedNotice } from "@/lib/notify/messages";
 import { REISSUE_AFTER_MS, sessionDueForReissue } from "@/lib/auth/session";
 import { causeOf } from "@/lib/usage/events";
 
@@ -112,8 +112,9 @@ test("the twelve-hour reminder waits for 9am in its zone from 11pm, and the voti
   assert.equal(votingOpenedNotice({ by: "both_in", name: "Rae", title: "Will it rain?", marketId: "m1", appUrl: app }).body, "It’s between the two of you now. Say how it came out.");
   const reminder = voteReminderNotice({ name: "JP", title: "Will it rain?", cast: 1, quorum: 4, marketId: "m1", appUrl: app });
   assert.deepEqual([reminder.title, reminder.body, reminder.url], ["Still open: JP’s “Will it rain”", "1 of 4 has called it. Yours is still to come.", `${app}/m/m1#ballot`]);
-  const all = allInNotice({ lastName: "Rae", title: "Will it rain?", count: 4, marketId: "m1", appUrl: app });
-  assert.deepEqual([all.title, all.body], ["Everyone you asked is in", "Rae made 4 on “Will it rain”."]);
+  // The vote opens when it has happened (the games-and-the-reveal round): named for whoever said so, or for the final.
+  assert.equal(votingOpenedNotice({ by: "happened", name: "Maya", title: "Will it rain?", marketId: "m1", appUrl: app }).title, "Maya says “Will it rain” has happened");
+  assert.equal(votingOpenedNotice({ by: "final", name: "JP", title: "Who wins, Red Sox or Yankees?", marketId: "m1", appUrl: app }).title, "The final is in on JP’s “Who wins, Red Sox or Yankees”");
 });
 
 test("a session a day old is issued again on the next open, a younger one is left, and none is made from nothing", () => {

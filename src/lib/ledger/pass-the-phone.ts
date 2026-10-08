@@ -20,7 +20,8 @@ import { db, schema } from "@/db";
 import { hasDelegation, trySignWithDelegation, wipeDelegation, type SignerLoad } from "@/lib/chain/delegated-signer";
 import { closeState, closeTypedData, netNonce, netTypedData } from "./closes";
 import { denomOnchainId, groupOnchainId } from "./ids";
-import { createTypedData, enterTypedData, marketById, stateOf } from "./markets";
+import { isMember } from "./groups";
+import { createTypedData, enterTypedData, marketById, questionCreateTypedData, stateOf } from "./markets";
 import { confirmManyTypedData, confirmTypedData } from "./proposals";
 import type { Via } from "./via";
 
@@ -164,6 +165,14 @@ export async function typedDataFor(userId: string, via: Via) {
       if (d.creatorSignature) throw new PassThePhoneError("It's already been sent.", "wrong_state");
       return { typedData: createTypedData(d), subject: d.id, address: ledger };
     }
+    case "create_question": {
+      // Signed beside an entry: whoever may enter it, while it is open (its asker on a draft, entering as they send it).
+      const d = await marketById(via.dareId);
+      const state = d ? stateOf(d) : null;
+      if (!d || (state !== "open" && state !== "draft")) throw new PassThePhoneError("That one isn't open.", "wrong_state");
+      if (state === "draft" ? d.creatorId !== userId : !(await isMember(d.groupId, userId))) throw new PassThePhoneError("This one is for the people in its group.", "not_yours");
+      return { typedData: questionCreateTypedData(d), subject: d.id, address: ledger };
+    }
     case "confirm": {
       const [p] = await db.select().from(schema.obligationProposals).where(eq(schema.obligationProposals.id, via.proposalId));
       if (!p || p.fromUser !== userId) throw new PassThePhoneError("That isn't yours to confirm.", "not_yours");
@@ -206,5 +215,6 @@ export async function typedDataFor(userId: string, via: Via) {
  */
 export async function delegatedSignatureFor(userId: string, via: Via, request: string, deps: { load?: SignerLoad } = {}): Promise<Hex | null> {
   const { typedData, subject, address } = await typedDataFor(userId, via);
-  return trySignWithDelegation({ userId, address, typedData, request: { action: via.action, subject, request } }, deps);
+  // The terms agreed to again over the question's own group are a `Create`, and recorded as one.
+  return trySignWithDelegation({ userId, address, typedData, request: { action: via.action === "create_question" ? "create" : via.action, subject, request } }, deps);
 }

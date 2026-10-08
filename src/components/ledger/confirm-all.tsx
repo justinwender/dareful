@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { PinnedSheet } from "@/components/ui/pinned-sheet";
 import { confirmManyAction } from "@/lib/actions/proposals";
 import { enterMarketAction, leaveEntriesAction } from "@/lib/actions/markets";
-import { daresTypes, ledgerTypes } from "@/lib/chain/typed-data";
+import { createMessage, daresTypes, ledgerTypes, type CreateFields } from "@/lib/chain/typed-data";
 import { Avatar } from "@/components/ledger/avatar";
 import { MarkRefStamp } from "@/components/ledger/mark-stamp";
 import { ObligationToken } from "@/components/ledger/obligation-token";
@@ -62,6 +62,8 @@ export type LinkEntryRow = {
   stake: string;
   value: string;
   position: { stake: string; valueBps?: number; number?: string; answer?: number };
+  /** The terms over the question's own group, signed beside the entry as every entry is (the games-and-the-reveal round). */
+  question: CreateFields;
 };
 
 /**
@@ -103,11 +105,12 @@ export function ConfirmAll({ payload, entries = [], claims = [], viewer }: { pay
       const keep = (payload?.proposalIds ?? []).map((id, i) => [id, i] as const).filter(([id]) => todo.claims.includes(id)).map(([, i]) => i);
       const batch = payload && keep.length > 0 ? { ...payload, proposalIds: keep.map((i) => payload.proposalIds[i] as string), message: { groupIds: keep.map((i) => payload.message.groupIds[i] as Hex), denomIds: keep.map((i) => payload.message.denomIds[i] as Hex), creditors: keep.map((i) => payload.message.creditors[i] as Hex), qtys: keep.map((i) => payload.message.qtys[i] as string), obligationIds: keep.map((i) => payload.message.obligationIds[i] as Hex), uniques: keep.map((i) => payload.message.uniques[i] as boolean) } } : null;
       if (batch) batchSignature = await sign(batch.ledgerWallet, { domain: batch.domain, types: ledgerTypes, primaryType: "ConfirmMany", message: { ...batch.message, qtys: batch.message.qtys.map((q) => BigInt(q)) } }, "confirmmany", { action: "confirm_many", proposalIds: batch.proposalIds });
-      const entrySignatures: Array<{ entry: LinkEntryRow; signature: Hex }> = [];
+      const entrySignatures: Array<{ entry: LinkEntryRow; signature: Hex; question: Hex }> = [];
       for (const e of entries) {
         if (!todo.entries.includes(e.dareId)) continue;
         const signature = await sign(e.ledgerWallet, { domain: e.domain, types: daresTypes, primaryType: "Enter", message: { dareId: e.dareOnchainId, stake: BigInt(e.stake), value: BigInt(e.value), confidenceBps: e.confidenceBps, stalemate: e.stalemate } }, "approve number", { action: "enter", dareId: e.dareId, stake: e.stake, value: e.value });
-        entrySignatures.push({ entry: e, signature });
+        const question = await sign(e.ledgerWallet, { domain: e.domain, types: daresTypes, primaryType: "Create", message: createMessage(e.dareOnchainId, e.question, e.stalemate) }, "approve terms", { action: "create_question", dareId: e.dareId });
+        entrySignatures.push({ entry: e, signature, question });
       }
       setState("sending");
       if (batch && batchSignature) {
@@ -119,8 +122,8 @@ export function ConfirmAll({ payload, entries = [], claims = [], viewer }: { pay
         }
         for (const id of batch.proposalIds) landed.current.claims.add(id);
       }
-      for (const { entry, signature } of entrySignatures) {
-        const r = await enterMarketAction(entry.dareId, entry.position, signature);
+      for (const { entry, signature, question } of entrySignatures) {
+        const r = await enterMarketAction(entry.dareId, entry.position, signature, question);
         if ("error" in r) {
           setError(r.error);
           setState("idle");

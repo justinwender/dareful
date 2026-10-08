@@ -17,7 +17,7 @@ import { clearJoinHandoff, readJoinHandoff, resumeFrom } from "@/lib/ui/join-han
 import { GUEST_NAME_MAX, guestNameOf, keepOfferedHere, markKeepOffered, offersKeep, opensRaised, UNTOUCHED_PERCENT } from "@/lib/ui/entry-words";
 import { discardDraftAction, enterAsGhostAction, enterMarketAction, openMarketAction, openWithoutEntryAction, forgetGhostAction } from "@/lib/actions/markets";
 import { isIdentifier } from "@/lib/auth/login";
-import { daresTypes } from "@/lib/chain/typed-data";
+import { createMessage, daresTypes } from "@/lib/chain/typed-data";
 import type { Hue } from "@/lib/ui/hue";
 import { OddsHeader, OddsLine } from "./odds-line";
 import { TeamHeader, TeamLine } from "./team-line";
@@ -33,18 +33,29 @@ import { defaultStake, StakeChips } from "./stake-chips";
 import { sheetPresent } from "@/lib/ui/stage";
 import { hashAsksFor, useHash } from "@/lib/ui/hash";
 import { dropKeyboard } from "@/lib/ui/viewport";
+import { WHO_SAID_WHAT } from "@/lib/ui/calls-words";
+import { RollCall, type RollCallCell } from "./roll-call";
+import type { RevealedCall } from "./weight-line";
+import type { RevealedNumber } from "./number-line";
+import type { RevealedPick } from "./pick-one-bars";
 
-export type StagePicture =
+export type StagePicture = (
   | {
       kind: "weights";
       buckets: WeightBucket[];
       group: { percent: number } | null;
       caption: string | null;
+      /** Everyone's call, from the close (calls are in): each share in its person's hue. */
+      everyone?: RevealedCall[] | null;
     }
   /** A number market's axis, from what people entered (3.22). */
-  | { kind: "numbers"; axis: NumberLineAxis; caption: string | null }
+  | { kind: "numbers"; axis: NumberLineAxis; caption: string | null; everyone?: RevealedNumber[] | null }
   /** A pick-one market's bars (3.31): what is riding on each answer, and the caption only when one stake is more than half. */
-  | { kind: "picks"; bars: PickOneBar[]; entries: number; caption: string | null };
+  | { kind: "picks"; bars: PickOneBar[]; entries: number; caption: string | null; everyone?: RevealedPick[] | null }
+) & {
+  /** The roll call under the picture from the close (3.6): each person's exact number. Null while it is open. */
+  rollCall?: RollCallCell[] | null;
+};
 
 /**
  * The market screen's stage (docs/design.md 3.13, 3.22, 3.24): the odds line in the pinned sheet until you are
@@ -60,6 +71,7 @@ export type StagePicture =
  * A pick-one market's sheet opens raised, since picking is the move, and lowers to one bar ("Pick one" and the
  * count of answers, or your pick) so the terms behind six answers can be read (3.30). A touch on the bar raises it.
  */
+
 export type GhostEntry = {
   /** This browser's ghost on this market, once in. */
   known: { name: string } | null;
@@ -236,12 +248,7 @@ export function MarketStage(props: {
     setDraftMove("share");
     const c = signing.create;
     try {
-      const createSignature = await sign(
-        signing.ledgerWallet,
-        { domain: signing.domain, types: daresTypes, primaryType: "Create", message: { dareId: signing.dareOnchainId, groupId: c.groupId, kind: c.kind, pace: c.pace, termsHash: c.termsHash, denomId: c.denomId, range: BigInt(c.range), options: c.options, stalemate: signing.stalemate, resolvesBy: BigInt(c.resolvesBy) } },
-        "approve terms",
-        { action: "create", dareId },
-      );
+      const createSignature = await sign(signing.ledgerWallet, { domain: signing.domain, types: daresTypes, primaryType: "Create", message: createMessage(signing.dareOnchainId, c, signing.stalemate) }, "approve terms", { action: "create", dareId });
       const r = await attempt(() => openWithoutEntryAction(dareId, createSignature));
       if ("error" in r) {
         setDraftProblem(r.error);
@@ -323,28 +330,7 @@ export function MarketStage(props: {
       if (state === "draft") {
         if (!signing.create) throw new Error("missing terms");
         const c = signing.create;
-        createSignature = await sign(
-          signing.ledgerWallet,
-          {
-            domain: signing.domain,
-            types: daresTypes,
-            primaryType: "Create",
-            message: {
-              dareId: signing.dareOnchainId,
-              groupId: c.groupId,
-              kind: c.kind,
-              pace: c.pace,
-              termsHash: c.termsHash,
-              denomId: c.denomId,
-              range: BigInt(c.range),
-              options: c.options,
-              stalemate: signing.stalemate,
-              resolvesBy: BigInt(c.resolvesBy),
-            },
-          },
-          "approve terms",
-          { action: "create", dareId },
-        );
+        createSignature = await sign(signing.ledgerWallet, { domain: signing.domain, types: daresTypes, primaryType: "Create", message: createMessage(signing.dareOnchainId, c, signing.stalemate) }, "approve terms", { action: "create", dareId });
       }
       const enterSignature = await sign(
         signing.ledgerWallet,
@@ -364,6 +350,8 @@ export function MarketStage(props: {
         "approve number",
         { action: "enter", dareId, stake: String(stakeUnits), value: signedValue.toString() },
       );
+      // The terms again, over the question's own group (the games-and-the-reveal round): whoever is in can then create it on the chain.
+      const questionSignature = signing.question ? await sign(signing.ledgerWallet, { domain: signing.domain, types: daresTypes, primaryType: "Create", message: createMessage(signing.dareOnchainId, signing.question, signing.stalemate) }, "approve terms", { action: "create_question", dareId }) : null;
       setStep("sending");
       const r = createSignature
         ? await openMarketAction(
@@ -371,8 +359,9 @@ export function MarketStage(props: {
             createSignature,
             position,
             enterSignature,
+            questionSignature,
           )
-        : await enterMarketAction(dareId, position, enterSignature);
+        : await enterMarketAction(dareId, position, enterSignature, questionSignature);
       if ("error" in r) {
         // docs/design.md 3.13: the sheet stays raised, and the number is never silently dropped.
         setProblem(`Your number didn’t send. ${r.error}`);
@@ -481,7 +470,7 @@ export function MarketStage(props: {
     reading && shown ? (
       <section
         className="flex flex-col gap-5"
-        aria-label="Where the stake sits"
+        aria-label={state === "locked" ? WHO_SAID_WHAT : "Where the stake sits"}
       >
         {props.claimed ? null : (
         <div className="flex items-center gap-3">
@@ -534,18 +523,20 @@ export function MarketStage(props: {
             entries={picks ? picks.entries : 1}
             me={shown.pick !== undefined ? { name: me.name, hue: me.hue, stake: shown.stake, pick: shown.pick } : null}
             livePick={changing ? pick : null}
-            heading={state === "locked" ? "Where everyone landed" : "Where the stake sits"}
+            heading={state === "locked" ? WHO_SAID_WHAT : "Where the stake sits"}
             caption={picks ? picks.caption : null}
             rise={justIn !== null && mine === null}
+            everyone={state === "locked" ? (picks?.everyone ?? null) : null}
           />
         ) : numberUnit ? (
           numbers || ownAxis ? (
             <NumberLine
               axis={numbers ? numbers.axis : serialiseAxis(ownAxis as NonNullable<typeof ownAxis>)}
               me={shown.number !== undefined ? { name: me.name, hue: me.hue, value: shown.number, stake: shown.stake } : null}
-              heading={state === "locked" ? "Where everyone landed" : "Where the stake sits"}
+              heading={state === "locked" ? WHO_SAID_WHAT : "Where the stake sits"}
               caption={numbers ? numbers.caption : null}
               rise={justIn !== null && mine === null}
+              everyone={state === "locked" ? (numbers?.everyone ?? null) : null}
             />
           ) : null
         ) : (
@@ -561,14 +552,17 @@ export function MarketStage(props: {
           group={weights?.group ?? null}
           heading={
             state === "locked"
-              ? "Where everyone landed"
+              ? WHO_SAID_WHAT
               : "Where the stake sits"
           }
           caption={weights ? weights.caption : null}
           rise={justIn !== null && mine === null}
           ends={teams ? { away: teams.away.name, home: teams.home.name } : null}
+          everyone={state === "locked" ? (weights?.everyone ?? null) : null}
         />
         )}
+        {/* The roll call under the picture from the close (3.6, 3.22): each person's exact number. */}
+        {state === "locked" && picture?.rollCall && picture.rollCall.length > 0 ? <RollCall cells={picture.rollCall} /> : null}
       </section>
     ) : null;
 

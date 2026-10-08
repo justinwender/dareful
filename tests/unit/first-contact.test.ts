@@ -27,7 +27,7 @@ import { answerIndexOf, clipWords, Triage } from "@/lib/ai/settler";
 import { HAS_DATE } from "@/lib/ai/markets";
 import { browserSaysOffline, browserWentOffline, offlineSettled, reachable, PROBE_PATH } from "@/lib/ui/connection";
 import { emailOfDynamicUser } from "@/lib/notify/channels";
-import { countedSetSize, inCount } from "@/lib/ui/copy";
+import { inCount } from "@/lib/ui/copy";
 import { fitField, fittedHeight, sizesItself } from "@/lib/ui/fit-content";
 import { cardMeta } from "@/lib/sports/cards";
 import { suggestedNameOf } from "@/lib/auth/jwt";
@@ -97,9 +97,9 @@ const locked = (people: Array<{ id: string; ghost?: boolean }>, votesCast = 1) =
   state: "locked" as const,
   dare: { id: "d1", title: "Who wins, Lightning or Rangers?", creatorId: "asker", resolvesBy: new Date(at.getTime() + 86_400_000), createdAt: at, lockedAt: at, mark: null, markKind: null, ink: null } as never,
   people: people.map((p) => ({ id: p.id, name: p.id, ghost: p.ghost ?? false, percent: null, number: null, pick: null })),
-  groupSize: 5,
   votesCast,
   saidBy: null,
+  votingOpen: true,
 });
 
 test("Now asks only the people in a question to vote, and counts the votes over the people in, never the whole set", () => {
@@ -461,7 +461,7 @@ test("the entry sheet opens raised for a first entry, so the 50% it would send i
   assert.equal(opensRaised({ mine: {}, number: false, draft: false }), false, "once in, nothing raises it");
   assert.equal(opensRaised({ mine: null, number: false, draft: false, asker: true }), false, "the asker's own question rests until they are in, so its share row is on screen (the second-pass round)");
   assert.ok(readFileSync("src/components/markets/market-stage.tsx", "utf8").includes('useState(() => opensRaised({ mine, number: numberUnit !== null, draft: state === "draft", asker: props.asker === true }))'), "the sheet reads the rule");
-  assert.ok(readFileSync("src/app/m/[id]/page.tsx", "utf8").includes("asker={d.creatorId === me.id}"), "and the page says who asked");
+  assert.ok(readFileSync("src/app/m/[id]/market-screen.tsx", "utf8").includes("asker={d.creatorId === me.id}"), "and the page says who asked");
 });
 
 test("a pick-one argument's ruling names one of its answers by its words, and nothing it did not list", () => {
@@ -517,11 +517,14 @@ test("Continue with Google leads the account step as its one chalk, with Google'
   assert.ok(mark.includes('src="/brand/google-g.svg"') && mark.includes("width={20} height={20}"), "at Google's 20px");
 });
 
-test("Whoever I send it to stands first in who's in, above every set, and is where who's in starts, in asking and in starting a game", () => {
-  const who = readFileSync("src/components/markets/who-step.tsx", "utf8");
-  assert.ok(who.indexOf("Whoever I send it to</span>") > 0 && who.indexOf("Whoever I send it to</span>") < who.indexOf("{sets.map((s) => {"), "above every set");
-  assert.ok(readFileSync("src/components/markets/ask-form.tsx", "utf8").includes('const [who, setWho] = useState<Who>({ kind: "link" });'), "asking starts there");
-  assert.ok(readFileSync("src/components/on/start-game.tsx", "utf8").includes('useState<Who>(mode.kind === "add" ? { kind: "set", groupId: mode.groupId } : { kind: "link" })'), "and so does starting a game; adding one keeps the game's own people");
+test("asking and starting a game skip who's in: a question goes to whoever its asker sends it to and opens as it is sent; adding one to a game keeps the game's own people", () => {
+  const form = readFileSync("src/components/markets/ask-form.tsx", "utf8");
+  assert.ok(form.includes('const who = { kind: "link" } as const;'), "asking sends it to whoever it is sent to");
+  assert.ok(!/step === "who"|WhoStep/.test(form), "and has no who's-in step");
+  assert.ok(form.includes("if (r.create) await openAsSent(r.id, r.create);"), "it opens as it is sent, with share, copy and the code in view");
+  const start = readFileSync("src/components/on/start-game.tsx", "utf8");
+  assert.ok(start.includes('const who: Who = mode.kind === "add" && mode.groupId ? { kind: "set", groupId: mode.groupId } : { kind: "link" };'), "starting a game does too; adding one keeps the game's own people, unless they already run it");
+  assert.ok(!/step === "who"|WhoStep/.test(start), "and has no who's-in step either");
 });
 
 test("a question too far off to decide says so at Decided with its nearer version, picks no date for the asker and sends nothing until they choose", () => {
@@ -586,14 +589,11 @@ test("a deadline the terms name with its year is that date, one without agrees w
   for (const f of ["src/components/markets/ask-form.tsx", "src/lib/actions/markets.ts"]) assert.ok(/and it’s decided \$\{datePhrase\(/.test(readFileSync(f, "utf8")), `${f} says the year`);
 });
 
-test("a count beside a clock never counts an asker who is not in their own question, and says nobody is in rather than a zero: a new game reads nobody's in yet, never 0 of 1 in", () => {
-  assert.equal(countedSetSize(["tam"], "tam", false), 0, "the asker of a new game, not in it yet, asked nobody");
-  assert.equal(countedSetSize(["tam", "ana", "ben"], "tam", false), 2, "the rest of a named set are asked");
-  assert.equal(countedSetSize(["tam", "ana"], "tam", true), 2, "once in, the asker counts like anyone");
-  assert.equal(inCount(0, 0), "nobody’s in yet");
-  assert.deepEqual([inCount(1, 3), inCount(3, 3)], ["1 of 3 in", "3 in"], "the second number only while someone asked is still out");
-  const fresh = cardMeta({ key: "home_wins", state: "open", viewerIn: false, mine: null, inCount: 0, groupSize: countedSetSize(["tam"], "tam", false), votesCast: 0, proposed: false, voted: false, teams: { away: "LAC", home: "BUF" }, unit: null, answers: null, outcomeWords: null, feedEnding: null, resolvedBy: null, closest: null, votingEnds: null });
+test("a count beside a clock says how many are in and nobody rather than a zero: a new game reads nobody's in yet, never 0 of 1 in, and no count has a second number", () => {
+  assert.equal(inCount(0), "nobody’s in yet");
+  assert.deepEqual([inCount(1), inCount(3)], ["1 in", "3 in"], "nobody is asked by name, so there is no second number (the games-and-the-reveal round)");
+  const fresh = cardMeta({ key: "home_wins", state: "open", viewerIn: false, mine: null, inCount: 0, votesCast: 0, proposed: false, voted: false, teams: { away: "LAC", home: "BUF" }, unit: null, answers: null, outcomeWords: null, feedEnding: null, resolvedBy: null, closest: null, votingEnds: null });
   assert.equal(fresh.text, "Closes at kickoff · nobody’s in yet", "the simulator's new game, as Tam");
-  assert.ok(readFileSync("src/lib/ledger/market-view.ts", "utf8").includes("groupSize: countedSetSize(") && readFileSync("src/components/on/game-page.tsx", "utf8").includes("groupSize: Math.max(countedSetSize("), "Now and the game page count the set this way");
+  assert.ok(!readFileSync("src/lib/ledger/market-view.ts", "utf8").includes("groupSize") && !readFileSync("src/components/on/game-page.tsx", "utf8").includes("groupSize"), "Now and the game page count no set");
 });
 

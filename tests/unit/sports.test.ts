@@ -339,15 +339,21 @@ test("team stamps (1.7, 3.40): the abbreviation on the team's colour in whicheve
 });
 
 test("the game page's cards say where each question stands, with no number until you are in (3.33)", () => {
-  const base = { key: "home_wins" as const, state: "open" as const, viewerIn: false, mine: null, inCount: 3, groupSize: 6, votesCast: 0, proposed: false, voted: false, teams: { away: "Chiefs", home: "Bills" }, unit: null, answers: null, outcomeWords: null, feedEnding: null, resolvedBy: null, closest: null, votingEnds: null };
-  assert.deepEqual(cardMeta(base), { mark: "open", text: "Closes at kickoff · 3 of 6 in" }, "nobody sees where anyone landed before they are in");
-  assert.deepEqual(cardMeta({ ...base, viewerIn: true, mine: 7000n, inCount: 5 }), { mark: "in", text: "You’re in at Bills 70% · 5 of 6 in" });
+  const base = { key: "home_wins" as const, state: "open" as const, viewerIn: false, mine: null, inCount: 3, votesCast: 0, proposed: false, voted: false, teams: { away: "Chiefs", home: "Bills" }, unit: null, answers: null, outcomeWords: null, feedEnding: null, resolvedBy: null, closest: null, votingEnds: null };
+  assert.deepEqual(cardMeta(base), { mark: "open", text: "Closes at kickoff · 3 in" }, "nobody sees where anyone landed before they are in, and nobody is counted against a number asked");
+  assert.deepEqual(cardMeta({ ...base, closes: "Closes 5 minutes after the first call" }), { mark: "open", text: "Closes 5 minutes after the first call · 3 in" }, "a question started after the start says its own close");
+  assert.deepEqual(cardMeta({ ...base, viewerIn: true, mine: 7000n, inCount: 5 }), { mark: "in", text: "You’re in at Bills 70% · 5 in" });
   const margin = { singular: "point", plural: "points", margin: { shift: "14", home: "Bills", away: "Chiefs" } };
   assert.equal(yourEntry({ key: "margin", mine: 21n, teams: null, unit: margin, answers: null }), "You’re in at Bills by 7");
   assert.equal(yourEntry({ key: "total", mine: 41n, teams: null, unit: { singular: "point", plural: "points" }, answers: null }), "You’re in at 41 points");
   assert.equal(yourEntry({ key: "first_drive", mine: 1n, teams: null, unit: null, answers: [...DRIVE_ANSWERS] }), "You’re in: Field goal");
-  assert.deepEqual(cardMeta({ ...base, state: "locked" }), { mark: "locked", text: "Waiting on the final score" });
-  assert.deepEqual(cardMeta({ ...base, key: "first_drive", state: "locked" }), { mark: "locked", text: "Waiting on the play-by-play" });
+  // Calls are in (3.33 as the fifteenth session drew it): the live score from the first pitch, the mark alone while it can't be read, and the wait once the game is over.
+  const closed = { ...base, state: "locked" as const, votingOpen: false };
+  assert.deepEqual(cardMeta({ ...closed, live: "Red Sox 5, Yankees 2 · top 7th" }), { mark: "locked", text: "Red Sox 5, Yankees 2 · top 7th" });
+  assert.deepEqual(cardMeta({ ...closed, live: null }), { mark: "locked", text: "Calls are in" });
+  assert.deepEqual(cardMeta({ ...closed, live: "Red Sox 5, Yankees 2 · top 7th", gameOver: true }), { mark: "locked", text: "Waiting on the final score" }, "over with no final: the wait, never a stale score");
+  assert.deepEqual(cardMeta({ ...closed, key: "first_drive", gameOver: true }), { mark: "locked", text: "Waiting on the play-by-play" });
+  assert.deepEqual(cardMeta({ ...base, state: "locked", votingOpen: true }), { mark: "voting", text: "Waiting on the final score" }, "the vote open with nothing proposed yet is still in voting");
   // In voting the meta line is the clock alone (3.33), never a count beside it; a void's reason is three words or fewer.
   assert.deepEqual(cardMeta({ ...base, state: "locked", votesCast: 2, votingEnds: "Mon 7:45pm" }), { mark: "voting", text: "Voting ends Mon 7:45pm" });
   assert.deepEqual(cardMeta({ ...base, state: "locked", votesCast: 0, proposed: true, votingEnds: null }), { mark: "voting", text: "The final score is in" });
@@ -364,18 +370,15 @@ test("the game page's cards say where each question stands, with no number until
   assert.equal(lineT({ key: "margin", value: 0n, shift: 14n, reach: 5 }), 0, "past the reach sits on the end");
 });
 
-test("the game page's who's-in row counts everyone in on any question out of the set's seats, says nobody's in before the first entry, and makes share the chalk while its asker is alone (3.42)", () => {
-  const row = (inIds: string[], seats: number, startedBy: string | null = "me") => gameWhosIn({ inIds, seats, viewerId: "me", startedBy });
-  assert.deepEqual(row([], 1), { count: "Nobody’s in yet", chalk: true }, "a game's asker starts out in nothing: never 0 of 1 in, and sending it is the only move");
-  assert.deepEqual(row([], 6), { count: "Nobody’s in yet", chalk: true });
-  assert.deepEqual(row(["me"], 1), { count: "Just you so far", chalk: true }, "nobody was named and only the asker is in");
-  assert.deepEqual(row(["me"], 6), { count: "1 of 6 in", chalk: true }, "people were named: the holdouts rule from the first entry, and share still the chalk");
-  assert.deepEqual(row(["me", "gabe", "me", "gabe"], 6), { count: "2 of 6 in", chalk: false }, "someone in on two questions is one person in");
-  assert.deepEqual(row(["gabe"], 6), { count: "1 of 6 in", chalk: false }, "somebody else is in: share is an icon again");
-  assert.deepEqual(row(["me", "gabe", "john"], 3), { count: "3 of you in", chalk: false });
-  assert.deepEqual(row(["me", "gabe", "a-ghost"], 2), { count: "3 of you in", chalk: false }, "someone in from the link counts like anyone, and the count is never out of fewer than are in");
-  assert.deepEqual(row(["me"], 6, "gabe"), { count: "1 of 6 in", chalk: false }, "the chalk is the asker's: someone else started this game");
-  assert.deepEqual(row([], 6, "gabe"), { count: "Nobody’s in yet", chalk: false });
+test("the game page's who's-in row counts everyone in on any question, says nobody's in before the first entry, and makes share the chalk while its asker is alone (3.42; never a second number)", () => {
+  const row = (inIds: string[], startedBy: string | null = "me") => gameWhosIn({ inIds, viewerId: "me", startedBy });
+  assert.deepEqual(row([]), { count: "Nobody’s in yet", chalk: true }, "a game's asker starts out in nothing: never 0 of 1 in, and sending it is the only move");
+  assert.deepEqual(row(["me"]), { count: "Just you so far", chalk: true }, "only the asker is in");
+  assert.deepEqual(row(["me", "gabe", "me", "gabe"]), { count: "2 in", chalk: false }, "someone in on two questions is one person in");
+  assert.deepEqual(row(["gabe"]), { count: "1 in", chalk: false }, "somebody else is in: share is an icon again");
+  assert.deepEqual(row(["me", "gabe", "a-ghost"]), { count: "3 in", chalk: false }, "someone in from the link counts like anyone");
+  assert.deepEqual(row(["me"], "gabe"), { count: "Just you so far", chalk: false }, "the chalk is the asker's: someone else started this game");
+  assert.deepEqual(row([], "gabe"), { count: "Nobody’s in yet", chalk: false });
 });
 
 test("a called-off question never happened: it leaves the game page, frees its place on the menu, and makes no set one of the game's (3.15)", () => {

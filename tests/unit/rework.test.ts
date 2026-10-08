@@ -137,9 +137,9 @@ test("everyone square is one sentence that names them, never a column of nothing
 test("locked reads as a time on the day and a date after, never as how long ago, and never with a capital mid-caption", () => {
   const now = new Date("2026-09-20T23:30:00Z");
   // "2 beers · locked at 10:40pm" (3.22): the word sits inside a caption, so it takes no capital.
-  assert.equal(lockedLabel(new Date("2026-09-20T23:00:00Z"), now, "UTC"), "locked at 11pm");
-  assert.equal(lockedLabel(new Date("2026-09-20T21:20:00Z"), now, "UTC"), "locked at 9:20pm");
-  assert.equal(lockedLabel(new Date("2026-09-12T23:00:00Z"), now, "UTC"), "locked Sat, Sep 12");
+  assert.equal(lockedLabel(new Date("2026-09-20T23:00:00Z"), now, "UTC"), "closed at 11pm");
+  assert.equal(lockedLabel(new Date("2026-09-20T21:20:00Z"), now, "UTC"), "closed at 9:20pm");
+  assert.equal(lockedLabel(new Date("2026-09-12T23:00:00Z"), now, "UTC"), "closed Sat, Sep 12");
 });
 
 const ev = (groupId: string): TimelineEvent => ({ kind: "proposal", at: new Date(), proposal: { groupId } as never, denomination: {} as never, groupName: null });
@@ -174,13 +174,14 @@ test("needs you: a question in voting first, then what else has a deadline, then
 });
 
 const dare = { id: "d1", title: "Does John fall asleep?", creatorId: "creator", resolvesBy: new Date(t0.getTime() + day), createdAt: t0, lockedAt: null as Date | null };
-const market = (over: Record<string, unknown>) => ({ state: "open", people: [{ id: "creator", name: "C", percent: null, number: null, pick: null }], groupSize: 4, votesCast: 0, saidBy: null, unit: null, pickOne: null, ...over, dare: { ...dare, ...((over.dare as object) ?? {}) } }) as never;
+const market = (over: Record<string, unknown>) => ({ state: "open", people: [{ id: "creator", name: "C", percent: null, number: null, pick: null }], votesCast: 0, saidBy: null, unit: null, pickOne: null, votingOpen: true, ...over, dare: { ...dare, ...((over.dare as object) ?? {}) } }) as never;
 const closes = () => "tonight";
 
 test("an open question someone is not in needs their number, with who is in and when it closes", () => {
   const n = needFromMarket(market({}), "viewer", false, t0, closes);
   assert.equal(n?.kind, "enter");
-  assert.equal(n?.context, "Closes tonight · 1 of 4 in");
+  // Nobody is asked by name (the games-and-the-reveal round): "1 in", never a second number.
+  assert.equal(n?.context, "Closes tonight · 1 in");
   // The row lands on the market with the entry sheet raised (the field round, 1.5): the verb does what it says.
   assert.equal(n?.href, "/m/d1#enter");
 });
@@ -208,6 +209,8 @@ test("a locked question needs a call from whoever has not made one, and links to
   assert.equal(n?.href, "/m/d1#ballot");
   assert.match(n?.context ?? "", /^Priya says what happened · 2 of 4/);
   assert.equal(needFromMarket(locked, "viewer", true, t0, closes), null);
+  // Calls are in (the games-and-the-reveal round): closed, and nothing to call until it has happened.
+  assert.equal(needFromMarket(market({ state: "locked", votingOpen: false, votesCast: 0, people: ["viewer", "a"].map((id) => ({ id, name: id, percent: null, number: null, pick: null })) }), "viewer", false, t0, closes), null);
 });
 
 test("no needs-you line ever says how long anything has waited", () => {
@@ -323,9 +326,9 @@ test("a running row says your entry and how many are in, then the clock once it 
   assert.equal(runningCaption(market({ people: [two[0]] }), closes, "viewer"), "You’re in at 70% · just you so far");
   assert.equal(runningCaption(market({ people: [{ id: "viewer", name: "V", percent: null, number: "14", pick: null }, ...two.slice(1)], unit: { singular: "shirt", plural: "shirts" } }), closes, "viewer"), "You’re in at 14 shirts · two of you");
   assert.equal(runningCaption(market({ people: [{ id: "viewer", name: "V", percent: null, number: null, pick: 0 }, ...two.slice(1)], pickOne: { answers: [{ index: 0, text: "John" }], outcome: null, shares: [], callers: [] } }), closes, "viewer"), "You’re in: John · two of you");
-  // Once it locks, the clock alone: resolving while nobody has called it, voting once someone has.
-  assert.equal(runningCaption(market({ state: "locked", votesCast: 2, people: two }), closes, "viewer"), "Voting ends tonight");
-  assert.equal(runningCaption(market({ state: "locked", people: two }), closes, "viewer"), "Resolving tonight");
+  // Once it closes (3.15 as the fifteenth session drew it): the calls-are-in words and what you said, then once it has happened, those words.
+  assert.equal(runningCaption(market({ state: "locked", votingOpen: false, people: two }), closes, "viewer"), "Calls are in · you said 70%");
+  assert.equal(runningCaption(market({ state: "locked", votingOpen: true, votesCast: 2, people: two }), closes, "viewer"), "It’s happened · you said 70%");
   for (const m of [open, market({ state: "locked", people: two }), market({ dare: { pace: "argument" }, people: [two[0]] })]) {
     const s = runningCaption(m, closes, "viewer");
     assert.equal(/\d+\s*(day|week|month|hour)|ago|overdue|late/i.test(s), false, s);

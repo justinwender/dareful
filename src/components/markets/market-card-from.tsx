@@ -53,7 +53,6 @@ export function MarketCardFrom({ m, viewerId, clock, consequenceStates, close, g
       clock={clock}
       viewerId={viewerId}
       people={m.people}
-      groupSize={m.groupSize}
       outcome={m.outcome}
       outcomeLine={m.outcome === null ? null : outcomeLine(m.dare, m.outcome === 1)}
       number={m.unit ? { ruler: rulerFor(m), answerLine: m.answer === null ? null : `${unitPhrase(BigInt(m.answer), m.unit)}.` } : null}

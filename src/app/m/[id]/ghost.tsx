@@ -33,7 +33,10 @@ import type { Sport } from "@/lib/sports/types";
 import { clockOf, firstName, friendsIn, lockedLabel, untilLabel } from "@/lib/ui/copy";
 import { bandClock as bandClockWords } from "@/lib/ui/band";
 import { hueFor } from "@/lib/ui/hue";
-import { inkOf } from "@/lib/ui/ink";
+import { inkOf, inkRoomStyleText } from "@/lib/ui/ink";
+import { CallsAreInSheet, CloseSheet } from "@/components/markets/market-actions";
+import { callsAreIn, callsNeeded, votingOpen } from "@/lib/ledger/calls";
+import { rollCallWords } from "@/lib/ui/calls-words";
 import { InkRoot } from "@/components/ledger/ink-root";
 import { markRefOf } from "@/lib/ui/mark";
 import type { TeamFace } from "@/lib/ui/team";
@@ -52,10 +55,10 @@ import { LinkOpened } from "@/components/ui/usage";
  * lock and binds to whoever signs in here, or with that number. The one line the design gave this sheet, "We
  * text a code", is not said: nothing is sent, and the caption says what is true instead.
  */
-export async function GhostMarketPage({ id, clock }: { id: string; clock: Awaited<ReturnType<typeof viewerClock>> }) {
+export async function GhostMarketPage({ id, clock, embedded = false }: { id: string; clock: Awaited<ReturnType<typeof viewerClock>>; /** The open card on a game page (section 4; 3.33): the page has the chrome and the band. */ embedded?: boolean }) {
   const d = /^[0-9a-f-]{36}$/i.test(id) ? await marketById(id) : null;
   // A revoked or malformed link (3.17): the code screen with a form-level message, and nothing about any market.
-  if (!d || stateOf(d) === "draft") return <DeadLink signedIn={false} />;
+  if (!d || stateOf(d) === "draft") return embedded ? null : <DeadLink signedIn={false} />;
   const state = stateOf(d);
   const now = new Date(clock.now);
   const ink = inkOf(d);
@@ -101,9 +104,35 @@ export async function GhostMarketPage({ id, clock }: { id: string; clock: Awaite
           ? { kind: "weights", buckets: buckets(entries).map((b) => ({ n: b.n, stake: b.stake.toString(), noStake: b.noStake })), group: showsMarker(entries) && number !== null ? { percent: percentOf(number) } : null, caption: weightCaption({ entries, viewerId, nameOf: first, stakeWords }) }
           : null;
 
-  const bandState: MarketMark = state === "open" ? (mine ? "in" : "open") : state === "locked" ? "locked" : state;
-  // The band's clock as the member's screen has it (`bandClock`): a visitor never sees votes, so a locked one reads as resolving.
-  const bandClock = bandClockWords({ state, resolvesBy: d.resolvesBy, resolvedAt: d.resolvedAt, resolvedBy: d.resolvedBy, votes: 0, now, zone: clock.zone });
+  // Who said what, from the close, for a guest who is in as for anyone in (calls are in; 3.6, 3.22, 3.31).
+  if (state === "locked" && picture) {
+    // Someone without an account wears stone, on their share as on their avatar (6.4: the stone dashed avatar everywhere).
+    const who = (p: (typeof positions)[number]) => ({ id: pidOf(p), name: person.get(pidOf(p))?.displayName ?? "Someone", hue: person.get(pidOf(p))?.ghost === true ? ("stone" as const) : hueFor(pidOf(p)), ghost: person.get(pidOf(p))?.ghost === true, stake: p.stake.toString() });
+    if (picture.kind === "weights") picture.everyone = positions.map((p) => ({ ...who(p), percent: Number(p.value) / 100 }));
+    if (picture.kind === "numbers") picture.everyone = positions.map((p) => ({ ...who(p), value: p.value.toString() }));
+    if (picture.kind === "picks") picture.everyone = positions.map((p) => ({ ...who(p), pick: Number(p.value) }));
+    if (picture.kind !== "picks") picture.rollCall = positions.map((p) => ({ ...who(p), ...rollCallWords({ kind: numberUnit ? "numeric" : "binary", value: p.value, teams: teams ? { away: teams.away.name, home: teams.home.name } : null, margin: numberUnit?.margin ? { shift: BigInt(numberUnit.margin.shift), away: numberUnit.margin.away, home: numberUnit.margin.home } : null }), you: pidOf(p) === viewerId }));
+  }
+  const votingIsOpen = state === "locked" && votingOpen(d, game ? { finalSeenAt: game.finalSeenAt, expectedEndAt: game.expectedEndAt } : null, now);
+  const bandState: MarketMark = state === "open" ? (mine ? "in" : "open") : state === "locked" ? (votingIsOpen ? "voting" : "locked") : state;
+  // The band's clock as the member's screen has it (`bandClock`): a visitor never sees votes.
+  const bandClock = bandClockWords({ state, resolvesBy: d.resolvesBy, resolvedAt: d.resolvedAt, resolvedBy: d.resolvedBy, votes: 0, now, zone: clock.zone, votingOpen: votingIsOpen, firstCall: d.closesAfterFirst });
+  // The close and the stretch after it, for a guest who is in (the games-and-the-reveal round): calls are in, by name, and "It's happened"; a guest has no vote.
+  const calls = state === "open" && mine && positions.length >= 2 ? await callsAreIn(d.id) : [];
+  const saidIt = new Set(calls.map((c) => c.userId ?? c.claimId));
+  const closer =
+    state === "open" && mine && positions.length >= 2 ? (
+      <CloseSheet
+        dareId={d.id}
+        count={positions.length}
+        asker={false}
+        stuck={pastItsClose(d, now)}
+        sayers={calls.map((c) => ((cid) => ({ name: cid === viewerId ? "You" : firstName(person.get(cid)?.displayName ?? "Someone"), avatarName: firstName(person.get(cid)?.displayName ?? "Someone"), hue: hueFor(cid), ghost: person.get(cid)?.ghost === true }))((c.userId ?? c.claimId) as string))}
+        could={positions.filter((p) => !saidIt.has(pidOf(p)) && pidOf(p) !== d.creatorId).map((p) => (pidOf(p) === viewerId ? "you" : firstName(person.get(pidOf(p))?.displayName ?? "Someone")))}
+        need={Math.max(0, callsNeeded(positions.length) - calls.length)}
+        meSaid={saidIt.has(viewerId)}
+      />
+    ) : null;
   const howItWorks = d.pace === "argument" ? "Two sides. Whoever’s right has got the other." : pickAnswers ? "Everyone picks one. The right pick does best." : numberUnit ? "Everyone puts in a number. Closest does best." : "Everyone puts in their odds. Closest does best.";
   const until = d.resolvesBy ? untilLabel(d.resolvesBy, now, clock.zone) : "until it closes";
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://dareful.app";
@@ -112,6 +141,7 @@ export async function GhostMarketPage({ id, clock }: { id: string; clock: Awaite
   // Once in, the market as anyone in sees it (3.17, frame 6): open, and locked with the clock alone on the entry line. The
   // "Closed" sheet is for a visitor who never got in.
   const ended = state === "resolved" || state === "voided" || state === "expired";
+  const settledWithAnOutcome = state === "resolved" && d.resolvedOutcome !== null && d.resolvedOutcome !== VOID_OUTCOME;
   // How it ended, for a ghost who was in (the member's settled line, 3.37): the outcome in the question's words, the number, the pick, or the ending.
   const endedLine = !ended
     ? null
@@ -148,6 +178,7 @@ export async function GhostMarketPage({ id, clock }: { id: string; clock: Awaite
         mark={d.markKind === "emoji" ? d.markValue : null}
         argument={d.pace === "argument" ? { defaultPercent: positions[0] ? (positions[0].value >= 5000n ? 0 : 100) : 100, otherSays: positions[0] ? { name: first(pidOf(positions[0])), side: positions[0].value >= 5000n ? "yes" : "no" } : null } : null}
         lockedLine={d.lockedAt ? lockedLabel(d.lockedAt, now, clock.zone) : null}
+        closer={closer}
         changeUntil={until}
         farOff={numberUnit && farOffThreshold(d) !== null ? { threshold: (farOffThreshold(d) as bigint).toString(), scale: d.rangeSource === "asker" && d.range !== null ? d.range.toString() : null } : null}
       />
@@ -155,6 +186,60 @@ export async function GhostMarketPage({ id, clock }: { id: string; clock: Awaite
       <PinnedSheet label="Closed" low={<p className="text-body text-ink-2">This one closed{d.lockedAt ? ` at ${clockOf(d.lockedAt, clock.zone)}` : ""}, so you can watch but not enter.</p>} />
     ) : (
       <PinnedSheet label="Finished" low={<p className="text-body text-ink-2">This one’s finished.</p>} />
+    );
+
+  // The stretch after the close for a guest who is in (the games-and-the-reveal round): "It's happened" opens the vote for the people with accounts in it.
+  const stretch = state === "locked" && mine && !votingIsOpen ? <CallsAreInSheet dareId={d.id} byScore={fromTemplate?.template.decidedByScore === true} /> : null;
+  const inner = (
+    <>
+          {/* In (3.17, frame 6): the entry line and the picture first, as anyone in sees them, then who's in and the facts. */}
+          {pulse ? <VotePoll dareId={d.id} pulse={pulse.pulse} /> : null}
+          {mine && endedLine ? <p className="text-serif-l text-ink">{endedLine}</p> : null}
+          {state === "open" || (state === "locked" && mine) ? stage : null}
+          {mine && ended && !settledWithAnOutcome ? null : mine ? (
+            // In (3.17, frame 6): the who's-in row with its icons. The code is the asker's to make, so share and copy alone here. A void or an expiry has no row (3.42), as on the member's screen.
+            <WhosInRow people={stack} count={positions.length === 1 ? "Just you so far" : `${positions.length} in`} share={{ url: game ? `${appUrl}/on/${game.id}/${d.groupId}` : `${appUrl}/m/${d.id}`, title: game ? game.name : d.title }} code={null} />
+          ) : (
+            <section className="flex items-center gap-3" data-friends-in="">
+              {/* The avatars carry initials, and their accessible names are first names: the asker's is the only name on this screen (3.17). */}
+              {positions.length > 0 ? <AvatarStack people={stack} size={28} ring="var(--ground)" /> : null}
+              <p className="text-caption text-ink-2">{friendsIn(positions.length, "words")}</p>
+            </section>
+          )}
+          {embedded ? null : <dl className="grid grid-cols-[96px_minmax(0,1fr)] gap-x-3 gap-y-2 rounded-card border border-line bg-surface px-4 py-[14px]">
+            <dt className="text-label text-ink-3">Decided</dt>
+            <dd className="text-body text-ink">
+              {decidedByFeed ? (
+                firstDrive ? "By the play-by-play, once the game is over" : "By the final score, once the game is over"
+              ) : d.resolvesBy ? (
+                <>
+                  by <When iso={d.resolvesBy.toISOString()} zone={clock.zone} serverNow={clock.now} style="day" />, by the people in it
+                </>
+              ) : (
+                "the moment both sides are in"
+              )}
+              {d.criterion ? `, ${d.criterion}` : ""}
+            </dd>
+            <dt className="text-label text-ink-3">How it works</dt>
+            <dd className="text-body text-ink">{howItWorks}</dd>
+          </dl>}
+          {mine ? (
+            <div className="flex flex-col items-start gap-2">
+              <SignInButton variant="tertiary" label="Sign in" />
+            </div>
+          ) : null}
+      {stretch}
+    </>
+  );
+  if (embedded)
+    return (
+      <div data-ink-room={ink} className="flex flex-col gap-7" data-open-card={d.id}>
+        {/* The card wears the question's ink, the page staying the neutral room (3.33). */}
+        <style dangerouslySetInnerHTML={{ __html: inkRoomStyleText(ink) }} />
+        <LinkOpened link="market" dareId={d.id} signedIn={false} />
+        {inner}
+        {mine || state === "open" ? null : stage}
+      </div>
     );
 
   return (
@@ -184,42 +269,7 @@ export async function GhostMarketPage({ id, clock }: { id: string; clock: Awaite
               </span>
             </p>
           </section>
-          {/* In (3.17, frame 6): the entry line and the picture first, as anyone in sees them, then who's in and the facts. */}
-          {pulse ? <VotePoll dareId={d.id} pulse={pulse.pulse} /> : null}
-          {mine && endedLine ? <p className="text-serif-l text-ink">{endedLine}</p> : null}
-          {state === "open" || (state === "locked" && mine) ? stage : null}
-          {mine ? (
-            // In (3.17, frame 6): the who's-in row with its icons. The code is the asker's to make, so share and copy alone here.
-            <WhosInRow people={stack} count={positions.length === 1 ? "Just you so far" : `${positions.length} of you in`} share={{ url: `${appUrl}/m/${d.id}`, title: d.title }} code={null} />
-          ) : (
-            <section className="flex items-center gap-3" data-friends-in="">
-              {/* The avatars carry initials, and their accessible names are first names: the asker's is the only name on this screen (3.17). */}
-              {positions.length > 0 ? <AvatarStack people={stack} size={28} ring="var(--ground)" /> : null}
-              <p className="text-caption text-ink-2">{friendsIn(positions.length, "words")}</p>
-            </section>
-          )}
-          <dl className="grid grid-cols-[96px_minmax(0,1fr)] gap-x-3 gap-y-2 rounded-card border border-line bg-surface px-4 py-[14px]">
-            <dt className="text-label text-ink-3">Decided</dt>
-            <dd className="text-body text-ink">
-              {decidedByFeed ? (
-                firstDrive ? "By the play-by-play, once the game is over" : "By the final score, once the game is over"
-              ) : d.resolvesBy ? (
-                <>
-                  by <When iso={d.resolvesBy.toISOString()} zone={clock.zone} serverNow={clock.now} style="day" />, by the people in it
-                </>
-              ) : (
-                "the moment both sides are in"
-              )}
-              {d.criterion ? `, ${d.criterion}` : ""}
-            </dd>
-            <dt className="text-label text-ink-3">How it works</dt>
-            <dd className="text-body text-ink">{howItWorks}</dd>
-          </dl>
-          {mine ? (
-            <div className="flex flex-col items-start gap-2">
-              <SignInButton variant="tertiary" label="Sign in" />
-            </div>
-          ) : null}
+          {inner}
         </div>
         {mine || state === "open" ? null : stage}
       </Screen>

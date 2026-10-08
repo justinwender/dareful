@@ -103,6 +103,10 @@ export type CallSheetProps = {
   answers?: PickOneAnswer[] | null;
   /** Between two teams (3.40): the two stamps for the margin's line, and its reach. */
   teams?: { away: TeamFace; home: TeamFace; reach: number } | null;
+  /** "Maya says it's happened.": under the heading, when a person opened the vote (3.24, the games-and-the-reveal round). */
+  happened?: string | null;
+  /** The vote has just opened and nobody has said: the sheet rises to the wells on every phone (3.24). */
+  rise?: boolean;
   /** Under the arbitrate rule, once the vote is split: the cases, and whether the app may be asked yet. */
   split: {
     cases: Array<{ name: string; said: string }>;
@@ -136,7 +140,8 @@ export function CallSheet(props: CallSheetProps) {
   /** The number typed on a number question: the claim, or the number a dissenter saw. */
   const [typed, setTyped] = useState<bigint | null>(null);
   const [picking, setPicking] = useState(false);
-  const [raised, setRaised] = useState(false);
+  // Opening the vote (3.24): every phone's sheet rises to the wells, once, when it opens with nobody having said.
+  const [raised, setRaised] = useState(props.rise === true);
   // A row on Now that says Vote lands here with the ballot raised (the field round, 1.5): the address asks for it.
   const hash = useHash();
   useEffect(() => {
@@ -410,9 +415,16 @@ export function CallSheet(props: CallSheetProps) {
           raised={raised}
           onRaise={setRaised}
           header={
-            <p className="text-body-strong text-ink">
-              {unit ? "When it’s clear, say what it was." : "When it’s clear, say what happened."}
-            </p>
+            <div className="flex flex-col gap-1">
+              <p className="text-body-strong text-ink">
+                {unit ? "When it’s clear, say what it was." : "When it’s clear, say what happened."}
+              </p>
+              {props.happened ? (
+                <p className="text-caption text-ink-2" data-happened-by="">
+                  {props.happened}
+                </p>
+              ) : null}
+            </div>
           }
           low={
             <>

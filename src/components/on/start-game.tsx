@@ -2,10 +2,10 @@
 
 import { attempt } from "@/lib/ui/attempt";
 import type { CSSProperties } from "react";
-import { useState, useTransition, type ReactNode } from "react";
+import { useId, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { TypedDataDomain } from "viem";
-import { AvatarStack } from "@/components/ledger/avatar";
+import { Avatar, AvatarStack } from "@/components/ledger/avatar";
 import { Chip, chipPress } from "@/components/ledger/chip";
 import { ProblemSummary } from "@/components/ledger/problem";
 import { Screen } from "@/components/ledger/screen";
@@ -13,12 +13,14 @@ import { TeamStamp } from "@/components/ledger/team-stamp";
 import { signingProblem, useSigner } from "@/components/ledger/use-signer";
 import { Button } from "@/components/ui/button";
 import { PinnedSheet } from "@/components/ui/pinned-sheet";
-import { WhoStep, type Person, type SetOption, type Who } from "@/components/markets/who-step";
+import { Sheet } from "@/components/ui/sheet";
+import type { SetOption, Who } from "@/components/markets/who";
 import { openGameQuestionsAction, startGameAction } from "@/lib/actions/games";
 import { daresTypes } from "@/lib/chain/typed-data";
 import { consentFor } from "@/lib/sports/templates";
 import { startWord } from "@/lib/sports/types";
 import type { TeamFace } from "@/lib/ui/team";
+import type { Hue } from "@/lib/ui/hue";
 import { cn } from "@/lib/utils";
 
 type Unit = { kind: "usd" } | { kind: "existing"; id: string } | { kind: "new"; template: "beer" | "round" | "coffee" | "next_time"; label: string };
@@ -74,7 +76,7 @@ export function GameHeader({ game, caption, right }: { game: GameHeaderData; cap
         <span className="text-label text-ink-2">{right ?? game.start}</span>
       </div>
       <h1 className="text-serif-l text-ink">{game.name}</h1>
-      <div className="text-caption text-ink-2">{caption}</div>
+      {caption ? <div className="text-caption text-ink-2">{caption}</div> : null}
     </section>
   );
 }
@@ -86,24 +88,33 @@ export function GameHeader({ game, caption, right }: { game: GameHeaderData; cap
  * the same people, all closing at kickoff, and the asker's `Create` signature opens each for the group. Adding
  * another later (the dashed rows) is the terms step alone, with the same people already chosen.
  */
-export function StartGame({ game, menu, sets, people, chrome, signing, mode, closes }: {
+/** A question already on this person's page for the game, from another set (3.33, "Asking what's already asked"): offered before starting the same one. */
+export type AlreadyAsked = { dareId: string; line: string; asker: { name: string; hue: Hue } };
+
+export function StartGame({ game, menu, sets, chrome, signing, mode, closes, existing = {} }: {
   game: GameHeaderData;
   menu: MenuItem[];
   sets: SetOption[];
-  people: Person[];
   chrome: ReactNode;
   signing: { domain: TypedDataDomain; ledgerWallet: string };
   /** Starting fresh, or adding one question to a game already running with these people. */
-  mode: { kind: "start" } | { kind: "add"; groupId: string; groupLabel: string; key: MenuItem["key"] };
-  /** "Sun 1:00pm": when everything closes, in the asker's zone. */
+  mode: { kind: "start" } | { kind: "add"; /** The set it goes to; null where that set already runs it, so it goes to whoever the asker sends it to. */ groupId: string | null; groupLabel: string; key: MenuItem["key"] };
+  /** "Sun 1:00pm": when everything closes, in the asker's zone; on a game being played, the words for a close set by the first call (section 5). */
   closes: string;
+  /** The menu's questions already on this person's page from another set, by key (3.33): the offer names one before the same is started. */
+  existing?: Partial<Record<MenuItem["key"], AlreadyAsked>>;
 }) {
   const router = useRouter();
   const sign = useSigner();
-  const [step, setStep] = useState<"menu" | "who" | "terms">(mode.kind === "add" ? "terms" : "menu");
+  // Asking what's already asked (3.33, frame 3): the one on the page is offered first, once; "Ask your own" carries on.
+  const [offer, setOffer] = useState<AlreadyAsked | null>(mode.kind === "add" ? (existing[mode.key] ?? null) : null);
+  const [offered, setOffered] = useState(mode.kind === "add");
+  const offerTitle = useId();
+  // Starting a game skips "Who's in" (the games-and-the-reveal round, the owner's call): the menu, then the terms.
+  const [step, setStep] = useState<"menu" | "terms">(mode.kind === "add" ? "terms" : "menu");
   const [checked, setChecked] = useState<Set<MenuItem["key"]>>(new Set(mode.kind === "add" ? [mode.key] : menu.some((m) => m.key === "home_wins") ? ["home_wins"] : []));
-  // "Whoever I send it to" is where who's in starts, starting a game included (the first-contact round); adding one keeps the game's own people.
-  const [who, setWho] = useState<Who>(mode.kind === "add" ? { kind: "set", groupId: mode.groupId } : { kind: "link" });
+  // Whoever the asker sends it to; adding one keeps the game's own people.
+  const who: Who = mode.kind === "add" && mode.groupId ? { kind: "set", groupId: mode.groupId } : { kind: "link" };
   const [unit, setUnit] = useState<Unit>({ kind: "usd" });
   const [problem, setProblem] = useState<string | null>(null);
   const [saving, startSave] = useTransition();
@@ -126,7 +137,6 @@ export function StartGame({ game, menu, sets, people, chrome, signing, mode, clo
   function send() {
     setProblem(null);
     if (chosen.length === 0) return setProblem("Pick at least one question.");
-    if (who.kind === "people" && who.userIds.length === 0) return setProblem("Pick someone, or just send the link around.");
     startSave(async () => {
       // A send that throws on its way (a phone that lost its network halfway) answers words at the button, never the error card (the first-contact round).
       const r = await attempt(() => startGameAction({ gameId: game.id, keys: chosen.map((m) => m.key), who, unit }));
@@ -154,12 +164,12 @@ export function StartGame({ game, menu, sets, people, chrome, signing, mode, clo
     });
   }
 
-  const caption = step === "menu" || (step === "who" && !selectedSet) ? `Everything closes at ${startWord(game.sport)}.` : selectedSet ? (
+  const caption = mode.kind === "add" && selectedSet ? (
     <span className="flex items-center gap-2">
       <AvatarStack people={selectedSet.avatars.slice(0, 4)} size={26} ring="var(--surface-2)" />
-      <span>{mode.kind === "add" ? mode.groupLabel : selectedSet.label}</span>
+      <span>{mode.groupLabel}</span>
     </span>
-  ) : who.kind === "people" ? `${who.userIds.length} picked. Everything closes at ${startWord(game.sport)}.` : `Whoever you send it to. Everything closes at ${startWord(game.sport)}.`;
+  ) : `Everything closes at ${startWord(game.sport)}.`;
 
   const wrap = (children: ReactNode) => (
     <Screen>
@@ -168,6 +178,33 @@ export function StartGame({ game, menu, sets, people, chrome, signing, mode, clo
         <GameHeader game={game} caption={caption} />
         {children}
       </div>
+      <Sheet open={offer !== null} onClose={() => setOffer(null)} labelledBy={offerTitle}>
+        {offer ? (
+          <div className="flex flex-col gap-4" data-already-asked={offer.dareId}>
+            <div className="flex items-center gap-3">
+              <Avatar name={offer.asker.name} hue={offer.asker.hue} size={28} />
+              <h2 id={offerTitle} className="text-body-strong text-ink">
+                {offer.line}
+              </h2>
+            </div>
+            <Button variant="primary" onClick={() => router.replace(`/on/${game.id}?q=${offer.dareId}`)}>
+              Go to that one
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setOffer(null);
+                if (mode.kind === "start") {
+                  setUnit({ kind: "usd" });
+                  setStep("terms");
+                }
+              }}
+            >
+              Ask your own
+            </Button>
+          </div>
+        ) : null}
+      </Sheet>
     </Screen>
   );
 
@@ -214,30 +251,16 @@ export function StartGame({ game, menu, sets, people, chrome, signing, mode, clo
           label="Next"
           low={
             <>
-              <Button variant="primary" disabled={chosen.length === 0} onClick={() => (setProblem(null), setStep("who"))}>
-                Next: who’s in
-              </Button>
-            </>
-          }
-        />
-      </>,
-    );
-  }
-
-  if (step === "who") {
-    return wrap(
-      <>
-        <WhoStep sets={sets} people={people} who={who} onWho={setWho} />
-        <PinnedSheet
-          label="Next"
-          low={
-            <>
-              <ProblemSummary messages={[problem]} />
               <Button
                 variant="primary"
+                disabled={chosen.length === 0}
                 onClick={() => {
                   setProblem(null);
-                  if (who.kind === "people" && who.userIds.length === 0) return setProblem("Pick someone, or just send the link around.");
+                  const already = chosen.map((m) => existing[m.key]).find((x): x is AlreadyAsked => Boolean(x));
+                  if (already && !offered) {
+                    setOffered(true);
+                    return setOffer(already);
+                  }
                   setUnit({ kind: "usd" });
                   setStep("terms");
                 }}
@@ -287,8 +310,8 @@ export function StartGame({ game, menu, sets, people, chrome, signing, mode, clo
         <p className="text-caption text-ink-3">One kind of thing for everyone, fixed now. Dollars and beers can’t be weighed against each other.</p>
       </section>
       {mode.kind === "start" ? (
-        <Button variant="tertiary" className="self-start" onClick={() => setStep("who")} disabled={saving}>
-          Back to who’s in
+        <Button variant="tertiary" className="self-start" onClick={() => setStep("menu")} disabled={saving}>
+          Back
         </Button>
       ) : null}
       <PinnedSheet

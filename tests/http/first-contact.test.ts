@@ -68,10 +68,11 @@ before(async () => {
 after(cleanup);
 
 test("adding a second question to a game: the Add another page is its terms step, and the page the send lands on lists both questions, never the error card", async () => {
-  const page = await get(`/on/${gameId}?g=${groupId}`, cAsker);
+  // One page per game per person (the games-and-the-reveal round, section 4): its address names the game alone.
+  const page = await get(`/on/${gameId}`, cAsker);
   assert.equal(page.status, 200);
-  assert.ok(page.html.includes(`?g=${groupId}&amp;add=margin`), "the margin is offered under Add another");
-  const add = await get(`/on/${gameId}?g=${groupId}&add=margin`, cAsker);
+  assert.ok(page.html.includes(`href="/on/${gameId}?add=margin"`), "the margin is offered under Add another");
+  const add = await get(`/on/${gameId}?add=margin`, cAsker);
   assert.equal(add.status, 200);
   assert.ok(add.html.includes('data-game-terms="margin"') && !add.html.includes("data-screen-error"), "the terms step for the margin alone");
   const usd = await ensureUsd(groupId, asker.user.id);
@@ -79,11 +80,11 @@ test("adding a second question to a game: the Add another page is its terms step
     await markets.openMarket(d0.id, asker.user.id, await asker.ledger.signTypedData(markets.createTypedData(d0)));
   }
   // The send re-renders the page it was made from, whose address still says add=margin, and then replaces it.
-  for (const path of [`/on/${gameId}?g=${groupId}&add=margin`, `/on/${gameId}?g=${groupId}`]) {
+  for (const path of [`/on/${gameId}?add=margin`, `/on/${gameId}`]) {
     const after = await get(path, cAsker);
     assert.equal(after.status, 200, path);
     assert.ok(!after.html.includes("data-screen-error"), `${path} draws no error card`);
-    assert.ok(!after.html.includes(`&amp;add=margin`), `${path} no longer offers the margin`);
+    assert.ok(!after.html.includes(`href="/on/${gameId}?add=margin"`), `${path} no longer offers the margin`);
   }
 });
 

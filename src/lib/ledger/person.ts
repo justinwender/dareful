@@ -8,7 +8,7 @@ import { db, schema } from "@/db";
 import { membersOfGroups, setLabel } from "./groups";
 import type { DenominationRow } from "./denominations";
 import { denominationsByIds } from "./denominations";
-import { nettablePairs } from "./closes";
+import { inItsSetsGroup, nettablePairs } from "./closes";
 import { obligationsById, openBetween, type EnvioObligation } from "./envio";
 import { bytes16ToUuid, uuidToBytes16 } from "./ids";
 import { marketCards, type MarketCardData } from "./market-view";
@@ -252,7 +252,9 @@ export async function personView(me: UserRow, them: UserRow): Promise<PersonView
   // What goes both ways in one unit and one set of people, and so can cancel on one signature from either side.
   const edges = open.flatMap((e) => {
     const row = rows.get(bytes16ToUuid(e.id));
-    return row ? [{ ...e, groupId: row.groupId, denomId: row.denomId }] : [];
+    // A netting is signed over the set's own group, so only edges held there cancel: a question created in a group of
+    // its own (the games-and-the-reveal round) keeps its edges there, where nothing ever goes the other way.
+    return row && inItsSetsGroup(e.groupId, row.groupId) ? [{ ...e, groupId: row.groupId, denomId: row.denomId }] : [];
   });
   const nettable: NettableLine[] = nettablePairs(edges, me.ledgerWallet, them.ledgerWallet).flatMap((p) => {
     const denomination = denoms.get(p.denomId);

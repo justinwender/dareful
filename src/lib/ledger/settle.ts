@@ -10,7 +10,7 @@
  */
 import { and, asc, eq, gt, inArray, isNotNull, isNull, lt, lte, or, sql, type SQL } from "drizzle-orm";
 import { FALLBACK_ZONE, REMIND_AFTER_MS, warningSendTime, type WarningFlavour } from "@/lib/notify/messages";
-import { agree, AGREE_AFTER_MS, ALONE_AFTER_MS } from "@/lib/sports/results";
+import { agree, AGREE_AFTER_MS, ALONE_AFTER_MS, SAY_YOURSELF_AFTER_MS } from "@/lib/sports/results";
 import type { CheckSource, FinalScore, Sport } from "@/lib/sports/types";
 import { keccak256, stringToHex, type Hex } from "viem";
 import { db, schema } from "@/db";
@@ -330,7 +330,7 @@ export function backstopMoment(input: { stalemate: string; pace: string; lockedA
  * `notifyDeadline` is passed in so this module does not depend on the notification channels; `check` is the
  * second sports source, asked once at warning time so the warning can say which ending is coming.
  */
-export async function tick(now: Date, notifyDeadline: (dareId: string, creatorId: string) => Promise<void>, opts: { limit?: number; onlyIds?: string[]; /** The two voting notices (the field round, 1.8): voting opened on a closed question, and the twelve-hour reminder. */ notifyVoting?: { opened: (dareId: string, creatorId: string) => Promise<void>; remind: (dareId: string, creatorId: string) => Promise<{ waiting: number } | void> }; notifyWarning?: (dareId: string, flavour: WarningFlavour, actsAt: Date) => Promise<void>; check?: CheckSource } = {}): Promise<TickReport> {
+export async function tick(now: Date, notifyDeadline: (dareId: string, creatorId: string) => Promise<void>, opts: { limit?: number; onlyIds?: string[]; /** The two voting notices (the field round, 1.8): voting opened on a closed question, and the twelve-hour reminder. */ notifyVoting?: { opened: (dareId: string, causedBy: string, how: "happened" | "final" | "time", actorName?: string) => Promise<void>; remind: (dareId: string, creatorId: string) => Promise<{ waiting: number } | void> }; notifyWarning?: (dareId: string, flavour: WarningFlavour, actsAt: Date) => Promise<void>; check?: CheckSource } = {}): Promise<TickReport> {
   const limit = opts.limit ?? 10;
   // Tests run against the real database, so a test names the questions it made and the tick touches nothing else.
   const mine = opts.onlyIds ? inArray(schema.dares.id, opts.onlyIds.length ? opts.onlyIds : ["00000000-0000-4000-8000-000000000000"]) : undefined;
@@ -350,7 +350,9 @@ export async function tick(now: Date, notifyDeadline: (dareId: string, creatorId
   // there is nothing to lock (the contract refuses), so those are left out of the query rather than skipped in the
   // loop: skipped, they held the first places of a list cut at ten and starved every question behind them, which
   // is how a game's question with five in sat open for two days (the field round, 2026-10-02).
-  const open = and(mine, eq(schema.dares.pace, "dare"), isNotNull(schema.dares.creatorSignature), isNull(schema.dares.lockedAt), isNull(schema.dares.resolvedAt), due);
+  // A question started during a game closes five minutes after its first call or at the final, whichever comes first (the games-and-the-reveal round, section 5).
+  const finalIn = sql`exists (select 1 from ${schema.publicQuestions} q join ${schema.sportsGames} g on g.id = q.game_id where q.id = ${schema.dares.templateId} and (g.final_seen_at is not null or g.completed))`;
+  const open = and(mine, eq(schema.dares.pace, "dare"), isNotNull(schema.dares.creatorSignature), isNull(schema.dares.lockedAt), isNull(schema.dares.resolvedAt), or(due, and(eq(schema.dares.closesAfterFirst, true), finalIn)));
   // Two in means two that count: an entry last changed after the close time is out of the close (`countedAtClose`).
   const inIt = sql`p.dare_id = ${schema.dares.id} and p.acknowledged_at is not null and p.dismissed_at is null`;
   const twoIn = sql`(select count(*) from ${schema.darePositions} p where ${inIt} and coalesce(p.changed_at, p.entered_at) <= ${schema.dares.resolvesBy}) >= 2`;
@@ -372,7 +374,9 @@ export async function tick(now: Date, notifyDeadline: (dareId: string, creatorId
   const toEnd = await db.select({ id: schema.dares.id, resolvesBy: schema.dares.resolvesBy }).from(schema.dares).where(and(open, sql`not ${twoIn}`, or(isNotNull(schema.dares.templateId), anyLate))).orderBy(asc(schema.dares.resolvesBy)).limit(limit);
   for (const { id, resolvesBy } of toEnd) {
     await attempt(id, "end at the start", async () => {
-      if (!resolvesBy || countedAtClose(await positionsOf(id), resolvesBy).counted.length >= 2) return;
+      // A question started during a game that nobody called before the final has no close time at all: nothing of it counts.
+      const ps = await positionsOf(id);
+      if ((resolvesBy ? countedAtClose(ps, resolvesBy).counted : ps).length >= 2) return;
       await completeExpire(id, now);
       report.expired.push(id);
     });
@@ -404,15 +408,20 @@ export async function tick(now: Date, notifyDeadline: (dareId: string, creatorId
     });
   }
 
-  // 2b. Everyone in a question that has closed hears it is time to say what happened, whichever way it closed (the
-  // asker, the time, an argument's second entry, a send the tick finished): the one job every path reaches within
-  // a minute, claimed once per question (the field round, 1.8). The action that closed it usually got there first.
-  const toOpen = await db.select({ id: schema.dares.id, creatorId: schema.dares.creatorId }).from(schema.dares).where(and(mine, isNotNull(schema.dares.lockedAt), isNull(schema.dares.resolvedAt), isNull(schema.dares.voteAskedAt))).orderBy(asc(schema.dares.lockedAt)).limit(limit);
-  for (const { id, creatorId } of toOpen) {
+  // 2b. Everyone in a closed question hears it is time to say what happened once the vote opens (the games-and-the-
+  // reveal round: the vote waits for the thing to happen): someone in said so, the final is in or two hours past the
+  // game's expected end have gone, its decided date has come, or it is an argument. The one job every path reaches
+  // within a minute, claimed once per question (the field round, 1.8); the action that opened it usually got there first.
+  const gameOver = sql`exists (select 1 from ${schema.publicQuestions} q join ${schema.sportsGames} g on g.id = q.game_id where q.id = ${schema.dares.templateId} and (g.final_seen_at is not null or g.expected_end_at <= ${new Date(now.getTime() - SAY_YOURSELF_AFTER_MS).toISOString()}::timestamptz))`;
+  const voteOpen = or(isNotNull(schema.dares.happenedAt), eq(schema.dares.pace, "argument"), and(isNull(schema.dares.templateId), lte(schema.dares.resolvesBy, now)), and(isNotNull(schema.dares.templateId), gameOver));
+  const toOpen = await db.select({ id: schema.dares.id, creatorId: schema.dares.creatorId, happenedUser: schema.dares.happenedUser, happenedClaim: schema.dares.happenedClaim, happenedAt: schema.dares.happenedAt, templateId: schema.dares.templateId }).from(schema.dares).where(and(mine, isNotNull(schema.dares.lockedAt), isNull(schema.dares.resolvedAt), isNull(schema.dares.voteAskedAt), voteOpen)).orderBy(asc(schema.dares.lockedAt)).limit(limit);
+  for (const { id, creatorId, happenedUser, happenedClaim, happenedAt, templateId } of toOpen) {
     await attempt(id, "voting opened", async () => {
       const [claimed] = await db.update(schema.dares).set({ voteAskedAt: now }).where(and(eq(schema.dares.id, id), isNull(schema.dares.voteAskedAt))).returning({ id: schema.dares.id });
       if (!claimed) return;
-      await opts.notifyVoting?.opened(id, creatorId);
+      // A guest who said it happened is named by the name they joined with; a notice's cause is always an account, so the asker stands for it.
+      const guest = happenedClaim ? (await db.select({ name: schema.participantClaims.displayName }).from(schema.participantClaims).where(eq(schema.participantClaims.id, happenedClaim)).limit(1))[0]?.name : undefined;
+      await opts.notifyVoting?.opened(id, happenedUser ?? creatorId, happenedAt ? "happened" : templateId ? "final" : "time", guest);
       report.votingOpened.push(id);
     });
   }
@@ -422,7 +431,8 @@ export async function tick(now: Date, notifyDeadline: (dareId: string, creatorId
   // many are still waiting); the question is marked reminded once nobody is. The one notice sent because time
   // passed, on the owner's ruling (docs/decisions.md 2026-10-02). Read whole, not cut at ten: a question waiting
   // on someone's morning must not hold a place against one that is due.
-  const toRemind = await db.select({ id: schema.dares.id, creatorId: schema.dares.creatorId }).from(schema.dares).where(and(mine, isNotNull(schema.dares.lockedAt), isNull(schema.dares.resolvedAt), isNull(schema.dares.voteRemindedAt), lte(schema.dares.lockedAt, new Date(now.getTime() - REMIND_AFTER_MS)))).orderBy(asc(schema.dares.lockedAt)).limit(QUEUE_SCAN);
+  // Twelve hours into voting, which opens when it has happened, not at the close (the games-and-the-reveal round).
+  const toRemind = await db.select({ id: schema.dares.id, creatorId: schema.dares.creatorId }).from(schema.dares).where(and(mine, isNotNull(schema.dares.lockedAt), isNull(schema.dares.resolvedAt), isNull(schema.dares.voteRemindedAt), lte(schema.dares.voteAskedAt, new Date(now.getTime() - REMIND_AFTER_MS)))).orderBy(asc(schema.dares.voteAskedAt)).limit(QUEUE_SCAN);
   for (const { id, creatorId } of toRemind) {
     await attempt(id, "vote reminder", async () => {
       const r = await opts.notifyVoting?.remind(id, creatorId);

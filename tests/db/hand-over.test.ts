@@ -99,9 +99,9 @@ test("the friend's entry from the host's phone: the PIN first, counted against t
   const right = await hosted(d.id, maya, "4242");
   assert.ok(right.ok, "the right PIN gets her in");
   const [pos] = await db.select().from(schema.darePositions).where(and(eq(schema.darePositions.dareId, d.id), eq(schema.darePositions.userId, maya.user.id)));
-  assert.deepEqual([pos?.enteredBy, pos?.value, pos?.enterSignature !== null], [sam.user.id, 6000n, true], "hers, signed, and the host recorded on it");
-  const [rec] = await db.select().from(schema.delegatedSignatures).where(eq(schema.delegatedSignatures.userId, maya.user.id));
-  assert.deepEqual([rec?.action, rec?.subject, rec?.request], ["enter", d.id, "tests/db/hand-over.test.ts"], "recorded against the request that caused it");
+  assert.deepEqual([pos?.enteredBy, pos?.value, pos?.enterSignature !== null, pos?.questionSignature !== null], [sam.user.id, 6000n, true, true], "hers, signed with the terms over the question's own group beside it, and the host recorded on it");
+  const recs = await db.select().from(schema.delegatedSignatures).where(eq(schema.delegatedSignatures.userId, maya.user.id));
+  assert.deepEqual(recs.map((r) => [r.action, r.subject, r.request]).sort(), [["create", d.id, "tests/db/hand-over.test.ts"], ["enter", d.id, "tests/db/hand-over.test.ts"]], "each recorded against the request that caused it");
   const again = await hosted(d.id, maya, "4242");
   assert.ok(!again.ok && "refused" in again && /in already/.test(again.refused), "in already: not a candidate");
   // The notice on her own account, once.

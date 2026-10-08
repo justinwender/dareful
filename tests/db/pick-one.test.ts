@@ -19,7 +19,7 @@ import { bufferToHex, uuidToBytes16 } from "@/lib/ledger/ids";
 import * as markets from "@/lib/ledger/markets";
 import { calibrationFor } from "@/lib/ledger/calibration";
 import { cleanResolution } from "@/lib/ledger/settle";
-import { cleanup, tempSigner, track, type Signer } from "./fixture";
+import { cleanup, itHappened, tempSigner, track, type Signer } from "./fixture";
 
 let priya: Signer, gabe: Signer, theo: Signer, maya: Signer, john: Signer, outsider: Signer;
 before(async () => {
@@ -37,8 +37,10 @@ const TERMS = "Whoever is first to be asleep on the couch, eyes shut and not ans
 const open = async (d: markets.DareRow, creator: Signer) => markets.openMarket(d.id, creator.user.id, await creator.ledger.signTypedData(markets.createTypedData(d)));
 const enter = async (d: markets.DareRow, who: Signer, stake: bigint, pick: bigint) =>
   markets.enterMarket({ dareId: d.id, userId: who.user.id, stake, value: pick, signature: await who.ledger.signTypedData(markets.enterTypedData(d, stake, pick)) });
-const vote = async (d: markets.DareRow, who: Signer, outcome: bigint) =>
-  markets.castVote({ dareId: d.id, userId: who.user.id, outcome, signature: await who.governance.signTypedData(markets.voteTypedData(d, outcome)) });
+const vote = async (d: markets.DareRow, who: Signer, outcome: bigint) => {
+  await itHappened(d.id);
+  return markets.castVote({ dareId: d.id, userId: who.user.id, outcome, signature: await who.governance.signTypedData(markets.voteTypedData(d, outcome)) });
+};
 const code = async (fn: () => Promise<unknown>) => fn().then(() => null, (e: unknown) => (e instanceof markets.MarketError ? e.code : `other: ${e instanceof Error ? e.message : e}`));
 
 test("a pick-one question carries two to six answers, a person answer is someone the asker knows, and a pick names one of them with everything on it", async () => {

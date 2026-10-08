@@ -22,7 +22,7 @@ export function Running({ rows, viewerId }: { rows: RunningRow[]; viewerId: stri
       <div className="overflow-hidden rounded-card border border-line bg-surface">
         {rows.map((r, i) => {
           const row = (
-          <Link prefetch={false} href={r.game ? r.game.href : `/m/${r.id}`} data-game-running={r.game ? "" : undefined} data-press="row" data-shell={!r.game && r.shell ? serialiseShell(r.shell) : undefined} data-shell-id={r.game ? undefined : r.id} className={`press-row relative grid items-center gap-3 px-4 py-[14px] ${r.mark || r.game ? "grid-cols-[40px_minmax(0,1fr)]" : "grid-cols-[minmax(0,1fr)]"} ${i > 0 ? "border-t border-line" : ""}`}>
+          <Link prefetch={false} href={r.game ? r.game.href : (r.href ?? `/m/${r.id}`)} data-game-running={r.game ? "" : undefined} data-press="row" data-shell={!r.game && r.shell ? serialiseShell(r.shell) : undefined} data-shell-id={r.game ? undefined : r.id} className={`press-row relative grid items-center gap-3 px-4 py-[14px] ${r.mark || r.game ? "grid-cols-[40px_minmax(0,1fr)]" : "grid-cols-[minmax(0,1fr)]"} ${i > 0 ? "border-t border-line" : ""}`}>
             <LinkPending />
             {r.game ? <TeamPair away={r.game.away} home={r.game.home} stacked /> : <MarkRefStamp mark={r.mark} size={40} ink={r.ink} />}
             <span className="flex min-w-0 flex-col gap-1">

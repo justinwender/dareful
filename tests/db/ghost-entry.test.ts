@@ -20,7 +20,7 @@ import { isProvisional, thresholdFor } from "@/lib/ledger/provisional";
 import { expireMarket, tick } from "@/lib/ledger/settle";
 import { notifyVoteReminder } from "@/lib/notify";
 import { reminderSendTime } from "@/lib/notify/messages";
-import { cleanup, codeOf, fictionalPhone, tempSigner, track, type Signer } from "./fixture";
+import { cleanup, codeOf, fictionalPhone, itHappened, tempSigner, track, type Signer } from "./fixture";
 
 let ana: Signer, ben: Signer, cy: Signer, dee: Signer;
 before(async () => {
@@ -36,7 +36,10 @@ async function question(people: Signer[], over: Partial<markets.DraftInput> = {}
   const d0 = await markets.draftMarket({ creatorId: ana.user.id, groupId: g.id, denomId: usd.id, title: "Does John fall asleep during the movie?", termsText: "Yes if John is asleep at any point before the credits. No if he makes it.", resolvesBy: new Date(Date.now() + 3_600_000), ...over });
   const d = await markets.openMarket(d0.id, ana.user.id, await ana.ledger.signTypedData(markets.createTypedData(d0)));
   const enter = async (who: Signer, value: bigint, stake = 1000n) => markets.enterMarket({ dareId: d.id, userId: who.user.id, stake, value, signature: await who.ledger.signTypedData(markets.enterTypedData(d, stake, value)) });
-  const vote = async (who: Signer, outcome: bigint) => markets.castVote({ dareId: d.id, userId: who.user.id, outcome, signature: await who.governance.signTypedData(markets.voteTypedData((await markets.marketById(d.id))!, outcome)) });
+  const vote = async (who: Signer, outcome: bigint) => {
+    await itHappened(d.id);
+    return markets.castVote({ dareId: d.id, userId: who.user.id, outcome, signature: await who.governance.signTypedData(markets.voteTypedData((await markets.marketById(d.id))!, outcome)) });
+  };
   const ghost = (who: { name: string; phoneHash?: Buffer | null; memberClaimId?: string | null }, tokens: string[], value: bigint, stake = 1000n) => enterAsGhost({ dareId: d.id, who: { name: who.name, phoneHash: who.phoneHash ?? null, memberClaimId: who.memberClaimId ?? null }, tokens, stake, value });
   return { d, g: g.id, enter, vote, ghost };
 }
@@ -334,7 +337,8 @@ test("the twelve-hour reminder is held to each person's own night: someone whose
   // A guest makes it a question that closes here, so its voters are read here.
   await q.ghost({ name: "Guest" }, [], 5000n);
   await markets.lockMarket(q.d.id, ana.user.id);
-  await db.update(schema.dares).set({ lockedAt: new Date(due.getTime() - 12 * H), zone: day }).where(eq(schema.dares.id, q.d.id));
+  // Twelve hours into the vote, which opened when it had happened.
+  await db.update(schema.dares).set({ lockedAt: new Date(due.getTime() - 13 * H), voteAskedAt: new Date(due.getTime() - 12 * H), zone: day }).where(eq(schema.dares.id, q.d.id));
   await db.update(schema.users).set({ zone: day }).where(eq(schema.users.id, ben.user.id));
   await db.update(schema.users).set({ zone: night }).where(eq(schema.users.id, cy.user.id));
   const told = () => db.select({ userId: schema.notificationLog.userId }).from(schema.notificationLog).where(and(eq(schema.notificationLog.dareId, q.d.id), eq(schema.notificationLog.kind, "vote_reminder")));

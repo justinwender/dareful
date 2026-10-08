@@ -381,6 +381,12 @@ export const dares = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     /** Null before lock, and forever if provisional (any participant without an account). */
     onchainId: bytea("onchain_id").unique(),
+    /**
+     * The onchain group the market was created in, read back from the chain at its lock (the games-and-the-reveal
+     * round, 2026-10-07): its set's own group when that was exactly the people in, else the question's own group of
+     * exactly them. Null while it is not on the chain.
+     */
+    chainGroup: bytea("chain_group"),
     groupId: uuid("group_id")
       .notNull()
       .references(() => groups.id),
@@ -464,6 +470,20 @@ export const dares = pgTable(
     deadlineNotifiedAt: ts("deadline_notified_at"),
     /** Set once when everyone in the quorum was told voting opened, whichever way it closed (the field round, 1.8): the action that closed it or the tick, whichever got there first. */
     voteAskedAt: ts("vote_asked_at"),
+    /**
+     * When someone in it said it has happened (the games-and-the-reveal round, 2026-10-07; docs/design.md 3.24, calls
+     * are in): the vote waits for the thing to happen, and this, the final score, or the decided date opens it for
+     * everyone at once. Who said it is one of the two after it, a person or a guest; both null otherwise.
+     */
+    happenedAt: ts("happened_at"),
+    happenedUser: uuid("happened_user").references(() => users.id),
+    happenedClaim: uuid("happened_claim").references(() => participantClaims.id),
+    /**
+     * A question started on a game already being played (the games-and-the-reveal round, section 5): it closes five
+     * minutes after its first entry, and never after the final, so its close time is set by that entry and its asker
+     * signs a close of zero, as an argument does.
+     */
+    closesAfterFirst: boolean("closes_after_first").notNull().default(false),
     /** Set once when the people still to vote were reminded, twelve hours into voting and never at night; never a second (the field round, 1.8). */
     voteRemindedAt: ts("vote_reminded_at"),
     /**
@@ -561,6 +581,12 @@ export const darePositions = pgTable(
     confidenceBps: smallint("confidence_bps"),
     /** The EIP-712 Enter signature, held here until lock; null for ghosts and for proxied positions. */
     enterSignature: bytea("enter_signature"),
+    /**
+     * The entrant's EIP-712 `Create` over the question's own group (the games-and-the-reveal round, 2026-10-07):
+     * signed with the entry, so whoever is in can stand as the market's creator on the chain when its set's
+     * registered voters are not exactly the people in. Null for ghosts and on entries made before.
+     */
+    questionSignature: bytea("question_signature"),
     /** Who typed it; equals user_id when self-entered, the host otherwise. */
     enteredBy: uuid("entered_by")
       .notNull()
@@ -595,6 +621,28 @@ export const darePositions = pgTable(
     check("dare_positions_score_range", sql`${t.score} is null or (${t.score} between 0 and 10000)`),
     unique("dare_positions_dare_user").on(t.dareId, t.userId),
     unique("dare_positions_dare_claim").on(t.dareId, t.claimId),
+  ],
+).enableRLS();
+
+/**
+ * "Calls are in" (the games-and-the-reveal round, 2026-10-07; docs/design.md 3.24 and 3.42): someone in an open market
+ * saying it can close. When as many of the people in have said it as it takes to settle a vote, it closes; the sheet
+ * names who has, never as a count. A person or a guest, one row each, taken back by deleting it while it is open.
+ */
+export const dareCloseCalls = pgTable(
+  "dare_close_calls",
+  {
+    dareId: uuid("dare_id")
+      .notNull()
+      .references(() => dares.id),
+    userId: uuid("user_id").references(() => users.id),
+    claimId: uuid("claim_id").references(() => participantClaims.id),
+    saidAt: ts("said_at").notNull().defaultNow(),
+  },
+  (t) => [
+    check("dare_close_calls_user_xor_claim", sql`(${t.userId} is null) <> (${t.claimId} is null)`),
+    unique("dare_close_calls_dare_user").on(t.dareId, t.userId),
+    unique("dare_close_calls_dare_claim").on(t.dareId, t.claimId),
   ],
 ).enableRLS();
 
@@ -1098,6 +1146,14 @@ export const sportsGames = pgTable(
     summaryPolledAt: ts("summary_polled_at"),
     /** The start plus the sport's usual length: when polling for a final begins. */
     expectedEndAt: ts("expected_end_at").notNull(),
+    /**
+     * The live score while the game is on (the games-and-the-reveal round, section 3): the scores and where the game is,
+     * in the app's own words by sport, as last read; `live_read_at` is that read, and `live_tried_at` the last attempt,
+     * which a request claims so a game is read once per interval however many are watching. Shown only while fresh.
+     */
+    live: jsonb("live"),
+    liveReadAt: ts("live_read_at"),
+    liveTriedAt: ts("live_tried_at"),
     polledAt: ts("polled_at"),
     fetchedAt: ts("fetched_at").notNull().defaultNow(),
     createdAt: ts("created_at").notNull().defaultNow(),

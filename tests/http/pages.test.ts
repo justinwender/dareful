@@ -68,6 +68,9 @@ let nia: Signer, rae: Signer, cNia: string, calledId: string, calledClipId: stri
 let pickOpenId: string, pickBlindId: string, pickLockedId: string, pickVotingId: string, pickSettledId: string;
 let windowId: string, windowPhotoId: string;
 let feedOpenId: string, feedMarginId: string, feedVotingId: string, feedSettledId: string, feedHome = "", feedAway = "", feedHomeAbbr = "", feedAwayAbbr = "", cRae: string, feedGameId: string, feedGroupId: string, nightGameId: string, nightGroupId: string;
+let finalGameId: string, finalHome = "", finalAway = "", finalHomeAbbr = "";
+/** A game question's own address answers with its game page and the question open (the games-and-the-reveal round, section 4). */
+const onGame = (gameId: string, dareId: string) => `/on/${gameId}?q=${dareId}`;
 const bucketKeys: string[] = [];
 
 before(async () => {
@@ -317,22 +320,40 @@ before(async () => {
   const stored = 3n + (tpl("margin").shift ?? 0n);
   await markets.enterMarket({ dareId: fm.id, userId: asker.user.id, stake: 500n, value: stored, signature: await asker.ledger.signTypedData(markets.enterTypedData(fm, 500n, stored)) });
   feedMarginId = fm.id;
-  // The ballot and the settled screen live in a set of nia and rae, so no older Now row moves.
+  // The ballot and the settled screen live in a set of nia and rae, so no older Now row moves, on a game of their own whose
+  // final is in: nothing is asked of a game once its final is in (the games-and-the-reveal round, section 5), so the
+  // game the open questions above are on stays ahead. Drafted while this one was ahead, then its final came in.
   cRae = await cookieFor(rae.user.id);
   const fg = await createGroup({ name: "From the final score (check)", createdBy: nia.user.id });
   track.group(fg.id);
   await db.insert(schema.groupMembers).values({ groupId: fg.id, userId: rae.user.id });
   const fgUsd = await ensureUsd(fg.id, nia.user.id);
-  const fv = await fromTemplate("home_wins", nia, fg.id, fgUsd.id);
+  const finalGame = parseScoreboard("nfl", scoreboard).slice(2, 3).map((g) => ({ ...g, sourceId: `${gamePrefix}${g.sourceId}`, startsAt: new Date(Date.now() + 5 * 86_400_000) }));
+  await syncSchedule("nfl", new Date(), { name: "espn", listGames: async () => finalGame });
+  const [finalRow] = await db.select().from(schema.sportsGames).where(eq(schema.sportsGames.sourceId, finalGame[0]!.sourceId));
+  finalGameId = (finalRow as { id: string }).id;
+  finalHome = finalGame[0]!.home.short;
+  finalAway = finalGame[0]!.away.short;
+  finalHomeAbbr = finalGame[0]!.home.abbr;
+  const finalTemplates = await db.select().from(schema.publicQuestions).where(eq(schema.publicQuestions.gameId, finalGameId));
+  const fromFinal = async (groupId: string, denomId: string) => {
+    const d0 = await markets.draftFromTemplate({ templateId: (finalTemplates.find((t) => t.key === "home_wins") as { id: string }).id, creatorId: nia.user.id, groupId, denomId });
+    return markets.openMarket(d0.id, nia.user.id, await nia.ledger.signTypedData(markets.createTypedData(d0)));
+  };
+  const fv = await fromFinal(fg.id, fgUsd.id);
   await markets.enterMarket({ dareId: fv.id, userId: nia.user.id, stake: 500n, value: 7000n, signature: await nia.ledger.signTypedData(markets.enterTypedData(fv, 500n, 7000n)) });
   await markets.enterMarket({ dareId: fv.id, userId: rae.user.id, stake: 500n, value: 4000n, signature: await rae.ledger.signTypedData(markets.enterTypedData(fv, 500n, 4000n)) });
-  await db.update(schema.dares).set({ lockedAt: new Date(Date.now() - 4 * 3_600_000), resolvesBy: new Date(Date.now() - 4 * 3_600_000), feedOutcome: 1n, feedOutcomeAt: new Date(Date.now() - 60_000) }).where(eq(schema.dares.id, fv.id));
-  await db.update(schema.sportsGames).set({ status: "final", completed: true, homeScore: 24, awayScore: 17, finalSeenAt: new Date(Date.now() - 20 * 60_000), expectedEndAt: new Date(Date.now() - 60 * 60_000) }).where(eq(schema.sportsGames.id, (gameRow as { id: string }).id));
   feedVotingId = fv.id;
-  const fs = await fromTemplate("home_wins", nia, fg.id, fgUsd.id);
+  // The settled one in a set of its own: a set runs each question on a game once, and its page shows that one.
+  const fg2 = await createGroup({ name: "From the final score, settled (check)", createdBy: nia.user.id });
+  track.group(fg2.id);
+  await db.insert(schema.groupMembers).values({ groupId: fg2.id, userId: rae.user.id });
+  const fs = await fromFinal(fg2.id, (await ensureUsd(fg2.id, nia.user.id)).id);
   await markets.enterMarket({ dareId: fs.id, userId: nia.user.id, stake: 500n, value: 7000n, signature: await nia.ledger.signTypedData(markets.enterTypedData(fs, 500n, 7000n)) });
   await markets.enterMarket({ dareId: fs.id, userId: rae.user.id, stake: 500n, value: 4000n, signature: await rae.ledger.signTypedData(markets.enterTypedData(fs, 500n, 4000n)) });
-  await db.update(schema.dares).set({ lockedAt: new Date(Date.now() - 30 * 3_600_000), resolvesBy: new Date(Date.now() - 30 * 3_600_000), resolvedAt: new Date(Date.now() - 60_000), resolvedOutcome: 1n, resolvedBy: "feed", feedEnding: "agreed", rulingText: `${FEED_RULING} ${feedHome} 24, ${feedAway} 17.`, rulingHash: Buffer.alloc(32, 1) }).where(eq(schema.dares.id, fs.id));
+  await db.update(schema.sportsGames).set({ startsAt: new Date(Date.now() - 4 * 3_600_000), status: "final", completed: true, homeScore: 24, awayScore: 17, finalSeenAt: new Date(Date.now() - 20 * 60_000), expectedEndAt: new Date(Date.now() - 60 * 60_000) }).where(eq(schema.sportsGames.id, finalGameId));
+  await db.update(schema.dares).set({ lockedAt: new Date(Date.now() - 4 * 3_600_000), resolvesBy: new Date(Date.now() - 4 * 3_600_000), feedOutcome: 1n, feedOutcomeAt: new Date(Date.now() - 60_000) }).where(eq(schema.dares.id, fv.id));
+  await db.update(schema.dares).set({ lockedAt: new Date(Date.now() - 30 * 3_600_000), resolvesBy: new Date(Date.now() - 30 * 3_600_000), resolvedAt: new Date(Date.now() - 60_000), resolvedOutcome: 1n, resolvedBy: "feed", feedEnding: "agreed", rulingText: `${FEED_RULING} ${finalHome} 24, ${finalAway} 17.`, rulingHash: Buffer.alloc(32, 1) }).where(eq(schema.dares.id, fs.id));
   feedSettledId = fs.id;
   // A game that is over (3.37, the night): a second recorded game, started thirty hours ago and complete, with two questions the final score settled in nia and rae's set.
   // Drafted while the game was ahead (a template refuses a kickoff that has passed), then the game and its questions moved back in time.
@@ -628,7 +649,7 @@ test("Now holds what needs this person, then what is running, then what just hap
   assert.equal(r.status, 200);
   assert.ok(r.text.includes("Needs you"), "the heading");
   assert.ok(r.text.includes("Does the kettle get descaled by Friday?"), "the question the friend has not entered");
-  assert.ok(/1 of 2 in/.test(r.text), "how many are in, on the row");
+  assert.ok(/· 1 in/.test(r.text) && !/1 of 2 in/.test(r.text), "how many are in, on the row, and never a second number: nobody is asked by name");
   assert.ok(r.text.includes("Enter"), "the verb");
   // Creating things lives behind Start (design 6.1): nothing on Now asks, joins or logs, and the one chalk control is the button.
   assert.ok(!r.text.includes("Ask something") && !r.text.includes("I got this one"), "Now starts nothing itself");
@@ -908,11 +929,11 @@ test("the market screen keeps its one move in the pinned sheet: the odds line be
   const after = await get(`/m/${marketId}`, cAsker);
   assert.ok(!/<section aria-label="Your number"/.test(after.html) && !/<section aria-label="Get people in"/.test(after.html), "once in, nothing is your move: no sheet (3.24)");
   assert.ok(!after.html.includes("data-stake-fact"), "the fact is the stake step's alone: nowhere once in");
-  assert.ok(after.html.includes('data-holdouts="1"') && after.html.includes('data-holdout=""') && after.html.includes('data-whos-in-list=""'), "the friend, asked and not in, follows the stack as a dashed avatar, and the stack opens who's in (3.42)");
+  assert.ok(!after.html.includes("data-holdout") && after.html.includes('data-whos-in-list=""'), "nobody is asked by name, so nobody follows the stack as still out, and the stack opens who's in (3.42; the games-and-the-reveal round)");
   assert.ok(!after.html.includes("data-ghost-entries"), "no list of ghosts: who is in is behind the stack");
-  assert.ok(after.html.includes('data-nudge=""') && after.text.includes(`Waiting on ${friend.user.displayName.split(" ")[0]}.`) && after.text.includes("Nudge "), "the nudge is back (Round B): the only way someone in reaches the people not in");
+  assert.ok(!after.html.includes('data-nudge=""') && !after.text.includes("Waiting on "), "while it is open nobody is waited on, so there is nobody to nudge: sharing is how people get in");
   assert.ok(after.html.includes('data-whos-in=""') && after.html.includes('data-share=""') && after.html.includes('data-copy=""') && after.html.includes('data-code=""'), "the icons end the who's-in row: share, copy, the code to scan (3.42)");
-  assert.ok(after.text.includes("1 of 2 in") && !after.text.includes("Just you so far") && /data-share=""[^>]*bg-chalk/.test(after.html), "alone with someone named: the holdouts rule from the first entry, and share still the chalk (ruled 2026-09-27)");
+  assert.ok(after.text.includes("Just you so far") && !after.text.includes("1 of 2 in") && /data-share=""[^>]*bg-chalk/.test(after.html), "alone: just you so far, never a second number, and share the chalk"); 
   assert.ok(!after.text.includes("Send it to the chat") && !after.text.includes("Anyone with the link") && !after.text.includes("show a code"), "the four sentences and buttons are gone (4.9)");
   assert.ok(!after.text.includes("Slide to your prediction"), "the odds line has become the weight line");
   assert.ok(!before.html.includes('data-whos-in=""') && before.text.includes("One friend is in. Where they landed shows once you are."), "before you're in: who is in and no number, and no icons, since sharing belongs to people who are in (3.38, 3.42)");
@@ -921,7 +942,7 @@ test("the market screen keeps its one move in the pinned sheet: the odds line be
 
 test("a task screen's primary is in the sheet too: the ask flow, the code screen", async () => {
   const ask = await get("/m/new", cAsker);
-  assert.ok(/<section aria-label="Next"[^>]*>[\s\S]*?Next: who’s in/.test(ask.html), "the ask flow's first move (3.29: one chalk, Next: who's in)");
+  assert.ok(/<section aria-label="Next"[^>]*>[\s\S]*?Set the terms/.test(ask.html) && !ask.text.includes("Next: who’s in"), "the ask flow's first move (3.29: one chalk), straight to the terms: who's in is gone (the games-and-the-reveal round)");
   const join = await get("/join", cA);
   assert.ok(/<section aria-label="Join"[^>]*>[\s\S]*?>Join</.test(join.html), "Join, in the sheet");
 });
@@ -1002,8 +1023,12 @@ test("a market in voting can be watched: its pulse is Postgres only, answers the
   assert.equal(r.status, 200);
   const body = (await r.json()) as { pulse: string; resolved: boolean };
   assert.equal(body.resolved, false);
-  assert.match(body.pulse, /^v\[\] s\[\] e\[\] r0 p0 f0$/, "nothing said, nothing voted, nothing attached, no score");
+  assert.match(body.pulse, /^v\[\] s\[\] e\[\] r0 p0 f0 h0 o0$/, "nothing said, nothing voted, nothing attached, no score, nothing happened yet");
   assert.equal(r.headers.get("cache-control"), "no-store");
+  // Closed early, and nothing has happened yet: calls are in, the vote waits, and the sheet says so with "It’s happened" (3.24, the games-and-the-reveal round).
+  const waiting = await get(`/m/${numberId}`, cAsker);
+  assert.ok(waiting.text.includes("Voting opens once it’s happened.") && waiting.html.includes('data-it-happened=""') && !waiting.text.includes("Type what it was"), "calls are in: no ballot until it has happened");
+  await db.update(schema.dares).set({ happenedAt: new Date() }).where(eq(schema.dares.id, numberId));
   await markets.sayWhatHappened(numberId, asker.user.id, "14, then a seam gave out");
   const again = (await (await fetch(`${BASE}/api/m/${numberId}/pulse`, { headers: { cookie: `dareful_session=${cFriend}` } })).json()) as { pulse: string };
   assert.notEqual(again.pulse, body.pulse, "what was said moves the pulse");
@@ -1014,12 +1039,12 @@ test("a market in voting can be watched: its pulse is Postgres only, answers the
   assert.ok(page.text.includes("When it’s clear, say what it was.") && page.text.includes("Type what it was"), "closed, not yet known: the number field, empty (3.24)");
   const outside = await get(`/m/${numberId}`, cFriend);
   assert.ok(outside.status === 200 && !outside.text.includes("Type what it was") && !outside.text.includes("When it’s clear"), "someone in the set who never got in watches, and gets no ballot (the first-contact round)");
-  await db.update(schema.dares).set({ lockedAt: null }).where(eq(schema.dares.id, numberId));
+  await db.update(schema.dares).set({ lockedAt: null, happenedAt: null }).where(eq(schema.dares.id, numberId));
 });
 
 test("asking offers a number beside yes or no, and the question step carries the mark row with Optional said once", async () => {
   const r = await get("/m/new", cAsker);
-  for (const t of ["Yes or no", "Pick a number", "Add a mark", "Optional", "Your question", "Next: who’s in", "Got a code?", "Market type"]) assert.ok(r.text.includes(t), t);
+  for (const t of ["Yes or no", "Pick a number", "Add a mark", "Optional", "Your question", "Set the terms", "Got a code?", "Market type"]) assert.ok(r.text.includes(t), t);
   assert.ok(!r.text.includes("It picks this market") && !r.html.includes("John falls asleep during the movie"), "the retint shows what a mark does, and no example sits in the question (4.9)");
   assert.equal((r.text.match(/Optional/g) ?? []).length, 1, "Optional is said once, on the row, and never again (3.29)");
   assert.ok(!r.text.includes("Everyone puts their odds on it") && !r.text.includes("closest wins") && !r.text.includes("whoever's right is paid"), "no caption under the kind chips (3.29, 4.9, Round C)");
@@ -1153,8 +1178,8 @@ test("a photo attached with what happened sits on the claim card and in the shee
   assert.ok(!r.html.includes("data-media-frame"), "no frame while it is being called: the clip is on the claim card");
   assert.ok(r.text.includes("The screenshot Priya supplied"), "the read names who supplied what");
   // Once voting opens the entry line leaves (3.38, Voting): the claim card stands where it stood, then where everyone landed.
-  assert.ok(!r.text.includes("You’re in at 30%") && r.text.includes("Where everyone landed"), "the friend's entry line is gone under the claim card, and the picture remains");
-  assert.ok(r.text.indexOf("Priya says the kettle boiled dry") < r.text.indexOf("Where everyone landed"), "the claim card directly under the band, then the picture");
+  assert.ok(!r.text.includes("You’re in at 30%") && r.text.includes("Who said what"), "the friend's entry line is gone under the claim card, and the picture remains, headed who said what (3.24)");
+  assert.ok(r.text.indexOf("Priya says the kettle boiled dry") < r.text.indexOf("Who said what"), "the claim card directly under the band, then the picture");
   const asker = await get(`/m/${evidenceMarketId}`, cAsker);
   assert.ok(!asker.text.includes("You’re in at 80%") && asker.text.includes("You say the kettle boiled dry"), "the claimant's own entry line leaves too");
 });
@@ -1338,7 +1363,7 @@ test("the roots' header rows and the information icon (10.1, 10.3): the icon at 
 });
 
 test("the corrections of Round D: the count line's empty state sits under the app's read on every ballot, and never as a second header", async () => {
-  const r = await get(`/m/${feedVotingId}`, cRae);
+  const r = await get(onGame(finalGameId, feedVotingId), cRae);
   assert.ok(r.text.includes("Nobody has said yet. Two of you and it settles."), "the empty state on the score's ballot");
   assert.ok(!r.html.includes('data-count-line=""') || r.html.includes("The app leans"), "under the app's read only; the score speaks on its card (3.35)");
 });
@@ -1404,7 +1429,7 @@ test("a locked pick-one question offers the answers as equal wells, and voting n
   assert.equal(locked.status, 200);
   assert.ok(locked.text.includes("When it’s clear, say what happened.") && locked.text.includes("Nobody can tell"), "closed, not yet known (3.24)");
   assert.ok(!/\bYes\b/.test(locked.text) && !/\bNo\b/.test(locked.text), "the wells are the answers, never Yes and No (3.24)");
-  assert.ok(locked.text.includes("Where everyone landed") && locked.text.includes("John") && locked.text.includes("You"), "the picks, once locked, with the friend's own answer reading as You (3.30)");
+  assert.ok(locked.text.includes("Who said what") && locked.text.includes("John") && locked.text.includes("You"), "the picks, once closed, with the friend's own answer reading as You (3.30, 3.31)");
   const lockedToNia = await get(`/m/${pickLockedId}`, cNia);
   assert.ok(lockedToNia.text.includes("Dev") && !lockedToNia.text.includes("You’re in: You"), "to the other person the person answer is their name");
   assert.ok(!locked.text.includes("What was it") && !locked.text.includes("Type what it was"), "never the number field");
@@ -1504,52 +1529,57 @@ test("a photo taken while a question is open is served to the other participant 
 });
 
 test("a question from What's on: the two sides at the odds line's ends, a signed margin in the sides' words, the written rows in the details, and nothing that says spread or official", async () => {
-  const r = await get(`/m/${feedOpenId}`, cFriend);
+  // Its own address lands on the game page with it open (section 4), where the rest is read.
+  const moved = await get(`/m/${feedOpenId}`, cFriend);
+  assert.ok(moved.status === 307 && (moved.loc ?? "").endsWith(onGame(feedGameId, feedOpenId)), "a game question's own address opens its game page with it open");
+  const r = await get(onGame(feedGameId, feedOpenId), cFriend);
   assert.equal(r.status, 200);
   assert.ok(r.text.includes(feedAway) && r.text.includes(feedHome), "the two teams");
   assert.ok(new RegExp(`<span>${feedAway}</span><span>Even</span><span>${feedHome}</span>`).test(r.html), "at the line's ends, the away side low, Even in the middle and the home side high (3.40)");
   assert.ok(r.html.includes(`data-team-stamp="${feedAwayAbbr}"`) && r.html.includes(`data-team-stamp="${feedHomeAbbr}"`), "a team stamp at each end, and no logo");
   assert.ok(!r.html.includes("teamlogos") && !r.html.includes("<img") , "no logo anywhere on it");
-  assert.ok(r.text.includes("Question from") && r.text.includes("What’s on"), "the one extra details row (3.33)");
-  assert.ok(r.text.includes("By the final score, once the game is over") && r.text.includes("The final score. If the two results we check disagree, it’s void."), "decided by the score, with the whole rule in the details (3.35)");
+  // The details are behind "The terms" in the open card (3.33): the row is on the page, and what it opens comes with it.
+  assert.ok(r.html.includes('data-terms-row=""') && r.html.includes("Question from") && r.html.includes("What’s on"), "the one extra details row (3.33)");
+  const terms = r.html.replace(/&#x27;|’/g, "'");
+  assert.ok(terms.includes("By the final score, once the game is over") && terms.includes("The final score. If the two results we check disagree, it's void."), "decided by the score, with the whole rule in the details (3.35)");
   assert.ok(r.html.includes("data-consent-line") && r.text.includes("If nobody votes, the final score settles it."), "the consent line in the entry sheet, directly above the primary (3.35, 4.9)");
-  assert.ok(r.text.includes("If it’s a tie") && r.text.includes("It’s void."), "the tie row (3.40): void, since the deployed contract cannot score the middle");
-  assert.ok(r.html.includes(`data-part-of="${feedGameId}"`) && r.text.includes(`Part of ${feedAway} at ${feedHome}`), "the row back to the game page (3.33)");
+  assert.ok(terms.includes("If it's a tie") && terms.includes("It's void."), "the tie row (3.40): void, since the deployed contract cannot score the middle");
+  assert.ok(!r.html.includes("data-part-of="), "on the game page itself: no row back to it");
   assert.ok(r.text.includes("Slide to your prediction") && r.text.includes("I’m in: Even"), "before any touch: the thumb at even under the prompt, and the primary saying it (3.13 as amended 2026-10-04)");
   assert.ok(!/spread|official|moneyline|underdog|favourite/i.test(r.text), "never a sportsbook's word");
-  const m = await get(`/m/${feedMarginId}`, cAsker);
+  const m = await get(onGame(feedGameId, feedMarginId), cAsker);
   assert.equal(m.status, 200);
   assert.ok(m.text.includes(`You’re in at ${feedHome} by 3`), "the entry line in the sides' words, never the shifted number");
-  const mf = await get(`/m/${feedMarginId}`, cFriend);
+  const mf = await get(onGame(feedGameId, feedMarginId), cFriend);
   assert.ok(mf.html.includes('data-team-line="margin"') && mf.text.includes(`${feedAway} by 35+`) && mf.text.includes("Tie") && mf.text.includes("Any margin. Tap the number to type one."), "the margin's line between the two teams, centred on a tie, for someone entering (3.40)");
   assert.ok(!/[+-]\d/.test(m.text.replace(/\d+:\d\d/g, "")), "never a plus or minus sign");
-  assert.ok(m.text.includes("Scored on") && m.text.includes("or more scores nothing"), "the template's scale shown like an asker's");
+  assert.ok(m.html.includes("Scored on") && m.html.includes("or more scores nothing"), "the template's scale shown like an asker's, in the details behind the terms row");
   assert.ok(!m.text.includes("You’re in at 17"), "the stored figure is never shown");
   const ask = await get(`/m/new?template=${(await db.select({ templateId: schema.dares.templateId }).from(schema.dares).where(eq(schema.dares.id, feedOpenId)))[0]?.templateId}`, cAsker);
   assert.equal(ask.status, 200);
-  assert.ok(ask.html.includes("data-from-whats-on") && ask.text.includes("From What’s on"), "the flow starts at who's in with the template's question");
-  assert.ok(ask.text.includes("Who’s in?") && !ask.text.includes("Ask it in a line"), "no question step");
+  assert.ok(ask.html.includes("data-from-whats-on") && ask.text.includes("From What’s on"), "the flow starts with the template's question");
+  assert.ok(!ask.text.includes("Who’s in?") && !ask.text.includes("Ask it in a line") && ask.html.includes("data-template-terms"), "straight to its terms: no question step and no who's in (the games-and-the-reveal round)");
 });
 
 test("the ballot when a final score answers it: the source card where the claim card stands, the score's proposal to confirm in a tap, and the final score's ruling once it settled one", async () => {
-  const r = await get(`/m/${feedVotingId}`, cRae);
+  const r = await get(onGame(finalGameId, feedVotingId), cRae);
   assert.equal(r.status, 200);
   assert.ok(r.html.includes("data-source-card") && r.text.includes("From the final score") && r.text.includes("The terms said the final score decides."), "the source card (3.35)");
-  assert.ok(new RegExp(`${feedHome}\\s*24`).test(r.text) && new RegExp(`${feedAway}\\s*17`).test(r.text), "the two rows, team and number");
-  assert.ok(!r.html.includes("says"), "no avatar and no says: the score is speaking, not a person");
+  assert.ok(new RegExp(`${finalHome}\\s*24`).test(r.text) && new RegExp(`${finalAway}\\s*17`).test(r.text), "the two rows, team and number");
+  assert.ok(!r.text.includes("says"), "no avatar and no says: the score is speaking, not a person");
   assert.ok(r.text.includes("Nobody has said yet. Two of you and it settles."), "the count line's empty state as the sheet's header (3.35, Round C part 2)");
-  assert.ok(!r.text.includes(`From the final score: ${feedHome} 24, ${feedAway} 17.`), "the score speaks on the source card, not in the header");
-  assert.ok(r.text.includes(`That’s right, the ${feedHome} won`), "the chalk names the outcome in the voter's voice and names the team (3.35)");
-  assert.ok(r.html.includes(`data-team-stamp="${feedHomeAbbr}"`), "each row of the source card wears its team's stamp");
+  assert.ok(!r.text.includes(`From the final score: ${finalHome} 24, ${finalAway} 17.`), "the score speaks on the source card, not in the header");
+  assert.ok(r.text.includes(`That’s right, the ${finalHome} won`), "the chalk names the outcome in the voter's voice and names the team (3.35)");
+  assert.ok(r.html.includes(`data-team-stamp="${finalHomeAbbr}"`), "each row of the source card wears its team's stamp");
   assert.ok(!r.text.includes("Can’t agree?") && !r.text.includes("Let the tiebreaker call it"), "the final score is the tiebreaker: the model is never offered");
-  const s = await get(`/m/${feedSettledId}`, cNia);
+  const s = await get(onGame(finalGameId, feedSettledId), cNia);
   assert.equal(s.status, 200);
-  assert.ok(s.text.includes(`${feedHome} won.`) && !s.text.includes(`The ${feedHome} won.`), "the outcome in its own words: the team alone (3.33, 3.40)");
+  assert.ok(s.text.includes(`${finalHome} won.`) && !s.text.includes(`The ${finalHome} won.`), "the outcome in its own words: the team alone (3.33, 3.40)");
   assert.ok(!s.html.includes('data-ruling="feed"') && !s.text.includes("Settled by the tiebreaker everyone agreed to") && !s.text.includes("Nobody called it in time"), "no ruling card for a final score: its ending is the one caption line (3.35)");
   assert.ok(s.html.includes('data-feed-ending="agreed"') && s.text.includes("Decided by the final score, as the terms said. Nobody voted within a day."), "the ending's own line (3.35, Endings)");
-  assert.ok(s.text.includes(`${feedHome} 24, ${feedAway} 17.`), "the final score as the settled line's caption (3.40)");
+  assert.ok(s.text.includes(`${finalHome} 24, ${finalAway} 17.`), "the final score as the settled line's caption (3.40)");
   assert.ok(s.text.includes("Closest first") && s.text.includes("Who’s got who"), "everything after follows as usual");
-  assert.ok(new RegExp(`said ${feedHome} 70%`).test(s.text) || new RegExp(`said ${feedAway} 60%`).test(s.text), "closest first says a side, never a bare percent (3.7)");
+  assert.ok(new RegExp(`said ${finalHome} 70%`).test(s.text) || new RegExp(`said ${finalAway} 60%`).test(s.text), "closest first says a side, never a bare percent (3.7)");
 });
 
 test("What's on lists the games ahead one row each, with the two stamps and a start time, this person's own use named, and no number about anyone's belief", async () => {
@@ -1567,36 +1597,58 @@ test("What's on lists the games ahead one row each, with the two stamps and a st
   assert.ok(stranger.html.includes(`data-game-row="${feedGameId}"`) && !stranger.text.includes("You’re on this with") && !stranger.text.includes("Question check"), "nothing about any group the person is not in");
 });
 
-test("the game page: a header, one collapsed card per question with no number until you are in, the rest of the menu to add, and the start for someone on it with nobody", async () => {
-  const friendly = await get(`/on/${feedGameId}?g=${feedGroupId}`, cFriend);
+test("the game page: one page per person with a card per question they are in or were sent, no number until you are in, one card open at a time, the rest of the menu to add with the one already asked offered first, and the start for someone on it with nobody", async () => {
+  const friendly = await get(`/on/${feedGameId}`, cFriend);
   assert.equal(friendly.status, 200);
   assert.ok(friendly.html.includes(`data-game-header="${feedGameId}"`) && friendly.text.includes(`${feedAway} at ${feedHome}`), "the header with the two teams");
-  assert.ok(friendly.html.includes('data-game-card="home_wins"') && friendly.html.includes('data-game-card="margin"'), "one card per question the set is running");
-  assert.ok(friendly.text.includes("Closes at kickoff · 1 of 2 in") && !/\d+%/.test(friendly.text) && !friendly.text.includes(" by 3"), "no numbers until you are in: not the asker's 70%, not the margin");
-  assert.ok(friendly.html.includes("data-add-another") && friendly.text.includes("Total points") && friendly.text.includes("The first drive"), "the rest of the menu, as rows anyone in the group can add from");
+  assert.ok(friendly.html.includes('data-game-card="home_wins"') && friendly.html.includes('data-game-card="margin"'), "one card per question on the page");
+  assert.ok(friendly.text.includes("Closes at kickoff · 1 in") && !friendly.text.includes("1 of 2 in") && !/\d+%/.test(friendly.text) && !friendly.text.includes(" by 3"), "no numbers until you are in, and a count with no second number");
+  assert.ok(!friendly.html.includes('data-card-open=""'), "no card open until one is tapped");
+  assert.ok(friendly.html.includes("data-add-another") && friendly.text.includes("Total points") && friendly.text.includes("The first drive"), "the rest of the menu, as rows anyone on the page can add from");
   assert.ok(!/<nav aria-label="Main"/.test(friendly.html) && /aria-label="Back"/.test(friendly.html), "a task screen with back, not a root");
-  const asker = await get(`/on/${feedGameId}?g=${feedGroupId}`, cAsker);
-  assert.ok(asker.text.includes(`You’re in at ${feedHome} 70% · 1 of 2 in`) && asker.text.includes(`You’re in at ${feedHome} by 3`), "your own entry once you are in, in the market's words");
+  // One card open at a time, in place: its own screen from under its band, with its sheet the page's one sheet (3.33).
+  const opened = await get(onGame(feedGameId, feedOpenId), cFriend);
+  assert.ok((opened.html.match(/data-card-open=""/g) ?? []).length === 1 && opened.html.includes(`data-open-card="${feedOpenId}"`), "the question open, and only it");
+  assert.ok(opened.text.includes("Slide to your prediction") && (opened.html.match(/<section aria-label="Your number"/g) ?? []).length === 1, "its entry sheet, the page's one sheet");
+  const asker = await get(`/on/${feedGameId}`, cAsker);
+  assert.ok(asker.text.includes(`You’re in at ${feedHome} 70% · 1 in`) && asker.text.includes(`You’re in at ${feedHome} by 3`), "your own entry once you are in, in the market's words");
   // Who asked, as a sentence about the set (3.33), never the chip's label after a verb.
   assert.ok(asker.text.includes("You asked the Question check. Everything closes at kickoff."), "the header's caption, to the asker");
   assert.ok(friendly.text.includes("Priya asked the Question check. Everything closes at kickoff."), "and to someone she asked");
-  // The who's-in row (3.42) with the game as the unit, in place of the two buttons: share and copy at its end, no code (a code is one question's), no list and no pass.
+  // The who's-in row (3.42) with the game as the unit: share and copy at its end, no code (a code is one question's), no list and no pass.
   for (const [who, page] of [["the asker", asker], ["someone not in yet", friendly]] as const) {
     assert.ok(page.html.includes('data-whos-in=""') && page.html.includes('data-share=""') && page.html.includes("data-copy="), `${who}: the row, with share and copy`);
     assert.ok(!page.text.includes("Send it to the chat") && !/<button[^>]*>\s*Copy\s*<\/button>/.test(page.html), `${who}: the old row is gone`);
-    assert.ok(!page.html.includes('data-code=""') && !page.html.includes("data-whos-in-list") && !page.html.includes('data-pass-phone=""'), `${who}: no code, no list, no pass`);
-    assert.ok(/data-whos-in-count=""[^>]*>\s*1 of 2 in/.test(page.html) && page.html.includes('data-holdouts="1"'), `${who}: one of the set's two is in on something, the other follows the stack dashed`);
+    assert.ok(!page.html.includes('data-code=""') && !page.html.includes("data-whos-in-list") && !page.html.includes('data-pass-phone=""') && !page.html.includes('data-holdout=""'), `${who}: no code, no list, no pass, and nobody following the stack as still out`);
   }
+  assert.ok(/data-whos-in-count=""[^>]*>\s*Just you so far/.test(asker.html) && /data-whos-in-count=""[^>]*>\s*1 in/.test(friendly.html), "who is in on any question: just you so far for the asker alone, 1 in to anyone else");
   const shareOf = (html: string) => /<button[^>]*data-share=""[^>]*>/.exec(html)?.[0] ?? "";
   assert.ok(shareOf(asker.html).includes("bg-chalk") && !shareOf(friendly.html).includes("bg-chalk"), "share is the chalk for the asker while nobody else is in, and an icon for everyone else");
   const stranger = await get(`/on/${feedGameId}`, cStranger);
   assert.ok(stranger.html.includes("data-game-menu") && stranger.text.includes("What to ask") && stranger.text.includes("Who wins") && !stranger.text.includes("Your friends see only"), "with none of their sets on it: the start, with the menu and no caption under it (4.9)");
   assert.ok(/role="checkbox" aria-checked="true"/.test(stranger.html), "Who wins is ticked as the page opens");
-  const add = await get(`/on/${feedGameId}?g=${feedGroupId}&add=total`, cFriend);
+  const add = await get(`/on/${feedGameId}?add=total`, cFriend);
   assert.ok(add.html.includes('data-game-terms="total"') && add.html.includes("data-game-stakes") && add.html.includes("data-consent-line") && add.text.includes("At kickoff,"), "adding one: the terms step alone, its rows, the one Stakes card and the consent line");
+  // Asking what's already asked (3.33): the one on the page is offered first, naming who asked it.
+  const again = await get(`/on/${feedGameId}?add=home_wins`, cFriend);
+  assert.ok(again.html.includes(`data-already-asked="${feedOpenId}"`) && again.text.includes("Priya already asked who wins."), "the one already asked, offered first");
   const signedOut = await get(`/on/${feedGameId}/${feedGroupId}`);
-  assert.ok(signedOut.status === 200 && signedOut.text.includes(`${feedAway} at ${feedHome}`) && !signedOut.text.includes("Question check") && !signedOut.text.includes("70%"), "a pasted link, signed out: the game and nothing about who is on it");
-  assert.ok(signedOut.html.includes('data-game-questions=""') && signedOut.html.includes(`href="/m/${feedOpenId}"`) && signedOut.html.includes(`href="/m/${feedMarginId}"`) && signedOut.text.includes("Sign in"), "with the set's questions, each opening its own screen, and the way to sign in");
+  assert.ok(signedOut.status === 200 && signedOut.text.includes(`${feedAway} at ${feedHome}`) && !signedOut.text.includes("70%"), "a pasted link, signed out: the game and nothing about where anyone landed");
+  assert.ok(signedOut.html.includes(`data-open-card-head="${feedOpenId}"`) && signedOut.html.includes(`data-open-card-head="${feedMarginId}"`) && (signedOut.html.match(/data-card-open=""/g) ?? []).length === 1, "the set's questions as cards, the first open where they get in");
+});
+test("a question asked elsewhere and put on a game opens on the game page for its asker while it is still a draft, in its own set (section 6)", async () => {
+  // The attach flow drafts the game's question in a set of the asker alone (whoever they send it to), which no game page lists until it is sent.
+  const ivy = await tempSigner("Ivy Asker");
+  const cIvy = await cookieFor(ivy.user.id);
+  const occasion = await createOccasionGroup(ivy.user.id);
+  track.group(occasion.id);
+  const usdIvy = await ensureUsd(occasion.id, ivy.user.id);
+  const [t] = await db.select({ id: schema.publicQuestions.id }).from(schema.publicQuestions).where(and(eq(schema.publicQuestions.gameId, feedGameId), eq(schema.publicQuestions.key, "home_wins")));
+  const draft = await markets.draftFromTemplate({ templateId: (t as { id: string }).id, creatorId: ivy.user.id, groupId: occasion.id, denomId: usdIvy.id });
+  const r = await get(onGame(feedGameId, draft.id), cIvy);
+  assert.equal(r.status, 200);
+  assert.ok(r.html.includes(`data-open-card="${draft.id}"`), "the asker's own draft, open on the game page");
+  assert.ok((await get(onGame(feedGameId, draft.id), cStranger)).html.includes(`data-open-card="${draft.id}"`) === false, "and nobody else's page shows a draft");
 });
 
 test("a game's link tile names who asked by first name, says each question by the menu's short name, and is drawn from the game", async () => {
@@ -1620,33 +1672,36 @@ test("a game's link tile names who asked by first name, says each question by th
   assert.ok(!r.bytes.equals(plain.bytes) && r.bytes.length > 10_000, "a drawn tile, not the plain card");
 });
 
-test("a game's link opened signed in by someone not in its set is that set's questions, each opening its own screen: never the start, and never another set's page", async () => {
-  // A stranger to the set, on the game with nobody: before the fix this was "Start a game" with Who wins ticked, and three taps made a second set.
+test("a game's link opened signed in by someone not in its set is that set's page, its first question open where they get in: never the start, and never another set's page", async () => {
+  // A stranger to the set, on the game with nobody: before the QA round this was "Start a game" with Who wins ticked, and three taps made a second set.
   for (const path of [`/on/${feedGameId}/${feedGroupId}`, `/on/${feedGameId}?g=${feedGroupId}`]) {
     const r = await get(path, cStranger);
     assert.equal(r.status, 200, path);
-    assert.ok(r.html.includes('data-game-questions=""') && r.html.includes(`href="/m/${feedOpenId}"`) && r.html.includes(`href="/m/${feedMarginId}"`), `${path}: the link's set's questions, each opening its own screen`);
+    assert.ok(r.html.includes(`data-open-card-head="${feedOpenId}"`) && r.html.includes(`data-open-card-head="${feedMarginId}"`), `${path}: the link's set's questions`);
     assert.ok(!r.html.includes("data-game-menu") && !r.text.includes("What to ask") && !r.text.includes("Start a game"), `${path}: never the start`);
     assert.ok(/aria-label="Back"/.test(r.html) && !r.text.includes("Sign in"), `${path}: signed in it has Back, and nothing about signing in`);
-    assert.ok(!/\d+%/.test(r.text) && !r.text.includes("1 of 2 in") && !r.text.includes("Question check") && !r.html.includes('data-whos-in=""') && !r.html.includes("data-add-another"), `${path}: nothing about who is on it or at what, and nothing to add or send before they are in`);
+    assert.ok(!/\d+%/.test(r.text) && !r.html.includes('data-whos-in=""') && !r.html.includes("data-add-another"), `${path}: nothing about where anyone landed, and nothing to add or send before they are in`);
     assert.ok(r.text.includes("Everything closes at kickoff."), `${path}: the game is ahead`);
   }
+  const linked = await get(`/on/${feedGameId}/${feedGroupId}`, cStranger);
+  assert.ok(linked.html.includes(`data-open-card="${feedOpenId}"`), "the game's own link opens its set's first question, where they get in (section 4)");
   assert.equal((await db.select({ groupId: schema.groupMembers.groupId }).from(schema.groupMembers).where(and(eq(schema.groupMembers.groupId, feedGroupId), eq(schema.groupMembers.userId, stranger.user.id)))).length, 0, "opening the link seats nobody: the join is a tap on the question they open");
-  // Someone on the same game with a set of her own: the link is still the link's set, never her own page.
+  // Someone with questions on another game: the link is the link's set, with nothing of hers.
   const rae = await get(`/on/${feedGameId}/${feedGroupId}`, cRae);
-  assert.ok(rae.html.includes('data-game-questions=""') && rae.html.includes(`href="/m/${feedOpenId}"`), "the link's set's questions");
-  assert.ok(!rae.html.includes(`/m/${feedVotingId}"`) && !rae.html.includes(`/m/${feedSettledId}"`) && !rae.html.includes("data-game-cards"), "and nothing of her own set's page");
-  // Her own set's address is still her own set's page, and with no set named the game opens as it did.
-  const own = await get(`/on/${feedGameId}?g=${nightGroupId}`, cRae);
-  assert.ok(own.html.includes("data-game-cards") && !own.html.includes('data-game-questions=""'), "a set she is in: its page");
+  assert.ok(rae.html.includes(`data-open-card-head="${feedOpenId}"`) && !rae.html.includes(feedVotingId) && !rae.html.includes(feedSettledId), "the link's set's questions, and nothing of hers");
   assert.ok((await get(`/on/${feedGameId}`, cStranger)).html.includes("data-game-menu"), "no set named, on it with nobody: the start");
 });
-
-test("the sets on a game, in sentences: a set of only the asker, a name that can't take the, the chips named for what they switch, and a called-off question gone from the page", async () => {
-  // Someone new with three sets on the recorded game, asked in this order: one whose only question was called off, one nobody else is in yet, and one named with a possessive.
+test("a game played with more than one set is one page: each card names its people in a sentence, a set of only the asker and a name that can't take the, and a called-off question is gone from it", async () => {
+  // Someone new with three sets on a game of this test's own, asked in this order: one whose only question was called off, one nobody else is in yet, and one named with a possessive.
   const noor = await tempSigner("Noor Haddad");
   const cNoor = await cookieFor(noor.user.id);
-  const [tpl] = await db.select().from(schema.publicQuestions).where(and(eq(schema.publicQuestions.gameId, feedGameId), eq(schema.publicQuestions.key, "home_wins")));
+  const prefix = track.gamePrefix(`test:pages-sets:${randomUUID().slice(0, 8)}:`);
+  const scoreboard = JSON.parse(readFileSync(new URL("../fixtures/sports/espn-nfl-scheduled.json", import.meta.url), "utf8")) as unknown;
+  const listed = parseScoreboard("nfl", scoreboard).slice(3, 4).map((g) => ({ ...g, sourceId: `${prefix}${g.sourceId}`, startsAt: new Date(Date.now() + 4 * 86_400_000) }));
+  await syncSchedule("nfl", new Date(), { name: "espn", listGames: async () => listed });
+  const [row] = await db.select().from(schema.sportsGames).where(eq(schema.sportsGames.sourceId, listed[0]!.sourceId));
+  const gameId = (row as { id: string }).id;
+  const [tpl] = await db.select().from(schema.publicQuestions).where(and(eq(schema.publicQuestions.gameId, gameId), eq(schema.publicQuestions.key, "home_wins")));
   const open = async (groupId: string) => {
     const usd = await ensureUsd(groupId, noor.user.id);
     const d0 = await markets.draftFromTemplate({ templateId: (tpl as { id: string }).id, creatorId: noor.user.id, groupId, denomId: usd.id });
@@ -1661,34 +1716,25 @@ test("the sets on a game, in sentences: a set of only the asker, a name that can
   const aloneId = (await open(alone.id)).id;
   const namedId = (await open(named.id)).id;
 
-  const one = await get(`/on/${feedGameId}?g=${alone.id}`, cNoor);
-  assert.equal(one.status, 200);
-  assert.ok(one.text.includes("You asked. Everything closes at kickoff.") && !one.text.includes("asked Just you"), "a set of only the asker: nothing after asked, and never the chip's label after the verb");
-  assert.ok(one.html.includes(`href="/m/${aloneId}"`) && /data-whos-in-count=""[^>]*>\s*Nobody’s in yet/.test(one.html), "the asker starts out in nothing: the row says nobody's in yet");
-  // The question's own screen for its asker before anyone is in (a game opens every question with nobody in): never a count of zero (3.14), and no second sentence about where nobody landed.
-  // Since the first-contact round the asker has the who's-in row from creation (share before entering), so the count is the row's.
-  const zero = await get(`/m/${aloneId}`, cNoor);
+  const page = await get(`/on/${gameId}`, cNoor);
+  assert.equal(page.status, 200);
+  assert.ok(page.html.includes(`data-open-card-head="${aloneId}"`) && page.html.includes(`data-open-card-head="${namedId}"`) && !page.html.includes(offId), "both standing questions on the one page, and the called-off one nowhere (3.15: it never happened)");
+  assert.ok(page.text.includes("You asked · Papa’s birthday") && !page.text.includes("the Papa’s") && !page.text.includes("asked Just you"), "each card names its people in a sentence, and a possessive can't take the (3.38)");
+  assert.ok(!page.html.includes("Which set of people") && !page.html.includes('aria-label="Who you’re on this with"'), "no chips: a game is one page");
+  // The question's own screen for its asker before anyone is in, open in its card: never a count of zero (3.14), and no second sentence about where nobody landed.
+  const zero = await get(onGame(gameId, aloneId), cNoor);
   const beforeIn = /<p[^>]*data-whos-in-count=""[^>]*>[\s\S]*?<\/p>/.exec(zero.html)?.[0] ?? "";
   assert.ok(zero.status === 200 && beforeIn.includes("Nobody’s in yet.") && !beforeIn.includes("0 of") && !zero.text.includes("Where they landed"), "before you're in with nobody in: one sentence, and never a zero");
-  assert.ok((/<button[^>]*data-share=""[^>]*>/.exec(one.html)?.[0] ?? "").includes("bg-chalk"), "and sending it is the chalk");
-  const chips = /<div[^>]*role="group"[^>]*aria-label="Who you’re on this with"[^>]*>([\s\S]*?)<\/div>/.exec(one.html)?.[1] ?? "";
-  assert.ok(chips.includes(`/on/${feedGameId}?g=${alone.id}`) && chips.includes(`/on/${feedGameId}?g=${named.id}`), "the chips that switch sets, in a group with a name a screen reader says");
-  assert.ok(!one.html.includes("Which set of people") && !chips.includes(off.id), "never the design's own word, and no chip for the set whose only question was called off");
-  const poss = await get(`/on/${feedGameId}?g=${named.id}`, cNoor);
-  assert.ok(poss.text.includes("You asked · Papa’s birthday. Everything closes at kickoff.") && !poss.text.includes("the Papa’s"), "a possessive can't take the (3.38)");
-  // Called off: it never happened. Its set's address is not its page, its card is on no page, and What's on names the most recent set that stands.
-  const gone = await get(`/on/${feedGameId}?g=${off.id}`, cNoor);
-  assert.ok(gone.status === 200 && !gone.html.includes(`/m/${offId}"`) && gone.html.includes(`href="/m/${namedId}"`), "the address of the set with nothing standing opens the most recent set that has");
+  assert.ok((/<button[^>]*data-share=""[^>]*>/.exec(zero.html)?.[0] ?? "").includes("bg-chalk"), "and sending it is the chalk");
   const tab = await get("/on", cNoor);
   assert.ok(tab.text.includes("You’re on this · Papa’s birthday") && !tab.text.includes("You’re on this with Papa"), "the row, for a name that can't take the");
   // Someone in the set who is not the asker, before anyone is in: the line under the stack is one sentence, never a zero.
   const omar = await tempSigner("Omar Haddad");
   await db.insert(schema.groupMembers).values({ groupId: named.id, userId: omar.user.id });
-  const theirs = await get(`/m/${namedId}`, await cookieFor(omar.user.id));
+  const theirs = await get(onGame(gameId, namedId), await cookieFor(omar.user.id));
   const friendsLine = /<section[^>]*data-friends-in=""[^>]*>[\s\S]*?<\/section>/.exec(theirs.html)?.[0] ?? "";
   assert.ok(theirs.status === 200 && friendsLine.includes("Nobody’s in yet.") && !friendsLine.includes("0 friends") && !friendsLine.includes("Where they landed"), "for someone else in the set too: one sentence, never a zero");
 });
-
 test("the asker line is a sentence about the set on every screen that has one, and a row's shell says what the screen will say", async () => {
   const { parseShell } = await import("@/lib/ui/shell");
   const mine = await get(`/m/${marketId}`, cAsker);
@@ -1739,17 +1785,17 @@ test("asking offers pick one beside yes or no and a number", async () => {
   assert.ok(r.text.includes("Pick one"), "the third chip (3.29)");
 });
 
-test("holdouts: with others in and some still out the count says both numbers and the asker's close names who it leaves out; the close is called closing everywhere", async () => {
-  // Nia's window question: nia and the friend in, Rae asked and not in.
+test("a count is how many are in, never a second number; the asker's close is a secondary that asks once and says what closing costs; anyone else in says calls are in; the close is called closing everywhere", async () => {
+  // Nia's window question: nia and the friend in, Rae in the set and not in. Nobody is asked by name (the games-and-the-reveal round).
   const r = await get(`/m/${windowId}`, cNia);
   assert.equal(r.status, 200);
-  assert.ok(r.text.includes("2 of 3 in") && r.html.includes('data-holdouts="1"'), "the count names both numbers (3.42)");
-  assert.ok(r.html.includes('data-close-early=""') && r.text.includes("Close it with 2") && !r.text.includes("Lock it in") && !r.text.includes("It takes two to lock"), "the asker's tertiary, in the words of the close");
+  assert.ok(r.text.includes("2 in") && !r.text.includes("2 of 3 in") && !r.html.includes('data-holdout=""'), "the count is how many are in, with nobody following it as still out");
+  assert.ok(r.html.includes('data-close-early=""') && r.text.includes("Close it with 2") && r.text.includes("Whoever isn’t in yet can’t get in after.") && !r.text.includes("Lock it in") && !r.text.includes("It takes two to lock"), "the asker's secondary, in the words of the close, saying what closing now costs");
   const notAsker = await get(`/m/${windowId}`, cFriend);
-  assert.ok(!notAsker.html.includes('data-close-early=""') && notAsker.text.includes("2 of 3 in"), "only the asker closes early; everyone in sees the count");
+  assert.ok(!notAsker.html.includes('data-close-early=""') && notAsker.html.includes('data-calls-are-in=""') && notAsker.text.includes("When enough of you say calls are in, it closes early.") && notAsker.text.includes("2 in"), "anyone else in says calls are in, and everyone in sees the count");
   const alone = await get(`/m/${marketId}`, cAsker);
-  assert.ok(alone.text.includes("1 of 2 in") && alone.html.includes('data-holdouts="1"') && !alone.html.includes('data-close-early=""'), "alone with someone named: the holdouts rule, and nothing to close with");
-  // "Just you so far" only when nobody was named (ruled 2026-09-27): a question in a set of one.
+  assert.ok(alone.text.includes("Just you so far") && !alone.html.includes('data-close-early=""') && !alone.html.includes("data-calls-are-in"), "alone: just you so far, and nothing to close with");
+  // A question in a set of one reads the same.
   const solo = await createGroup({ name: "Nobody named (check)", createdBy: asker.user.id });
   track.group(solo.id);
   const soloUsd = await ensureUsd(solo.id, asker.user.id);
@@ -1767,8 +1813,8 @@ test("handing the phone over: the fourth icon for someone in while open, the fri
   const notIn = await get(`/m/${marketId}`, cFriend);
   assert.ok(!notIn.html.includes('data-pass-phone=""') && notIn.html.includes('data-joining-as=""') && /Joining as \w+/.test(notIn.text) && notIn.text.includes("Not you?"), "not in: no icon, and 'Joining as Sam · Not you?' under the primary (3.17, frame 7)");
   assert.ok(!asker.html.includes('data-joining-as=""'), "once in, nothing about joining");
-  const locked = await get(`/m/${feedVotingId}`, cNia);
-  assert.ok(!locked.html.includes('data-pass-phone=""'), "closed: nothing to hand over");
+  const locked = await get(onGame(finalGameId, feedVotingId), cNia);
+  assert.ok(locked.status === 200 && !locked.html.includes('data-pass-phone=""'), "closed: nothing to hand over");
   // The friend's screen, on the host's session: the band, two facts and the entry sheet, and nothing of the host's number.
   const pass = await get(`/m/${marketId}/pass`, cAsker);
   assert.equal(pass.status, 200);
@@ -1813,17 +1859,15 @@ test("a revoked or malformed link is the code screen with a form-level line, sig
   assert.ok(!link.text.includes("I have an account"), "sign-in lives in the sheet's who's-joining step now");
 });
 
-test("the nudge and the relay are back for entering and for voting, and who's in carries the people still out with a nudge beside each; nobody outside nudges", async () => {
-  // Nia's window question, open: rae asked and not in. Anyone in may nudge; the stack's sheet lists rae as still out.
+test("the nudge reaches whoever in it has not called it once the vote is open, with them in who's in beside a nudge each; while it is open nobody is waited on, and nobody outside nudges", async () => {
+  // Nia's window question, open: rae is in the set and not in, and nobody is asked by name (the games-and-the-reveal round), so nobody is waited on.
   const open = await get(`/m/${windowId}`, cNia);
-  assert.ok(open.html.includes('data-nudge=""') && open.text.includes(`Waiting on ${rae.user.displayName.split(" ")[0]}.`) && open.html.includes('data-still-out="1"'), "the nudge card, and one person still out behind the stack (3.42, amended)");
-  const inNotAsker = await get(`/m/${windowId}`, cFriend);
-  assert.ok(inNotAsker.html.includes('data-nudge=""') && inNotAsker.html.includes('data-still-out="1"'), "anyone in may nudge: it is a person acting, from inside");
+  assert.ok(!open.html.includes('data-nudge=""') && !open.text.includes("Waiting on ") && open.html.includes('data-still-out="0"'), "while it is open: nobody waited on, and nobody still out behind the stack");
   const out = await get(`/m/${windowId}`, cRae);
   assert.ok(!out.html.includes('data-nudge=""') && !out.html.includes("data-still-out="), "someone not in has nothing to nudge with, and no list");
-  // Locked, with nobody voted yet: the same nudge reaches whoever in the quorum has not called it.
-  const locked = await get(`/m/${feedVotingId}`, cNia);
-  assert.ok(locked.html.includes('data-nudge=""') && locked.text.includes(`Waiting on ${rae.user.displayName.split(" ")[0]}.`) && locked.html.includes('data-still-out="1"'), "once locked, the nudge to vote and the still-out list");
+  // The vote open, nobody voted yet: the nudge reaches whoever in it has not called it.
+  const locked = await get(onGame(finalGameId, feedVotingId), cNia);
+  assert.ok(locked.html.includes('data-nudge=""') && locked.text.includes(`Waiting on ${rae.user.displayName.split(" ")[0]}.`) && locked.html.includes('data-still-out="1"'), "once the vote is open, the nudge to vote and the still-out list");
 });
 
 test("the You page: identity with one caption, how your calls land under the floor as the count and the calls themselves, the questions asked in counts, and the Account rows; nothing yet is one line", async () => {
@@ -1893,12 +1937,13 @@ test("a ghost who is in sees the market as anyone in sees it (3.17, frame 6): th
   // The same phone on another open question joins as the ghost it remembers, and says so instead of asking a name it would not use.
   const elsewhere = await get(`/m/${marketId}`, undefined, jar);
   assert.ok(elsewhere.html.includes('data-joining-as=""') && elsewhere.text.includes("Joining as Wisp") && elsewhere.text.includes("Not you?") && !elsewhere.text.includes("Your name"), "Joining as Wisp · Not you? on a question the ghost is not in yet");
-  assert.ok(open.text.indexOf("You’re in at 26%") < open.text.indexOf("of you in") && open.text.indexOf("of you in") < open.text.indexOf("How it works"), "the entry line, then who's in, then the facts, as a member sees them");
+  assert.ok(open.text.indexOf("You’re in at 26%") < open.text.indexOf("2 in") && open.text.indexOf("2 in") < open.text.indexOf("How it works"), "the entry line, then who's in, then the facts, as a member sees them");
   assert.ok(!open.text.includes("so you can watch but not enter"), "nothing tells someone who is in that they cannot enter");
   // Locked: the entry stays, with the clock, and the picture is where everyone landed; the poll is on the page and its door admits the ghost.
   await markets.lockMarket(d.id, asker.user.id);
   const locked = await get(`/m/${d.id}`, undefined, jar);
-  assert.ok(locked.text.includes("You’re in at 26%") && /locked at \d/.test(locked.text) && locked.text.includes("Where everyone landed"), "locked: the entry with its clock, and where everyone landed");
+  assert.ok(locked.text.includes("You’re in at 26%") && /closed at \d/.test(locked.text) && locked.text.includes("Who said what"), "closed: the entry with its clock, and who said what");
+  assert.ok((await get(`/m/${d.id}`, cAsker)).html.includes('data-info-icon="market-calls"'), "closed and waiting for it to happen: the asker's information sheet is the calls-are-in one (10.1)");
   assert.ok(!locked.text.includes("so you can watch but not enter") && !locked.text.includes("Change"), "no Closed sheet, and nothing to change");
   const pulse = await fetch(`${BASE}/api/m/${d.id}/pulse`, { headers: { cookie: jar } });
   assert.equal(pulse.status, 200, "the pulse answers a ghost who is in");
@@ -1909,7 +1954,25 @@ test("a ghost who is in sees the market as anyone in sees it (3.17, frame 6): th
   await settleProvisional((await markets.marketById(d.id)) as NonNullable<Awaited<ReturnType<typeof markets.marketById>>>, await markets.positionsOf(d.id), 1n, { by: "quorum" });
   const settled = await get(`/m/${d.id}`, undefined, jar);
   assert.ok(settled.text.includes("The ghost saw it all.") && !settled.text.includes("This one’s finished."), "the outcome line for the ghost who was in");
+  assert.ok(settled.html.includes('data-whos-in=""'), "settled with an outcome: the who's-in row, sharing how it ended (3.42)");
   assert.ok((await get(`/m/${d.id}`)).text.includes("This one’s finished."), "and the plain line for a visitor who was not");
+  // Never settled: the ending's line and no row, since an expiry has nothing to share (3.42), as on the member's screen.
+  const e0 = await markets.draftMarket({ creatorId: asker.user.id, groupId: groupOf.groupId, denomId: groupOf.denomId, title: "Does the ghost's expiry have a row?", termsText: "Yes if it does.", resolvesBy: new Date(Date.now() + 86_400_000) });
+  const e = await markets.openMarket(e0.id, asker.user.id, await asker.ledger.signTypedData(markets.createTypedData(e0)));
+  const lone = await enterAsGhost({ dareId: e.id, who: { name: "Wisp", phoneHash: null, memberClaimId: null }, tokens: [wisp.browserToken as string], stake: 500n, value: 2600n });
+  await markets.markExpired(e.id, new Date());
+  const expired = await get(`/m/${e.id}`, undefined, `dareful_claims=${lone.browserToken ?? wisp.browserToken}`);
+  assert.ok(expired.text.includes("Never settled.") && !expired.html.includes('data-whos-in=""') && !expired.text.includes("Just you so far"), "an expiry: the line, and no who's-in row");
+  // The member's screen: an expiry that never closed (too few in at its close time) says nothing about a vote; one that closed and heard nothing does (3.37's caption).
+  const askerExpired = await get(`/m/${e.id}`, cAsker);
+  assert.ok(askerExpired.text.includes("Never settled.") && !askerExpired.text.includes("Nobody said what happened"), "too few in: the line alone");
+  const v0 = await markets.draftMarket({ creatorId: asker.user.id, groupId: groupOf.groupId, denomId: groupOf.denomId, title: "Does anyone say what happened?", termsText: "Yes if someone does.", resolvesBy: new Date(Date.now() + 86_400_000) });
+  const v = await markets.openMarket(v0.id, asker.user.id, await asker.ledger.signTypedData(markets.createTypedData(v0)));
+  await markets.enterMarket({ dareId: v.id, userId: asker.user.id, stake: 500n, value: 6000n, signature: await asker.ledger.signTypedData(markets.enterTypedData(v, 500n, 6000n)) });
+  await enterAsGhost({ dareId: v.id, who: { name: "Wisp", phoneHash: null, memberClaimId: null }, tokens: [wisp.browserToken as string], stake: 500n, value: 2600n });
+  await markets.lockMarket(v.id, asker.user.id);
+  await markets.markExpired(v.id, new Date());
+  assert.ok((await get(`/m/${v.id}`, cAsker)).text.includes("Nobody said what happened before it closed for good."), "closed, then nobody said: the caption");
   // On the asker's settled screen the ghost who has got them wears the stone avatar with its dashed ring, on the "Wisp's got" line and on the token (3.1).
   const askerSettled = await get(`/m/${d.id}`, cAsker);
   const section = askerSettled.dom.slice(askerSettled.dom.indexOf("Who’s got who"));
@@ -1939,8 +2002,8 @@ test("at sign-in, an entry made from a link is a row on the claimant screen, pre
   await claims.leaveEntry(windowId, newcomer.user.id);
   assert.equal((await get("/welcome", cNewcomer)).loc, "/", "nothing waiting: home");
   const m = await get(`/m/${windowId}`, cNia);
-  // Three in (nia, the friend and the fresh ghost); the people asked and not in are Rae and the newcomer, who joined the set by binding and left the entry.
-  assert.ok(/3 of \d in/.test(m.text), "the entry still counts, under the typed name");
+  // Three in (nia, the friend and the fresh ghost): the newcomer joined the set by binding and left the entry.
+  assert.ok(/\b3 in\b/.test(m.text), "the entry still counts, under the typed name");
   await db.update(schema.darePositions).set({ dismissedAt: new Date() }).where(and(eq(schema.darePositions.dareId, windowId), isNull(schema.darePositions.userId)));
 });
 
@@ -2005,14 +2068,17 @@ test("a market stuck past its close rests its sheet on the close for the asker a
   const d = await markets.openMarket(d0.id, asker.user.id, await asker.ledger.signTypedData(markets.createTypedData(d0)));
   await markets.enterMarket({ dareId: d.id, userId: asker.user.id, stake: 500n, value: 7000n, signature: await asker.ledger.signTypedData(markets.enterTypedData(d, 500n, 7000n)) });
   await markets.enterMarket({ dareId: d.id, userId: friend.user.id, stake: 500n, value: 3000n, signature: await friend.ledger.signTypedData(markets.enterTypedData(d, 500n, 3000n)) });
-  // While it runs the close is the asker's, in the sheet, a secondary whose line says what closing now costs; someone else in it has no close.
+  // While it runs the close is the asker's, in the sheet, a secondary whose line says what closing now costs; anyone else in it says calls are in (the games-and-the-reveal round).
   const running = await get(`/m/${d.id}`, cAsker);
-  assert.ok(/data-close-line="secondary"/.test(running.html) && /Close it now and \S+ can’t get in\./.test(running.text) && /data-close-early=""/.test(running.html), "the asker, with someone asked still out: the close in the sheet, as a secondary naming who it leaves out");
-  assert.ok(!/data-close-line=/.test((await get(`/m/${d.id}`, cFriend)).html), "someone in it who did not ask it: no close while it runs");
+  assert.ok(/data-close-line="secondary"/.test(running.html) && running.text.includes("Whoever isn’t in yet can’t get in after.") && /data-close-early=""/.test(running.html), "the asker: the close in the sheet, as a secondary saying what closing now costs");
+  const friendRunning = await get(`/m/${d.id}`, cFriend);
+  assert.ok(/data-close-line="secondary"/.test(friendRunning.html) && friendRunning.html.includes('data-calls-are-in=""') && !/data-close-early=""/.test(friendRunning.html), "someone in it who did not ask it: calls are in, never the asker's close");
   // The time passed and nothing closed it: stuck (the field round, 1.2, 2.1).
   await db.update(schema.dares).set({ resolvesBy: new Date(Date.now() - 60_000) }).where(eq(schema.dares.id, d.id));
   const mine = await get(`/m/${d.id}`, cAsker);
   assert.ok(/data-stuck-line=""/.test(mine.html) && /data-close-line="main"/.test(mine.html) && /data-close-early=""/.test(mine.html), "the asker: the close is the sheet's main action");
+  const closeButton = (html: string) => /<button[^>]*data-close-early=""[^>]*>/.exec(html)?.[0] ?? "";
+  assert.ok(closeButton(mine.html).includes("bg-chalk") && !closeButton(running.html).includes("bg-chalk"), "stuck, the close is the chalk; while it runs, a secondary");
   const theirs = await get(`/m/${d.id}`, cFriend);
   assert.ok(/data-stuck-line=""/.test(theirs.html) && /data-close-line="main"/.test(theirs.html) && /data-close-early=""/.test(theirs.html), "someone in it: the close in the sheet too");
   const outside = await get(`/m/${d.id}`, cStranger);

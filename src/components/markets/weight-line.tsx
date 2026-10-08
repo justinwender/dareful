@@ -25,7 +25,21 @@ export type WeightLineProps = {
   rise?: boolean;
   /** Between two teams (3.40): the columns labelled with the two names and "Even", and the marker chip naming the team the group leans to ("Bills 62%"). */
   ends?: { away: string; home: string } | null;
+  /**
+   * Everyone's call, from the close (calls are in, 3.22 as amended by the fifteenth session): the picture stays exactly
+   * where it was and every share takes its person's hue, split by a 2px gap in the ground, with each person's avatar
+   * standing above their column, stacked upward when two share one. Null while it is open: then only yours shows.
+   */
+  everyone?: RevealedCall[] | null;
 };
+
+/** One person's call as the picture reveals it at the close: their stake, and where it sits. */
+export type RevealedCall = { id: string; name: string; hue: Hue; ghost: boolean; stake: string; percent: number };
+
+/** How far above the columns the stack of avatars needs room: the chip's 50px, or more when three or more share a column. Pure. */
+export function revealRoom(stacked: number): number {
+  return Math.max(50, 52 + 16 * (Math.max(1, stacked) - 1));
+}
 
 /** `bucket(v) = ceil(v / 10)`, with 0 joining the first bucket (3.22). */
 export const bucketOfPercent = (p: number) =>
@@ -46,6 +60,7 @@ export function WeightLine({
   caption,
   rise = false,
   ends = null,
+  everyone = null,
 }: WeightLineProps) {
   // The rise plays once, from the resting geometry of the odds line: 6px segments become columns.
   const [risen, setRisen] = useState(!rise);
@@ -76,6 +91,10 @@ export function WeightLine({
       : Number((myStake * 1000n) / tallest) / 10;
   const myBucket = to;
   const said = caption ?? heading;
+  // The reveal (calls are in): each column's people, in the order they got in, and the room their avatars need.
+  const reveal = everyone && everyone.length > 0 ? everyone : null;
+  const callsIn = (n: number) => (reveal ? reveal.filter((p) => bucketOfPercent(p.percent) === n) : []);
+  const room = reveal ? revealRoom(Math.max(...buckets.map((b) => callsIn(b.n).length))) : 50;
 
   return (
     <figure className="flex flex-col gap-3" aria-label={heading}>
@@ -99,15 +118,31 @@ export function WeightLine({
             <span className="w-[2px] flex-1 bg-ink" />
           </div>
         ) : null}
-        <div className="grid grid-cols-10 gap-[3px] pt-[50px]">
+        <div className="grid grid-cols-10 gap-[3px]" style={{ paddingTop: room }}>
           {buckets.map((b, i) => {
-            const isMine = me !== null && b.n === myBucket;
+            const isMine = me !== null && b.n === myBucket && !reveal;
             const height = heightOf(i);
+            const here = callsIn(b.n);
+            let below = 0;
             return (
               <div
                 key={b.n}
                 className="relative h-[100px] rounded-column bg-surface"
+                {...(reveal ? { "data-revealed": here.length } : {})}
               >
+                {here.map((p, k) => (
+                  // Each person's avatar stands just above their column, stacked upward when two share one (3.22), under the group's number at the top of the room, so the two never cover each other (on the simulator, Tam's face sat under "59%").
+                  <span key={`a${p.id}`} className="absolute left-1/2 z-[11] -translate-x-1/2" style={{ bottom: `calc(100% + ${4 + 16 * k}px)` }}>
+                    <Avatar name={p.name} hue={p.hue} size={22} ring="var(--ground)" ghost={p.ghost} />
+                  </span>
+                ))}
+                {here.map((p) => {
+                  // Every share in its person's hue, split by the 2px gap in the ground (3.22): the heights are the picture's own.
+                  const h = tallest === 0n || BigInt(p.stake) <= 0n ? 0 : Number((BigInt(p.stake) * 1000n) / tallest) / 10;
+                  const at = below;
+                  below += h;
+                  return h > 0 ? <span key={`s${p.id}`} aria-hidden="true" className="absolute inset-x-0 rounded-column" style={{ bottom: `${at}%`, height: `${h}%`, background: hueVar(p.hue), boxShadow: "0 -2px 0 var(--ground)" }} data-share={p.id} /> : null;
+                })}
                 {isMine && me ? (
                   <span
                     className="absolute left-1/2 z-[2] -translate-x-1/2 ease-move motion-safe:transition-[bottom]"
@@ -125,6 +160,7 @@ export function WeightLine({
                     />
                   </span>
                 ) : null}
+                {reveal ? null : (
                 <>
                     <span
                       aria-hidden="true"
@@ -148,6 +184,9 @@ export function WeightLine({
                         }}
                       />
                     ) : null}
+                </>
+                )}
+                <>
                     {Array.from({ length: Math.min(b.noStake, 3) }, (_, k) => (
                       <span
                         key={k}

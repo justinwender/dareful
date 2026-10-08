@@ -15,7 +15,8 @@ import type { MarketMark } from "@/components/ledger/state-mark";
  */
 export function shellOf(m: MarketCardData, viewerId: string, now: Date, zone: string): MarketShell {
   const d = m.dare;
-  const state: MarketMark = m.state === "open" ? (m.viewerIn ? "in" : "open") : m.state === "locked" ? (m.votesCast > 0 ? "voting" : "locked") : m.state;
+  // Closed: the calls-are-in mark until it has happened, then in voting (the games-and-the-reveal round; 3.23).
+  const state: MarketMark = m.state === "open" ? (m.viewerIn ? "in" : "open") : m.state === "locked" ? (m.votingOpen || m.votesCast > 0 ? "voting" : "locked") : m.state;
   // Who asked: among the people in it, or, since a game's asker starts out in nothing, among the set's seats.
   const creator = m.people.find((p) => p.id === d.creatorId) ?? ((seat) => (seat ? { id: seat.id, name: seat.displayName } : undefined))(m.set.members.find((p) => p.id === d.creatorId));
   const kind = m.pickOne ? "categorical" : m.unit ? "numeric" : "binary";
@@ -25,7 +26,7 @@ export function shellOf(m: MarketCardData, viewerId: string, now: Date, zone: st
     ink: m.ink,
     mark: markRefOf(d),
     state,
-    clock: bandClock({ state: m.state, resolvesBy: d.resolvesBy, resolvedAt: d.resolvedAt, resolvedBy: d.resolvedBy, votes: m.votesCast, now, zone }),
+    clock: bandClock({ state: m.state, resolvesBy: d.resolvesBy, resolvedAt: d.resolvedAt, resolvedBy: d.resolvedBy, votes: m.votesCast, now, zone, votingOpen: m.votingOpen, firstCall: d.closesAfterFirst }),
     question: d.title,
     asker: creator ? { name: creator.name, hue: hueFor(creator.id), line: askerLine({ id: creator.id, displayName: creator.name }, m.set, viewerId) } : null,
     sheet: shellSheet(state, m.viewerIn, kind),

@@ -49,6 +49,13 @@ const BATCHES: Batch[] = [
     devices: ["897d5db7-32c0-4063-aa40-de2c4c0623c9", "1a5bcc3f-7b44-43a9-ba2f-bfdd4c4566c2", "20482b50-15b6-4a34-a6e1-dafed286ff52", "fa851662-1978-4e7d-9520-f80021ae93e8", "5bd376f2-9def-4677-a6e4-3f55fa2a9638", "00880957-fc77-46eb-b0dd-9cbfd8821574", "6eff2941-78d9-448b-bc7f-54af23c24c8b"],
     names: ["signed_in"],
   },
+  {
+    name: "the owner's incognito test on the Dodgers question, signed out (2026-10-06 morning, Eastern; added on the owner's go-ahead, 2026-10-07)",
+    from: "2026-10-06T14:38:00Z",
+    to: "2026-10-06T14:43:00Z",
+    devices: ["0dd6f5e6-62b1-47dd-991a-9b2e17858271"],
+    names: ["error_shown", "link_opened"],
+  },
 ];
 
 type Superseded = { name: string; dareId: string; at: string; why: string };

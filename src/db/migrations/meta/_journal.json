@@ -281,6 +281,27 @@
       "when": 1791160293121,
       "tag": "0039_tips_seen",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1791411547609,
+      "tag": "0040_question_groups",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1791411963358,
+      "tag": "0041_calls_are_in",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1791413194882,
+      "tag": "0042_live_score",
+      "breakpoints": true
     }
   ]
 }

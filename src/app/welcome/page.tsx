@@ -9,7 +9,7 @@ import { boundPendingForDebtor, linkEntriesFor } from "@/lib/ledger/claims";
 import { contracts } from "@/lib/chain/contracts";
 import { daresDomain, Stalemate } from "@/lib/chain/typed-data";
 import { dareOnchainId } from "@/lib/ledger/ids";
-import { answersOf, confidenceFor, unitOf } from "@/lib/ledger/markets";
+import { answersOf, confidenceFor, createFields, questionCreateTypedData, unitOf } from "@/lib/ledger/markets";
 import { unitPhrase } from "@/lib/ledger/number-axis";
 import { inkOf } from "@/lib/ui/ink";
 import { markRefOf } from "@/lib/ui/mark";
@@ -45,7 +45,7 @@ export default async function WelcomePage() {
     const answers = answersOf(e.dare);
     const said = answers ? `You’re in: ${answers.find((a) => a.index === Number(e.value))?.text ?? "?"}` : unit ? `You’re in at ${unitPhrase(e.value, unit)}` : `You’re in at ${Number(e.value) / 100}%`;
     const stakeWords = denomination.monetary ? formatMoney(e.stake) : unitWords(denomination, e.stake);
-    return [{ dareId: e.dare.id, title: e.dare.title, line: `${said} · ${stakeWords}`, name: e.name, mark: markRefOf(e.dare), ink: inkOf(e.dare), ledgerWallet: me.ledgerWallet, domain: daresDomain(chainId, dares.address), dareOnchainId: dareOnchainId(e.dare.id), stalemate: e.dare.stalemate === "void" ? Stalemate.Void : Stalemate.Arbitrate, confidenceBps: confidenceFor(e.dare), stake: e.stake.toString(), value: e.value.toString(), position: answers ? { stake: e.stake.toString(), answer: Number(e.value) } : unit ? { stake: e.stake.toString(), number: e.value.toString() } : { stake: e.stake.toString(), valueBps: Number(e.value) } }];
+    return [{ dareId: e.dare.id, title: e.dare.title, line: `${said} · ${stakeWords}`, name: e.name, mark: markRefOf(e.dare), ink: inkOf(e.dare), ledgerWallet: me.ledgerWallet, domain: daresDomain(chainId, dares.address), dareOnchainId: dareOnchainId(e.dare.id), stalemate: e.dare.stalemate === "void" ? Stalemate.Void : Stalemate.Arbitrate, confidenceBps: confidenceFor(e.dare), stake: e.stake.toString(), value: e.value.toString(), position: answers ? { stake: e.stake.toString(), answer: Number(e.value) } : unit ? { stake: e.stake.toString(), number: e.value.toString() } : { stake: e.stake.toString(), valueBps: Number(e.value) }, question: createFields(questionCreateTypedData(e.dare).message) }];
   });
 
   const creditorIds = Array.from(new Set(rows.map((r) => r.toUser).filter((x): x is string => Boolean(x))));

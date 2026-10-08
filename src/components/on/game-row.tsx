@@ -17,6 +17,8 @@ export type GameRowData = {
   asked: string | null;
   /** This viewer's own use, in place of both, with the you're-in mark, opening that group's page: the line as a sentence names the set (`onThisLine`), "You’re on this with the Friday crew". */
   yours: { line: string; groupId: string } | null;
+  /** Being played (section 5): "Live" stands where the start time was, whoever is on it. */
+  live?: true;
 };
 
 /**
@@ -28,7 +30,7 @@ export type GameRowData = {
 export function GameRow({ game, viewerHue, divider = false }: { game: GameRowData; viewerHue: Hue; divider?: boolean }) {
   const href = game.yours ? `/on/${game.id}?g=${game.yours.groupId}` : `/on/${game.id}`;
   return (
-    <Link prefetch={false} href={href} data-game-row={game.id} data-press="row" data-shell={serialiseShell({ kind: "game", id: game.id, href, name: game.name, start: game.start, away: game.away, home: game.home })} className={`press-row relative grid grid-cols-[60px_minmax(0,1fr)_18px] items-center gap-3 px-[14px] py-3 ${divider ? "border-t border-line" : ""}`}>
+    <Link prefetch={false} href={href} data-game-row={game.id} {...(game.live ? { "data-live": "" } : {})} data-press="row" data-shell={serialiseShell({ kind: "game", id: game.id, href, name: game.name, start: game.start, away: game.away, home: game.home })} className={`press-row relative grid grid-cols-[60px_minmax(0,1fr)_18px] items-center gap-3 px-[14px] py-3 ${divider ? "border-t border-line" : ""}`}>
       <LinkPending />
       <TeamPair away={game.away} home={game.home} size={28} />
       <span className="flex min-w-0 flex-col gap-0.5">
@@ -37,7 +39,7 @@ export function GameRow({ game, viewerHue, divider = false }: { game: GameRowDat
           {game.yours ? (
             <>
               <StateMark state="in" hue={viewerHue} size={14} />
-              <span className="truncate">{game.yours.line}</span>
+              <span className="truncate">{game.live ? `${LIVE} · ${game.yours.line}` : game.yours.line}</span>
             </>
           ) : (
             <span className="truncate">
@@ -64,7 +66,11 @@ export function startLabel(at: Date, zone: string): string {
 /** "Asked in 214 groups" (4.6: a count of use, never of belief). */
 export const askedLabel = (n: number): string => `Asked in ${n} groups`;
 
-/** A game row's data from a game row in the database and what the tab knows about it. */
-export function rowData(g: { id: string; name: string; startsAt: Date; homeAbbr: string; homeShort: string; homeColor: string | null; awayAbbr: string; awayShort: string; awayColor: string | null }, zone: string, asked: number | null, yours: { line: string; groupId: string } | null): GameRowData {
-  return { id: g.id, name: g.name, away: { abbr: g.awayAbbr, name: g.awayShort, color: g.awayColor }, home: { abbr: g.homeAbbr, name: g.homeShort, color: g.homeColor }, start: startLabel(g.startsAt, zone), asked: asked === null ? null : askedLabel(asked), yours };
+/** What a game being played says where its start time was (the games-and-the-reveal round, section 5): listed, and marked live, until its final. */
+export const LIVE = "Live";
+
+/** A game row's data from a game row in the database and what the tab knows about it; a game already started is marked live. */
+export function rowData(g: { id: string; name: string; startsAt: Date; homeAbbr: string; homeShort: string; homeColor: string | null; awayAbbr: string; awayShort: string; awayColor: string | null }, zone: string, asked: number | null, yours: { line: string; groupId: string } | null, now?: Date): GameRowData {
+  const live = now !== undefined && g.startsAt.getTime() <= now.getTime();
+  return { id: g.id, name: g.name, away: { abbr: g.awayAbbr, name: g.awayShort, color: g.awayColor }, home: { abbr: g.homeAbbr, name: g.homeShort, color: g.homeColor }, start: live ? LIVE : startLabel(g.startsAt, zone), asked: asked === null ? null : askedLabel(asked), yours, ...(live ? { live: true as const } : {}) };
 }

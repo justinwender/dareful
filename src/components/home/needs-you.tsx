@@ -45,7 +45,7 @@ export function NeedsYou({ rows, viewer, showAll, allHref }: { rows: NeedRow[]; 
                   <span className="flex items-center gap-2 text-caption text-ink-3">
                     {dotted(r) ? <LiveDot data-soonest="" /> : null}
                     <StateMark state={r.game.state} />
-                    <span className="truncate">{r.context}</span>
+                    <span className="min-w-0">{r.context}</span>
                   </span>
                 </span>
                 <Link prefetch={false} href={r.game.questionHref} data-press="fill" className="relative link-row press-fill">
@@ -63,7 +63,7 @@ export function NeedsYou({ rows, viewer, showAll, allHref }: { rows: NeedRow[]; 
                   <span className="text-body-strong text-ink">{r.subject}</span>
                   <span className="flex items-center gap-2 text-caption text-ink-3">
                     <StateMark state="proposed" />
-                    <span className="truncate">{r.context}</span>
+                    <span className="min-w-0">{r.context}</span>
                   </span>
                 </span>
                 <ThatsMe claimId={r.claimId} label={r.verb} />
@@ -91,7 +91,7 @@ export function NeedsYou({ rows, viewer, showAll, allHref }: { rows: NeedRow[]; 
                 <span className="flex items-center gap-2 text-caption text-ink-3">
                   {dotted(r) ? <LiveDot data-soonest="" /> : null}
                   <StateMark state={mark} />
-                  <span className="truncate">{r.context}</span>
+                  <span className="min-w-0">{r.context}</span>
                 </span>
               </span>
               <span className="link-row">{r.verb}</span>

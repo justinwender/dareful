@@ -145,6 +145,11 @@ export function nettablePairs(open: EnvioObligation[], a: string, b: string): Ne
     .filter((p) => p.cancels > 0n);
 }
 
+/** Whether an edge the chain holds sits in its set's own group, the one a netting between the two is signed over. Pure. */
+export function inItsSetsGroup(chainGroupId: string, setId: string): boolean {
+  return chainGroupId.toLowerCase() === groupOnchainId(setId).toLowerCase();
+}
+
 export function netTypedData(input: { groupId: Hex; denomId: Hex; a: Address; b: Address; nonce: bigint }) {
   const { chainId, ledger } = contracts();
   return {

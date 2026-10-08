@@ -14,7 +14,7 @@ import { isIdentifier } from "@/lib/auth/login";
 import { claimsForBrowserTokens } from "./claims";
 import { denominationById } from "./denominations";
 import { groupsNumberBps } from "./weight";
-import { confidenceFor, marketById, MarketError, MAX_POSITIONS, pastItsClose, positionsOf, stateOf, valueAllowed, type PositionRow } from "./markets";
+import { confidenceFor, gameOverFor, marketById, MarketError, MAX_POSITIONS, pastItsClose, positionsOf, startFirstCallClock, stateOf, valueAllowed, type PositionRow } from "./markets";
 import { pidOf } from "./participants";
 import { hashToken, newToken } from "./tokens";
 import { record } from "@/lib/usage";
@@ -101,6 +101,8 @@ export async function enterAsGhost(input: { dareId: string; who: GhostWho; token
   if (state !== "open") throw new MarketError(state === "draft" ? "It isn't open yet." : "Numbers are locked.", "wrong_state");
   // The close is a hard cutoff for a ghost as for anyone (`pastItsClose`): past its time, nobody gets in or changes, locked yet or not.
   if (pastItsClose(d, new Date())) throw new MarketError("Numbers are locked.", "wrong_state");
+  // A question started during a game closes at its final at the latest (the games-and-the-reveal round, section 5).
+  if (d.closesAfterFirst && (await gameOverFor(d))) throw new MarketError("Numbers are locked.", "wrong_state");
   if (!valueAllowed(d.kind, input.value, d.outcomeLabels.length)) throw new MarketError(d.kind === "numeric" ? "Any whole number, up to nine digits." : d.kind === "categorical" ? "Pick one of the answers." : "A number from 0 to 100.", "bad_input");
   const denom = await denominationById(d.denomId);
   if (!denom) throw new MarketError("unknown unit", "not_found");
@@ -135,6 +137,8 @@ export async function enterAsGhost(input: { dareId: string; who: GhostWho; token
     .onConflictDoUpdate({ target: [schema.darePositions.dareId, schema.darePositions.claimId], set: { stake: input.stake, value: input.value, confidenceBps: d.kind === "categorical" ? confidenceFor(d) : null, dismissedAt: null, acknowledgedAt: now, changedAt: now } })
     .returning();
   if (!position) throw new MarketError("Couldn't save that.", "chain");
+  // The first call on a question started during a game sets its close, five minutes on (section 5).
+  await startFirstCallClock(d, now);
 
   if (d.kind === "binary") {
     try {

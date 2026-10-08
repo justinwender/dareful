@@ -66,8 +66,8 @@ export function outcomesAgree(t: { key: string; shift: bigint | null; decidedByS
 export const AGREE_AFTER_MS = 24 * 3_600_000;
 export const ALONE_AFTER_MS = 72 * 3_600_000;
 export const WARN_BEFORE_MS = 6 * 3_600_000;
-/** How long past a game's expected end "Say it yourself" appears on the ballot, in case the feed is late or has nothing (3.35). */
-export const SAY_YOURSELF_AFTER_MS = 2 * 3_600_000;
+/** How long past a game's expected end "Say it yourself" appears on the ballot (3.35): kept beside the rule for when the vote opens. */
+export { SAY_YOURSELF_AFTER_MS } from "@/lib/ledger/voting-open";
 /** How long after a final's first read it is read once more, to catch a correction, before polling stops. */
 export const CONFIRM_AFTER_MS = 30 * 60_000;
 

@@ -15,7 +15,7 @@ import { ensureUnitInGroup, ensureUsd } from "@/lib/ledger/denominations";
 import { createGroup } from "@/lib/ledger/groups";
 import { bufferToHex, uuidToBytes16 } from "@/lib/ledger/ids";
 import * as markets from "@/lib/ledger/markets";
-import { cleanup, tempSigner, track, type Signer } from "./fixture";
+import { cleanup, itHappened, tempSigner, track, type Signer } from "./fixture";
 
 let justin: Signer, gabe: Signer, alex: Signer, john: Signer, outsider: Signer;
 before(async () => {
@@ -36,8 +36,10 @@ async function draft(creator: Signer, groupId: string, unit: "usd" | "next_time"
 const open = async (d: markets.DareRow, creator: Signer) => markets.openMarket(d.id, creator.user.id, await creator.ledger.signTypedData(markets.createTypedData(d)));
 const enter = async (d: markets.DareRow, who: Signer, stake: bigint, valueBps: bigint, signWith = who.ledger) =>
   markets.enterMarket({ dareId: d.id, userId: who.user.id, stake, value: valueBps, signature: await signWith.signTypedData(markets.enterTypedData(d, stake, valueBps)) });
-const vote = async (d: markets.DareRow, who: Signer, outcome: bigint, signWith = who.governance) =>
-  markets.castVote({ dareId: d.id, userId: who.user.id, outcome, signature: await signWith.signTypedData(markets.voteTypedData(d, outcome)) });
+const vote = async (d: markets.DareRow, who: Signer, outcome: bigint, signWith = who.governance) => {
+  await itHappened(d.id);
+  return markets.castVote({ dareId: d.id, userId: who.user.id, outcome, signature: await signWith.signTypedData(markets.voteTypedData(d, outcome)) });
+};
 const code = async (fn: () => Promise<unknown>) => fn().then(() => null, (e: unknown) => (e instanceof markets.MarketError ? e.code : `other: ${e instanceof Error ? e.message : e}`));
 
 // ------------------------------------------------------------------------------------------ before the chain

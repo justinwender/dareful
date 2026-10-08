@@ -9,7 +9,7 @@ import { unitPhrase } from "@/lib/ledger/number-axis";
 import { leanPill } from "@/lib/ui/team";
 import type { FeedEnding } from "./results";
 import type { TemplateKey } from "./templates";
-import { inCount } from "@/lib/ui/copy";
+import { CALLS_ARE_IN, inCount } from "@/lib/ui/copy";
 
 export type CardInput = {
   key: TemplateKey;
@@ -18,7 +18,6 @@ export type CardInput = {
   /** This viewer's own value, as stored: basis points, the shifted margin, the total, or the answer's index. */
   mine: bigint | null;
   inCount: number;
-  groupSize: number;
   votesCast: number;
   /** Whether the feed's proposal is on the ballot (3.35). */
   proposed: boolean;
@@ -34,6 +33,14 @@ export type CardInput = {
   closest: { name: string; off: string | null } | null;
   /** "Voting ends Mon 7:45pm", when the backstop's moment is known. */
   votingEnds: string | null;
+  /** The close while it is open (section 5): "Closes at kickoff" by sport, "Closes 5 minutes after the first call", or the clock a first call set. */
+  closes?: string;
+  /** Closed and the vote open (the games-and-the-reveal round): it has happened. */
+  votingOpen?: boolean;
+  /** The live score while the game is on, as the line the cards say ("Red Sox 5, Yankees 2 · top 7th"); null when it cannot be read. */
+  live?: string | null;
+  /** The game is past its expected end with no final from the feed (3.33: "Waiting on the final score"). */
+  gameOver?: boolean;
 };
 
 export type CardMeta = { mark: MarketMark; text: string };
@@ -49,11 +56,14 @@ export function yourEntry(input: Pick<CardInput, "key" | "mine" | "teams" | "uni
 
 /** The meta line under a card, by state (3.33), and the mark that heads it (3.23). */
 export function cardMeta(input: CardInput): CardMeta {
-  const count = inCount(input.inCount, input.groupSize);
+  const count = inCount(input.inCount);
   if (input.state === "draft") return { mark: "draft", text: "You never sent this one" };
-  if (input.state === "open") return input.viewerIn ? { mark: "in", text: `${yourEntry(input)} · ${count}` } : { mark: "open", text: `Closes at kickoff · ${count}` };
+  if (input.state === "open") return input.viewerIn ? { mark: "in", text: `${yourEntry(input)} · ${count}` } : { mark: "open", text: `${input.closes ?? "Closes at kickoff"} · ${count}` };
   if (input.state === "locked") {
-    if (input.votesCast === 0 && !input.proposed) return { mark: "locked", text: input.key === "first_drive" ? "Waiting on the play-by-play" : "Waiting on the final score" };
+    const waiting = input.key === "first_drive" ? "Waiting on the play-by-play" : "Waiting on the final score";
+    // Calls are in (3.33 as the fifteenth session drew it): from the first pitch the live score, and once the game is over and the feed hasn't said, the wait.
+    if (input.votingOpen === false) return { mark: "locked", text: input.gameOver ? waiting : (input.live ?? CALLS_ARE_IN) };
+    if (input.votesCast === 0 && !input.proposed) return { mark: "voting", text: waiting };
     // In voting: the mark and the clock (3.33), never a count beside it.
     return { mark: "voting", text: input.votingEnds ? `Voting ends ${input.votingEnds}` : input.key === "first_drive" ? "The play-by-play is in" : "The final score is in" };
   }
@@ -114,14 +124,26 @@ export function setsOnGames(rows: Array<{ gameId: string; groupId: string; creat
 
 /**
  * The who's-in row on a game page (docs/design.md 3.42, with the game as the unit): everyone in on any of its
- * questions, out of the set's seats so the count agrees with the cards under it. "Nobody’s in yet" before the
- * first entry, since a game's asker starts out in nothing; then 3.42's words. Share is the chalk while the viewer
+ * questions. "Nobody’s in yet" before the first entry, since a game's asker starts out in nothing; then 3.42's words. Share is the chalk while the viewer
  * started the game and nobody else is in.
  */
-export function gameWhosIn(input: { /** Everyone in on any of the game's questions, by participant id. */ inIds: string[]; /** The set's seats. */ seats: number; viewerId: string; /** Who started the game: the asker of its first question. */ startedBy: string | null }): { count: string; chalk: boolean } {
+export function gameWhosIn(input: { /** Everyone in on any of the game's questions, by participant id. */ inIds: string[]; viewerId: string; /** Who started the game: the asker of its first question. */ startedBy: string | null }): { count: string; chalk: boolean } {
   const n = new Set(input.inIds).size;
-  const of = Math.max(input.seats, n);
   const nobodyElse = input.inIds.every((id) => id === input.viewerId);
-  const count = n === 0 ? "Nobody’s in yet" : of > n ? `${n} of ${of} in` : nobodyElse ? "Just you so far" : `${n} of you in`;
+  // Nobody is asked by name (the games-and-the-reveal round): "N in", never a second number.
+  const count = n === 0 ? "Nobody’s in yet" : nobodyElse ? "Just you so far" : `${n} in`;
   return { count, chalk: input.startedBy === input.viewerId && nobodyElse };
+}
+
+/**
+ * The offer before asking what's already asked (3.33, "Asking what's already asked"): "Priya already asked who wins
+ * with you, Rachel and 3 others." The menu row's name mid-sentence (a team's name keeps its capital), and the people
+ * in it besides its asker, the viewer first as "you", two named and the rest counted. Pure.
+ */
+export function alreadyAskedLine(asker: string, menuName: string, others: string[]): string {
+  const mid = /^(Who|By|Total|The)\b/.test(menuName) ? menuName.charAt(0).toLowerCase() + menuName.slice(1) : menuName;
+  const shown = others.slice(0, 2);
+  const rest = others.length - shown.length;
+  const with_ = others.length === 0 ? "" : rest > 0 ? ` with ${shown.join(", ")} and ${rest} ${rest === 1 ? "other" : "others"}` : ` with ${shown.length === 2 ? `${shown[0]} and ${shown[1]}` : shown[0]}`;
+  return `${asker} already asked ${mid}${with_}.`;
 }

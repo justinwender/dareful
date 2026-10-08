@@ -151,7 +151,10 @@ test("the band's clock is one function for the screen and the shell (3.25, 9.4)"
   const soon = new Date("2026-09-28T22:30:00Z");
   assert.match(bandClock({ state: "open", resolvesBy: soon, resolvedAt: null, resolvedBy: null, votes: 0, now, zone }) ?? "", /^Closes /);
   assert.equal(bandClock({ state: "open", resolvesBy: new Date(now.getTime() - 60_000), resolvedAt: null, resolvedBy: null, votes: 0, now, zone }), "Time’s up", "an open market past its close never says Closes soon (the field round, 1.2)");
-  assert.match(bandClock({ state: "locked", resolvesBy: soon, resolvedAt: null, resolvedBy: null, votes: 0, now, zone }) ?? "", /^Resolving /);
+  // The stretch after the close (3.23, the fifteenth session): "Calls are in" until it has happened, then "It's happened" until someone says what did.
+  assert.equal(bandClock({ state: "locked", resolvesBy: soon, resolvedAt: null, resolvedBy: null, votes: 0, now, zone }), "Calls are in");
+  assert.equal(bandClock({ state: "locked", resolvesBy: soon, resolvedAt: null, resolvedBy: null, votes: 0, now, zone, votingOpen: true }), "It’s happened");
+  assert.equal(bandClock({ state: "open", resolvesBy: null, resolvedAt: null, resolvedBy: null, votes: 0, now, zone, firstCall: true }), "Closes 5 minutes after the first call", "a game's question started while it is on, before its first call (section 5)");
   assert.match(bandClock({ state: "locked", resolvesBy: soon, resolvedAt: null, resolvedBy: null, votes: 2, now, zone }) ?? "", /^Voting ends /);
   assert.match(bandClock({ state: "resolved", resolvesBy: soon, resolvedAt: new Date("2026-09-28T19:00:00Z"), resolvedBy: "quorum", votes: 3, now, zone }) ?? "", /^Settled /);
   assert.equal(bandClock({ state: "open", resolvesBy: null, resolvedAt: null, resolvedBy: null, votes: 0, now, zone }), null);

@@ -55,6 +55,9 @@ export const completions: Completions = {
     return id ? completeExpire(id) : true;
   },
   register: async (subject) => {
+    // A question's own group (the games-and-the-reveal round) has nothing offchain to mirror: its lock reads the chain
+    // again when it runs, from the next tap or the tick, and finishes or adds whoever is missing then.
+    if (str(subject.questionId)) return true;
     const groupId = str(subject.groupId);
     const denomId = str(subject.denomId);
     // The people the registration was for (the second-pass round). A write the earlier build left in flight names

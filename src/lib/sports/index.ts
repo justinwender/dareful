@@ -7,7 +7,7 @@
  * the markets they made, and reachable again next minute if it fails. Underneath, what the tab and the game page
  * read: the games listed by day, how many groups are on each, and a group's questions on a game.
  */
-import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import { keccak256, stringToHex, type Hex } from "viem";
 import { db, schema } from "@/db";
 import { contracts } from "@/lib/chain/contracts";
@@ -512,12 +512,29 @@ export type WhatsOn = {
   feed: { lastOkAt: Date | null; failing: boolean };
 };
 
-/** The games ahead: a confirmed start time, not yet started, and not off. Each leaves the list at its start. */
+/** The games ahead: a confirmed start time, not yet started, and not off. The starters on an empty Now come from these. */
 async function upcomingGames(now: Date): Promise<GameRow[]> {
   return db
     .select()
     .from(schema.sportsGames)
     .where(and(eq(schema.sportsGames.timeValid, true), gt(schema.sportsGames.startsAt, now), ne(schema.sportsGames.status, "postponed"), ne(schema.sportsGames.status, "canceled")))
+    .orderBy(asc(schema.sportsGames.startsAt), asc(schema.sportsGames.name))
+    .limit(120);
+}
+
+/** How long past its start a game with no final yet stays listed: a feed that never says final must not keep a game live for good. */
+export const LIVE_FOR_AT_MOST_MS = 12 * 3_600_000;
+
+/**
+ * What's on's games (the games-and-the-reveal round, section 5): the games ahead, and every game being played until
+ * its final, marked live, since anyone can start a question on one until then.
+ */
+async function listedGames(now: Date): Promise<GameRow[]> {
+  const live = and(lte(schema.sportsGames.startsAt, now), gt(schema.sportsGames.startsAt, new Date(now.getTime() - LIVE_FOR_AT_MOST_MS)), isNull(schema.sportsGames.finalSeenAt), eq(schema.sportsGames.completed, false));
+  return db
+    .select()
+    .from(schema.sportsGames)
+    .where(and(eq(schema.sportsGames.timeValid, true), or(gt(schema.sportsGames.startsAt, now), live), ne(schema.sportsGames.status, "postponed"), ne(schema.sportsGames.status, "canceled")))
     .orderBy(asc(schema.sportsGames.startsAt), asc(schema.sportsGames.name))
     .limit(120);
 }
@@ -545,7 +562,7 @@ async function yoursOnGames(gameIds: string[], viewerId: string, viewerName: str
 
 /** What the tab lists (docs/design.md 3.32): most asked over the schedule by day, with this viewer's own use on each row and the feed's state. */
 export async function whatsOn(viewer: { id: string; displayName: string }, now: Date, zone: string): Promise<WhatsOn> {
-  const [games, reads] = await Promise.all([upcomingGames(now), db.select().from(schema.sportsFeedReads).where(eq(schema.sportsFeedReads.source, "espn"))]);
+  const [games, reads] = await Promise.all([listedGames(now), db.select().from(schema.sportsFeedReads).where(eq(schema.sportsFeedReads.source, "espn"))]);
   const gameIds = games.map((g) => g.id);
   const [templates, counts, yours] = await Promise.all([
     gameIds.length ? db.select().from(schema.publicQuestions).where(inArray(schema.publicQuestions.gameId, gameIds)).orderBy(asc(schema.publicQuestions.sort)) : Promise.resolve([]),
@@ -650,4 +667,45 @@ export async function gamesOfMarkets(dareIds: string[]): Promise<Map<string, { g
     .where(inArray(schema.dares.id, dareIds));
   for (const r of rows) out.set(r.dareId, { game: r.game, template: r.template });
   return out;
+}
+
+/** The game a question is on, by its id, or null for a question asked anywhere else: where a link to it lands (section 4). */
+export async function gameOfQuestion(dareId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ gameId: schema.publicQuestions.gameId })
+    .from(schema.dares)
+    .innerJoin(schema.publicQuestions, eq(schema.publicQuestions.id, schema.dares.templateId))
+    .where(eq(schema.dares.id, dareId))
+    .limit(1);
+  return row?.gameId ?? null;
+}
+
+/** The first question a set opened on a game, in the menu's order: the one its game link opens (3.33). Null when it has none. */
+export async function firstQuestionOf(gameId: string, groupId: string): Promise<string | null> {
+  const rows = (await gameMarkets(gameId, groupId)).filter((r) => r.dare.creatorSignature);
+  return rows[0]?.dare.id ?? null;
+}
+
+/** Whether a line names a team: its short name ("Rangers") or its full name ("New York Rangers"), as words, never an abbreviation, which reads as too many other things. Pure. */
+export function namesTeam(line: string, team: { short: string; name: string }): boolean {
+  const words = (s: string) => s.toLowerCase().replace(/[’']/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+  const said = ` ${words(line)} `;
+  return [team.short, team.name].some((n) => words(n).length >= 3 && said.includes(` ${words(n)} `));
+}
+
+/**
+ * A game a question asked outside What's on is about (the games-and-the-reveal round, section 6: JP's "Will the
+ * Lightning beat the Rangers tonight?" went to the tiebreaker and voided, though the final score would have settled
+ * it): one whose two teams the line names, being played or starting before the question is decided, and not over or
+ * off. The soonest, or null.
+ */
+export async function gameNamedIn(line: string, until: Date, now: Date): Promise<GameRow | null> {
+  if (line.trim().length < 6) return null;
+  const games = await db
+    .select()
+    .from(schema.sportsGames)
+    .where(and(eq(schema.sportsGames.timeValid, true), lte(schema.sportsGames.startsAt, until), gt(schema.sportsGames.startsAt, new Date(now.getTime() - LIVE_FOR_AT_MOST_MS)), isNull(schema.sportsGames.finalSeenAt), eq(schema.sportsGames.completed, false), ne(schema.sportsGames.status, "postponed"), ne(schema.sportsGames.status, "canceled")))
+    .orderBy(asc(schema.sportsGames.startsAt))
+    .limit(200);
+  return games.find((g) => namesTeam(line, { short: g.homeShort, name: g.homeName }) && namesTeam(line, { short: g.awayShort, name: g.awayName })) ?? null;
 }

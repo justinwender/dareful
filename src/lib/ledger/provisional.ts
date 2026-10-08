@@ -49,6 +49,23 @@ export function chainCarries(input: { registered: readonly string[]; inIt: reado
 }
 
 /**
+ * Where a question all of whose entries are signed is kept (the games-and-the-reveal round, 2026-10-07): in its set's
+ * own group when the chain would ask exactly the people in there (`chainCarries`), else in a group of its own when
+ * someone in it signed `Create` over that group, else here, as proposals, which only a question whose every entry
+ * predates the round comes to. Pure.
+ */
+export function whereItLocks(input: { setCarries: boolean; questionSigner: boolean }): "set" | "question" | "here" {
+  if (input.setCarries) return "set";
+  return input.questionSigner ? "question" : "here";
+}
+
+/** Who stands as the question's creator on the chain in its own group: its asker when they are in and signed over it, else whoever got in first and did. Pure. */
+export function creatorFor<P extends Pick<PositionRow, "userId" | "questionSignature" | "enteredAt">>(positions: P[], askerId: string): P | null {
+  const signed = positions.filter((p) => p.userId !== null && p.questionSignature !== null);
+  return signed.find((p) => p.userId === askerId) ?? [...signed].sort((a, b) => a.enteredAt.getTime() - b.enteredAt.getTime())[0] ?? null;
+}
+
+/**
  * Whether the voters the chain snapshotted at a lock are exactly the people in it. The lock checks the set before it
  * sends (`chainCarries`); a registration that lands between that check and the lock widens the snapshot, so the
  * completion reads it again and says so loudly when it differs. Pure.

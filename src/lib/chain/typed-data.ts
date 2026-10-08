@@ -80,3 +80,11 @@ export const Status = { Locked: 0, Resolved: 1, Voided: 2, Expired: 3 } as const
 /** Sentinel outcome a quorum may vote for: mints nothing, toll applies. */
 export const VOID = (1n << 256n) - 1n;
 export const BPS = 10_000n;
+
+/** A `Create` message's fields as a page sends them to the browser, the numbers as strings. */
+export type CreateFields = { groupId: `0x${string}`; kind: number; pace: number; termsHash: `0x${string}`; denomId: `0x${string}`; range: string; options: number; resolvesBy: string };
+
+/** The `Create` message a browser signs, from a page's fields: the asker's over the set, or anyone's over the question's own group. */
+export function createMessage(dareId: `0x${string}`, c: CreateFields, stalemate: number) {
+  return { dareId, groupId: c.groupId, kind: c.kind, pace: c.pace, termsHash: c.termsHash, denomId: c.denomId, range: BigInt(c.range), options: c.options, stalemate, resolvesBy: BigInt(c.resolvesBy) };
+}

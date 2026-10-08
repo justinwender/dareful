@@ -29,6 +29,15 @@ export function dareOnchainId(dareUuid: string): Hex {
   return keccak256(stringToHex(`dareful:dare:${dareUuid}`));
 }
 
+/**
+ * A question's own onchain group (the games-and-the-reveal round, 2026-10-07): registered at its lock with exactly
+ * its people in, when its set's registered voters are anyone else. Deterministic from the question's uuid, so an
+ * entry can sign `Create` over it before anyone knows who will be in.
+ */
+export function questionGroupOnchainId(dareUuid: string): Hex {
+  return keccak256(stringToHex(`dareful:question-group:${dareUuid}`));
+}
+
 export function hexToBuffer(hex: Hex): Buffer {
   return Buffer.from(hex.slice(2), "hex");
 }

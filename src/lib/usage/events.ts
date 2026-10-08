@@ -30,7 +30,7 @@ export const EVENTS = {
   code_used: z.object({}),
   sticker: z.object({ source: z.enum(["pasted", "cut"]) }),
   photo_added: z.object({ stage: z.enum(["open", "closed", "settled", "settlement"]), role: z.enum(["memory", "evidence"]) }),
-  closed: z.object({ by: z.enum(["asker", "time", "both_in"]), game: z.boolean() }),
+  closed: z.object({ by: z.enum(["asker", "time", "both_in", "calls"]), game: z.boolean() }),
   voted: z.object({ provisional: z.boolean() }),
   settled: z.object({ by: z.enum(SETTLED_BY), outcome: z.enum(["decided", "void", "none"]) }),
   obligation_closed: z.object({ reason: z.enum(["settled", "forgiven"]) }),

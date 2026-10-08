@@ -15,7 +15,7 @@ import { participantsOf, pidOf } from "./participants";
 import { inkOf, type InkName } from "@/lib/ui/ink";
 import { answersOf, stateOf, unitOf, voterIsIn, VOID_OUTCOME, type DareRow, type MarketState, type PositionRow, type Unit } from "./markets";
 import { answerShares, type Answer } from "./pick-one";
-import { countedSetSize } from "@/lib/ui/copy";
+import { votingOpen } from "./voting-open";
 
 export type MarketPerson = { id: string; displayName: string };
 export type MarketCardData = {
@@ -29,7 +29,8 @@ export type MarketCardData = {
   groupName: string | null;
   /** The set it was asked of, as facts: its real name and its account-holders. A sentence about the set is written from these (`askerLine`); `groupName` may carry the chip's label. */
   set: SetFacts;
-  groupSize: number;
+  /** Closed and the vote open (the games-and-the-reveal round): it has happened, by someone's word, the final, or its decided date. False before the close and while calls are in. */
+  votingOpen: boolean;
   denomination: DenominationRow;
   /** Percents on a yes-or-no question; on a number question `percent` is null and `number` carries the entry, as text; on a pick-one question `pick` is the answer's index. All null when numbers may not be shown. */
   people: Array<{ id: string; name: string; /** A ghost: someone in it without an account (PLANNING.md section 4). */ ghost: boolean; percent: number | null; number: string | null; pick: number | null }>;
@@ -77,6 +78,11 @@ export async function marketCards(input: { viewerId: string; groupId?: string; w
   if (dares.length === 0) return [];
   const ids = dares.map((d) => d.id);
 
+  // A game's clock, for when the vote opens on its questions (the games-and-the-reveal round).
+  const templateIds = Array.from(new Set(dares.map((d) => d.templateId).filter((x): x is string => x !== null)));
+  const clocks = templateIds.length ? await db.select({ id: schema.publicQuestions.id, finalSeenAt: schema.sportsGames.finalSeenAt, expectedEndAt: schema.sportsGames.expectedEndAt }).from(schema.publicQuestions).innerJoin(schema.sportsGames, eq(schema.sportsGames.id, schema.publicQuestions.gameId)).where(inArray(schema.publicQuestions.id, templateIds)) : [];
+  const clockOf = new Map(clocks.map((c) => [c.id, { finalSeenAt: c.finalSeenAt, expectedEndAt: c.expectedEndAt }]));
+  const now = new Date();
   const [positions, votes, edges, groups, seats, said] = await Promise.all([
     db.select().from(schema.darePositions).where(and(inArray(schema.darePositions.dareId, ids), isNotNull(schema.darePositions.acknowledgedAt), isNull(schema.darePositions.dismissedAt))),
     db.select({ dareId: schema.dareVotes.dareId, userId: schema.dareVotes.userId }).from(schema.dareVotes).where(and(inArray(schema.dareVotes.dareId, ids), voterIsIn)),
@@ -121,7 +127,7 @@ export async function marketCards(input: { viewerId: string; groupId?: string; w
       at: d.resolvedAt ?? d.lockedAt ?? d.createdAt,
       groupName: groups.find((g) => g.id === d.groupId)?.name ?? null,
       set: setFacts(groups.find((g) => g.id === d.groupId)?.name ?? null, seats.get(d.groupId) ?? []),
-      groupSize: countedSetSize((seats.get(d.groupId) ?? []).flatMap((s) => (s.userId ? [s.userId] : [])), d.creatorId, ps.some((p) => p.userId === d.creatorId)),
+      votingOpen: state === "locked" && votingOpen(d, d.templateId ? (clockOf.get(d.templateId) ?? null) : null, now),
       denomination,
       people: ps.map((p) => ({ id: pidOf(p), name: nameOf.get(pidOf(p)) ?? "Someone", ghost: ghost(pidOf(p)), percent: show && !unit && !answers ? percentOf(p) : null, number: show && unit ? p.value.toString() : null, pick: show && answers ? Number(p.value) : null })),
       outcome: state === "resolved" && !unit && !answers && d.resolvedOutcome !== null && d.resolvedOutcome !== VOID_OUTCOME ? (Number(d.resolvedOutcome) as 0 | 1) : null,
@@ -133,7 +139,7 @@ export async function marketCards(input: { viewerId: string; groupId?: string; w
         .map((e) => ({ id: e.id, from: { id: e.fromUser, displayName: nameOf.get(e.fromUser) ?? "Someone" }, to: { id: e.toUser, displayName: nameOf.get(e.toUser) ?? "Someone" }, quantity: e.quantity ?? 1n })),
       votesCast: votes.filter((v) => v.dareId === d.id).length,
       saidBy: ((u) => (u ? (nameOf.get(u) ?? null) : null))(said.find((x) => x.dareId === d.id)?.userId),
-      needsYou: state === "open" && !iAmIn ? "Put your number in" : state === "locked" && iAmIn && !votes.some((v) => v.dareId === d.id && v.userId === input.viewerId) ? "Say how it came out" : null,
+      needsYou: state === "open" && !iAmIn ? "Put your number in" : state === "locked" && iAmIn && votingOpen(d, d.templateId ? (clockOf.get(d.templateId) ?? null) : null, now) && !votes.some((v) => v.dareId === d.id && v.userId === input.viewerId) ? "Say how it came out" : null,
       media: (memories.get(d.id) ?? []).map((m) => ({ id: m.id, author: m.author })),
       calledBy: state === "resolved" && callerOf.get(d.id) ? ((id) => (id === input.viewerId ? "You" : (nameOf.get(id) ?? "Someone").split(/\s+/)[0] ?? "Someone"))(callerOf.get(d.id) as string) : null,
     });

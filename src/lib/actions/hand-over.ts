@@ -10,7 +10,7 @@ import { WORDS } from "@/lib/ui/errors";
 import { enterFromHost, withdrawHostedEntry } from "@/lib/ledger/hand-over";
 import { LOCK_AFTER } from "@/lib/ledger/pass-the-phone";
 import { MarketError } from "@/lib/ledger/markets";
-import { notifyEnteredFrom, notifyJoined, notifyAllIn } from "@/lib/notify";
+import { notifyEnteredFrom, notifyJoined } from "@/lib/notify";
 
 const uuid = z.string().uuid();
 const Position = z.object({ stake: z.string().regex(/^\d{1,30}$/), value: z.string().regex(/^-?\d{1,30}$/) });
@@ -44,7 +44,6 @@ export async function enterFromHostAction(rawDareId: string, rawPosition: unknow
   revalidatePath(`/m/${dareId.data}`);
   revalidatePath("/");
   after(() => notifyJoined(dareId.data, friendId.data));
-  after(() => notifyAllIn(dareId.data, friendId.data));
   after(() => notifyEnteredFrom(friendId.data, host.id, dareId.data).catch((err: unknown) => console.error("the entered-from notice did not go out", err instanceof Error ? err.message : err)));
   const [d] = await db.select({ resolvesBy: schema.dares.resolvesBy }).from(schema.dares).where(eq(schema.dares.id, dareId.data));
   return { ok: true, changeUntil: d?.resolvesBy?.toISOString() ?? null };

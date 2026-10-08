@@ -6,7 +6,7 @@
  * The rows are assembled here as data so the ordering rule and the "nothing counts, nothing ages" rule have tests.
  */
 import { draftOnNow } from "./drafts";
-import { inCount } from "@/lib/ui/copy";
+import { CALLS_ARE_IN, FIRST_CALL_CLOSE, inCount, IT_HAPPENED } from "@/lib/ui/copy";
 import { and, desc, eq, inArray, isNotNull, isNull, ne, or } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { inkOf, type InkName } from "@/lib/ui/ink";
@@ -88,22 +88,22 @@ const word = (n: number) => WORDS[n] ?? String(n);
 /** The count beside a clock lives with the copy, where the game's cards read it too (the second-pass round). */
 export { inCount };
 
-export function needFromMarket(m: Pick<MarketCardData, "dare" | "state" | "people" | "groupSize" | "votesCast" | "saidBy">, viewerId: string, voted: boolean, now: Date, closes: (at: Date) => string): Omit<Extract<NeedRow, { question: true }>, "groupId"> | null {
+export function needFromMarket(m: Pick<MarketCardData, "dare" | "state" | "people" | "votesCast" | "saidBy" | "votingOpen">, viewerId: string, voted: boolean, now: Date, closes: (at: Date) => string): Omit<Extract<NeedRow, { question: true }>, "groupId"> | null {
   const d = m.dare;
-  const base = { key: d.id, subject: d.title, question: true as const, ...lookOf(d, m.state === "locked" ? (m.votesCast > 0 ? "voting" : "locked") : "open") };
+  const base = { key: d.id, subject: d.title, question: true as const, ...lookOf(d, m.state === "locked" ? (m.votingOpen ? "voting" : "locked") : "open") };
   const iAmIn = m.people.some((p) => p.id === viewerId);
   if (m.state === "open") {
-    const everyone = m.people.length >= m.groupSize && m.groupSize > 1;
     const timesUp = d.resolvesBy !== null && d.resolvesBy.getTime() <= now.getTime();
-    // Needs you holds only what this person can finish now (4.7). The close refuses fewer than two in (`lockMarket`), so the asker's
-    // Close on time's up is offered only with two or more in: a question only the asker is in stays in Running, where it swipes
-    // to Remove (3.15). The reason beside the mark is the count (3.23: how many are in), never the state as a sentence: "6 of 6 in".
-    if (d.creatorId === viewerId && iAmIn && (everyone || (timesUp && m.people.length >= 2))) return { ...base, kind: "lock", href: `/m/${d.id}#close`, verb: "Close", context: everyone ? inCount(m.people.length, m.groupSize) : "Time’s up on this one", deadline: d.resolvesBy, since: d.createdAt };
+    // Needs you holds only what this person can finish now (4.7). Nobody is asked by name (the games-and-the-reveal round), so the
+    // close is never owed for everyone being in: only a question stuck past its time with two or more in is the asker's to close
+    // here (the close refuses fewer, `lockMarket`), and a question only the asker is in stays in Running, where it swipes to Remove (3.15).
+    if (d.creatorId === viewerId && iAmIn && timesUp && m.people.length >= 2) return { ...base, kind: "lock", href: `/m/${d.id}#close`, verb: "Close", context: "Time’s up on this one", deadline: d.resolvesBy, since: d.createdAt };
     // Past its time nobody gets in (the close is a hard cutoff: `pastItsClose` refuses the entry), so there is no Enter row to finish.
-    if (!iAmIn && !timesUp) return { ...base, kind: "enter", href: `/m/${d.id}#enter`, verb: "Enter", context: `${d.resolvesBy ? `Closes ${closes(d.resolvesBy)} · ` : ""}${inCount(m.people.length, m.groupSize)}`, deadline: d.resolvesBy, since: d.createdAt };
+    if (!iAmIn && !timesUp) return { ...base, kind: "enter", href: `/m/${d.id}#enter`, verb: "Enter", context: `${d.resolvesBy ? `Closes ${closes(d.resolvesBy)} · ` : d.closesAfterFirst ? `${FIRST_CALL_CLOSE} · ` : ""}${inCount(m.people.length)}`, deadline: d.resolvesBy, since: d.createdAt };
     return null;
   }
-  if (m.state === "locked" && iAmIn && !voted) {
+  // Calls are in, and the vote waits for the thing to happen (the games-and-the-reveal round): nothing to do yet, so it runs.
+  if (m.state === "locked" && iAmIn && !voted && m.votingOpen) {
     // The mark says it is in voting (3.23); the words beside it are who spoke and the count, never the state again.
     // Only the people in it call it (the first-contact round, 2026-10-04): the count is over the account-holders in.
     const voters = m.people.filter((p) => !p.ghost).length;
@@ -117,7 +117,7 @@ export function needFromMarket(m: Pick<MarketCardData, "dare" | "state" | "peopl
 export type PersonRow = { user: Person; token: { ownerId: string; denomination: DenominationRow; quantity: bigint } | null };
 
 /** A question in flight this person has already acted on: where it stands, and no action (docs/design.md 4.7). A game with more than one is one row, its href the game page. */
-export type RunningRow = { id: string; title: string; /** For the row's shell (9.4). */ shell?: MarketShell; mark: MarkRef | null; ink: InkName; state: "in" | "locked" | "voting"; caption: string; /** The set of people it belongs to, for collapsing a game's questions into one row. */ groupId?: string; game?: { away: TeamFace; home: TeamFace; href: string; /** The game's questions in this set, which the row swipes as one (3.15, ruled 2026-09-27). */ ids: string[] } | null; /** A market this person asked that nobody else is in, or a game none of whose questions anyone else is in: the row answers a left swipe with Remove (3.15). */ removable?: true; /** This person's last tap on it (the lock, the vote that decided it) is still going through (3.15, 5.2): the on-its-way mark stands in for the state mark. */ onWay?: true };
+export type RunningRow = { id: string; title: string; /** Where the row goes when not the question's own address: a game question's game page (section 4). */ href?: string; /** For the row's shell (9.4). */ shell?: MarketShell; mark: MarkRef | null; ink: InkName; state: "in" | "locked" | "voting"; caption: string; /** The set of people it belongs to, for collapsing a game's questions into one row. */ groupId?: string; game?: { away: TeamFace; home: TeamFace; href: string; /** The game's questions in this set, which the row swipes as one (3.15, ruled 2026-09-27). */ ids: string[] } | null; /** A market this person asked that nobody else is in, or a game none of whose questions anyone else is in: the row answers a left swipe with Remove (3.15). */ removable?: true; /** This person's last tap on it (the lock, the vote that decided it) is still going through (3.15, 5.2): the on-its-way mark stands in for the state mark. */ onWay?: true };
 
 export type HomeData = {
   needs: NeedRow[];
@@ -145,10 +145,13 @@ export function squareSentence(names: string[]): string {
  * ("Resolving tonight", "Voting ends tonight"). Where it stands, never how long it has stood there, and never a
  * state in words: the mark says in, locked or voting (3.23).
  */
-export function runningCaption(m: Pick<MarketCardData, "dare" | "state" | "people" | "groupSize" | "votesCast" | "unit" | "pickOne">, closes: (at: Date) => string, viewerId: string): string {
-  const d = m.dare;
-  if (m.state === "locked") return d.resolvesBy ? `${m.votesCast === 0 ? "Resolving" : "Voting ends"} ${closes(d.resolvesBy)}` : "";
+export function runningCaption(m: Pick<MarketCardData, "dare" | "state" | "people" | "votesCast" | "unit" | "pickOne" | "votingOpen">, closes: (at: Date) => string, viewerId: string): string {
   const mine = m.people.find((p) => p.id === viewerId) ?? null;
+  // Once it closes, the stretch and what you said (3.15 as the fifteenth session drew it): "Calls are in · you said 70%", then "It's happened · you said 70%".
+  if (m.state === "locked") {
+    const said = !mine ? null : m.pickOne && mine.pick !== null ? `you said ${m.pickOne.answers.find((a) => a.index === mine.pick)?.text ?? "?"}` : m.unit && mine.number !== null ? `you said ${unitPhrase(BigInt(mine.number), m.unit)}` : mine.percent !== null ? `you said ${mine.percent}%` : null;
+    return [m.votingOpen ? IT_HAPPENED : CALLS_ARE_IN, said].filter(Boolean).join(" · ");
+  }
   const entry = !mine ? null : m.pickOne && mine.pick !== null ? `You’re in: ${m.pickOne.answers.find((a) => a.index === mine.pick)?.text ?? "?"}` : m.unit && mine.number !== null ? `You’re in at ${unitPhrase(BigInt(mine.number), m.unit)}` : mine.percent !== null ? `You’re in at ${mine.percent}%` : "You’re in";
   const n = m.people.length;
   const count = n <= 1 ? "just you so far" : `${word(n).toLowerCase()} of you`;
@@ -265,7 +268,7 @@ async function questionsFor(me: { id: string }, opts: { now: Date; closes: (at: 
     const list = listOf(m, n !== null);
     if (n && list === "needs") needs.push({ ...n, groupId: m.dare.groupId, shell } as NeedRow);
     else if (list === "running") {
-      running.push({ id: m.dare.id, title: m.dare.title, shell, mark: markRefOf(m.dare), ink: m.ink, state: m.state === "locked" ? (m.votesCast > 0 ? "voting" : "locked") : "in", caption: runningCaption(m, opts.closes, me.id), groupId: m.dare.groupId, ...(m.state === "open" && m.dare.creatorId === me.id && m.people.length === 1 && m.viewerIn ? { removable: true as const } : {}) });
+      running.push({ id: m.dare.id, title: m.dare.title, shell, mark: markRefOf(m.dare), ink: m.ink, state: m.state === "locked" ? (m.votingOpen ? "voting" : "locked") : "in", caption: runningCaption(m, opts.closes, me.id), groupId: m.dare.groupId, ...(m.state === "open" && m.dare.creatorId === me.id && m.people.length === 1 && m.viewerIn ? { removable: true as const } : {}) });
     } else if (list === "over") over.push(m);
   }
   // A game with more than one question in the same set is one row (4.7).
@@ -274,7 +277,32 @@ async function questionsFor(me: { id: string }, opts: { now: Date; closes: (at: 
   const looks = new Map<string, { gameId: string; name: string; away: TeamFace; home: TeamFace; score: string | null }>();
   for (const [dareId, { game }] of games) looks.set(dareId, { gameId: game.id, name: game.name, away: { abbr: game.awayAbbr, name: game.awayShort, color: game.awayColor }, home: { abbr: game.homeAbbr, name: game.homeShort, color: game.homeColor }, score: game.finalSeenAt && game.homeScore !== null && game.awayScore !== null ? scoreLine({ home: game.homeScore, away: game.awayScore }, game.homeShort, game.awayShort) : null });
   const c = collapseGames({ needs, running, over }, looks);
+  // A question on a game opens on its game page with that question open (section 4; 3.33, "Links"), its move's fragment kept; the game page draws no market's shell.
+  for (const n of c.needs) {
+    // A game's one row on Now (4.7): its pressing question opens on the page too.
+    if (n.kind === "game") {
+      const id = /^\/m\/([0-9a-f-]{36})/.exec(n.game.questionHref)?.[1];
+      if (id) n.game.questionHref = onItsGamePage(n.key, id, n.game.questionHref);
+      continue;
+    }
+    const g = n.question ? looks.get(n.key) : undefined;
+    if (!g) continue;
+    n.href = onItsGamePage(g.gameId, n.key, n.href);
+    if ("shell" in n) n.shell = undefined;
+  }
+  for (const r of c.running) {
+    const g = r.game ? undefined : looks.get(r.id);
+    if (!g) continue;
+    r.href = onItsGamePage(g.gameId, r.id, "");
+    r.shell = undefined;
+  }
   return { needs: c.needs as NeedRow[], running: c.running, over: c.over, gamesOver: c.happened };
+}
+
+/** A game question's address: its game page with it open, and the move's fragment the row's own address carried (`#enter`, `#ballot`, `#close`). Pure. */
+export function onItsGamePage(gameId: string, dareId: string, href: string): string {
+  const hash = href.includes("#") ? href.slice(href.indexOf("#")) : "";
+  return `/on/${gameId}?q=${dareId}${hash}`;
 }
 
 /** Now: what needs this person, what is running, and what just happened are all in the database; the one indexer read is for how the closed ones closed, and only when there are any. */

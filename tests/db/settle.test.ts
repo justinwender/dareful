@@ -13,7 +13,8 @@ import { ensureUsd } from "@/lib/ledger/denominations";
 import { createGroup } from "@/lib/ledger/groups";
 import * as markets from "@/lib/ledger/markets";
 import { cleanResolution, decidedUnresolved, stateCase, tick } from "@/lib/ledger/settle";
-import { cleanup, codeOf, tempSigner, track, type Signer } from "./fixture";
+import { sayItHappened } from "@/lib/ledger/calls";
+import { cleanup, codeOf, itHappened, tempSigner, track, type Signer } from "./fixture";
 
 let ana: Signer, ben: Signer, cy: Signer;
 before(async () => {
@@ -56,6 +57,8 @@ test("a case is kept apart from what happened, only someone who is in can make o
   await enter(ben, 2000n);
   assert.equal(await codeOf(() => stateCase(d.id, ana.user.id, "too early")), "wrong_state");
   await lockInMirror(d.id);
+  assert.equal(await codeOf(() => markets.sayWhatHappened(d.id, ana.user.id, "We measured it.")), "wrong_state", "closed, and nothing has happened yet: calls are in");
+  await itHappened(d.id);
   await markets.sayWhatHappened(d.id, ana.user.id, "We measured it.");
   await stateCase(d.id, ana.user.id, "The north tube is 8,558 feet.");
   await stateCase(d.id, ana.user.id, "The north tube is 8,558 feet, per the Port Authority.");
@@ -152,7 +155,7 @@ test("the tick tells the asker their time has come exactly once, however often i
   assert.deepEqual([first.arbitrated, first.expired, first.failed], [[], [], []], "a day has not passed, so the group still gets to call it");
 });
 
-test("voting opened is told once per closed question whichever path closed it, and the reminder is asked for twelve hours in and marked done only once nobody is waiting on their morning", async () => {
+test("voting opened is told once per closed question once it has happened, whichever way, and the reminder is asked for twelve hours into the vote and marked done only once nobody is waiting on their morning", async () => {
   const H = 3_600_000;
   const opened: string[] = [];
   const asked: string[] = [];
@@ -164,25 +167,34 @@ test("voting opened is told once per closed question whichever path closed it, a
       return { waiting };
     },
   };
+  const run = (id: string) => tick(new Date(), async () => undefined, { onlyIds: [id], notifyVoting });
   const { d, enter } = await question();
   await enter(ana, 8000n);
   await enter(ben, 2000n);
   await lockInMirror(d.id, { lockedAt: new Date(Date.now() - 13 * H) });
-  const first = await tick(new Date(), async () => undefined, { onlyIds: [d.id], notifyVoting });
-  assert.deepEqual([first.votingOpened, opened], [[d.id], [`${d.id}:${ana.user.id}`]], "told once, the asker as its cause");
-  assert.deepEqual([first.reminded, asked], [[], [d.id]], "someone's night: asked for, and not yet marked done");
+  const closed = await run(d.id);
+  assert.deepEqual([closed.votingOpened, closed.reminded, opened, asked], [[], [], [], []], "closed thirteen hours ago with nothing happened yet: calls are in, and nobody is told anything");
+  await sayItHappened(d.id, { userId: ben.user.id });
+  const first = await run(d.id);
+  assert.deepEqual([first.votingOpened, opened], [[d.id], [`${d.id}:${ben.user.id}`]], "told once, Ben, who said it happened, as its cause");
+  assert.deepEqual([first.reminded, asked], [[], []], "twelve hours from the vote opening, never from the close");
+  const again = await run(d.id);
+  assert.deepEqual([again.votingOpened, opened.length], [[], 1], "told once, however often the tick runs");
+  await db.update(schema.dares).set({ voteAskedAt: new Date(Date.now() - 13 * H) }).where(eq(schema.dares.id, d.id));
+  const second = await run(d.id);
+  assert.deepEqual([second.votingOpened, second.reminded, asked], [[], [], [d.id]], "someone's night: asked for, and not yet marked done");
   waiting = 0;
-  const second = await tick(new Date(), async () => undefined, { onlyIds: [d.id], notifyVoting });
-  assert.deepEqual([second.votingOpened, second.reminded, asked.length], [[], [d.id], 2], "nobody waiting: marked done");
-  const third = await tick(new Date(), async () => undefined, { onlyIds: [d.id], notifyVoting });
-  assert.deepEqual([third.reminded, asked.length], [[], 2], "never a second");
-  // Locked an hour ago: voting opened, and no reminder asked for yet.
-  const fresh = await question();
-  await fresh.enter(ana, 8000n);
-  await fresh.enter(ben, 2000n);
-  await lockInMirror(fresh.d.id, { lockedAt: new Date(Date.now() - H) });
-  const r = await tick(new Date(), async () => undefined, { onlyIds: [fresh.d.id], notifyVoting });
-  assert.deepEqual([r.votingOpened, r.reminded, asked.includes(fresh.d.id)], [[fresh.d.id], [], false]);
+  const third = await run(d.id);
+  assert.deepEqual([third.reminded, asked.length], [[d.id], 2], "nobody waiting: marked done");
+  const fourth = await run(d.id);
+  assert.deepEqual([fourth.votingOpened, fourth.reminded, asked.length], [[], [], 2], "never a second");
+  // Its date coming opens it too, with the asker as its cause.
+  const timed = await question();
+  await timed.enter(ana, 8000n);
+  await timed.enter(ben, 2000n);
+  await lockInMirror(timed.d.id, { lockedAt: new Date(Date.now() - H), resolvesBy: new Date(Date.now() - 60_000) });
+  const r = await run(timed.d.id);
+  assert.deepEqual([r.votingOpened, r.reminded, opened.includes(`${timed.d.id}:${ana.user.id}`)], [[timed.d.id], [], true]);
 });
 
 test("a question is decided by its leading outcome, never by how many voted: a split one holds no place in the tick's list", async () => {

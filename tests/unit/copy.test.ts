@@ -129,14 +129,15 @@ test("how many are in, before you are: nobody at zero, one friend, then words or
 
 const t0 = new Date("2026-09-19T20:00:00Z");
 const dare = { id: "d1", title: "Does John fall asleep?", creatorId: "creator", resolvesBy: new Date(t0.getTime() + 86_400_000), createdAt: t0, lockedAt: null as Date | null };
-const market = (over: Record<string, unknown>) => ({ state: "open", people: [{ id: "creator", name: "C", percent: null, number: null, pick: null }], groupSize: 4, votesCast: 0, saidBy: null, unit: null, pickOne: null, ...over, dare: { ...dare, ...((over.dare as object) ?? {}) } }) as never;
+const market = (over: Record<string, unknown>) => ({ state: "open", people: [{ id: "creator", name: "C", percent: null, number: null, pick: null }], votesCast: 0, saidBy: null, unit: null, pickOne: null, votingOpen: true, ...over, dare: { ...dare, ...((over.dare as object) ?? {}) } }) as never;
 const person = (id: string) => ({ id, name: id, percent: null, number: null, pick: null });
 
-test("the asker's Close row gives the count as its reason, never the state as a sentence", () => {
-  const everyone = market({ people: ["creator", "a", "b", "c"].map(person) });
-  const n = needFromMarket(everyone, "creator", false, t0, () => "tonight");
-  assert.equal(n?.kind, "lock");
-  assert.equal(n?.context, "4 in");
+test("the asker's Close row is owed only once the question is stuck past its time, never for everyone being in, and says so without a state as a sentence", () => {
+  const four = market({ people: ["creator", "a", "b", "c"].map(person) });
+  assert.equal(needFromMarket(four, "creator", false, t0, () => "tonight"), null, "nobody is asked by name (the games-and-the-reveal round), so four in owes no close");
+  const stuck = market({ people: ["creator", "a", "b", "c"].map(person), dare: { resolvesBy: new Date(t0.getTime() - 60_000) } });
+  const n = needFromMarket(stuck, "creator", false, t0, () => "tonight");
+  assert.deepEqual([n?.kind, n?.context], ["lock", "Time’s up on this one"]);
   assert.ok(!/everyone/i.test(n?.context ?? ""), "the sentence the mark replaced (3.23)");
 });
 

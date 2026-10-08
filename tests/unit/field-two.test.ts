@@ -40,10 +40,10 @@ test("a drag moves the sheet one position by direction past 24px, a shorter one 
   assert.equal(nextPosition("raised", -100, ["tucked", "resting", "raised"]), "raised", "no full where raised shows it all");
 });
 
-test("a count names its second number only when it is real: someone named still out", () => {
-  assert.equal(inCount(3, 6), "3 of 6 in");
-  assert.equal(inCount(4, 4), "4 in");
-  assert.equal(inCount(4, 1), "4 in", "nobody was named: the set is whoever joins");
+test("a count is how many are in and never a second number, since every question goes to whoever its asker sends it to", () => {
+  assert.equal(inCount(3), "3 in");
+  assert.equal(inCount(1), "1 in");
+  assert.equal(inCount(0), "nobody’s in yet", "never a zero (3.14)");
 });
 
 test("a pasted sticker shows at once from the device's copy and is not pickable until it is stored", () => {
@@ -62,7 +62,7 @@ test("the PIN is a masked numeric text field the password manager never takes, t
   }
   assert.match(read("src/app/globals.css"), /\.pin-field \{\n  -webkit-text-security: disc;/);
   assert.ok(!/capture=/.test(read("src/components/ledger/close-obligation.tsx")), "the settlement photo: camera or library");
-  assert.ok(!/capture=\{state === "open"\}/.test(read("src/app/m/[id]/page.tsx")), "a photo on an open market: camera or library");
+  assert.ok(!/capture=\{state === "open"\}/.test(read("src/app/m/[id]/market-screen.tsx")), "a photo on an open market: camera or library");
   const ask = read("src/components/markets/ask-form.tsx");
   for (const id of ["ask-line", "ask-title"]) {
     const i = ask.indexOf(`id="${id}"`);

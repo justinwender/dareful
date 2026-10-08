@@ -35,7 +35,7 @@ export async function POST(req: Request): Promise<Response> {
   const warming = keepWarm();
   const report = await tick(now, notifyDeadline, {
     // The two voting notices (the field round, 1.8): the tick holds each claim, so the senders skip their own.
-    notifyVoting: { opened: (id, creatorId) => notifyVotingOpened(id, creatorId, "time", { claimed: true }), remind: (id) => notifyVoteReminder(id, now) },
+    notifyVoting: { opened: (id, causedBy, how, actorName) => notifyVotingOpened(id, causedBy, how, { claimed: true, ...(actorName ? { actorName } : {}) }), remind: (id) => notifyVoteReminder(id, now) },
     notifyWarning: (id, flavour, actsAt) => notifyBackstopWarning(id, flavour, actsAt, now),
     check: balldontlie,
   });

@@ -18,13 +18,14 @@ function marketOpen(kind: "binary" | "numeric" | "categorical"): InfoSheet {
   // The entry and the sheet exist until you're in and again from Change (3.24: once you're in, nothing is your move); on a blind market never again.
   const until = "until you’re in, or changing";
   const entry = kind === "numeric" ? e("Tap the number", "Type your number; − and + step it, and holding either repeats.", { qualifier: until }) : kind === "categorical" ? e("Tap an answer", "Picks it; tap another to move your pick.", { qualifier: until }) : e("Drag along the odds line", "Sets your odds from 0% to 100%; a tap anywhere on the line jumps there.", { qualifier: until });
-  const sheet = kind === "categorical" ? e("Swipe the sheet down", "Lowers it to a bar, so the terms behind six answers can be read; tap the bar to raise it.", { qualifier: until }) : e("Swipe the sheet", "From its top row: up shows your stake and the move that gets you in; down lowers it.", { qualifier: until });
+  // Once in, with two in, the sheet holds the close instead (the games-and-the-reveal round), and the same gesture lowers it.
+  const sheet = kind === "categorical" ? e("Swipe the sheet down", "Lowers it to a bar, so what’s behind it can be read; tap the bar to raise it.") : e("Swipe the sheet", "From its top row: up raises it to its move, down lowers it.");
   // A pick has no closer and no gap (3.25): the answer that happened scores in full and every other pick nothing.
   const settles = kind === "categorical" ? e("How it settles", "A wrong pick settles with each right pick; all right or all wrong, nothing changes hands.") : e("How it settles", "You settle only with people who land closer than you, and only by the gap between you.");
   return {
     name: "A market, while it’s open",
     groups: {
-      Gestures: [e("Tap the avatars", "Opens who’s in: everyone in, and anyone still out, each with a nudge beside them.", { qualifier: "once you’re in" }), sheet, entry],
+      Gestures: [e("Tap the avatars", "Opens who’s in: everyone in so far.", { qualifier: "once you’re in" }), sheet, entry],
       Icons: [
         e("More", "Beside this sheet’s icon: how this one works, and its colour to pick if you asked it.", { glyph: "more", qualifier: "once you’re in" }),
         e("Share", "Sends the question and its link to a chat; the preview shows who asks and when it closes.", { glyph: "share", qualifier: "once you’re in" }),
@@ -35,15 +36,32 @@ function marketOpen(kind: "binary" | "numeric" | "categorical"): InfoSheet {
       "Rules and timing": [
         e("Your entry", "Yours to change until the close, from Change on your entry line.", { qualifier: "once you’re in" }),
         e("Where everyone landed", "Shows once you’re in, never before; in a blind market yours is final then."),
-        e("The close", "Past its time nobody gets in or changes; then it’s called, unless set to go unsettled."),
-        e("Photos", "Add them from the bottom of the screen; everyone asked who’s signed in sees them.", { qualifier: "once you’re in" }),
+        e("The close", "Its asker, enough of the people in, its time or a game’s start closes it."),
+        e("Photos", "Add them from the bottom of the screen; everyone in it and its group sees them.", { qualifier: "once you’re in" }),
         settles,
       ],
       "Everything else": [
         e("Not you?", "Under the move that gets you in: signs this phone out so someone else can join.", { qualifier: "until you’re in" }),
         e("Remove, in who’s in", "Takes out an entry from someone without an account, until the close.", { qualifier: "if you asked it" }),
-        e("Close it with 4", "Closes it early; whoever isn’t in yet can’t get in after.", { qualifier: "if you asked it, with two in" }),
+        e("Closing it early", "The asker closes it; anyone else says Calls are in, and enough of them close it.", { qualifier: "with two in" }),
       ],
+    },
+  };
+}
+
+/** A market once calls are in (3.24, the fifteenth session): closed, and waiting for it to happen. */
+function marketCalls(): InfoSheet {
+  return {
+    name: "A market, calls are in",
+    groups: {
+      Gestures: [e("Tap the avatars", "Opens who’s in, by name.", { qualifier: "if you’re in it" })],
+      Icons: [e("More", "What the stake is in, and for the asker its colour.", { glyph: "more" }), e("Share", "Sends the market’s link to a chat.", { glyph: "share", qualifier: "if you’re in it" }), e("Copy the link", "Copies it; the icon turns to a check for a moment.", { glyph: "copy", qualifier: "if you’re in it" })],
+      "Rules and timing": [
+        e("Calls are in", "Nobody gets in or changes now, and who said what shows to everyone in."),
+        e("It’s happened", "Opens the vote for everyone at once; so do the final score and the date it’s decided."),
+        e("The live score", "The score and where the game is, above who said what, while it’s being played.", { qualifier: "on a question from What’s on" }),
+      ],
+      "Everything else": [e("The numbers under it", "Each person’s exact number, or on a game the side they leaned to.")],
     },
   };
 }
@@ -91,7 +109,7 @@ export const INFO_SHEETS: Record<string, InfoSheet> = {
       Icons: [e("Ask something", "Opens the question step, rising over Now; the tab bar is just covered.", { glyph: "plus" }), e("Back, on other screens", "Lands on the tab you came from; inside asking, it goes one step back.", { glyph: "back" })],
       "Rules and timing": [
         e("Needs you", "Only what you can finish now, time-bound first; the yellow dot marks the soonest."),
-        e("Running", "What you’ve acted on: your entry and how many are in, then the clock alone once it closes."),
+        e("Running", "What you’ve acted on: your entry and how many are in, then where it stands once closed."),
         e("Just happened", "What the group did, the newest eight; a tap opens the question, the game or the person."),
         e("Coming back", "Any screen re-reads itself when you return to the app after two seconds away."),
         e("The turning ring", "A tap of yours still going through; Try again marks one that never landed."),
@@ -176,6 +194,7 @@ export const INFO_SHEETS: Record<string, InfoSheet> = {
   "market-open": marketOpen("binary"),
   "market-open-number": marketOpen("numeric"),
   "market-open-pick": marketOpen("categorical"),
+  "market-calls": marketCalls(),
   "market-voting": marketVoting("binary"),
   "market-voting-number": marketVoting("numeric"),
   "market-voting-pick": marketVoting("categorical"),
@@ -227,7 +246,7 @@ export const INFO_SHEETS: Record<string, InfoSheet> = {
   "market-link": {
     name: "A question, from a link",
     groups: {
-      Gestures: [e("Swipe the sheet", "Up shows your stake and the move that gets you in; down lowers it to read the question.")],
+      Gestures: [e("Swipe the sheet", "Up raises it to its move; down lowers it to read the question.")],
       Icons: [e("Share", "Sends the question and its link to a chat; the preview shows who asks and when it closes.", { glyph: "share", qualifier: "once you’re in" }), e("Copy the link", "Copies it; the icon turns to a check for a moment.", { glyph: "copy", qualifier: "once you’re in" })],
       "Rules and timing": [
         e("No account needed", "A name is enough to get in.", { qualifier: "while it’s open" }),
@@ -283,26 +302,26 @@ export const INFO_SHEETS: Record<string, InfoSheet> = {
     groups: {
       Icons: [
         e("More", "Every question’s terms, as they’ll be read.", { glyph: "more" }),
-        e("Share", "Sends the game and its link to a chat; the preview shows who started it and the questions.", { glyph: "share", qualifier: "until kickoff" }),
-        e("Copy the link", "Copies it; the icon turns to a check for a moment.", { glyph: "copy", qualifier: "until kickoff" }),
+        e("Share", "Sends the game and its link to a chat; the preview shows who started it and the questions.", { glyph: "share", qualifier: "until the final" }),
+        e("Copy the link", "Copies it; the icon turns to a check for a moment.", { glyph: "copy", qualifier: "until the final" }),
       ],
       "Rules and timing": [
-        e("Kickoff", "Every question closes when the game starts."),
+        e("Kickoff", "A question asked before the start closes at it; one asked during, after its first call."),
         e("No number until you’re in", "Until you’re in, a card shows the close and how many are in, never anyone’s number.", { qualifier: "while it’s open" }),
         e("The line on a card", "A dot marks your answer and a tick the group’s number, from three in.", { qualifier: "once you’re in" }),
         e("The yellow dot", "Marks the first question still open that you’re not in.", { qualifier: "until kickoff" }),
-        e("Anyone can add", "Anyone in the group can add a question, not only whoever started the game."),
+        e("Anyone can add", "Anyone on the page can add a question until the final, not only whoever started it."),
         e("The final score", "Settles what the votes haven’t, a day after the game, or three with only one result."),
         e("The first drive", "The play-by-play settles it if the votes haven’t, three days on.", { qualifier: "if it’s among the questions" }),
       ],
-      "Everything else": [e("The names under the game", "Switch between the groups of friends you’re on this game with.", { qualifier: "with two or more groups" }), e("A question card", "Opens that question’s own screen."), e("Add another", "One more question from the menu, until kickoff.")],
+      "Everything else": [e("The names on a card", "Who asked it and with whom, when you’re on this game with two or more groups.", { qualifier: "with two or more groups" }), e("A question card", "Opens it here and closes the one open; its sheet is the page’s."), e("Add another", "One more question from the menu, until the final; one already here is offered first.")],
     },
   },
   "game-link": {
     name: "A game, from a link",
     groups: {
-      "Rules and timing": [e("No account needed", "Each question opens its own screen, where a name is enough to get in.", { qualifier: "until kickoff" }), e("Signed in", "Each question still opens its own screen; joining there puts you in with the people asked.")],
-      "Everything else": [e("Open, on a question", "Opens that question’s own screen; you get in there until kickoff."), e("Sign in", "Signs you in first; each question then opens its own screen, where you join as yourself.", { qualifier: "signed out" })],
+      "Rules and timing": [e("No account needed", "Each question opens here, in its card, where a name is enough to get in.", { qualifier: "until it closes" }), e("Signed in", "Each question opens here too; joining puts you in with whoever is in it.")],
+      "Everything else": [e("A question card", "Opens it here and closes the one open; you get in there until it closes.")],
     },
   },
   "game-night": {
@@ -311,8 +330,7 @@ export const INFO_SHEETS: Record<string, InfoSheet> = {
       Gestures: [e("Tap the large photo", "Opens it full screen, with the rest to swipe through; a small one shows large first."), e("Tap a row below", "Under The rest of that night, or day, opens that question or cover.")],
       "Rules and timing": [e("The final score", "Titles the night once it’s in; who’s got who adds every question together.")],
       "Everything else": [
-        e("The names under the game", "Switch to another group of friends you were on this game with.", { qualifier: "with two or more groups" }),
-        e("A question card", "Opens that question’s own screen, with how it ended."),
+        e("A question card", "Opens it here, with how it ended."),
         e("The plus after the photos", "Adds photos from the night; with none, Add the first photo.", { qualifier: "if you were in" }),
       ],
     },
@@ -327,9 +345,9 @@ export const INFO_SHEETS: Record<string, InfoSheet> = {
         e("The terms", "Written for you and fixed, so everyone reads the same words."),
       ],
       "Everything else": [
-        e("Next: who’s in", "Waits until a question is ticked; then pick the friends, then read the terms."),
-        e("Back to who’s in", "On the terms, returns to the friends you picked; the ticks are kept.", { qualifier: "when starting a game" }),
-        e("Send it", "Opens every ticked question at once, all closing at kickoff."),
+        e("Set the terms", "Waits until a question is ticked; then read the terms."),
+        e("Back", "On the terms, returns to the menu; the ticks are kept.", { qualifier: "when starting a game" }),
+        e("Send it", "Opens every ticked question at once, each closing as its terms say."),
       ],
     },
   },
@@ -397,7 +415,7 @@ export const INFO_SHEETS: Record<string, InfoSheet> = {
       "Rules and timing": [
         e("Ask me three things first", "Three quick questions before the terms, for when a lot rides on it."),
         e("A named subject", "A name the app can’t place asks what it is, in one tap, before the three."),
-        e("Next: who’s in", "Starts writing the terms while you pick who’s in."),
+        e("Set the terms", "Writes the terms for your question; they arrive as they’re written."),
       ],
       "Everything else": [
         e("Got a code?", "Opens the code screen to join a friend’s question instead."),
@@ -410,23 +428,10 @@ export const INFO_SHEETS: Record<string, InfoSheet> = {
       ],
     },
   },
-  "ask-who": {
-    name: "Who’s in",
-    groups: {
-      Icons: [e("Back", "Returns to the question, with everything kept.", { glyph: "back" })],
-      "Rules and timing": [e("The first row", "The people asked most recently, preselected; everyone picked hears once you’re in."), e("The colour", "May move to a neighbouring one here if these people have a question in it already.", { qualifier: "with a mark" })],
-      "Everything else": [
-        e("Edit, beside your question", "Back to the question."),
-        e("Want to call them something?", "Shows for three or more people from their second question; Not now twice ends it."),
-        e("Someone else", "Pick people you already share something with, one by one."),
-        e("Whoever I send it to", "Starts as just you, and grows as people join by link or code."),
-      ],
-    },
-  },
   "ask-terms": {
     name: "The terms",
     groups: {
-      Icons: [e("Back", "Returns to who’s in; the writing carries on.", { glyph: "back" })],
+      Icons: [e("Back", "Returns to the question; the writing carries on.", { glyph: "back" })],
       "Rules and timing": [
         e("Written in front of you", "The words arrive as they’re written; Still writing at three seconds, Try again at ten."),
         e("Everyone reads these", "Exactly these words, before they’re in; being in accepts what If it’s unclear says."),
@@ -441,7 +446,8 @@ export const INFO_SHEETS: Record<string, InfoSheet> = {
         e("Stakes", "The kind alone; how much is set at entry, and a group you’ve asked brings its own units."),
         e("Where everyone landed", "Hidden makes each answer final once made; you still see everyone’s once you’re in."),
         e("If it’s unclear", "A tiebreaker rules after the deadline, or it goes unsettled and nothing changes hands."),
-        e("Send it", "Saves the question and shows its screen; nobody else sees it until you’re in there."),
+        e("Send it", "Opens the question and shows its screen, with share, copy and the code to send it."),
+        e("A game it names", "Offered once: Let the final score settle it ties your question to that game.", { qualifier: "when it names a game" }),
         e("Try again", "Writes the terms again from the start.", { qualifier: "if the writing stops" }),
       ],
     },
@@ -459,7 +465,7 @@ export const INFO_SHEETS: Record<string, InfoSheet> = {
       "Everything else": [
         e("What the name is", "Tap a person, a pet or something else; the three questions are written for it.", { qualifier: "if a name was asked about" }),
         e("Change, on the subject line", "Reopens what the name is: a person, a pet, or something else.", { qualifier: "once you’ve said what it is" }),
-        e("Next: who’s in", "Works once all three are answered, and starts the terms being written."),
+        e("Set the terms", "Works once all three are answered, and starts the terms being written."),
         e("Make it a dare instead", "Puts the suggested line in as a question about something that’ll happen.", { qualifier: "if it declined" }),
         e("Say it another way", "Returns to what you typed, to put it as a claim about the world.", { qualifier: "after a decline, or on the pick" }),
       ],
