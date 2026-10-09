@@ -8,7 +8,7 @@ import { tipsShownAction } from "@/lib/actions/tips";
 import { INFO_ICON_ON } from "@/lib/ui/info";
 import { infoSheet } from "@/lib/ui/info-sheets";
 import { scrollPageTo, scrollTopOf } from "@/lib/ui/scroller";
-import { tipPlacement, tipsFor, TIP_MAX_WIDTH, type Box, type Tip } from "@/lib/ui/tips";
+import { CUT_PAD, tipPlacement, tipsFor, TIP_MAX_WIDTH, type Box, type Tip } from "@/lib/ui/tips";
 
 /** A guest's shown tips, on the phone. The touch-ups round's key held tips marked seen on a frame where none showed, so it is left behind. */
 const GUEST_KEY = "dareful_tips_shown";
@@ -32,11 +32,24 @@ function rememberGuest(screen: string): void {
   }
 }
 
-/** Whether a control is on the screen to point at: drawn, visible, inside the viewport, and not under a layer (the pinned sheet over the foot of a market, which held the who's-in row under it on the simulators). */
-function visible(el: HTMLElement): boolean {
+/** How far past a control its ring reaches (`CUT_PAD` and the 2px ring): what "whole on the screen" has to leave room for. */
+const RING_REACH = CUT_PAD + 2;
+
+/**
+ * Whether a control is on the screen to point at: drawn, visible, inside the viewport, and not under a layer (the pinned
+ * sheet over the foot of a market, which held the who's-in row under it on the simulators). `whole` asks for all of it
+ * and its ring inside the screen: a guest's share button at the screen's foot was ringed half off the bottom edge (the
+ * submission round, on the iOS 26 simulator), so a control only partly on the screen is brought in first.
+ */
+function visible(el: HTMLElement, whole = false): boolean {
   const r = el.getBoundingClientRect();
   if (r.width === 0 || r.height === 0) return false;
   if (r.bottom <= 0 || r.top >= window.innerHeight || r.right <= 0 || r.left >= window.innerWidth) return false;
+  // A control on a fixed layer (the +, the pinned sheet's own) cannot be scrolled anywhere: it is pointed at where it is.
+  if (whole && !el.closest("[data-fixed]")) {
+    const band = clearBand();
+    if (r.top - RING_REACH < band.top || r.bottom + RING_REACH > band.bottom) return false;
+  }
   // What is at the control's middle, looking through the tips' own layer: once a tip shows, that layer covers the whole
   // screen, and asking what is on top said every control was hidden, so every tip was taken down on its first frame
   // (the final round, section 3).
@@ -49,8 +62,8 @@ function visible(el: HTMLElement): boolean {
  * own +, off the screen), and the tip once went to that one, its card cut off at the top while the + it meant stayed
  * blurred (the touch-ups round).
  */
-function shown(selector: string): HTMLElement | null {
-  return Array.from(document.querySelectorAll<HTMLElement>(selector)).find(visible) ?? null;
+function shown(selector: string, whole = false): HTMLElement | null {
+  return Array.from(document.querySelectorAll<HTMLElement>(selector)).find((el) => visible(el, whole)) ?? null;
 }
 /** Whether a control is drawn on the page, on the screen or not: a tip for one off the screen brings it into view as it shows (`measure`). */
 function drawn(selector: string): HTMLElement | null {
@@ -77,8 +90,8 @@ function clearBand(): { top: number; bottom: number } {
 }
 
 /**
- * First-visit tips (docs/design.md 10.9 as amended 2026-10-08): the owner's set (`tipsFor`), one at a time, beside the
- * control each describes, the rest of the screen blurred and dimmed around a cut-out and the control ringed. A tap
+ * First-visit tips (docs/design.md 10.9 as amended 2026-10-08 and 2026-10-09): the owner's set (`tipsFor`), one at a
+ * time, beside the control each describes (on a market or a game page every one in one sequence, once the person is in), the rest of the screen blurred and dimmed around a cut-out and the control ringed. A tap
  * anywhere moves on; after the last the screen is as it was. Each tip is remembered once it has shown, on the account
  * for anyone signed in and on the phone for a guest, and never before: the touch-ups round's build remembered tips on
  * the frame it chose them, and took them down on the next. Nothing under it takes a touch while it shows.
@@ -128,7 +141,11 @@ export function FirstTips() {
       // the iOS 27 simulator: the share tip blurred "Keep your calls in an account"); the tips wait for either to go.
       if (document.querySelector('[data-sheet="open"], [data-account-step]')) return later(SETTLE_MS);
       // The icon that is showing, the topmost: Now carries two, one for each of its states, and hides the other; the ask layer's is above its root's.
-      const key = Array.from(document.querySelectorAll<HTMLElement>("[data-info-icon]")).filter((el) => el.getBoundingClientRect().width > 0).pop()?.dataset.infoIcon;
+      const icon = Array.from(document.querySelectorAll<HTMLElement>("[data-info-icon]")).filter((el) => el.getBoundingClientRect().width > 0).pop();
+      // A market's and a game page's tips wait until the person is in, then run as one (the submission round, section 0):
+      // the icon says so, and its attribute changing is what brings this look round again.
+      if (icon?.dataset.tipsWait !== undefined) return;
+      const key = icon?.dataset.infoIcon;
       const sheet = key ? infoSheet(key) : null;
       if (!sheet || !key) return;
       const seen = [...(me ? tipsSeen : guestSeen()), ...shownHere.current];
@@ -145,7 +162,7 @@ export function FirstTips() {
     };
     later(SETTLE_MS);
     const watch = new MutationObserver(() => later(SETTLE_MS));
-    watch.observe(document.body, { subtree: true, attributes: true, attributeFilter: ["data-info-icon"] });
+    watch.observe(document.body, { subtree: true, attributes: true, attributeFilter: ["data-info-icon", "data-tips-wait"] });
     return () => {
       if (timer) clearTimeout(timer);
       watch.disconnect();
@@ -159,10 +176,12 @@ export function FirstTips() {
     if (!tips) return;
     const measure = () => {
       const tip = tips[at];
-      const el = tip ? shown(tip.target) : null;
-      // A control that is drawn but off the screen, or under the sheet, is brought into the middle of what no layer covers
-      // once, and measured where it lands (the final round: an open card scrolled into place took the share row off the
-      // screen under the second tip, and the raised sheet on a game page's open question covered the code button).
+      // Whole, with its ring, until it has been brought in once; after that, wherever it could be brought to.
+      const el = tip ? shown(tip.target, !broughtIn.current.has(tip.key)) : null;
+      // A control that is drawn but off the screen, partly off it, or under the sheet, is brought into the middle of what no
+      // layer covers once, and measured where it lands (the final round: an open card scrolled into place took the share
+      // row off the screen under the second tip, and the raised sheet on a game page's open question covered the code
+      // button; the submission round: a share button half under the screen's foot was ringed half off it).
       if (tip && !el && !broughtIn.current.has(tip.key)) {
         const there = drawn(tip.target);
         if (there) {

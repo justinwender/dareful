@@ -116,7 +116,7 @@ export function dayLabel(at: Date, timeZone: string): string {
 
 /**
  * A share card and its metadata carry a first name only, never a full display name. A first word with no capital
- * in it that reads like part of an address or a handle ("justin.wender", "sam@example.com", the names the first
+ * in it that reads like part of an address or a handle ("sam.wells", "sam@example.com", the names the first
  * build stored) is cut before its first separator, less trailing digits, and capitalised: that is what friends
  * read until the person answers the name step. "J.R.", "Mary-Jane", "D’Arcy" and "sam" stand as they are, and a
  * word with nothing before its separator stands too.

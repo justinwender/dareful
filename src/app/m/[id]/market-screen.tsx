@@ -6,6 +6,7 @@ import { asc, and, eq, inArray } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { GhostMarketPage } from "./ghost";
 import { participantsOf, pidOf } from "@/lib/ledger/participants";
+import { passThePhoneShows } from "@/lib/ledger/hand-over";
 import { Avatar, AvatarStack } from "@/components/ledger/avatar";
 import { MediaFrame } from "@/components/ledger/media-frame";
 import { EmptySlot } from "@/components/markets/empty-slot";
@@ -1087,7 +1088,7 @@ export async function MarketScreen({ id, search, embedded = false, pageShares = 
   const relayWords = state === "locked" ? `We’re waiting on your call: ${d.title}` : `We’re waiting on you: ${d.title}`;
   // On a game, share, copy and the code to scan send the game page's link for this set, with the game tile and the game as its title (3.33, "Inviting is to the game"); the code's six characters are still this question's.
   const whosIn = (
-    <WhosInRow people={whosInPeople} holdouts={holdouts} count={whosInCount} share={pageShares ? null : game ? { url: `${appUrl}/on/${game.id}/${d.groupId}`, title: game.name } : { url: `${appUrl}/m/${d.id}`, title: d.title }} code={state === "open" && !pageShares ? { dareId: d.id, question: d.title, mark: markRefOf(d) } : null} chalk={!pageShares && state === "open" && (alone || (d.creatorId === me.id && positions.length === 0))} list={{ dareId: d.id, canRemove: state === "open" && d.creatorId === me.id, out: stillOut, stage: state === "locked" ? "vote" : "enter", canNudge: mine !== null, relay: { url: `${appUrl}/m/${d.id}`, text: relayWords } }} pass={state === "open" && mine ? { dareId: d.id, explained: me.handOverExplainedAt !== null } : null} />
+    <WhosInRow people={whosInPeople} holdouts={holdouts} count={whosInCount} share={pageShares ? null : game ? { url: `${appUrl}/on/${game.id}/${d.groupId}`, title: game.name } : { url: `${appUrl}/m/${d.id}`, title: d.title }} code={state === "open" && !pageShares ? { dareId: d.id, question: d.title, mark: markRefOf(d) } : null} chalk={!pageShares && state === "open" && (alone || (d.creatorId === me.id && positions.length === 0))} list={{ dareId: d.id, canRemove: state === "open" && d.creatorId === me.id, out: stillOut, stage: state === "locked" ? "vote" : "enter", canNudge: mine !== null, relay: { url: `${appUrl}/m/${d.id}`, text: relayWords } }} pass={passThePhoneShows({ open: state === "open", viewerIn: mine !== null, viewerAsked: d.creatorId === me.id }) ? { dareId: d.id, explained: me.handOverExplainedAt !== null } : null} />
   );
   // The photos while it is open and through the vote (3.37 and 3.39, amended 2026-09-27: the album is open the whole time): the same slot and frame as after it ends, last on the screen under the details, for everyone the door admits, someone in and the group it was asked in (a signed-in viewer past this point is one or the other: a non-member got the invitation above). The add tile and the empty slot are for someone who can add, which before the end means someone who is in while it is open; someone who only opened the link sees nothing here.
   const albumItems = media.memories.map((m) => ({ id: m.id, author: { name: m.author.displayName, hue: hueFor(m.author.id) }, removable: m.author.id === me.id }));
@@ -1321,7 +1322,7 @@ export async function MarketScreen({ id, search, embedded = false, pageShares = 
       <Screen arrive="fade">
         <LinkOpened link="market" dareId={d.id} signedIn />
         {/* Back, More and the information icon, and no context chip (10.3, 3.19): the band's asker line already names who was asked. */}
-        <TopBar back right={mine || state !== "open" ? more : null} info={infoKeyFor(state, memoryView, pickAnswers ? "categorical" : numberUnit ? "numeric" : "binary", votingIsOpen, rulingFlow)} />
+        <TopBar back right={mine || state !== "open" ? more : null} info={infoKeyFor(state, memoryView, pickAnswers ? "categorical" : numberUnit ? "numeric" : "binary", votingIsOpen, rulingFlow)} tipsWait={mine === null} />
         <div className="flex flex-col gap-7 py-2">
           {band}
           {body}

@@ -20,7 +20,7 @@ export type LoginDecision =
  * What is not a name (docs/decisions.md 2026-09-19: the local part of an email address is an identifier, and it
  * was landing on share cards in other people's group chats): an address or a tag (an "@" or a "+" anywhere), a
  * phone number (digits and phone punctuation only, five or more), or a handle (one token with dots or
- * underscores inside it, "justin.wender", "dana_q"). A dot at the end ("J.R.") or a space ("Dr. K") is not a
+ * underscores inside it, "sam.wells", "dana_q"). A dot at the end ("J.R.") or a space ("Dr. K") is not a
  * handle, and a hyphen or an apostrophe ("Mary-Jane", "D’Arcy") is a name's own. One rule at every door: the
  * sign-up step, the rename, and the link page's "Your name".
  */

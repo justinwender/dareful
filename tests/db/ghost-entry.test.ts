@@ -229,7 +229,7 @@ test("on a blind question a ghost's entry is final once made, as anyone's is", a
 test("a ghost's name is never an address or a handle", async () => {
   const { d, enter, ghost } = await question([ana]);
   await enter(ana, 7000n);
-  for (const typed of ["justin.wender", "sam@example.com", "jane+dynamic_test", "5550142"]) {
+  for (const typed of ["sam.wells", "sam@example.com", "jane+dynamic_test", "5550142"]) {
     const refused = await ghost({ name: typed }, [], 9000n).catch((e: unknown) => e);
     assert.ok(refused instanceof markets.MarketError && refused.code === "bad_input" && refused.message === "Say what your friends call you.", `${typed}: refused at the field, in the field's own sentence`);
     const rows = await db.select({ id: schema.participantClaims.id }).from(schema.participantClaims).where(and(eq(schema.participantClaims.createdBy, ana.user.id), eq(schema.participantClaims.displayName, typed)));

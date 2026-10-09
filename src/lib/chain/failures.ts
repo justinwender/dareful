@@ -7,6 +7,7 @@
  */
 import { and, eq, isNull, lte, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { redactKeys } from "@/lib/redact";
 
 /** How long a write may go on failing before the owner hears of it. */
 export const TELL_AFTER_MS = 15 * 60_000;
@@ -22,7 +23,7 @@ export function failureWhy(err: unknown): string {
   const detail = err instanceof Error ? (err as unknown as { details?: unknown }).details : undefined;
   const details = typeof detail === "string" && detail.length > 0 ? ` (${detail})` : "";
   const first = (raw.split("\n").find((l) => l.trim().length > 0) ?? "unknown").trim();
-  return `${first}${details}`.replace(/https?:\/\/\S+/g, "[rpc]").slice(0, 300);
+  return redactKeys(`${first}${details}`.replace(/https?:\/\/\S+/g, "[rpc]")).slice(0, 300);
 }
 
 /**

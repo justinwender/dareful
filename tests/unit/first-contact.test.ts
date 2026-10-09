@@ -295,12 +295,12 @@ test("ideas: thirteen fixed questions in four groups, two with a blank, the tile
   assert.ok(readFileSync("src/components/home/now-content.tsx", "utf8").includes("{ideasOnNow(home.running.length) ? <IdeasTile /> : null}"), "last on Now while fewer than three are running");
 });
 
-test("first-visit tips: the owner's set, three at a time, each once, \"Ask something\" once for every tab, placed beside the control and kept inside the screen", () => {
+test("first-visit tips: the owner's set, three at a time and a market's as one, each once, \"Ask something\" once for every tab, placed beside the control and kept inside the screen", () => {
   const sheet = infoSheet("market-open");
   assert.ok(sheet);
   const all = tipsFor(sheet!, () => true, { key: "market-open" });
-  assert.equal(all.length, TIPS_AT_MOST, "three at most");
-  assert.deepEqual(all.map((t) => t.entry.term), ["Share", "Copy the link", "Show a code to scan"], "each way to share, in order");
+  assert.ok(all.length > TIPS_AT_MOST, "a market's run as one (the submission round)");
+  assert.deepEqual(all.map((t) => t.entry.term), ["Share", "Copy the link", "Show a code to scan", "Pass the phone", "Photos"], "each way to share, pass the phone and photos, in order");
   assert.deepEqual(tipsFor(sheet!, () => true, { key: "market-open", seen: ["/tips/share", "/tips/copy", "/tips/code"] }).map((t) => t.entry.term), ["Pass the phone", "Photos"], "then pass the phone and adding photos");
   assert.equal(CURATED_TIPS["market-open"]?.find((t) => t.entry.term === "Pass the phone")?.entry.description, "A friend makes their call on your phone, with their own PIN.", "the owner's words for pass the phone");
   assert.deepEqual(tipsFor(sheet!, (s) => s === "button[data-share]", { key: "market-open" }).map((t) => t.entry.term), ["Share"], "a control not on the page is skipped");

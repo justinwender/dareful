@@ -6,8 +6,9 @@ export const DEAD_LINK = "That link doesn’t open anything. Ask for it again, o
 
 /**
  * A revoked or malformed market link (docs/design.md 3.17, states): the code screen with a form-level message, for
- * anyone, signed in or not. Nothing here says which market it was for, or that one ever existed. Signed out,
- * the boxes stand and sign-in is the way to use a code.
+ * anyone, signed in or not. Nothing here says which market it was for, or that one ever existed. Signed out, a
+ * code opens its question as its link would, where a guest joins with a name (the submission round, section 0), and
+ * Sign in stays for an account.
  */
 export function DeadLink({ signedIn }: { signedIn: boolean }) {
   return (

@@ -1,6 +1,8 @@
 "use server";
 
+import { createHmac } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { currentUser } from "@/lib/auth/session";
@@ -8,9 +10,9 @@ import { WORDS } from "@/lib/ui/errors";
 import { dismissNamePrompt, nameGroup } from "@/lib/ledger/groups";
 import { MarketError } from "@/lib/ledger/markets";
 import { readPastedLink } from "@/lib/ledger/room-code";
-import { joinByCode, joinByMarketLink, roomCodeFor } from "@/lib/ledger/rooms";
+import { joinByCode, joinByMarketLink, marketForCode, roomCodeFor } from "@/lib/ledger/rooms";
 import { gameById } from "@/lib/sports";
-import { record } from "@/lib/usage";
+import { deviceId, record } from "@/lib/usage";
 
 const uuid = z.string().uuid();
 type Refusal = { error: string; at: "field" | "form" };
@@ -18,13 +20,26 @@ type Refusal = { error: string; at: "field" | "form" };
 const NOT_A_LINK = "That isn't a Dareful link. It starts with dareful.app.";
 
 /**
+ * The network a request came from, as a keyed hash and never the address: what a guest's wrong codes are counted
+ * against, since a guest has no account and a cookie can be cleared (the submission round, section 0). The platform
+ * sets the forwarded address; anything without one is counted as one local network.
+ */
+async function networkOfRequest(): Promise<string> {
+  const h = await headers();
+  const address = (h.get("x-forwarded-for") ?? "").split(",")[0]?.trim() || h.get("x-real-ip")?.trim() || "local";
+  return createHmac("sha256", process.env.SESSION_SECRET ?? "dareful").update(`code-guess:${address}`).digest("hex").slice(0, 32);
+}
+
+/**
  * A code someone read out. A wrong shape is the field's problem; a code that matches nothing, or too many
  * tries, is the form's, and what was typed is kept either way (docs/design.md 3.16). Success is a redirect to
- * the market, already a member or not.
+ * the market, already a member or not. A code stands for its question's link (the submission round, section 0): for
+ * someone with no session it opens that question, or its game's page, where a guest joins with a name exactly as from
+ * the link, its wrong guesses counted against the network it came from.
  */
 export async function joinByCodeAction(raw: string): Promise<Refusal> {
   const user = await currentUser();
-  if (!user) return { error: WORDS.signedOut, at: "form" };
+  if (!user) return codeForGuest(raw);
   const typed = z.string().max(40).safeParse(raw);
   if (!typed.success) return { error: "Codes are six characters.", at: "field" };
   let marketId: string;
@@ -38,6 +53,26 @@ export async function joinByCodeAction(raw: string): Promise<Refusal> {
   }
   revalidatePath("/");
   redirect(`/m/${marketId}`);
+}
+
+/**
+ * A code typed by someone with no session (the submission round, section 0): the question it is for, joining nobody,
+ * and that question's own screen, where a guest joins with a name exactly as from its link (a game's question goes on
+ * to its page). A miss is counted against the network it came from.
+ */
+async function codeForGuest(raw: string): Promise<Refusal> {
+  const typed = z.string().max(40).safeParse(raw);
+  if (!typed.success) return { error: "Codes are six characters.", at: "field" };
+  let guestTo: string;
+  try {
+    guestTo = (await marketForCode(typed.data, { network: await networkOfRequest() })).id;
+    await record("code_used", {}, { deviceId: await deviceId() }, { dareId: guestTo });
+  } catch (err) {
+    if (err instanceof MarketError) return { error: err.message, at: err.code === "bad_input" ? "field" : "form" };
+    console.error("a guest's code failed", err);
+    return { error: "That didn't go through. Try again.", at: "form" };
+  }
+  redirect(`/m/${guestTo}`);
 }
 
 /**

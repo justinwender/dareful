@@ -7,6 +7,7 @@
  * the markets they made, and reachable again next minute if it fails. Underneath, what the tab and the game page
  * read: the games listed by day, how many groups are on each, and a group's questions on a game.
  */
+import { redactKeys } from "@/lib/redact";
 import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import { keccak256, stringToHex, type Hex } from "viem";
 import { db, schema } from "@/db";
@@ -109,8 +110,13 @@ export async function upsertGames(games: FeedGame[], now: Date): Promise<GameRow
   return rows;
 }
 
+/** A feed's failure as it is kept: the first two hundred characters, with any key taken out (the submission round, section 4). Pure. */
+export function storedFeedError(error: string): string {
+  return redactKeys(error).slice(0, 200);
+}
+
 async function noteRead(sport: Sport, source: string, now: Date, error: string | null): Promise<void> {
-  const set = error ? { lastErrorAt: now, lastError: error.slice(0, 200) } : { lastOkAt: now };
+  const set = error ? { lastErrorAt: now, lastError: storedFeedError(error) } : { lastOkAt: now };
   await db.insert(schema.sportsFeedReads).values({ source, sport, ...set }).onConflictDoUpdate({ target: [schema.sportsFeedReads.source, schema.sportsFeedReads.sport], set });
 }
 

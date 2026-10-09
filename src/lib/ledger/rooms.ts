@@ -37,12 +37,25 @@ export async function roomCodeFor(dareId: string, userId: string): Promise<strin
   throw new MarketError("Couldn't make a code. Try again.", "chain");
 }
 
-async function spendGuess(userId: string): Promise<void> {
+/**
+ * Who a wrong code is counted against: an account by its id; a guest, who has none, by a keyed hash of the network the
+ * code came from (the submission round, section 0), which cannot be cleared the way a cookie can and is never the
+ * address itself.
+ */
+export type Guesser = { userId: string } | { network: string };
+
+async function spendGuess(who: Guesser): Promise<void> {
+  const key = "userId" in who ? `user:${who.userId}` : `network:${who.network}`;
   await db.transaction(async (tx) => {
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`code-guess:${userId}`}, 0))`);
-    const rows = await tx.execute<{ n: number }>(sql`select count(*)::int as n from ${schema.codeAttempts} where user_id = ${userId} and created_at > now() - interval '1 hour'`);
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`code-guess:${key}`}, 0))`);
+    const rows =
+      "userId" in who
+        ? await tx.execute<{ n: number }>(sql`select count(*)::int as n from ${schema.codeAttempts} where user_id = ${who.userId} and created_at > now() - interval '1 hour'`)
+        : await tx.execute<{ n: number }>(sql`select count(*)::int as n from ${schema.codeAttempts} where network_hash = ${who.network} and created_at > now() - interval '1 hour'`);
     if ((Array.from(rows)[0]?.n ?? 0) >= CODE_GUESSES_PER_HOUR) throw new MarketError("That's a lot of codes. Give it a while, or ask for the link.", "slow_down");
-    await tx.insert(schema.codeAttempts).values({ userId });
+    // A guest's misses older than a day count for nothing, so they are not kept.
+    if ("network" in who) await tx.delete(schema.codeAttempts).where(sql`${schema.codeAttempts.networkHash} is not null and ${schema.codeAttempts.createdAt} < now() - interval '1 day'`);
+    await tx.insert(schema.codeAttempts).values("userId" in who ? { userId: who.userId } : { networkHash: who.network });
   });
 }
 
@@ -75,16 +88,26 @@ export async function joinGroupOf(d: DareRow, userId: string): Promise<{ joined:
  * codes cannot be walked. Already a member is not an error at all: straight in (docs/design.md 3.16).
  */
 export async function joinByCode(raw: string, userId: string): Promise<{ marketId: string; joined: boolean }> {
+  const d = await marketForCode(raw, { userId });
+  const { joined } = await joinGroupOf(d, userId);
+  return { marketId: d.id, joined };
+}
+
+/**
+ * The question a typed code is for, joining nobody (the submission round, section 0): a code stands for its question's
+ * link, so for a guest it opens that question, or its game's page, where they join with a name exactly as from the link.
+ * A wrong shape costs nothing; a code that matches nothing costs a guess, counted against `who`.
+ */
+export async function marketForCode(raw: string, who: Guesser): Promise<DareRow> {
   const read = readCode(raw);
   if ("problem" in read) throw new MarketError(read.problem, "bad_input");
   const [room] = await db.select().from(schema.roomCodes).where(and(eq(schema.roomCodes.code, read.code), isNull(schema.roomCodes.closedAt))).limit(1);
   const d = room ? await marketById(room.dareId) : null;
   if (!room || !d || stateOf(d) !== "open") {
-    await spendGuess(userId);
+    await spendGuess(who);
     throw new MarketError("No market with that code. Worth checking the last two characters.", "not_found");
   }
-  const { joined } = await joinGroupOf(d, userId);
-  return { marketId: d.id, joined };
+  return d;
 }
 
 /** A pasted or tapped market link, for someone signed in. The id is the secret, as it is for every share link. */

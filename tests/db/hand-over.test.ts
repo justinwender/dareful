@@ -58,12 +58,13 @@ async function question(title: string, revealMode: "open" | "blind" = "open") {
 }
 const hosted = (d: string, friend: Signer, pin: string, host: Signer = sam) => enterFromHost({ dareId: d, hostId: host.user.id, friendId: friend.user.id, stake: 500n, value: 6000n, pin, request: "tests/db/hand-over.test.ts", deps: { load: signingWith(friend.ledger) } });
 
-test("who's joining: the people the market was sent to who aren't in yet, ready when pass the phone is on, and the host's own ready people once nobody named is left; the host must be in and the market open", async () => {
+test("who's joining: the people the market was sent to who aren't in yet, ready when pass the phone is on, and the host's own ready people once nobody named is left; the host must have asked it or be in, and the market open", async () => {
   const { d, enter } = await question("Does the handed phone get Maya in?");
-  assert.equal(await canHandOver(d.id, sam.user.id), false, "not in yet: nothing to hand over");
+  assert.equal(await canHandOver(d.id, sam.user.id), true, "the asker, before their own call (3.45 as amended 2026-10-09)");
+  assert.equal(await canHandOver(d.id, maya.user.id), false, "someone in the set who neither asked nor is in");
   await enter(sam, 7000n);
   assert.equal(await canHandOver(d.id, sam.user.id), true);
-  assert.equal(await canHandOver(d.id, maya.user.id), false, "only someone in");
+  assert.equal(await canHandOver(d.id, maya.user.id), false, "only the asker or someone in");
   await storeDelegation(maya);
   await setPin(maya.user.id, "4242");
   assert.deepEqual((await handOverCandidates(d.id, sam.user.id)).map((c) => [c.name, c.ready]), [["Maya", true], ["Theo", false]], "the ready first; Theo has not set it up");
@@ -87,8 +88,8 @@ test("the friend's entry from the host's phone: the PIN first, counted against t
   const { d, enter } = await question("Does the PIN get Maya in?");
   await storeDelegation(maya);
   await setPin(maya.user.id, "4242");
-  const before = await hosted(d.id, maya, "4242");
-  assert.ok(!before.ok && "refused" in before && /you're in/.test(before.refused), "the host must be in");
+  const before = await hosted(d.id, maya, "4242", theo);
+  assert.ok(!before.ok && "refused" in before && /you asked or are in/.test(before.refused), "the host must have asked it or be in");
   await enter(sam, 7000n);
   assert.ok((await hosted(d.id, sam, "4242")).ok === false, "never yourself");
   const theoTry = await hosted(d.id, theo, "0000");

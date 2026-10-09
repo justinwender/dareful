@@ -11,6 +11,7 @@ import { onchainCounts, ONCHAIN_COUNT_CAP } from "@/lib/ledger/envio";
 import { explorerAddressUrl } from "@/lib/chain/explorer";
 import { monOf, relayerRunway, RUNWAY_DAYS } from "@/lib/chain/watch";
 import { within, SECTION_LIMIT_MS } from "@/lib/usage/within";
+import { redactKeys } from "@/lib/redact";
 
 export const metadata: Metadata = { title: "Dareful", robots: { index: false, follow: false } };
 
@@ -66,7 +67,8 @@ export default async function StatsPage() {
 
 /** A section's line when it could not be read in its time, or at all. The failure goes to the log, never the page. */
 function Unread({ what, err }: { what: string; err: unknown }): ReactNode {
-  console.error("a section of the numbers could not be read", { what, why: err instanceof Error ? err.message.split("\n")[0] : String(err) });
+  // The line that goes to the log carries no key, whatever the failure said (the submission round, section 4).
+  console.error("a section of the numbers could not be read", { what, why: redactKeys(err instanceof Error ? err.message.split("\n")[0] : String(err)) });
   return (
     <p className="text-body-sm text-ink-2" data-stats-unread={what}>
       {what === "counts" ? "The counts couldn’t be read just now." : what === "relayer" ? "The relayer couldn’t be read just now." : what === "chain" ? "The chain’s counts couldn’t be read just now." : "The days couldn’t be read just now."}

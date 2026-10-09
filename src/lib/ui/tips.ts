@@ -1,6 +1,7 @@
 /**
  * First-visit tips (docs/design.md 10.9; built in the first-contact round, 2026-10-04): the first time a person opens
- * a screen, up to three of its sheet's entries, one at a time, each beside the control it describes. Pure here, so
+ * a screen, up to three of its sheet's entries (on a market or a game page, every one, once the person is in), one at a
+ * time, each beside the control it describes. Pure here, so
  * the choice and the placement have tests; `FirstTips` draws them. They go with the sheets after the hackathon.
  */
 import { INFO_GROUPS, type InfoEntry, type InfoSheet } from "./info";
@@ -34,11 +35,11 @@ const MARKET_TIPS = [
   tip("pass", "button[data-pass-phone]", "Pass the phone", "A friend makes their call on your phone, with their own PIN."),
   tip("photos", "[data-empty-slot], [data-add-tile]", "Photos", "Add them here; everyone in it and its group sees them."),
 ];
+/** Every state of a market, and a game's page, by the key of its information sheet: these share the market's tips. */
+export const MARKET_SHEETS = ["market-draft", "market-open", "market-open-number", "market-open-pick", "market-calls", "market-ruling", "market-voting", "market-voting-number", "market-voting-pick", "market-ended", "market-memory", "market-link", "game", "game-link", "game-night"] as const;
 /** The tips by the information sheet of the screen they show on, in order. Every state of a market, and a game's page, shares the market's. */
 export const CURATED_TIPS: Record<string, Tip[]> = {
-  ...Object.fromEntries(
-    ["market-draft", "market-open", "market-open-number", "market-open-pick", "market-calls", "market-ruling", "market-voting", "market-voting-number", "market-voting-pick", "market-ended", "market-memory", "market-link", "game", "game-link", "game-night"].map((k) => [k, MARKET_TIPS]),
-  ),
+  ...Object.fromEntries(MARKET_SHEETS.map((k) => [k, MARKET_TIPS])),
   "ask-question": [
     tip("mark", "[data-add-mark]", "Add a mark", "Opens the picker; a mark with a colour of its own gives the question that colour."),
     tip("stickers", "[data-add-mark]", "Stickers", "Make one from a photo here, or hold a photo’s subject on an iPhone, tap Copy, and paste it in."),
@@ -57,8 +58,19 @@ function askSomethingIn(sheet: InfoSheet): InfoEntry | null {
 }
 
 /**
- * A screen's tips, at most three at a time: "Ask something" first while it was never shown and its control is on the
- * screen, then the screen's own tips that were never shown and whose control is on the screen, in order. Pure.
+ * Whether a screen's tips run as one sequence, however many there are (the submission round, section 0): a market's and
+ * a game page's. They wait until the person is in (the screen's information icon says so, `data-tips-wait`), since pass
+ * the phone and photos show only then; with three at a time the owner saw share, copy and the code as "3 of 3" on one
+ * market and the other two on the next. Pure.
+ */
+export function runsAsOne(key: string | undefined): boolean {
+  return key !== undefined && (MARKET_SHEETS as readonly string[]).includes(key);
+}
+
+/**
+ * A screen's tips: "Ask something" first while it was never shown and its control is on the screen, then the screen's
+ * own tips that were never shown and whose control is on the screen, in order; at most three at a time, except on a
+ * market or a game page, where every one runs in one sequence (`runsAsOne`). Pure.
  */
 export function tipsFor(sheet: InfoSheet, onScreen: (selector: string) => boolean, opts: { key?: string; seen?: readonly string[] } = {}): Tip[] {
   const seen = opts.seen ?? [];
@@ -66,7 +78,7 @@ export function tipsFor(sheet: InfoSheet, onScreen: (selector: string) => boolea
   const ask = askSomethingIn(sheet);
   if (ask && !seen.includes(ASK_SOMETHING_KEY) && onScreen(ASK_TARGET)) out.push({ key: ASK_SOMETHING_KEY, target: ASK_TARGET, entry: ask });
   for (const t of (opts.key ? CURATED_TIPS[opts.key] : undefined) ?? []) if (!seen.includes(t.key) && onScreen(t.target)) out.push(t);
-  return out.slice(0, TIPS_AT_MOST);
+  return runsAsOne(opts.key) ? out : out.slice(0, TIPS_AT_MOST);
 }
 
 export type Box = { x: number; y: number; width: number; height: number };

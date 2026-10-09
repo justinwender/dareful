@@ -17,9 +17,9 @@ test("the numbers page is the owner's: the ids come from one server-only variabl
   assert.equal(isOwner("a1", {} as unknown as NodeJS.ProcessEnv), false, "no variable, no owner");
 });
 
-test("two windows and the days: since launch is open at the start, the week is seven days to now, and a day is one Eastern day, so one evening is never two", () => {
+test("two windows and the days: since launch starts the day the build began, the week is seven days to now, and a day is one Eastern day, so one evening is never two", () => {
   const now = new Date("2026-10-02T20:00:00Z");
-  assert.deepEqual(windowFor("launch", now), { from: null, to: now });
+  assert.deepEqual(windowFor("launch", now), { from: new Date("2026-09-13T04:00:00Z"), to: now }, "midnight Eastern on September 13 (the submission round)");
   assert.deepEqual(windowFor("week", now), { from: new Date("2026-09-25T20:00:00Z"), to: now });
   // Midnight to midnight in Eastern: 04:00 UTC while the clocks are forward.
   assert.deepEqual(dayWindow("2026-10-02"), { from: new Date("2026-10-02T04:00:00Z"), to: new Date("2026-10-03T04:00:00Z") });

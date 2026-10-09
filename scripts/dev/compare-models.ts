@@ -7,11 +7,12 @@
  * and writes nothing anywhere but the report it prints.
  *
  *   npx tsx --env-file=.env.local scripts/dev/compare-models.ts > report.json
+ *   npx tsx --env-file=.env.local scripts/dev/compare-models.ts --part=current > cost.json   what a question costs today
  */
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { MODELS, usageTap } from "@/lib/ai/client";
-import { arbitrate, arbitrateAnswer, arbitrateNumber, carefulQuestions, eitherOr, triage } from "@/lib/ai/settler";
+import { arbitrate, arbitrateAnswer, arbitrateNumber, carefulQuestions, eitherOr, ruleAnswerClaim, ruleClaim, triage } from "@/lib/ai/settler";
 import { proposeAnswer, proposeNumber, proposeOutcome } from "@/lib/ai/markets";
 import { deadlineMismatch } from "@/lib/ledger/decide-by";
 import { answersOf, unitOf } from "@/lib/ledger/markets";
@@ -221,7 +222,67 @@ async function searchCost(): Promise<void> {
   console.log(JSON.stringify({ when: new Date().toISOString(), rows }, null, 2));
 }
 
+/**
+ * What a question costs on the routing in use (the submission round, section 5): every question a counted person wrote,
+ * replayed as production runs it (the write-up, with search where the line calls for it; an argument's triage and its
+ * ruling at the ask, the one sealed into its terms; the outcome proposal for each question someone said what happened
+ * on), with the models as configured, at the prices
+ * above; `--part=current`. The tiebreaker is priced from its own measured rulings (`--part=rulings`), since it runs
+ * only when the people in a question do not decide it. Reads production and the live API and writes nothing but the
+ * report it prints.
+ */
+async function current(): Promise<void> {
+  const counted = await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.excludedFromCounts, false));
+  const dares = (await db.select().from(schema.dares).where(isNull(schema.dares.templateId)).orderBy(asc(schema.dares.createdAt))).filter((d) => counted.some((u) => u.id === d.creatorId));
+  const said = await db.select().from(schema.dareStatements).where(eq(schema.dareStatements.kind, "update"));
+  const rows: Array<{ id: string; pace: string; writeUp: number; triage: number | null; sealed: number | null; proposal: number | null; searches: number; models: string[]; errors: string[] }> = [];
+  for (const d of dares) {
+    const zone = d.zone ?? "America/New_York";
+    const kind = d.kind as "binary" | "numeric" | "categorical";
+    const w = await measured(() => writeUp({ line: d.title, kind, choices: kind === "categorical" ? d.outcomeLabels : undefined }, "00000000-0000-4000-8000-000000000000", zone));
+    const t = d.pace === "argument" ? await measured(() => triage({ line: d.title })) : null;
+    const answersAsked = d.kind === "categorical" ? (d.outcomeLabels ?? []) : null;
+    const r = d.pace === "argument" ? await measured(async (): Promise<string> => (answersAsked ? String((await ruleAnswerClaim({ title: d.title, terms: d.termsText, criterion: d.criterion, answers: answersAsked })).index) : (await ruleClaim({ title: d.title, terms: d.termsText, criterion: d.criterion })).outcome)) : null;
+    const statements = said.filter((s) => s.dareId === d.id).map((s) => ({ name: "Someone", said: s.statement }));
+    const answers = answersOf(d);
+    const unit = unitOf(d);
+    const p = statements.length
+      ? await measured(async () => {
+          if (answers) return (await proposeAnswer({ title: d.title, terms: d.termsText, answers: answers.map((a) => a.text), statements, now: new Date() })).answer?.toString() ?? "-1";
+          if (unit) return (await proposeNumber({ title: d.title, terms: d.termsText, unit, statements, now: new Date() })).number?.toString() ?? "-1";
+          return (await proposeOutcome({ title: d.title, terms: d.termsText, statements, now: new Date() })).outcome;
+        })
+      : null;
+    rows.push({ id: d.id.slice(0, 8), pace: d.pace, writeUp: w.spend.dollars, triage: t ? t.spend.dollars : null, sealed: r ? r.spend.dollars : null, proposal: p ? p.spend.dollars : null, searches: w.spend.searches + (t?.spend.searches ?? 0) + (r?.spend.searches ?? 0) + (p?.spend.searches ?? 0), models: [...new Set([...w.spend.models, ...(t?.spend.models ?? []), ...(r?.spend.models ?? []), ...(p?.spend.models ?? [])])], errors: [w.error, t?.error, r?.error, p?.error].filter((e): e is string => Boolean(e)) });
+    console.error(`current ${rows.length}/${dares.length}`);
+  }
+  const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
+  const r5 = (x: number) => Math.round(x * 100000) / 100000;
+  const writeUps = rows.map((r) => r.writeUp);
+  const triages = rows.flatMap((r) => (r.triage === null ? [] : [r.triage]));
+  const sealedRulings = rows.flatMap((r) => (r.sealed === null ? [] : [r.sealed]));
+  const props = rows.flatMap((r) => (r.proposal === null ? [] : [r.proposal]));
+  console.log(
+    JSON.stringify(
+      {
+        when: new Date().toISOString(),
+        models: MODELS,
+        questions: rows.length,
+        arguments: triages.length,
+        proposals: props.length,
+        searches: rows.reduce((a, r) => a + r.searches, 0),
+        dollars: { writeUpMean: r5(mean(writeUps)), writeUpMax: r5(Math.max(0, ...writeUps)), triageMean: r5(mean(triages)), sealedRulingMean: r5(mean(sealedRulings)), proposalMean: r5(mean(props)), questionMean: r5(mean(writeUps) + mean(props)), argumentMean: r5(mean(writeUps) + mean(triages) + mean(sealedRulings)), total: r5([...writeUps, ...triages, ...sealedRulings, ...props].reduce((a, b) => a + b, 0)) },
+        errors: rows.flatMap((r) => r.errors.map((e) => `${r.id}: ${e}`)),
+        rows,
+      },
+      null,
+      2,
+    ),
+  );
+}
+
 async function main(): Promise<void> {
+  if (process.argv.includes("--part=current")) return current();
   if (process.argv.includes("--part=proposals")) return proposals();
   if (process.argv.includes("--part=rulings")) return rulingsAgain();
   if (process.argv.includes("--part=haiku")) return haiku();

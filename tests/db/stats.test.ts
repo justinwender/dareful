@@ -19,7 +19,7 @@ import { cleanup, fictionalPhone, tempUser, track, type User } from "./fixture";
 
 let counted: User, excluded: User;
 before(async () => {
-  [counted, excluded] = await Promise.all([tempUser("Counted"), tempUser("Excluded")]);
+  [counted, excluded] = await Promise.all([tempUser("Counted", undefined, { counted: true }), tempUser("Excluded")]);
   await db.update(schema.users).set({ excludedFromCounts: true }).where(eq(schema.users.id, excluded.id));
 });
 /** The one device this file's guest rows carry: a guest's row has no account to be removed with, so it is removed by this id, before and after, whatever a run under a mutant left behind. */
@@ -45,8 +45,10 @@ test("a counted account's events count in the window, an excluded account's neve
     { name: "share", userId: excluded.id, at, props: { icon: "copy" } },
   ]);
   const day = await countStats({ from, to });
-  assert.equal(day.questions, 1, "the counted account's question, not the excluded one's");
-  assert.equal(day.askers, 1);
+  // Questions are counted from the ledger's own table (the submission round, section 2; tests/db/submission.test.ts holds
+  // a counted asker's against an excluded one's there): an "asked" event with no question behind it is no question.
+  assert.equal(day.questions, 0, "an ask event alone is not a question");
+  assert.equal(day.askers, 1, "the counted account asked, the excluded one's ask never counts");
   assert.equal(day.guest_entries, 1, "a guest's entry counts with nobody to exclude");
   assert.equal(day.shares, 0, "the excluded account's share never counts");
   assert.equal(day.active_people, 1);
@@ -69,7 +71,7 @@ test("a day written twice is one row, replaced", async () => {
 });
 
 test("people with a channel: an email sign-in or a push subscription counts, a phone sign-in with neither does not, as a count and as a share of the people active in the window", async () => {
-  const byPhone = await tempUser("By Phone", hashPhone(fictionalPhone()));
+  const byPhone = await tempUser("By Phone", hashPhone(fictionalPhone()), { counted: true });
   // A window nobody else has events in, so the people active in it are these three alone.
   const at = new Date("2001-01-01T17:00:00Z");
   for (const u of [counted, byPhone, excluded]) await db.insert(schema.usageEvents).values({ name: "share", userId: u.id, at, props: { icon: "copy" } });
@@ -90,7 +92,7 @@ test("the four the pitch quotes: someone who came by a friend's question and the
   const t0 = new Date("2003-03-03T12:00:00Z");
   const at = (hours: number) => new Date(t0.getTime() + hours * H);
   const win = { from: new Date("2003-03-03T05:00:00Z"), to: new Date("2003-03-04T05:00:00Z") };
-  const joiner = await tempUser("Joiner");
+  const joiner = await tempUser("Joiner", undefined, { counted: true });
   const sets = [] as Array<{ groupId: string; denomId: string }>;
   for (const name of ["one", "two", "three"]) {
     const g = await createGroup({ name: `stats check ${name} (temporary)`, createdBy: counted.id });

@@ -269,12 +269,12 @@ test("a modal sheet has the pinned sheet's positions: it opens raised, at most t
   assert.ok(!/\btall\b|\bfull = false\b/.test(sheet.split("export function Sheet(")[1]?.split(")")[0] ?? ""), "one sheet, no height modes");
 });
 
-test("first-visit tips: Ask something once for every tab, each new tip once wherever its control shows, three at a time, and the card kept on the screen", () => {
+test("first-visit tips: Ask something once for every tab, each new tip once wherever its control shows, a market's in one run, and the card kept on the screen", () => {
   const plus = tipsFor(infoSheet("now")!, (s) => s === ASK_TARGET);
   assert.deepEqual(plus.map((t) => [t.entry.term, t.key]), [["Ask something", ASK_SOMETHING_KEY]]);
   assert.deepEqual(tipsFor(infoSheet("people")!, (s) => s === ASK_TARGET, { seen: [ASK_SOMETHING_KEY] }), [], "seen on Now, never again on People");
   const market = infoSheet("market-open")!;
-  assert.deepEqual(tipsFor(market, () => true, { key: "market-open", seen: [] }).map((t) => t.key), ["/tips/share", "/tips/copy", "/tips/code"], "three at a time, in order");
+  assert.deepEqual(tipsFor(market, () => true, { key: "market-open", seen: [] }).map((t) => t.key), ["/tips/share", "/tips/copy", "/tips/code", "/tips/pass", "/tips/photos"], "a market's in one run, in order (the submission round)");
   assert.deepEqual(tipsFor(market, () => true, { key: "market-open", seen: ["/tips/share", "/tips/copy", "/tips/code"] }).map((t) => t.key), ["/tips/pass", "/tips/photos"], "the rest on a later visit, each once");
   assert.deepEqual(tipsFor(market, (s) => s === "button[data-pass-phone]", { key: "market-open", seen: [] }).map((t) => t.entry.description), ["A friend makes their call on your phone, with their own PIN."], "only what is on screen");
   assert.deepEqual(tipsFor(infoSheet("ask-question")!, () => true, { key: "ask-question", seen: [] }).map((t) => t.entry.term), ["Add a mark", "Stickers", "What kind of thing"]);
@@ -291,7 +291,7 @@ test("first-visit tips: Ask something once for every tab, each new tip once wher
   const squeezed = tipPlacement({ x: 100, y: 80, width: 56, height: 56 }, 28, { width: 402, height: 260 }, { width: 240, height: 200 });
   assert.ok(squeezed.tip.y >= 12 && squeezed.tip.y + 200 <= 260 - 12 + 1e-9 || squeezed.tip.y === 12, "kept inside the screen when neither side has room");
   const first = readFileSync("src/components/ui/first-tips.tsx", "utf8");
-  assert.ok(first.includes("find(visible)") && first.includes("const el = tip ? shown(tip.target) : null;"), "the copy of the control on the screen, never the first in the document");
+  assert.ok(first.includes(".find((el) => visible(el, whole))") && first.includes("const el = tip ? shown(tip.target, !broughtIn.current.has(tip.key)) : null;"), "the copy of the control on the screen, never the first in the document");
 });
 
 test("settings on You: a name the sign-up step would take, and units of your own, a word or two, never one already offered, six at most", () => {

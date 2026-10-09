@@ -23,6 +23,9 @@ import { EmptySlot } from "@/components/markets/empty-slot";
 import { MarketScreen } from "@/app/m/[id]/market-screen";
 import { GhostMarketPage } from "@/app/m/[id]/ghost";
 import { currentUser } from "@/lib/auth/session";
+import { readClaimTokens } from "@/lib/auth/claim-cookie";
+import { ghostPositionFor } from "@/lib/ledger/ghost-entry";
+import { passThePhoneShows } from "@/lib/ledger/hand-over";
 import { contracts } from "@/lib/chain/contracts";
 import { daresDomain } from "@/lib/chain/typed-data";
 import { denominationsByIds, denominationsForGroup } from "@/lib/ledger/denominations";
@@ -125,11 +128,14 @@ export async function GamePage({ id, g, q, add, start }: { id: string; g: string
   if (!me) {
     // Signed out: the set a link or a question names, its questions as cards, the linked one open with the arriving step in it (3.17, 3.33).
     const open = asked && questions.some((x) => x.dare.id === asked) ? asked : (questions[0]?.dare.id ?? null);
+    // The page's tips wait until this guest is in one of its questions (the submission round, section 0).
+    const tokens = await readClaimTokens();
+    const guestIn = (await Promise.all(questions.map((x) => ghostPositionFor(x.dare.id, tokens)))).some((p) => p !== null);
     return (
       <>
         <GuestLineFor dareId={open ?? undefined} />
         <Screen>
-          <TopBar wordmark info="game-link" />
+          <TopBar wordmark info="game-link" tipsWait={!guestIn} />
           <div className="flex flex-col gap-6 py-2" data-game-link="">
             <GameHeader game={header} caption={closesCaption} right={ahead ? undefined : game.finalSeenAt && game.homeScore !== null && game.awayScore !== null ? scoreLine({ home: game.homeScore, away: game.awayScore }, game.homeShort, game.awayShort) : "Started"} />
             {liveScore}
@@ -260,6 +266,8 @@ export async function GamePage({ id, g, q, add, start }: { id: string; g: string
     return { ...x, meta, slider, myT, groupT, ink: inkOf(dare), state, mine, whose };
   });
   const firstOpenNotIn = cards.find((c) => c.state === "open" && !c.mine)?.dare.id ?? null;
+  // The page's tips wait until this person is in one of its questions, then run as one (the submission round, section 0).
+  const inAny = cards.some((c) => c.mine !== null);
   // One share row for the whole page (the touch-ups round, section 6): with one set, the page's row shares the game with
   // every way a market is shared, the code being the open question's, else the set's first still open; an open card
   // then draws no row of its own. With more than one set there is no page row, and each open card's row is the one.
@@ -346,7 +354,7 @@ export async function GamePage({ id, g, q, add, start }: { id: string; g: string
     return (
       <PhotoAdding dareId={photoTarget?.dare.id ?? ids[0] ?? ""} night={night} canAdd={canAddPhoto} capture={false} viewer={{ name: me.displayName, hue: hueFor(me.id) }}>
         <Screen>
-          <TopBar back info="game-night" />
+          <TopBar back info="game-night" tipsWait={!inAny} />
           <div className="flex flex-col gap-7 py-2">
             <section className="-mx-2 flex flex-col gap-3 rounded-card bg-surface-2 p-4 pb-[18px]" data-game-header={game.id} data-game-night="">
               <div className="flex items-center justify-between gap-3">
@@ -441,14 +449,14 @@ export async function GamePage({ id, g, q, add, start }: { id: string; g: string
   return (
     <PhotoAdding dareId={runningTarget?.dare.id ?? ids[0] ?? ""} night={tonight} canAdd={canAddRunning} capture={false} viewer={{ name: me.displayName, hue: hueFor(me.id) }}>
     <Screen>
-      <TopBar back right={more} info="game" />
+      <TopBar back right={more} info="game" tipsWait={!inAny} />
       <div className="flex flex-col gap-7 py-2">
         <GameHeader game={header} caption={`${whoAsked}${closesCaption}`.trim()} right={ahead ? undefined : feedFinal ? scoreLine(feedFinal, game.homeShort, game.awayShort) : "Started"} />
         {/* With a card open the score stands in it, above who said what (3.24); with none, under the header. */}
         {open ? null : liveScore}
         {only && askable && !outsider ? (
-          // The who's-in row with the game as the unit (3.42): everyone in on any of its questions, and the one place the page is shared from, under the header so sharing a new game is on screen without scrolling (the second-pass round). The link is the game page's for this set (3.33); the code is the open question's, or the set's first still open, and opens this page with it open (the touch-ups round).
-          <WhosInRow people={inIds.map((pid) => ({ name: inPeople.get(pid)?.displayName ?? "Someone", hue: hueFor(pid), ghost: inPeople.get(pid)?.ghost === true }))} holdouts={[]} count={whosIn.count} share={{ url: `${appUrl}/on/${game.id}/${only.groupId}`, title: game.name }} code={codeQuestion ? { dareId: codeQuestion.dare.id, question: codeQuestion.dare.title, mark: markRefOf(codeQuestion.dare) } : null} chalk={whosIn.chalk} />
+          // The who's-in row with the game as the unit (3.42): everyone in on any of its questions, and the one place the page is shared from, under the header so sharing a new game is on screen without scrolling (the second-pass round). The link is the game page's for this set (3.33); the code is the open question's, or the set's first still open, and opens this page with it open (the touch-ups round); pass the phone is for the same question, by the market's rule (the submission round, section 0: since the page took the one row, it had no pass the phone at all).
+          <WhosInRow people={inIds.map((pid) => ({ name: inPeople.get(pid)?.displayName ?? "Someone", hue: hueFor(pid), ghost: inPeople.get(pid)?.ghost === true }))} holdouts={[]} count={whosIn.count} share={{ url: `${appUrl}/on/${game.id}/${only.groupId}`, title: game.name }} code={codeQuestion ? { dareId: codeQuestion.dare.id, question: codeQuestion.dare.title, mark: markRefOf(codeQuestion.dare) } : null} chalk={whosIn.chalk} pass={codeQuestion && passThePhoneShows({ open: codeQuestion.state === "open", viewerIn: codeQuestion.mine !== null, viewerAsked: codeQuestion.dare.creatorId === me.id }) ? { dareId: codeQuestion.dare.id, explained: me.handOverExplainedAt !== null } : null} />
         ) : null}
         <section className="flex flex-col gap-[10px]">
           <SectionLabel>Questions</SectionLabel>

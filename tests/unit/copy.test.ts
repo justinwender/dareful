@@ -81,7 +81,7 @@ test("a first name is never an email's local part", () => {
   assert.equal(firstName("sam"), "sam");
   // Nothing stands before the separator, so the word stands as it was.
   assert.equal(firstName(".hidden"), ".hidden");
-  assert.equal(firstName("42.wender"), "42.wender");
+  assert.equal(firstName("42.wells"), "42.wells");
 });
 
 // ------------------------------------------------------------------------------------- what the app is (2026-09-29)

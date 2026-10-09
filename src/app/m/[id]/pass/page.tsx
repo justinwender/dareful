@@ -30,7 +30,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * Handing the phone over (docs/design.md 3.45): the host's session, the friend's screen. Reached from the fourth
- * icon on the who's-in row, for someone who is in while the market is open. What it shows is what the link page
+ * icon on the who's-in row, for its asker or someone who is in while the market is open (3.45 as amended 2026-10-09). What it shows is what the link page
  * shows before anyone is in: the band, the details, and the entry sheet; no who's-in row, no weight line, no
  * number of anyone's, the host's included, blind or open. The friend's entry is sent by `HandOver` with the
  * friend's PIN and signed by the friend's own delegated share on the server. Nothing of the friend's stays here.

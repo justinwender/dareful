@@ -1618,11 +1618,11 @@ test("the game page: one page per person with a card per question they are in or
   // Who asked, as a sentence about the set (3.33), never the chip's label after a verb.
   assert.ok(asker.text.includes("You asked the Question check. Everything closes at kickoff."), "the header's caption, to the asker");
   assert.ok(friendly.text.includes("Priya asked the Question check. Everything closes at kickoff."), "and to someone she asked");
-  // The who's-in row (3.42) with the game as the unit: the page's one share row (the touch-ups round), share, copy and the code of a question still open, and no list and no pass.
-  for (const [who, page] of [["the asker", asker], ["someone not in yet", friendly]] as const) {
+  // The who's-in row (3.42) with the game as the unit: the page's one share row (the touch-ups round), share, copy and the code of a question still open, and no list; pass the phone for whoever asked or is in the question its code is for, by the market's own rule (the submission round, 3.45 amended), and never for someone not in it.
+  for (const [who, page, pass] of [["the asker", asker, true], ["someone not in yet", friendly, false]] as const) {
     assert.ok(page.html.includes('data-whos-in=""') && page.html.includes('data-share=""') && page.html.includes("data-copy="), `${who}: the row, with share and copy`);
     assert.ok(!page.text.includes("Send it to the chat") && !/<button[^>]*>\s*Copy\s*<\/button>/.test(page.html), `${who}: the old row is gone`);
-    assert.ok(page.html.includes('data-code=""') && !page.html.includes("data-whos-in-list") && !page.html.includes('data-pass-phone=""') && !page.html.includes('data-holdout=""'), `${who}: the code, and no list, no pass, and nobody following the stack as still out`);
+    assert.ok(page.html.includes('data-code=""') && !page.html.includes("data-whos-in-list") && page.html.includes('data-pass-phone=""') === pass && !page.html.includes('data-holdout=""'), `${who}: the code, no list, ${pass ? "pass the phone" : "no pass"}, and nobody following the stack as still out`);
   }
   assert.ok(/data-whos-in-count=""[^>]*>\s*Just you so far/.test(asker.html) && /data-whos-in-count=""[^>]*>\s*1 in/.test(friendly.html), "who is in on any question: just you so far for the asker alone, 1 in to anyone else");
   const shareOf = (html: string) => /<button[^>]*data-share=""[^>]*>/.exec(html)?.[0] ?? "";

@@ -18,7 +18,7 @@ import { CREAM } from "@/lib/ui/palette";
  * the screen the icon does nothing, since a sheet never opens another sheet (6.4). `INFO_ICON_ON` removes it and
  * returns every corner to its place.
  */
-export function InfoIcon({ sheet, onPhoto = false }: { sheet: string; /** On the full-screen photo, black in both themes, the icon draws in the dark theme's ink (10.2). */ onPhoto?: boolean }) {
+export function InfoIcon({ sheet, onPhoto = false, tipsWait = false }: { sheet: string; /** On the full-screen photo, black in both themes, the icon draws in the dark theme's ink (10.2). */ onPhoto?: boolean; /** The screen's first-visit tips wait (`data-tips-wait`): on a market or a game page until the person is in (the submission round, section 0). */ tipsWait?: boolean }) {
   const [open, setOpen] = useState(false);
   const id = useId();
   const content = infoSheet(sheet);
@@ -32,6 +32,7 @@ export function InfoIcon({ sheet, onPhoto = false }: { sheet: string; /** On the
         aria-expanded={open}
         data-press="line"
         data-info-icon={sheet}
+        data-tips-wait={tipsWait ? "" : undefined}
         onClick={() => {
           // A sheet never opens another sheet (6.4): with one open over this screen, the icon does nothing.
           if (!open && document.querySelector('[data-sheet="open"]')) return;

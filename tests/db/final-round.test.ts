@@ -25,7 +25,7 @@ import { proposeFor, syncSchedule } from "@/lib/sports";
 import { parseScoreboard } from "@/lib/sports/espn";
 import type { FeedGame, ScheduleSource } from "@/lib/sports/types";
 import { countedOnchain, countStats } from "@/lib/usage/stats";
-import { cleanup, codeOf, tempSigner, track, type Signer } from "./fixture";
+import { cleanup, codeOf, counting, tempSigner, track, type Signer } from "./fixture";
 
 const H = 3_600_000;
 const RUN = Math.random().toString(36).slice(2, 8);
@@ -156,14 +156,19 @@ test("a unit of one's own goes on the chain as beers does: registered by its id,
   assert.deepEqual([onchain.id.toLowerCase(), onchain.quantifiable], [denomOnchainId(pizzas.id).toLowerCase(), true], "the chain holds its id, its set and that it counts; nothing else");
 
   const onchainId = bufferToHex(locked.onchainId as Buffer).toLowerCase();
-  const counted = await countedOnchain();
+  // Counted for the moment the reading takes, so a run never reaches the owner's numbers (the submission round, section 3).
+  await counting([ana.user.id, ben.user.id], true);
+  let counted: Awaited<ReturnType<typeof countedOnchain>>;
+  try {
+    counted = await countedOnchain();
+  } finally {
+    await counting([ana.user.id, ben.user.id], false);
+  }
   assert.ok(counted.dareIds.includes(onchainId), "a question with counted people in it is real use");
   assert.ok(counted.ledgers.includes(ana.user.ledgerWallet!.toLowerCase()) && counted.ledgers.includes(ben.user.ledgerWallet!.toLowerCase()));
-  await db.update(schema.users).set({ excludedFromCounts: true }).where(inArray(schema.users.id, [ana.user.id, ben.user.id]));
   const left = await countedOnchain();
   assert.ok(!left.dareIds.includes(onchainId), "with nobody counted in it, it is a test's");
   assert.ok(!left.ledgers.includes(ana.user.ledgerWallet!.toLowerCase()), "and an excluded account's wallet is asked about nowhere");
-  await db.update(schema.users).set({ excludedFromCounts: false }).where(inArray(schema.users.id, [ana.user.id, ben.user.id]));
 });
 
 // ------------------------------------------------------------------------------------- section 9: an excluded guest
@@ -185,10 +190,16 @@ test("an excluded guest counts nowhere: not their entry, and not toward a questi
   await db.update(schema.dares).set({ createdAt: at }).where(eq(schema.dares.id, d.id));
   await db.delete(schema.usageEvents).where(eq(schema.usageEvents.claimId, claimId));
   await db.insert(schema.usageEvents).values({ name: "entered", claimId, at, props: { as: "guest" } });
-  const counts = await countStats({ from, to });
-  assert.deepEqual([counts.questions_two_in, counts.guest_entries], [1, 1], "a guest counts like anyone");
-  await db.update(schema.participantClaims).set({ excludedFromCounts: true }).where(eq(schema.participantClaims.id, claimId));
-  const without = await countStats({ from, to });
-  assert.deepEqual([without.questions_two_in, without.guest_entries], [0, 0], "left out, the guest's entry and the question they made two are gone from the numbers");
+  // Ana asks as a counted account only while the window is read: her question and her guest are in 2003, long before launch.
+  await counting([ana.user.id], true);
+  try {
+    const counts = await countStats({ from, to });
+    assert.deepEqual([counts.questions_two_in, counts.guest_entries], [1, 1], "a guest counts like anyone");
+    await db.update(schema.participantClaims).set({ excludedFromCounts: true }).where(eq(schema.participantClaims.id, claimId));
+    const without = await countStats({ from, to });
+    assert.deepEqual([without.questions_two_in, without.guest_entries], [0, 0], "left out, the guest's entry and the question they made two are gone from the numbers");
+  } finally {
+    await counting([ana.user.id], false);
+  }
   await db.delete(schema.usageEvents).where(eq(schema.usageEvents.claimId, claimId));
 });

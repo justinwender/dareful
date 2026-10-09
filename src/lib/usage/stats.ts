@@ -11,9 +11,11 @@ import { bufferToHex, questionGroupOnchainId } from "@/lib/ledger/ids";
 
 export type StatKey =
   | "accounts"
+  | "guests"
   | "active_people"
   | "askers"
   | "questions"
+  | "settled"
   | "questions_two_in"
   | "entries"
   | "guest_entries"
@@ -38,9 +40,11 @@ export type StatKey =
 
 export const STATS: ReadonlyArray<{ key: StatKey; label: string; definition: string }> = [
   { key: "accounts", label: "Accounts", definition: "Accounts made in the window, excluded ones left out." },
+  { key: "guests", label: "Guests", definition: "People who first joined a question in the window with a name and no account, on a question someone counted asked; a guest who has since made an account counts as that account, and excluded guests are left out." },
   { key: "active_people", label: "Active people", definition: "Distinct accounts with any counted event in the window." },
   { key: "askers", label: "Askers", definition: "Distinct accounts that asked a question in the window." },
-  { key: "questions", label: "Questions asked", definition: "Questions sent in the window, by counted askers." },
+  { key: "questions", label: "Questions asked", definition: "Questions sent in the window by counted askers, from the ledger's own table, which holds every question since the first." },
+  { key: "settled", label: "Questions settled", definition: "Questions by counted askers that ended in a decision in the window: by the vote of the people in, the tiebreaker, the final score or the app's ruling standing, \"nobody can tell\" included; one called off or expired is not settled." },
   { key: "questions_two_in", label: "Questions with two or more in", definition: "Questions asked in the window that reached two entries." },
   { key: "entries", label: "Entries", definition: "Numbers put on questions in the window, by accounts and through pass the phone." },
   { key: "guest_entries", label: "Guest entries", definition: "Numbers put on questions in the window by people with no account." },
@@ -78,9 +82,16 @@ export const STATS_ZONE = "America/New_York";
 export type StatWindow = { from: Date | null; to: Date };
 export type Counts = Record<StatKey, number>;
 
+/**
+ * Where "since launch" begins: midnight Eastern on September 13, 2026, the day the build began; the first question came
+ * on the 19th. Nothing real is older, and a test that counts keeps its rows in a window long before it, so a run never
+ * moves a number since launch (the submission round, section 3).
+ */
+export const LAUNCH = new Date("2026-09-13T04:00:00Z");
+
 /** The last seven days to `now`, or everything since launch. Pure. */
 export function windowFor(which: "launch" | "week", now: Date): StatWindow {
-  return which === "week" ? { from: new Date(now.getTime() - 7 * 86_400_000), to: now } : { from: null, to: now };
+  return which === "week" ? { from: new Date(now.getTime() - 7 * 86_400_000), to: now } : { from: LAUNCH, to: now };
 }
 
 const easternParts = (at: Date): Record<string, string> => Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: STATS_ZONE, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23" }).formatToParts(at).map((p) => [p.type, p.value]));
@@ -118,10 +129,31 @@ function inWindow(col: string, w: StatWindow) {
   return w.from ? sql`${sql.raw(col)} >= ${w.from.toISOString()}::timestamptz and ${sql.raw(col)} < ${to}` : sql`${sql.raw(col)} < ${to}`;
 }
 
-/** Events in the window by counted actors: an excluded account's or an excluded guest's events never count, and any other guest's or a device's always do. */
+/**
+ * Events in the window by counted actors: an excluded account's or an excluded guest's events never count, nor a guest's
+ * who came in through an excluded account's link (a test's or a walk's guest, the submission round), and any other
+ * guest's or a device's always do.
+ */
 function events(name: string, w: StatWindow, extra = sql``) {
-  return sql`select count(*)::int as n from usage_events e left join users u on u.id = e.user_id left join participant_claims c on c.id = e.claim_id where e.name = ${name} and coalesce(u.excluded_from_counts, false) = false and coalesce(c.excluded_from_counts, false) = false and ${inWindow("e.at", w)} ${extra}`;
+  return sql`select count(*)::int as n from usage_events e left join users u on u.id = e.user_id left join participant_claims c on c.id = e.claim_id left join users cu on cu.id = c.created_by where e.name = ${name} and coalesce(u.excluded_from_counts, false) = false and coalesce(c.excluded_from_counts, false) = false and coalesce(cu.excluded_from_counts, false) = false and ${inWindow("e.at", w)} ${extra}`;
 }
+
+/** Counted accounts made in the window. */
+const ACCOUNTS = (w: StatWindow) => sql`select count(*)::int as n from users u where not u.excluded_from_counts and ${inWindow("u.created_at", w)}`;
+
+/**
+ * Counted guests by the day they first joined (the submission round, section 2): a claim with an entry that counts on a
+ * question a counted account asked, never bound to an account (a guest who made one counts as that account) and never
+ * merged into another, an excluded guest left out; its day is its first such entry's.
+ */
+const GUESTS = (w: StatWindow) =>
+  sql`select count(*)::int as n from (select c.id, min(p.entered_at) as first_in from participant_claims c join dare_positions p on p.claim_id = c.id join dares d on d.id = p.dare_id join users a on a.id = d.creator_id where c.claimed_by is null and c.merged_into is null and not c.excluded_from_counts and not a.excluded_from_counts and p.acknowledged_at is not null and p.dismissed_at is null group by c.id) g where ${inWindow("g.first_in", w)}`;
+
+/** Questions sent by counted askers, from the ledger's own table, which holds every question since the first (the events table began on October 2). */
+const QUESTIONS = (w: StatWindow) => sql`select count(*)::int as n from dares d join users u on u.id = d.creator_id where not u.excluded_from_counts and d.creator_signature is not null and ${inWindow("d.created_at", w)}`;
+
+/** Questions by counted askers that ended in a decision: the people in (a guest's question's quorum included), the tiebreaker, the final score or the app's ruling, "nobody can tell" included. */
+const SETTLED = (w: StatWindow) => sql`select count(*)::int as n from dares d join users u on u.id = d.creator_id where not u.excluded_from_counts and d.resolved_at is not null and d.resolved_by in ('quorum', 'provisional', 'arbitration', 'feed', 'ruling') and ${inWindow("d.resolved_at", w)}`;
 
 /**
  * The entries on a question that count toward "two or more in": a counted person's or a guest's, never an excluded
@@ -139,11 +171,13 @@ const CLEAN_ENDED = sql`d.resolved_at is not null and d.resolved_by in ('quorum'
 
 /** Every number for one window, counted now. */
 export async function countStats(w: StatWindow): Promise<Counts> {
-  const [accounts, active, askers, questions, twoIn, entries, guests, voting, byVote, byTiebreaker, byFeed, expired, links, shares, push, email, none, opened, errors] = await Promise.all([
-    one(sql`select count(*)::int as n from users u where not u.excluded_from_counts and ${inWindow("u.created_at", w)}`),
+  const [accounts, guestPeople, settled, active, askers, questions, twoIn, entries, guests, voting, byVote, byTiebreaker, byFeed, expired, links, shares, push, email, none, opened, errors] = await Promise.all([
+    one(ACCOUNTS(w)),
+    one(GUESTS(w)),
+    one(SETTLED(w)),
     one(sql`select count(distinct e.user_id)::int as n from usage_events e join users u on u.id = e.user_id where not u.excluded_from_counts and ${inWindow("e.at", w)}`),
     one(sql`select count(distinct e.user_id)::int as n from usage_events e join users u on u.id = e.user_id where e.name = 'asked' and not u.excluded_from_counts and ${inWindow("e.at", w)}`),
-    one(events("asked", w)),
+    one(QUESTIONS(w)),
     one(sql`select count(*)::int as n from dares d join users u on u.id = d.creator_id where not u.excluded_from_counts and d.creator_signature is not null and ${inWindow("d.created_at", w)} and ${COUNTED_IN("d.id")} >= 2`),
     one(events("entered", w, sql`and e.props->>'as' <> 'guest'`)),
     one(events("entered", w, sql`and e.props->>'as' = 'guest'`)),
@@ -161,7 +195,8 @@ export async function countStats(w: StatWindow): Promise<Counts> {
     one(events("error_shown", w)),
   ]);
   // People a notice can reach: of every counted account since launch, or of the people active in the window.
-  const base = w.from
+  const sinceLaunch = w.from === null || w.from.getTime() === LAUNCH.getTime();
+  const base = !sinceLaunch
     ? sql`select distinct e.user_id as id from usage_events e join users u on u.id = e.user_id where not u.excluded_from_counts and ${inWindow("e.at", w)}`
     : sql`select u.id from users u where not u.excluded_from_counts and ${inWindow("u.created_at", w)}`;
   const [people, reachable] = await Promise.all([
@@ -183,6 +218,8 @@ export async function countStats(w: StatWindow): Promise<Counts> {
     clean_rate: shareOf(clean, ended),
     media_added: photos + stickers,
     accounts,
+    guests: guestPeople,
+    settled,
     active_people: active,
     askers,
     questions,
@@ -204,6 +241,33 @@ export async function countStats(w: StatWindow): Promise<Counts> {
     with_channel: reachable,
     channel_share: shareOf(reachable, people),
   };
+}
+
+/** The four the public numbers carry, by /stats's own definitions: accounts, guests, questions asked and questions settled. */
+export type PeopleAndQuestions = Pick<Counts, "accounts" | "guests" | "questions" | "settled">;
+
+/** The four the public numbers carry, for one window, by the same queries `countStats` makes (the submission round, section 2). */
+export async function peopleAndQuestions(w: StatWindow): Promise<PeopleAndQuestions> {
+  const [accounts, guests, questions, settled] = await Promise.all([one(ACCOUNTS(w)), one(GUESTS(w)), one(QUESTIONS(w)), one(SETTLED(w))]);
+  return { accounts, guests, questions, settled };
+}
+
+/**
+ * Every day already written gains the day's new accounts and new guests (the submission round, section 2), with the two
+ * question numbers whose definitions this round set (asked, now from the ledger's own table, and settled, new), each
+ * counted as it is counted today; the day's other numbers are left as they were taken. Returns what each day held and
+ * holds now for the four. `write: false` only reads; `onlyDays` keeps it to those days (a test's own).
+ */
+export async function refreshSnapshotPeople(write: boolean, onlyDays?: readonly string[]): Promise<Array<{ day: string; was: Partial<PeopleAndQuestions>; now: PeopleAndQuestions }>> {
+  const rows = (await db.select().from(schema.usageSnapshots).orderBy(schema.usageSnapshots.day)).filter((r) => !onlyDays || onlyDays.includes(r.day));
+  const out: Array<{ day: string; was: Partial<PeopleAndQuestions>; now: PeopleAndQuestions }> = [];
+  for (const r of rows) {
+    const counts = r.counts as Partial<Counts>;
+    const now = await peopleAndQuestions(dayWindow(r.day));
+    out.push({ day: r.day, was: { accounts: counts.accounts, guests: counts.guests, questions: counts.questions, settled: counts.settled }, now });
+    if (write) await db.update(schema.usageSnapshots).set({ counts: { ...counts, ...now } }).where(eq(schema.usageSnapshots.id, r.id));
+  }
+  return out;
 }
 
 /** A day's numbers written once; taking the same day again replaces them. */

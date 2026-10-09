@@ -270,9 +270,9 @@ const MOTION_ALLOW = new Set(["src/lib/ui/motion.ts", "src/lib/ui/opening.ts"]);
 const MOTION_CLASS = /\b(?:motion-safe:|motion-reduce:)?(?:duration|delay)-(?:\[|\d)[^\s"'`]*|\bease-(?:in|out|in-out|linear)\b|\banimate-(?:\[|pulse|spin|bounce|ping)[^\s"'`]*/g;
 const MOTION_LITERAL = /["'`]((?:\d*\.\d+|[1-9]\d*)(?:ms|s))["'`]|(cubic-bezier\()/g;
 // 4. Colour (1.1, 8.8): every colour on a screen is a token. The tokens, the ink tables, the palette of the two
-// literals that never follow the theme, the opening, and the two renderers that draw one image for everyone are
+// literals that never follow the theme, the opening, and the three renderers that draw one image for everyone are
 // the only files that may write one; the code to scan writes the generator's black, which becomes currentColor.
-const COLOUR_ALLOW = new Set(["src/lib/ui/ink.ts", "src/lib/ui/palette.ts", "src/lib/ui/opening.ts", "src/lib/ui/tiles.tsx", "src/lib/ui/share-card.tsx", "src/components/markets/whos-in-row.tsx"]);
+const COLOUR_ALLOW = new Set(["src/lib/ui/ink.ts", "src/lib/ui/palette.ts", "src/lib/ui/opening.ts", "src/lib/ui/tiles.tsx", "src/lib/ui/share-card.tsx", "src/lib/ui/numbers-card.tsx", "src/components/markets/whos-in-row.tsx"]);
 const COLOUR = /#[0-9a-fA-F]{3,8}\b|\brgba?\(\s*\d|\bhsla?\(/g;
 for (const file of walk(SRC)) {
   const r = rel(file);

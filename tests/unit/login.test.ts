@@ -52,7 +52,7 @@ test("someone still carrying the placeholder name is asked once, and renamed whe
 });
 
 test("a stored name that is an address, a tag, a number or a handle is asked once, and renamed when they answer", () => {
-  for (const stored of ["justin.wender", "justin.wender+dynamic_test", "a@b.co", "5550142", "dana_q"]) {
+  for (const stored of ["sam.wells", "sam.wells+dynamic_test", "a@b.co", "5550142", "dana_q"]) {
     const legacy = { ...account, displayName: stored };
     assert.deepEqual(decideLogin({ existing: legacy, vouched: [L, G] }), { kind: "need-name" }, stored);
     assert.deepEqual(decideLogin({ existing: legacy, vouched: [L, G], displayName: "Justin" }), { kind: "rename", displayName: "Justin" }, stored);
@@ -64,7 +64,7 @@ test("a stored name that is an address, a tag, a number or a handle is asked onc
 
 test("a typed address or handle is never stored as a name", () => {
   const friend = { ...account, displayName: "Friend" };
-  for (const typed of ["justin.wender@example.com", "jane+dynamic_test", "justin.wender", "5550142"]) {
+  for (const typed of ["sam.wells@example.com", "jane+dynamic_test", "sam.wells", "5550142"]) {
     assert.deepEqual(decideLogin({ existing: null, vouched: [L, G], displayName: typed }), { kind: "need-name", refused: true }, typed);
     assert.deepEqual(decideLogin({ existing: friend, vouched: [L, G], displayName: typed }), { kind: "need-name", refused: true }, typed);
   }
@@ -76,7 +76,7 @@ test("a typed address or handle is never stored as a name", () => {
 
 test("someone whose stored name is not one is not settled", () => {
   assert.equal(nameSettled("Friend"), false);
-  assert.equal(nameSettled("justin.wender"), false);
+  assert.equal(nameSettled("sam.wells"), false);
   assert.equal(nameSettled("sam@example.com"), false);
   assert.equal(nameSettled("(212) 555-0142"), false);
   assert.equal(nameSettled("Justin"), true);
@@ -87,7 +87,7 @@ test("someone whose stored name is not one is not settled", () => {
 const email = (address: string) => ({ sub: "u", email: address, verified_credentials: [JwtVerifiedCredentialToJSON({ id: "c", format: JwtVerifiedCredentialFormatEnum.Email, email: address, signInEnabled: true })] });
 
 test("the address a login came with is never offered as a name", () => {
-  assert.equal(suggestedNameOf(email("justin.wender+dynamic_test@example.com")), undefined);
+  assert.equal(suggestedNameOf(email("sam.wells+dynamic_test@example.com")), undefined);
   assert.equal(suggestedNameOf({ sub: "u", verified_credentials: [JwtVerifiedCredentialToJSON({ id: "c", format: JwtVerifiedCredentialFormatEnum.PhoneNumber, phoneNumber: "2125550142", phoneCountryCode: "1", isoCountryCode: "US", signInEnabled: true })] }), undefined);
-  assert.equal(suggestedNameOf({ ...email("justin.wender@example.com"), given_name: "Justin Wender" }), "Justin");
+  assert.equal(suggestedNameOf({ ...email("sam.wells@example.com"), given_name: "Sam Wells" }), "Sam");
 });

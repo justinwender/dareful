@@ -45,7 +45,7 @@ export function Screen({ children, className, root = false, layer, arrive }: { c
  * sides (3.38; docs/design/reference/LOGO.md), because there is nowhere in the app to go back to. For the hackathon the information icon owns the top-right corner (10.3):
  * a screen's own control from that corner (`right`: More, "Got a code?") sits directly left of it.
  */
-export function TopBar({ back, onBack, close, onClose, closeHref, wordmark, title, right, info }: { back?: boolean; /** Back within a flow (a step of asking, 9.8) rather than to the root. */ onBack?: () => void; /** Close in place of back, where the screen rose from below (9.5). */ close?: boolean; onClose?: () => void; closeHref?: string; /** The wordmark where back would be, on a screen with nothing behind it. Beside a back control it is left out: the wordmark never shares the slot. */ wordmark?: boolean; title?: string; right?: ReactNode; /** The screen's information sheet (10), by key; none for a screen 10.1 leaves out. */ info?: string }) {
+export function TopBar({ back, onBack, close, onClose, closeHref, wordmark, title, right, info, tipsWait = false }: { back?: boolean; /** Back within a flow (a step of asking, 9.8) rather than to the root. */ onBack?: () => void; /** Close in place of back, where the screen rose from below (9.5). */ close?: boolean; onClose?: () => void; closeHref?: string; /** The wordmark where back would be, on a screen with nothing behind it. Beside a back control it is left out: the wordmark never shares the slot. */ wordmark?: boolean; title?: string; right?: ReactNode; /** The screen's information sheet (10), by key; none for a screen 10.1 leaves out. */ info?: string; /** The screen's first-visit tips wait: a market's and a game page's until the person is in (the submission round, section 0). */ tipsWait?: boolean }) {
   return (
     <>
       <header className="flex h-14 items-center justify-between" data-top-bar="">
@@ -65,7 +65,7 @@ export function TopBar({ back, onBack, close, onClose, closeHref, wordmark, titl
         </div>
         <div className="flex items-center gap-1">
           {right}
-          {info && INFO_ICON_ON ? <InfoIcon sheet={info} /> : null}
+          {info && INFO_ICON_ON ? <InfoIcon sheet={info} tipsWait={tipsWait} /> : null}
         </div>
       </header>
       {/* The offline bar sits under the header (3.14); the roots draw it under their own. */}

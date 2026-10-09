@@ -20,11 +20,22 @@ import { checkPin, delegatedSignatureFor, whoHasPassThePhone, type PinCheck } fr
 
 export type Candidate = { id: string; name: string; /** Has pass the phone on, so can be picked; the rest show at 0.45 with "Not set up for this yet". */ ready: boolean };
 
-/** Whether this person may hand the phone over on this market: in it, and it is open. */
+/**
+ * Whether pass the phone is offered on a question (3.45 as amended 2026-10-09): while it is open, to its asker before
+ * their own call as well as to anyone in. Only once in, the owner took the icon for gone on a question he had asked and
+ * not yet made his call on (the submission round, section 0). Pure: the share row on a market, the one on a game page
+ * and the server's own check below all read it.
+ */
+export function passThePhoneShows(q: { open: boolean; viewerIn: boolean; viewerAsked: boolean }): boolean {
+  return q.open && (q.viewerIn || q.viewerAsked);
+}
+
+/** Whether this person may hand the phone over on this market: it is open, and they asked it or are in it. */
 export async function canHandOver(dareId: string, hostId: string): Promise<boolean> {
   const d = await marketById(dareId);
-  if (!d || stateOf(d) !== "open") return false;
-  return (await positionsOf(d.id)).some((p) => p.userId === hostId);
+  if (!d) return false;
+  const viewerIn = (await positionsOf(d.id)).some((p) => p.userId === hostId);
+  return passThePhoneShows({ open: stateOf(d) === "open", viewerIn, viewerAsked: d.creatorId === hostId });
 }
 
 /**
@@ -57,14 +68,14 @@ export async function handOverCandidates(dareId: string, hostId: string): Promis
 export type HostedEntry = { ok: true; position: PositionRow } | { ok: false; pin: PinCheck & { ok: false } } | { ok: false; refused: string };
 
 /**
- * The friend's entry from the host's phone. The host must be in the market and it must be open; the friend must
+ * The friend's entry from the host's phone. The host must have asked the market or be in it, and it must be open; the friend must
  * be one of the people it was sent to, not in, with pass the phone on. The PIN is checked first, and counted
  * against the friend's lock with the host named; only a right PIN reaches the signer, whose signature is the
  * friend's delegated share over the entry the server itself built, recorded against this request.
  */
 export async function enterFromHost(input: { dareId: string; hostId: string; friendId: string; stake: bigint; value: bigint; pin: string; request: string; deps?: { load?: SignerLoad } }): Promise<HostedEntry> {
   if (input.hostId === input.friendId) return { ok: false, refused: "That's you. Use your own entry." };
-  if (!(await canHandOver(input.dareId, input.hostId))) return { ok: false, refused: "The phone can be handed over on a question you're in, while it's open." };
+  if (!(await canHandOver(input.dareId, input.hostId))) return { ok: false, refused: "The phone can be handed over on a question you asked or are in, while it's open." };
   const candidate = (await handOverCandidates(input.dareId, input.hostId)).find((c) => c.id === input.friendId);
   if (!candidate) return { ok: false, refused: "They're in already, or this wasn't sent to them." };
   if (!candidate.ready) return { ok: false, refused: "They haven't set up pass the phone on their own phone yet." };

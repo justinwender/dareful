@@ -51,6 +51,8 @@ Round D), following the phone's setting, with an Appearance row on You.
 
 ### What changed in this revision
 
+Amended 2026-10-09 by the submission round, in dated notes at the ends of 3.16 (a code works like its link for someone with no account), 3.45 (pass the phone for the asker before their call, and on a game page's share row) and 10.9 (a market's and a game page's tips as one run once the person is in, and a control pointed at only when all of it is on the screen).
+
 Amended 2026-10-09 by the final round, in dated notes at the ends of 3.14 (the ideas first on an empty Now, the code boxes' own heading), 3.17 (every link the app makes, the field always there), 3.24 (silence only where signed, the dispute's photo optional, a field above the keyboard), 3.29 (a suggested mark, the categories as icons, a unit of your own, Decided's one chip per day), 3.33 (a game's photos in one place, a question of your own), 3.47 (a mark for every idea), 4.6 ("lock" out) and 10.9 (the tips, shown).
 
 Amended 2026-10-08 by the touch-ups round, in dated notes at the ends of 3.24 (the app's rulings: sealed at the ask, Agree and "I see it differently", the stages, how to check it), 3.27 (the tile's track), 3.29 (every category in the picker, Decided's chips, Help define's questions, your own units), 3.33 (one share row), 3.34 (your name, units and stickers), 5.2 (one pending state and the tally loader), 5.5 (pull to refresh draws all five), 9.8 (the terms' loader and the early start), 9.9 (every sheet's positions) and 10.9 (the tips, widened).
@@ -1150,6 +1152,8 @@ States: **empty**; **partially filled** (Join disabled); **full** (Join enabled)
 shape** (5.1, at the field); **unknown or expired code** (the form-level block above Join, "No
 market with that code. Worth checking the last two characters.", the typed characters kept);
 **already a member** (no error at all: go straight in).
+
+(Amended 2026-10-09, the submission round, the owner's finding: a code works like its link. Someone with no account who types a live code lands on the question's own screen, or its game's page, where a guest joins with a name exactly as from the link (3.17), instead of being told to sign in. Their misses count toward the same twenty an hour, kept against the network they came from as a keyed hash, never the address itself.)
 
 ### 3.17 Arriving from a link or a code
 
@@ -3575,6 +3579,8 @@ The steps above are built in Round B's part 3.)
 
 (Amended 2026-10-02, the field round, part 2, the owner's finding: the two PIN fields on You are numeric text fields drawn masked (`.pin-field`, `-webkit-text-security: disc`) with autocomplete off, never password fields, so the phone offers digits and neither jumps to its password manager nor moves the focus on its own; the second field takes focus once the first holds four digits, and never again.)
 
+(Amended 2026-10-09, the submission round, the owner's finding. Step 1's "once they're in" also lets in the asker before their own call: the fourth icon shows, while the market is open, for anyone in and for its asker, so an asker who hands the phone round the table before making a call still has it (`passThePhoneShows`, the same rule on the server's side in `canHandOver`). On a game page the open question's card has drawn no row of its own since the touch-ups round gave the page one share row, and the fourth icon lived only in a card's row; the page's row now carries it for the same question its code is for, by the same rule.)
+
 ### 3.46 The guest line
 
 (New 2026-10-02, the fifteenth session.) Someone in from a link without an account (3.17) is a
@@ -5596,6 +5602,8 @@ the hackathon (10.3).
 (Amended 2026-10-08, the touch-ups round, widened beyond what is not visible. "Ask something" shows once per person, since the + is the same on every tab. New tips, one at a time, each shown once wherever its control first shows: on a market, share, copy the link, show a code to scan, pass the phone ("A friend makes their call on your phone, with their own PIN.") and photos; when asking, add a mark, stickers ("Make one from a photo here, or hold a photo's subject on an iPhone, tap Copy, and paste it in."), what kind of thing, the market type and AI market setup; on People, who's got who; on a person's page, I got this one. Their words are the screen's sheet's where it has them. The ring and the card land on the copy of the control that is on the screen, and the card stays inside the screen, over or under its control as there is room.)
 
 (Amended 2026-10-09, the final round. **The tips are the owner's set**: "Ask something" once, on whichever tab first shows it; on a market each way to share (share, copy, the code), pass the phone ("A friend makes their call on your phone, with their own PIN.") and adding photos; when asking the mark, stickers and each choice (the kind of thing, the market type, AI market setup); on People who's got who; on a person's page I got this one. Three at a time, one at a time, each remembered once it has stood beside its control and never before. A tip waits for the opening, an open sheet and the account step a guest is offered once in; a control off the screen or under the sheet is brought into the middle of what no layer covers before its tip shows; one that still cannot be pointed at waits for another visit while the others show.)
+
+(Amended 2026-10-09, the submission round, the owner's finding: on one market he saw share, copy and the code as "3 of 3", then pass the phone and photos on the next, because a visit stopped at three. On a market or a game page the tips wait until the person is in, then run through every one whose control is on the screen in one sequence, however many that is ("1 of 5" for an account, "1 of 2" for a guest, who has no code to show or phone to pass); every other screen keeps three at most. A control is pointed at only when all of it and its ring are inside what no layer covers: a guest's share button at the screen's foot was ringed half off the bottom edge on the iOS 26 simulator, so a control partly on the screen is brought in first, and one on a fixed layer, which no scroll can move, is pointed at where it is.)
 
 ## 11. The opening
 

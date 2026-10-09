@@ -1389,17 +1389,24 @@ export const notificationLog = pgTable(
   ],
 ).enableRLS();
 
-/** When someone typed a room code that matched nothing, and nothing about the code. For the hourly guess limit. */
+/**
+ * When someone typed a room code that matched nothing, and nothing about the code. For the hourly guess limit: an
+ * account's by its id, and a guest's, who has none, by a keyed hash of the network it came from (the submission round,
+ * section 0: a code opens its question for a guest as its link does), never the address itself.
+ */
 export const codeAttempts = pgTable(
   "code_attempts",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id),
+    userId: uuid("user_id").references(() => users.id),
+    networkHash: text("network_hash"),
     createdAt: ts("created_at").notNull().defaultNow(),
   },
-  (t) => [index("code_attempts_user_created").on(t.userId, t.createdAt)],
+  (t) => [
+    index("code_attempts_user_created").on(t.userId, t.createdAt),
+    index("code_attempts_network_created").on(t.networkHash, t.createdAt),
+    check("code_attempts_someone", sql`${t.userId} is not null or ${t.networkHash} is not null`),
+  ],
 ).enableRLS();
 
 /**

@@ -32,7 +32,7 @@ async function rowsFor(where: { dareId?: string; userId?: string; claimId?: stri
 }
 
 test("a record is a row with its properties and who, a bad property leaves no row and throws nothing, and a link opened counts once per person per link", async () => {
-  const me = await tempUser("Cy");
+  const me = await tempUser("Cy", undefined, { counted: true });
   await record("share", { icon: "copy" }, { userId: me.id });
   // A property outside its set is refused in code, whatever the caller said: the words never reach the table.
   await record("share", { icon: "Will John fall asleep?" as "copy" }, { userId: me.id });
@@ -53,7 +53,7 @@ test("a record is a row with its properties and who, a bad property leaves no ro
   assert.equal(opened.length, 2, "the device once, the account once: the device's second open is the same open");
   assert.deepEqual(opened.map((r) => r.onceKey).sort(), [`opened:market:m:${d.id}:d:${device}`, `opened:market:m:${d.id}:u:${me.id}`].sort());
   assert.equal(opened[0]?.deviceId, device);
-  assert.equal(me.excludedFromCounts, false, "an account counts unless someone says otherwise");
+  assert.equal(me.excludedFromCounts, false, "an account counts unless someone says otherwise (a test's is made counted here, and left out everywhere else)");
 });
 
 test("asking, entering as an account, entering as a guest and a guest bound to an account each leave their row, with what they were and never who they are", async () => {

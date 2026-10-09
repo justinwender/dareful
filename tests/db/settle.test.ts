@@ -180,6 +180,11 @@ test("voting opened is told once per closed question once it has happened, which
   assert.deepEqual([first.reminded, asked], [[], []], "twelve hours from the vote opening, never from the close");
   const again = await run(d.id);
   assert.deepEqual([again.votingOpened, opened.length], [[], 1], "told once, however often the tick runs");
+  // Eleven hours into the vote is still too early: the reminder waits the whole twelve (the submission round's audit
+  // found nothing here could tell twelve hours from half an hour).
+  await db.update(schema.dares).set({ voteAskedAt: new Date(Date.now() - 11 * H) }).where(eq(schema.dares.id, d.id));
+  const early = await run(d.id);
+  assert.deepEqual([early.reminded, asked], [[], []], "eleven hours into the vote, nobody is reminded yet");
   await db.update(schema.dares).set({ voteAskedAt: new Date(Date.now() - 13 * H) }).where(eq(schema.dares.id, d.id));
   const second = await run(d.id);
   assert.deepEqual([second.votingOpened, second.reminded, asked], [[], [], [d.id]], "someone's night: asked for, and not yet marked done");

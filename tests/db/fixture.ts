@@ -2,7 +2,11 @@
  * Shared fixtures for the database layer. These tests run against the real database (there is no other one),
  * so every row a test makes is tracked by id at the moment it is made and removed in `cleanup`. Nothing is
  * ever deleted by "whatever is new since the run started": someone may be using the app at the same time.
- * Temporary users carry a `tmp-check:` Dynamic id and random addresses; phone numbers are fictional.
+ * Temporary users carry a `tmp-check:` Dynamic id and random addresses; phone numbers are fictional. Every one is
+ * left out of every count (`excluded_from_counts`) from the moment it is made, so a run, an interrupted one included,
+ * never reaches /stats or the public numbers (the submission round, section 3: the last round's http run left nine
+ * behind, counted). A test about counting makes its accounts counted with `counted`, and keeps what they do in a
+ * window long before launch.
  */
 import { randomBytes, randomUUID } from "node:crypto";
 import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
@@ -54,10 +58,21 @@ export async function seedUsers(n: number): Promise<User[]> {
   return rows;
 }
 
-export async function tempUser(name: string, phoneHash?: Buffer): Promise<User> {
+/** Made long before launch: a counted test account's made-at never falls in a window since launch. */
+export const BEFORE_LAUNCH = new Date("1999-06-15T12:00:00Z");
+
+/**
+ * Counts these test accounts for a moment, as made long before launch, or leaves them out again: for a test about
+ * counting whose accounts must stay out of every number while the rest of its file runs.
+ */
+export async function counting(ids: string[], on: boolean): Promise<void> {
+  await db.update(schema.users).set(on ? { excludedFromCounts: false, createdAt: BEFORE_LAUNCH } : { excludedFromCounts: true }).where(inArray(schema.users.id, ids));
+}
+
+export async function tempUser(name: string, phoneHash?: Buffer, opts: { counted?: boolean } = {}): Promise<User> {
   const [u] = await db
     .insert(schema.users)
-    .values({ dynamicUserId: `tmp-check:${randomUUID()}`, ledgerWallet: `0x${randomBytes(20).toString("hex")}`, governanceWallet: `0x${randomBytes(20).toString("hex")}`, displayName: name, phoneHash })
+    .values({ dynamicUserId: `tmp-check:${randomUUID()}`, ledgerWallet: `0x${randomBytes(20).toString("hex")}`, governanceWallet: `0x${randomBytes(20).toString("hex")}`, displayName: name, phoneHash, ...(opts.counted ? { createdAt: BEFORE_LAUNCH } : { excludedFromCounts: true }) })
     .returning();
   if (!u) throw new Error("temp user");
   userIds.add(u.id);
@@ -84,13 +99,13 @@ export function relayerHasRoom(): Promise<void> {
 }
 
 /** A temporary user whose two wallets have keys, for anything that has to be signed: entries, and votes. */
-export async function tempSigner(name: string): Promise<Signer> {
+export async function tempSigner(name: string, opts: { counted?: boolean } = {}): Promise<Signer> {
   await relayerHasRoom();
   const ledger = privateKeyToAccount(generatePrivateKey());
   const governance = privateKeyToAccount(generatePrivateKey());
   const [u] = await db
     .insert(schema.users)
-    .values({ dynamicUserId: `tmp-check:${randomUUID()}`, ledgerWallet: ledger.address.toLowerCase(), governanceWallet: governance.address.toLowerCase(), displayName: name })
+    .values({ dynamicUserId: `tmp-check:${randomUUID()}`, ledgerWallet: ledger.address.toLowerCase(), governanceWallet: governance.address.toLowerCase(), displayName: name, ...(opts.counted ? { createdAt: BEFORE_LAUNCH } : { excludedFromCounts: true }) })
     .returning();
   if (!u) throw new Error("temp signer");
   userIds.add(u.id);

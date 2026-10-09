@@ -275,7 +275,7 @@ export async function GhostMarketPage({ id, clock, embedded = false }: { id: str
       <GuestLineFor dareId={d.id} />
       <Screen>
         <LinkOpened link="market" dareId={d.id} signedIn={false} />
-        <TopBar wordmark info="market-link" />
+        <TopBar wordmark info="market-link" tipsWait={mine === null} />
         <div className="flex flex-col gap-7 py-2">
           <section className="-mx-2 flex flex-col gap-3 rounded-card bg-field p-4 pb-[18px]">
             <div className="flex items-center justify-between gap-3">

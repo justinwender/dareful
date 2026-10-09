@@ -15,10 +15,18 @@
  * after every one: a server that has gone away fails every test, and a test failing for that reason proves
  * nothing about the mutant (2026-09-30: the dev server's compiler crashed forty-five minutes into a run and
  * every later http mutant was reported killed). The run stops there and says where to resume.
+ *
+ * The relayer is production's, and the database and chain suites spend it (the submission round, section 3). The run
+ * says first what it should take, from the last full audit's spend; it reads the balance before every mutant that can
+ * sign, and near the suites' floor it pauses rather than voiding runs: it says how much MON it needs, emails the owner
+ * once, and carries on by itself once the balance is back. A run the suites still refused is tried again after the
+ * pause. Its chain calls go to the RPC in `AUDIT_RPC_URL`, never production's own key, which nothing may share while the
+ * relayer sends; the indexer is the local one in `.env.local`, so the hosted one's queries stay production's.
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { MUTANTS, type Mutant } from "./mutants";
+import { estimateWei, LAST_FULL, mon, PAUSE_AT_WEI, TEST_FLOOR_WEI } from "./room";
 
 const args = process.argv.slice(2);
 const only = args.find((a) => a.startsWith("--only="))?.slice(7);
@@ -26,6 +34,9 @@ const from = args.find((a) => a.startsWith("--from="))?.slice(7);
 const idsFile = args.find((a) => a.startsWith("--ids="))?.slice(6);
 const wanted = idsFile ? new Set(readFileSync(idsFile, "utf8").split(/\s+/).filter(Boolean)) : null;
 const BASE = process.env.TEST_BASE_URL ?? "http://localhost:3000";
+// The run's chain calls go where the audit says (the submission round, section 3): every test process and the helper
+// inherit it, and the environment wins over `--env-file`, so `.env.local`'s key, production's own, is never asked.
+if (process.env.AUDIT_RPC_URL) process.env.MONAD_RPC_URL = process.env.AUDIT_RPC_URL;
 
 /** Whether the app under the http tests answers at all. Synchronous, like the rest of the runner. */
 function serverAnswers(): boolean {
@@ -47,12 +58,56 @@ const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const FLOOR_MARK = "relayer under the test floor";
 let floorHit = false;
 
+/**
+ * Runs the relayer helper in its own process with this run's environment: the balance in wei, or null when it could
+ * not be read; or the owner's email, whose output says whether it went.
+ */
+function helper(args: string[], input?: string): { ok: boolean; out: string } {
+  const r = spawnSync("npx", ["tsx", "--env-file=.env.local", "tests/mutation/relayer-room.ts", ...args], { encoding: "utf8", input, timeout: 60_000 });
+  return { ok: r.status === 0, out: `${r.stdout ?? ""}`.trim() };
+}
+function relayerBalance(): bigint | null {
+  const r = helper(["balance"]);
+  return r.ok && /^\d+$/.test(r.out) ? BigInt(r.out) : null;
+}
+
+/**
+ * Waits until the relayer holds `PAUSE_AT_WEI`, saying once what it needs and emailing the owner once, then lets the
+ * run go on. `needWei` is what the rest of the run should take.
+ */
+function waitForRoom(nextId: string, needWei: bigint): void {
+  let said = false;
+  for (;;) {
+    const balance = relayerBalance();
+    if (balance === null) {
+      console.log(`WAIT      ${nextId}  (the relayer's balance could not be read; asking again in a minute)`);
+      sleep(60_000);
+      continue;
+    }
+    if (balance >= PAUSE_AT_WEI) {
+      if (said) console.log(`RESUMED   ${nextId}  (the relayer holds ${mon(balance)} MON)`);
+      return;
+    }
+    if (!said) {
+      const short = needWei + PAUSE_AT_WEI - balance;
+      const line = `The mutation audit paused before ${nextId}: the relayer holds ${mon(balance)} MON, and the suites stop at ${mon(TEST_FLOOR_WEI)}. The rest of the audit should take about ${mon(needWei)} MON, so it needs about ${mon(short)} MON more. Top it up from the Monad testnet faucet; the audit carries on by itself once the relayer holds ${mon(PAUSE_AT_WEI)} MON.`;
+      console.log(`PAUSED    ${nextId}  ${line}`);
+      const sent = helper(["ops", `The audit paused: the relayer needs about ${mon(short)} MON`], `${line}\n\nNothing else is waiting on you; it checks the balance every minute.`);
+      console.log(`          the owner ${sent.out === "sent" ? "was emailed" : `was not emailed (${sent.out || "the email failed"})`}`);
+      said = true;
+    }
+    sleep(60_000);
+  }
+}
+
 function runTests(file: string, names: string[] | null): Map<string, boolean> {
   // One process, no per-file worker: a timeout can then actually kill the run. With a worker, the kill takes
   // the parent and orphans the child, which sits on its database connections until someone notices.
   const argv = ["--import", "tsx", "--env-file=.env.local", "--test", "--test-isolation=none", "--test-reporter=tap"];
   if (names) argv.push(`--test-name-pattern=^(${names.map(esc).join("|")})$`);
-  const r = spawnSync("node", [...argv, file], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, timeout: names ? 240_000 : 900_000, killSignal: "SIGKILL" });
+  // One process sets no NODE_TEST_CONTEXT, which is how the app tells it is under the test runner, so live model calls
+  // are turned off by name here; without it the audit could reach the live API (found by the submission round's audit).
+  const r = spawnSync("node", [...argv, file], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, timeout: names ? 240_000 : 900_000, killSignal: "SIGKILL", env: { ...process.env, DAREFUL_NO_LIVE_AI: "1" } });
   if (r.error) throw new Error(`the test run did not finish (${r.error.message}); rerun this one with --only, then npm run test:sweep`);
   if (`${r.stdout}\n${r.stderr}`.includes(FLOOR_MARK)) floorHit = true;
   const out = new Map<string, boolean>();
@@ -131,12 +186,25 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
 }
 
 let serverGone: string | null = null;
-let floorSince: string | null = null;
-for (const m of chosen) {
+const signing = (m: Mutant) => m.suite.includes("/db/") || m.suite.includes("/http/");
+const dbChosen = chosen.filter((m) => m.suite.includes("/db/")).length;
+// What the whole run should take, said before anything runs (the submission round, section 3).
+{
+  const suitesAtEnd = !only && !from && !wanted ? new Set(chosen.filter((m) => m.suite.includes("/db/")).map((m) => m.suite)).size : 0;
+  const need = estimateWei(dbChosen, suitesAtEnd);
+  const balance = chosen.some(signing) ? relayerBalance() : null;
+  console.log(`ESTIMATE  ${chosen.length} mutants, ${dbChosen} on the database. The last full audit (${LAST_FULL.date}, ${LAST_FULL.mutants} mutants, ${LAST_FULL.db} on the database) spent ${mon(LAST_FULL.wei)} MON, so this one should take about ${mon(need)} MON.${balance === null ? "" : ` The relayer holds ${mon(balance)} MON; the run pauses under ${mon(PAUSE_AT_WEI)}${balance - need < PAUSE_AT_WEI ? `, so top it up by about ${mon(need + PAUSE_AT_WEI - balance)} MON to run without stopping` : ""}.`}`);
+  if (process.env.AUDIT_RPC_URL === undefined && chosen.some(signing)) console.log("          (no AUDIT_RPC_URL: this run's chain calls use .env.local's RPC, which may be production's own key)");
+  else if (chosen.some(signing)) console.log(`          chain calls to ${new URL(process.env.AUDIT_RPC_URL as string).hostname}, the indexer at ${process.env.ENVIO_GRAPHQL_URL ?? "the one in .env.local"}`);
+}
+let dbDone = 0;
+const queue = [...chosen];
+for (let i = 0; i < queue.length; i++) {
+  const m = queue[i] as Mutant;
   const http = m.suite.includes("/http/");
   const chain = m.suite.includes("/db/");
   if (http && serverGone) continue;
-  if (chain && floorSince) continue;
+  if (signing(m)) waitForRoom(m.id, estimateWei(Math.max(0, dbChosen - dbDone), 0));
   if (http && !serverAnswers()) {
     serverGone = m.id;
     continue;
@@ -152,11 +220,13 @@ for (const m of chosen) {
       continue;
     }
     if (floorHit) {
-      floorSince = m.id;
+      // The suites refused to start under their floor: nothing about the mutant was shown. The run waits for the relayer and tries this one again.
       floorHit = false;
-      console.log(`VOID      ${m.id}  (the relayer is under the test floor)`);
+      console.log(`VOID      ${m.id}  (the relayer is under the test floor; this one runs again once it is topped up)`);
+      queue.splice(i + 1, 0, m);
       continue;
     }
+    if (chain) dbDone += 1;
     for (const name of m.kills) {
       const passed = results.get(name);
       if (passed === undefined) problems.push(`${m.id}: no test named "${name}" ran in ${m.suite}`);
@@ -181,14 +251,10 @@ if (serverGone) {
   problems.push(`nothing answers at ${BASE} since ${serverGone}: ${left} http mutant(s) were not run. Start the app again, then npm run test:audit -- http --from=${serverGone}`);
 }
 
-if (floorSince) {
-  const dbLeft = chosen.filter((m) => m.suite.includes("/db/"));
-  problems.push(`the relayer went under the test floor at ${floorSince}: ${dbLeft.length - dbLeft.findIndex((m) => m.id === floorSince)} database mutant(s) were not run. Refill it, then npm run test:audit -- db --from=${floorSince}`);
-}
-
 // A run from part-way through, or one the server left, has not seen every mutant: the baseline's "never killed" would accuse tests the missing ones cover.
-if (!only && !from && !wanted && !serverGone && !floorSince) {
+if (!only && !from && !wanted && !serverGone) {
   for (const suite of new Set(chosen.map((m) => m.suite))) {
+    if (suite.includes("/db/") || suite.includes("/http/")) waitForRoom(`the baseline of ${suite}`, estimateWei(1, 0));
     const baseline = runTests(suite, null);
     for (const [name, passed] of baseline) {
       if (!passed) problems.push(`${suite}: "${name}" fails against the unbroken code`);
