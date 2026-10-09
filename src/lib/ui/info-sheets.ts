@@ -69,7 +69,8 @@ function marketCalls(): InfoSheet {
 /** A market once it has closed: saying what happened, and calling it. */
 function marketVoting(kind: "binary" | "numeric" | "categorical"): InfoSheet {
   const say = kind === "numeric" ? e("The number field", "In the sheet: type what it was or step it with − and +, and sending it is your vote.") : kind === "categorical" ? e("The answers", "Tap the one that happened; the sheet raises to say it, with a photo or a screenshot.") : e("The two answers", "Tap what happened; the sheet raises to say it, with a photo or a screenshot.");
-  const dissent = kind === "numeric" ? e("Not how I saw it", "Takes the number you saw as your vote, a note instead, or nobody can tell.") : kind === "categorical" ? e("Not how I saw it", "Lists the other answers to pick from, and I couldn’t tell.") : e("Not how I saw it", "Picks the other way, or nobody can tell.");
+  // The quiet button under Agree (3.24 as amended 2026-10-08).
+  const dissent = kind === "numeric" ? e("I see it differently", "Takes the number you saw as your vote, a note instead, or nobody can tell.") : kind === "categorical" ? e("I see it differently", "Lists the other answers to pick from, and I couldn’t tell.") : e("I see it differently", "Picks the other way, or nobody can tell.");
   // A What's on question waits on its source (3.35): the score, or the play-by-play for the first drive, which is a pick-one question.
   const feed = kind === "categorical" ? e("The play-by-play", "Proposes how the drive ended once it’s in; Say it yourself shows two hours after.", { qualifier: "on a question from What’s on" }) : e("The final score", "Proposes what happened once it’s in; Say it yourself shows two hours after the game.", { qualifier: "on a question from What’s on" });
   const more = kind === "numeric" ? "What the stake is in, what the group’s number means, and for the asker its colour." : kind === "categorical" ? "When picks show and what the stake is in, and for the asker its colour." : "What the stake is in, the group’s number exactly, and for the asker its colour.";
@@ -92,6 +93,29 @@ function marketVoting(kind: "binary" | "numeric" | "categorical"): InfoSheet {
         dissent,
         e("Change, on your line", "Reopens your vote while it’s undecided."),
         e("Add what you saw", "Your case for the tiebreaker in a line, with a photo or a screenshot if you like.", { qualifier: "in a deadlock, once you’ve voted" }),
+      ],
+    },
+  };
+}
+
+/** An argument after its close, while the app's ruling stands (3.24 as amended 2026-10-08, the touch-ups round). */
+function marketRuling(): InfoSheet {
+  return {
+    name: "An argument, ruled",
+    groups: {
+      Icons: [e("More", "What the stake is in, and for the asker its colour.", { glyph: "more" }), e("Share", "Sends the argument’s link to a chat.", { glyph: "share", qualifier: "if you’re in it" }), e("Copy the link", "Copies it; the icon turns to a check for a moment.", { glyph: "copy", qualifier: "if you’re in it" })],
+      "Rules and timing": [
+        e("Ruled when it was asked", "The ruling was sealed then, and the terms everyone signed carry its seal.", { qualifier: "when facts settle it" }),
+        e("Everyone agreeing", "Settles it at once; a tap, binding nobody who hasn’t."),
+        e("A day of quiet", "With nobody seeing it differently a day after it shows, the ruling stands."),
+        e("The tiebreaker", "Hears the ruling and what anyone says it got wrong, and its ruling settles it."),
+      ],
+      "Everything else": [
+        e("Agree", "Says the ruling is right; once everyone in it has, it’s settled."),
+        e("I see it differently", "Asks what it got wrong, with a photo if you like, for the tiebreaker."),
+        e("Who sees it differently", "Everyone in it sees who disputed the ruling and why."),
+        e("How to check it", "The salt and the words that hash to the seal in the terms you signed."),
+        e("Say what happened", "What you saw, with a photo or a screenshot; the app rules from it.", { qualifier: "when what you saw settles it" }),
       ],
     },
   };
@@ -195,6 +219,7 @@ export const INFO_SHEETS: Record<string, InfoSheet> = {
   "market-open-number": marketOpen("numeric"),
   "market-open-pick": marketOpen("categorical"),
   "market-calls": marketCalls(),
+  "market-ruling": marketRuling(),
   "market-voting": marketVoting("binary"),
   "market-voting-number": marketVoting("numeric"),
   "market-voting-pick": marketVoting("categorical"),
@@ -410,20 +435,25 @@ export const INFO_SHEETS: Record<string, InfoSheet> = {
   "ask-question": {
     name: "Asking",
     groups: {
-      Gestures: [e("Hold a mark", "In the picker, half a second on a mark with skin tones opens them."), e("Tap a person", "Under Add a person, adds them as an answer; one already added is dimmed.", { qualifier: "on Pick one" })],
+      Gestures: [
+        e("Hold a mark", "In the picker, half a second on a mark with skin tones opens them."),
+        e("Tap a category", "In the picker, a category’s name takes you to its marks."),
+        e("Tap a person", "Under Add a person, adds them as an answer; one already added is dimmed.", { qualifier: "on Pick one" }),
+      ],
       Icons: [e("Close", "Closes asking and returns you exactly where you were.", { glyph: "down" }), e("The cross on an answer", "Takes that answer out; two answers always stay.", { glyph: "close", qualifier: "on Pick one" })],
       "Rules and timing": [
-        e("Ask me three things first", "Three quick questions before the terms, for when a lot rides on it."),
+        e("Quick setup", "One line in, terms out; they start being written while you finish typing."),
+        e("Help define the terms", "Three quick questions before the terms, for when a lot rides on it."),
         e("A named subject", "A name the app can’t place asks what it is, in one tap, before the three."),
-        e("Set the terms", "Writes the terms for your question; they arrive as they’re written."),
       ],
       "Everything else": [
         e("Got a code?", "Opens the code screen to join a friend’s question instead."),
         e("Add a mark", "Opens the picker; a mark with a colour of its own gives the question that colour."),
-        e("Settle an argument", "Always yes or no, between two of you; the app weighs it before anyone’s in."),
-        e("A number", "The terms step then asks what the number counts and how far off scores nothing."),
+        e("Settle an argument", "Between two of you; when facts settle it, the app rules as it’s asked, sealed."),
+        e("Pick a number", "The terms step then asks what the number counts and how far off scores nothing."),
         e("Pick one", "Two to six answers, a few words each or a person you know here."),
-        e("Ask me", "Asks the three questions first; the terms are written once you’ve answered them.", { qualifier: "with Ask me three things first" }),
+        e("Set the terms", "Writes the terms for your question; they arrive as they’re written."),
+        e("Ask me", "Asks the three questions first; the terms are written once you’ve answered them.", { qualifier: "with Help define the terms" }),
         e("Check it.", "Says whether facts can settle it; an argument about someone in the group isn’t ruled on.", { qualifier: "on Settle an argument" }),
       ],
     },
@@ -433,7 +463,7 @@ export const INFO_SHEETS: Record<string, InfoSheet> = {
     groups: {
       Icons: [e("Back", "Returns to the question; the writing carries on.", { glyph: "back" })],
       "Rules and timing": [
-        e("Written in front of you", "The words arrive as they’re written; Still writing at three seconds, Try again at ten."),
+        e("Writing the terms…", "Shows until the first words, which often start while you’re still typing."),
         e("Everyone reads these", "Exactly these words, before they’re in; being in accepts what If it’s unclear says."),
         e("Scored on", "How far off scores nothing; left blank where offered, the app’s own is never shown.", { qualifier: "on a number question" }),
       ],
@@ -442,7 +472,7 @@ export const INFO_SHEETS: Record<string, InfoSheet> = {
         e("Counts if", "Editable once written, and not before."),
         e("What the number counts", "The app proposes one and many with the terms; both are yours to change.", { qualifier: "on a number question" }),
         e("Your side", "All the way by default; your number can be softened on the question’s own screen.", { qualifier: "on an argument" }),
-        e("Decided", "When it closes: the app picks one; Tonight and Tomorrow mean the end of that day."),
+        e("Decided", "Tonight is the end of today; This week and This month count from now, or pick a date."),
         e("Stakes", "The kind alone; how much is set at entry, and a group you’ve asked brings its own units."),
         e("Where everyone landed", "Hidden makes each answer final once made; you still see everyone’s once you’re in."),
         e("If it’s unclear", "A tiebreaker rules after the deadline, or it goes unsettled and nothing changes hands."),

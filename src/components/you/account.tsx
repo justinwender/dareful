@@ -12,6 +12,7 @@ import type { GlyphKey } from "@/lib/ui/units";
 import type { Hue } from "@/lib/ui/hue";
 import { PassThePhoneRow } from "./pass-the-phone";
 import { AppearanceRow } from "./appearance";
+import { NameEditor, OwnUnits, PasteSticker } from "./settings";
 
 export type UnitRow = { id: string; label: string; pluralLabel: string; glyph: GlyphKey | null; monetary: boolean; emoji: string | null };
 
@@ -41,8 +42,8 @@ export async function signOutBoth(logOut: () => Promise<void>, endSession: () =>
  * number is never held here (only its salted hash, to find entries made under it), so that row states what it
  * is for and opens nothing. Pass the phone is the row with the switch (3.45); One tap is not drawn (3.41, amended).
  */
-export function AccountRows({ units, marks, unitsCaption, marksCaption, passThePhone, hue }: { units: UnitRow[]; marks: MarkRef[]; unitsCaption: string; marksCaption: string; /** Pass the phone (3.45): whether it is on, and which half is missing while it is being set up. */ passThePhone: { on: boolean; delegated: boolean; pinSet: boolean }; hue: Hue }) {
-  const [open, setOpen] = useState<"units" | "marks" | "signout" | null>(null);
+export function AccountRows({ name, units, ownUnits, marks, unitsCaption, marksCaption, canPaste, passThePhone, hue }: { /** The name to change (the touch-ups round, section 11). */ name: string; units: UnitRow[]; /** Stake units of this person's own, added here and offered when they ask. */ ownUnits: string[]; marks: MarkRef[]; unitsCaption: string; marksCaption: string; /** Whether a sticker can be stored at all (the bucket is configured). */ canPaste: boolean; /** Pass the phone (3.45): whether it is on, and which half is missing while it is being set up. */ passThePhone: { on: boolean; delegated: boolean; pinSet: boolean }; hue: Hue }) {
+  const [open, setOpen] = useState<"name" | "units" | "marks" | "signout" | null>(null);
   const titleId = useId();
   const router = useRouter();
   const { handleLogOut } = useDynamicContext();
@@ -60,6 +61,7 @@ export function AccountRows({ units, marks, unitsCaption, marksCaption, passTheP
     <section className="flex flex-col gap-3" data-you-account="">
       <h2 className="text-label text-ink-3">Account</h2>
       <div className="overflow-hidden rounded-card border border-line bg-surface">
+        <Row title="Your name" caption={name} onClick={() => setOpen("name")} data-account-row="name" />
         <Row title="Your units" caption={unitsCaption} onClick={() => setOpen("units")} data-account-row="units" />
         <Row title="Your marks" caption={marksCaption} onClick={() => setOpen("marks")} data-account-row="marks" />
         <Row title="Your number" caption="Used to sign in. Nobody else sees it." data-account-row="number" />
@@ -67,11 +69,14 @@ export function AccountRows({ units, marks, unitsCaption, marksCaption, passTheP
         <PassThePhoneRow status={passThePhone} hue={hue} />
         <Row title="Sign out" onClick={() => setOpen("signout")} data-account-row="signout" />
       </div>
+      <Sheet open={open === "name"} onClose={() => setOpen(null)} labelledBy={`${titleId}-name`}>
+        {open === "name" ? <NameEditor name={name} titleId={`${titleId}-name`} onDone={() => setOpen(null)} /> : null}
+      </Sheet>
       <Sheet open={open === "units"} onClose={() => setOpen(null)} labelledBy={`${titleId}-units`}>
         <h2 id={`${titleId}-units`} className="text-body-strong text-ink">
           Your units
         </h2>
-        {units.length === 0 ? (
+        {units.length === 0 && ownUnits.length > 0 ? null : units.length === 0 ? (
           <p className="text-body-sm text-ink-2">Nothing yet. A unit is whatever a cover or a question runs on: a beer, a coffee, a next time, dollars.</p>
         ) : (
           <ul className="flex flex-col" data-your-units="">
@@ -85,6 +90,7 @@ export function AccountRows({ units, marks, unitsCaption, marksCaption, passTheP
             ))}
           </ul>
         )}
+        <OwnUnits units={ownUnits} />
       </Sheet>
       <Sheet open={open === "marks"} onClose={() => setOpen(null)} labelledBy={`${titleId}-marks`}>
         <h2 id={`${titleId}-marks`} className="text-body-strong text-ink">
@@ -101,6 +107,7 @@ export function AccountRows({ units, marks, unitsCaption, marksCaption, passTheP
             ))}
           </ul>
         )}
+        {canPaste ? <PasteSticker open={open === "marks"} /> : null}
       </Sheet>
       <Sheet open={open === "signout"} onClose={() => (leaving ? undefined : setOpen(null))} labelledBy={`${titleId}-signout`}>
         <h2 id={`${titleId}-signout`} className="text-body-strong text-ink">

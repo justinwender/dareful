@@ -76,7 +76,7 @@ test("a bare name the line does not place is asked about first, and the question
   const told = answerFrom(load("careful-questions-pet"), "ask_three", CarefulAnswer, "t");
   const questions = "questions" in told && Array.isArray(told.questions) ? told.questions : [];
   assert.equal(questions.length, 3, "told she is a pet, three questions");
-  assert.ok(!questions.some((q) => /answer|refuse to say|tell you/i.test(q)), "none of them treats Nova as someone who could answer");
+  assert.ok(!questions.some((q) => /answer|refuse to say|tell you/i.test(q.question)), "none of them treats Nova as someone who could answer");
   // An answer that records both, or neither, is refused: the two are the model's whole vocabulary here.
   assert.throws(() => answerFrom(withInput(load("careful-subject"), { subject: "" }), "ask_three", CarefulAnswer, "t"));
 });

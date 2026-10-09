@@ -1,0 +1,3 @@
+ALTER TABLE "dares" DROP CONSTRAINT "dares_resolved_by_known";--> statement-breakpoint
+ALTER TABLE "dares" ADD CONSTRAINT "dares_settled_by_known" CHECK ("dares"."settled_by" is null or "dares"."settled_by" in ('facts', 'evidence'));--> statement-breakpoint
+ALTER TABLE "dares" ADD CONSTRAINT "dares_resolved_by_known" CHECK ("dares"."resolved_by" is null or "dares"."resolved_by" in ('quorum', 'arbitration', 'provisional', 'expired', 'feed', 'removed', 'ruling'));

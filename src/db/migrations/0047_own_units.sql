@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "own_units" text[] DEFAULT '{}'::text[] NOT NULL;

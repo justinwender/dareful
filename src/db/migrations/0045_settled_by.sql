@@ -1,0 +1,1 @@
+ALTER TABLE "dares" ADD COLUMN "settled_by" text;

@@ -28,10 +28,12 @@ export function stickerCell(s: Sticker, src: (id: string) => string): { src: str
 }
 
 /**
- * The mark picker (docs/design.md 3.29): a modal sheet 560px tall on the current place's surface. Search, the
- * hueless line while it applies, "Your stickers" (3.28: a pasted cutout lands here, above Recent, in the same
- * cell size), Recent (with the dashed None cell first, the no-mark option), the category chips as words, and
- * the grid: 8 columns of 44px cells, emoji at 28px. A tap sets the mark at once and the picker stays open so the
+ * The mark picker (docs/design.md 3.29, as amended 2026-10-08): a modal sheet on the current place's surface that
+ * opens raised and drags up to full, as every sheet that covers the screen for a task does. Search, the hueless line
+ * while it applies, "Your stickers" (3.28: a pasted cutout lands here, above Recent, in the same cell size), Recent
+ * (with the dashed None cell first, the no-mark option), the category chips as words, which stay at the top and jump
+ * to their category, and every category in one grid under its name (it showed one at a time, Food first, and people
+ * found nothing else without searching): 8 columns of 44px cells, emoji at 28px. A tap sets the mark at once and the picker stays open so the
  * person can try another; seeing the colour arrive is how they learn what a mark does. It offers only what the
  * tile renderer can draw (the catalog is the ink table's keys), and the grid draws them with the phone's own
  * font while the ink always comes from the table.
@@ -47,8 +49,9 @@ export function MarkPicker({ open, onClose, value, onPick, hue, preview = true, 
   const titleId = useId();
   const [rows, setRows] = useState<Row[] | null>(null);
   const [query, setQuery] = useState("");
-  // Opens on Food (3.29): Smileys and People are hueless, and a first grid that never sets a colour teaches nothing.
-  const [group, setGroup] = useState(4);
+  // The category in view, which its chip shows; a chip jumps to its category (the touch-ups round).
+  const [group, setGroup] = useState(CATEGORIES[0]?.group ?? 0);
+  const sections = useRef(new Map<number, HTMLElement>());
   const [recent, setRecent] = useState<string[]>([]);
   const [tones, setTones] = useState<Record<string, number>>({});
   const [toneFor, setToneFor] = useState<Row | null>(null);
@@ -133,11 +136,29 @@ export function MarkPicker({ open, onClose, value, onPick, hue, preview = true, 
   }
 
   const byGlyph = useMemo(() => new Map((rows ?? []).map((r) => [r[0], r])), [rows]);
-  const shown = useMemo(() => {
-    if (!rows) return [];
-    if (query.trim()) return rows.filter((r) => matches(r, query));
-    return rows.filter((r) => r[2] === group);
-  }, [rows, query, group]);
+  const shown = useMemo(() => (rows && query.trim() ? rows.filter((r) => matches(r, query)) : []), [rows, query]);
+  const byCategory = useMemo(() => CATEGORIES.map((c) => ({ ...c, rows: (rows ?? []).filter((r) => r[2] === c.group) })), [rows]);
+  // The chip follows the category under the row of chips as the grid scrolls.
+  useEffect(() => {
+    const first = sections.current.values().next().value;
+    const box = first?.closest<HTMLElement>("[data-sheet-scroll]");
+    if (!open || !box || query.trim() || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        const top = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+        const g = top ? Number((top.target as HTMLElement).dataset.category) : NaN;
+        if (Number.isFinite(g)) setGroup(g);
+      },
+      { root: box, rootMargin: "-56px 0px -60% 0px" },
+    );
+    for (const el of sections.current.values()) io.observe(el);
+    return () => io.disconnect();
+  }, [open, query, rows]);
+  function jumpTo(g: number) {
+    setGroup(g);
+    const still = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    sections.current.get(g)?.scrollIntoView({ block: "start", behavior: still ? "auto" : "smooth" });
+  }
   const picked = value?.kind === "emoji" ? normaliseMark(value.value) : null;
   const hueless = preview && value !== null && (value.kind === "emoji" ? emojiInk(value.value) === null : value.ink === null);
   /** The glyph a cell shows and picks: the base, or the tone this device chose for it. */
@@ -199,7 +220,7 @@ export function MarkPicker({ open, onClose, value, onPick, hue, preview = true, 
   };
 
   return (
-    <Sheet open={open} onClose={onClose} labelledBy={titleId} closeLabel="Done" tall>
+    <Sheet open={open} onClose={onClose} labelledBy={titleId} closeLabel="Done">
       <h2 id={titleId} className="sr-only">
         Pick a mark
       </h2>
@@ -254,24 +275,39 @@ export function MarkPicker({ open, onClose, value, onPick, hue, preview = true, 
         </div>
       ) : null}
       {!query.trim() ? (
-        <div role="tablist" aria-label="Categories" className="-mx-4 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none]">
+        // The row of chips stays at the top of the sheet and jumps to its category (the touch-ups round).
+        <div role="tablist" aria-label="Categories" className="sticky -top-3 z-10 -mx-4 flex gap-2 overflow-x-auto bg-surface px-4 py-2 [scrollbar-width:none]" data-category-jump="">
           {CATEGORIES.map((c) => (
-            <button key={c.group} type="button" role="tab" aria-selected={group === c.group} onClick={() => setGroup(c.group)} data-press={group === c.group ? "fill" : "line"} className={cn("inline-flex h-9 shrink-0 items-center rounded-pill border px-3 chip-text", group === c.group ? "border-ink-3 bg-surface-2 text-ink press-fill" : "border-line-strong text-ink-2 press-line")}>
+            <button key={c.group} type="button" role="tab" aria-selected={group === c.group} onClick={() => jumpTo(c.group)} data-press={group === c.group ? "fill" : "line"} className={cn("inline-flex h-9 shrink-0 items-center rounded-pill border px-3 chip-text", group === c.group ? "border-ink-3 bg-surface-2 text-ink press-fill" : "border-line-strong text-ink-2 press-line")}>
               {c.label}
             </button>
           ))}
         </div>
       ) : null}
-      <div className="flex flex-col gap-2">
-        <p className="text-label text-ink-3">{query.trim() ? "Matches" : (CATEGORIES.find((c) => c.group === group)?.label ?? "")}</p>
-        {rows === null ? (
-          <p className="text-caption text-ink-3">Loading the marks.</p>
-        ) : shown.length === 0 ? (
-          <p className="text-caption text-ink-3">Nothing called that. Try a plainer word.</p>
-        ) : (
-          <div className="grid grid-cols-8 gap-[2px]">{shown.map((r) => cell(r, r[0]))}</div>
-        )}
-      </div>
+      {rows === null ? (
+        <p className="text-caption text-ink-3">Loading the marks.</p>
+      ) : query.trim() ? (
+        <div className="flex flex-col gap-2">
+          <p className="text-label text-ink-3">Matches</p>
+          {shown.length === 0 ? <p className="text-caption text-ink-3">Nothing called that. Try a plainer word.</p> : <div className="grid grid-cols-8 gap-[2px]">{shown.map((r) => cell(r, r[0]))}</div>}
+        </div>
+      ) : (
+        byCategory.map((c) => (
+          <section
+            key={c.group}
+            ref={(el) => {
+              if (el) sections.current.set(c.group, el);
+              else sections.current.delete(c.group);
+            }}
+            data-category={c.group}
+            aria-label={c.label}
+            className="flex scroll-mt-14 flex-col gap-2"
+          >
+            <p className="text-label text-ink-3">{c.label}</p>
+            <div className="grid grid-cols-8 gap-[2px]">{c.rows.map((r) => cell(r, r[0]))}</div>
+          </section>
+        ))
+      )}
       {toneFor ? (
         <div role="dialog" aria-label={`Skin tone for ${toneFor[1]}`} data-fixed="bottom" className="fixed inset-x-4 bottom-[max(1.5rem,env(safe-area-inset-bottom))] z-[60] mx-auto flex max-w-[398px] items-center justify-between gap-1 rounded-card border border-line-strong bg-surface p-2">
           {[toneFor[0], ...(toneFor[4] || [])].map((g, i) => (

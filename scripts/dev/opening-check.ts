@@ -51,7 +51,7 @@ export type OpeningRun = {
   errors: string[];
 };
 
-export type OpeningOptions = { base?: string; path?: string; scheme?: "dark" | "light"; reduce?: boolean; hold?: number; cpu?: number; latency?: number; mbps?: number; wait?: number; shots?: string; runs?: number; /** The Appearance choice (8.1), as the row on You keeps it. */ theme?: "dark" | "light"; /** The session cookie's value, for a signed-in run. */ session?: string };
+export type OpeningOptions = { base?: string; path?: string; scheme?: "dark" | "light"; reduce?: boolean; hold?: number; cpu?: number; latency?: number; mbps?: number; wait?: number; shots?: string; runs?: number; /** The Appearance choice (8.1), as the row on You keeps it. */ theme?: "dark" | "light"; /** The session cookie's value, for a signed-in run. */ session?: string; /** A picture of the whole screen at the end of the wait, every section in: the phone made as tall as the app's scrolling box (the touch-ups round). */ fullPage?: string };
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -216,6 +216,15 @@ export async function watchOpening(options: OpeningOptions = {}): Promise<Openin
       await sleep(Math.max(0, (options.wait ?? 3000) + hold + 6 * latency - (Date.now() - started)));
       const { result } = await page.send<{ result: { value: Omit<OpeningRun, "errors"> } }>("Runtime.evaluate", { returnByValue: true, expression: READING });
       runs.push({ ...result.value, errors: [...errors] });
+      if (options.fullPage) {
+        // The document never scrolls (the field round, 1.1): the app's own box does, so the phone is made as tall as what it holds.
+        const tall = await page.send<{ result: { value: number } }>("Runtime.evaluate", { returnByValue: true, expression: `(document.getElementById("app") || document.body).scrollHeight` });
+        await page.send("Emulation.setDeviceMetricsOverride", { width: 393, height: Math.max(852, Math.ceil(tall.result.value)), deviceScaleFactor: 2, mobile: true });
+        await sleep(600);
+        const shot = await page.send<{ data: string }>("Page.captureScreenshot", { format: "png" });
+        writeFileSync(options.fullPage, Buffer.from(shot.data, "base64"));
+        await page.send("Emulation.setDeviceMetricsOverride", { width: 393, height: 852, deviceScaleFactor: 3, mobile: true });
+      }
     }
     page.close();
     return runs;

@@ -5,7 +5,9 @@ import { pendingCopy, SendPending } from "@/lib/chain/relayer";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { notifyAfterVote, notifyJoined, notifyOpened, notifyRuling, sendNudge, voteCounts, type NudgeResult, type VoteCounts, notifyVotingOpened } from "@/lib/notify";
-import { carefulQuestions, declined, SUBJECT_KINDS, triage } from "@/lib/ai/settler";
+import { carefulQuestions, declined, SUBJECT_KINDS, triage, type CarefulQuestion } from "@/lib/ai/settler";
+import { sealRuling } from "@/lib/ledger/seal";
+import { agreeWithRuling, disputeRuling } from "@/lib/ledger/rulings";
 import { afterEntry, arbitrateMarket, proposeForArgument, stateCase } from "@/lib/ledger/settle";
 import { isHex, type Hex } from "viem";
 import { z } from "zod";
@@ -70,7 +72,7 @@ export async function nudgeAction(rawId: string, rawTo?: string): Promise<({ ok:
  * Quick mode: one line in, terms out. The model drafts; if it is slow, down, or answers in the wrong shape, the
  * line is used as typed and the screen says so, because a market must never wait on a model.
  */
-export async function scopeMarketAction(rawLine: string, rawCriterion?: string, rawAnswers?: Array<{ question: string; yes: boolean }>, rawKind?: "binary" | "numeric" | "categorical", rawChoices?: string[]): Promise<ScopeResult | { error: string }> {
+export async function scopeMarketAction(rawLine: string, rawCriterion?: string, rawAnswers?: Array<{ question: string; yes: boolean; answer?: string }>, rawKind?: "binary" | "numeric" | "categorical", rawChoices?: string[]): Promise<ScopeResult | { error: string }> {
   const user = await currentUser();
   if (!user) return { error: WORDS.signedOut };
   return writeUp({ line: rawLine, criterion: rawCriterion, answers: rawAnswers, kind: rawKind, choices: rawChoices }, user.id, await viewerZone());
@@ -94,7 +96,7 @@ const Draft = z.object({
   stalemate: z.enum(["arbitrate", "void"]).default("arbitrate"),
   mode: z.enum(["quick", "careful"]).default("quick"),
   /** Present for an argument: what the triage made of it, and the criterion a contestable claim is ruled against. */
-  argument: z.object({ tier: z.enum(["checkable", "contestable"]), criterion: z.string().trim().min(3).max(110).nullable() }).optional(),
+  argument: z.object({ tier: z.enum(["checkable", "contestable"]), criterion: z.string().trim().min(3).max(110).nullable(), /** What settles it, from the triage (the touch-ups round); a page from before says nothing, and is ruled at the close. */ settledBy: z.enum(["facts", "evidence"]).optional() }).optional(),
   unit: Unit,
   title: z.string().trim().min(3).max(140),
   terms: z.string().trim().min(3).max(800),
@@ -175,13 +177,18 @@ export async function draftMarketAction(input: z.infer<typeof Draft>): Promise<{
         return { error: "Say how far off scores nothing, like 20." };
       }
     }
+    // An argument that facts settle is ruled now and sealed (the touch-ups round, section 2): the ruling's hash goes into
+    // the terms the asker signs here and everyone signs after, and nobody sees the ruling before the close.
+    const sealed = d.argument?.settledBy === "facts" ? await sealRuling({ title: d.title, terms: d.terms, criterion: d.argument.criterion, answers: d.answers ? d.answers.map((a) => a.text) : null }) : null;
     const row = await draftMarket({
       id: d.id,
       creatorId: user.id,
       groupId,
       denomId: denom.id,
       title: d.title,
-      termsText: d.terms,
+      termsText: sealed ? sealed.terms : d.terms,
+      settledBy: d.argument?.settledBy ?? null,
+      seal: sealed ? { outcome: sealed.ruling.outcome, confidenceBps: sealed.ruling.confidenceBps, rationale: sealed.ruling.rationale, salt: sealed.salt, hash: sealed.seal } : null,
       kind: d.answers ? "categorical" : d.number ? "numeric" : "binary",
       answers: d.answers?.map((a) => ({ text: a.text, userId: a.userId ?? null })) ?? null,
       unit: d.number?.unit ?? null,
@@ -192,7 +199,8 @@ export async function draftMarketAction(input: z.infer<typeof Draft>): Promise<{
       tier: d.argument?.tier ?? null,
       criterion: d.argument?.criterion ?? null,
       mode: d.mode,
-      stalemate: d.stalemate,
+      // An argument always goes to the tiebreaker when someone in it sees the app's ruling differently: its sealed line says so (the touch-ups round).
+      stalemate: d.argument ? "arbitrate" : d.stalemate,
       mark: d.mark ?? null,
       outcomeWords: d.number || d.argument || d.answers ? null : (d.outcomeWords ?? null),
       revealMode: d.blind ? "blind" : "open",
@@ -413,20 +421,18 @@ export async function removeGhostEntryAction(rawId: string, rawClaimId: string):
   return { ok: true };
 }
 
-export async function lockMarketAction(rawId: string): Promise<{ ok: true; /** Sent and still going through (docs/design.md 5.2): the band shows it on its way. */ pending?: true } | { error: string }> {
+export async function lockMarketAction(rawId: string): Promise<{ ok: true } | { error: string }> {
   const user = await currentUser();
   if (!user) return { error: WORDS.signedOut };
   const id = uuid.safeParse(rawId);
   if (!id.success) return { error: "That one doesn't exist." };
   let expired = false;
   try {
+    // The close is recorded first and its chain write follows (the touch-ups round, section 0): a write that fails is the
+    // tick's to send again, so what can come back here is a refusal (not theirs to close, or closed under them).
     expired = (await lockMarket(id.data, user.id)).expired === true;
   } catch (err) {
-    if (err instanceof SendPending && err.kind !== "register") {
-      revalidatePath(`/m/${id.data}`);
-      return { ok: true, pending: true };
-    }
-    return { error: say(err, "Closing it didn’t go through. Nothing changed.") };
+    return { error: say(err, "That didn't go through. Try again.") };
   }
   // Calls are in now, and the vote waits for the thing to happen (the games-and-the-reveal round): only a close made once
   // its decided date has passed opens the vote at once, and then everyone else in it hears now (the field round, 1.8).
@@ -471,6 +477,69 @@ export async function callsAreInAction(rawId: string): Promise<{ ok: true; close
     }
     return { error: say(err, "That didn’t go through. Try again.") };
   }
+}
+
+/**
+ * Agreeing with the app's ruling on an argument (the touch-ups round, section 2): a tap, by anyone in it, a guest
+ * included. The last of everyone in it settles it at once, and the others hear it was decided.
+ */
+export async function agreeWithRulingAction(rawId: string): Promise<{ ok: true; settled: boolean } | { error: string }> {
+  const id = uuid.safeParse(rawId);
+  if (!id.success) return { error: "That one doesn't exist." };
+  const who = await sayerOn(id.data);
+  if (!who) return { error: "Only the people in it can say that." };
+  try {
+    const r = await agreeWithRuling(id.data, who);
+    revalidatePath(`/m/${id.data}`);
+    revalidatePath("/");
+    if (r.settled) after(() => notifyRuling(id.data, "userId" in who ? who.userId : null));
+    return { ok: true, settled: r.settled };
+  } catch (err) {
+    if (err instanceof SendPending && err.kind !== "register") {
+      revalidatePath(`/m/${id.data}`);
+      return { ok: true, settled: true };
+    }
+    return { error: say(err, "That didn’t go through. Try again.") };
+  }
+}
+
+/**
+ * Seeing the app's ruling differently (the touch-ups round, section 2): what it got wrong, required, and a photo or a
+ * screenshot from someone with an account. Kept, shown to everyone in it, and sent with the ruling to the tiebreaker,
+ * whose ruling settles it; the person is answered once it is kept, and the tiebreaker is heard after.
+ */
+export async function disputeRulingAction(form: FormData): Promise<{ ok: true } | { error: string }> {
+  const id = uuid.safeParse(form.get("dareId"));
+  const raw = form.get("text");
+  const text = z.string().trim().min(2).max(400).safeParse(typeof raw === "string" ? raw : "");
+  if (!id.success) return { error: "That one doesn't exist." };
+  if (!text.success) return { error: "Say what it got wrong." };
+  const who = await sayerOn(id.data);
+  if (!who) return { error: "Only the people in it can say that." };
+  const user = "userId" in who ? who.userId : null;
+  const attachments = user ? form.getAll("attachment").filter((f): f is File => f instanceof File && f.size > 0).slice(0, 3) : [];
+  if (attachments.some((f) => f.size > MAX_UPLOAD_BYTES)) return { error: "One of those is too big to send." };
+  try {
+    await disputeRuling(id.data, who, text.data);
+    const zone = await viewerZone();
+    if (user) for (const file of attachments) await addMarketPhoto({ dareId: id.data, authorId: user, bytes: Buffer.from(await file.arrayBuffer()), viewerZone: zone, role: "evidence" });
+  } catch (err) {
+    if (err instanceof MediaError) return { error: err.message };
+    if (err instanceof StorageUnavailable) return { error: "Screenshots are off right now." };
+    return { error: say(err, "That didn’t go through. Try again.") };
+  }
+  revalidatePath(`/m/${id.data}`);
+  revalidatePath("/");
+  // The tiebreaker hears it after the person has their answer; one that does not answer is heard again by the tick (`disputesToHear`).
+  after(async () => {
+    try {
+      await arbitrateMarket(id.data, user);
+      await notifyRuling(id.data, user);
+    } catch (err) {
+      console.error("the tiebreaker did not hear a dispute yet; the tick asks again", { dareId: id.data, err: err instanceof Error ? err.message : err });
+    }
+  });
+  return { ok: true };
 }
 
 /** "Take it back": unsaying calls are in while it is still open. */
@@ -541,10 +610,16 @@ export async function sayWhatHappenedAction(form: FormData): Promise<{ ok: true 
   return { ok: true };
 }
 
-/** Rewrites the proposal from the terms and everything said so far. A failure leaves the old proposal, or none. */
+/**
+ * Rewrites the proposal from the terms and everything said so far. A failure leaves the old proposal, or none. On an
+ * argument it is the app's ruling for one that needs what its people saw (the touch-ups round, section 2), made once from
+ * the first that is said; a sealed ruling, or one already made, is never rewritten by what someone says after it, since
+ * seeing it differently is the way to answer a ruling.
+ */
 async function refreshProposal(dareId: string): Promise<void> {
   const d = await marketById(dareId);
   if (!d || stateOf(d) !== "locked") return;
+  if (d.pace === "argument" && (d.sealHash || d.aiProposedAt)) return;
   const said = await db
     .select({ name: schema.users.displayName, said: schema.dareStatements.statement })
     .from(schema.dareStatements)
@@ -565,10 +640,12 @@ async function refreshProposal(dareId: string): Promise<void> {
     const outcome = p.outcome;
     await db
       .update(schema.dares)
-      .set({ aiOutcome: outcome, aiConfidenceBps: outcome === null ? null : p.confidencePercent * 100, aiRationale: p.rationale, aiProposedAt: new Date() })
+      .set({ aiOutcome: outcome, aiConfidenceBps: outcome === null ? null : p.confidencePercent * 100, aiRationale: p.rationale, aiProposedAt: new Date(), ...(d.pace === "argument" && outcome !== null ? { rulingRevealedAt: new Date() } : {}) })
       .where(eq(schema.dares.id, dareId));
   } catch (err) {
     console.error("outcome proposal failed; the ballot opens with nothing picked", err);
+    // A read that never came ends the wait for it on a dare (the touch-ups round): the sheet asks with nothing picked rather than holding its loader for a minute and a half. An argument's ruling is never stamped empty; the tiebreaker takes one with none.
+    if (d.pace === "dare") await db.update(schema.dares).set({ aiOutcome: null, aiConfidenceBps: null, aiRationale: null, aiProposedAt: new Date() }).where(eq(schema.dares.id, dareId)).catch(() => undefined);
   }
 }
 
@@ -600,7 +677,7 @@ export async function castVoteAction(rawId: string, rawOutcome: string, signatur
 
 // ------------------------------------------------------------------------------------------------ the settler
 
-export type TriageResult = { kind: "declined"; reason: string; dareInstead: string | null } | { kind: "ok"; tier: "checkable" | "contestable"; claim: string; criteria: string[] } | { kind: "unavailable" };
+export type TriageResult = { kind: "declined"; reason: string; dareInstead: string | null } | { kind: "ok"; tier: "checkable" | "contestable"; claim: string; criteria: string[]; /** What settles it (the touch-ups round): facts are ruled on at the ask and sealed. */ settledBy: "facts" | "evidence" } | { kind: "unavailable" };
 
 /**
  * What kind of disagreement this is. The refusal is not a soft guideline: no claim about the world, no ruling,
@@ -615,7 +692,7 @@ export async function triageAction(rawLine: string): Promise<TriageResult | { er
     const t = await triage({ line: line.data });
     const no = declined(t);
     if (no) return { kind: "declined", reason: no.reason, dareInstead: no.dareInstead };
-    return { kind: "ok", tier: t.tier === "contestable" ? "contestable" : "checkable", claim: t.claim, criteria: t.tier === "contestable" ? t.criteria : [] };
+    return { kind: "ok", tier: t.tier === "contestable" ? "contestable" : "checkable", claim: t.claim, criteria: t.tier === "contestable" ? t.criteria : [], settledBy: t.settledBy };
   } catch (err) {
     console.error("triage failed; the settler is not available", err);
     return { kind: "unavailable" };
@@ -626,7 +703,7 @@ export async function triageAction(rawLine: string): Promise<TriageResult | { er
 const SubjectAnswer = z.object({ name: z.string().trim().min(1).max(40), kind: z.enum(SUBJECT_KINDS) });
 
 /** Careful mode's three questions, or first the one tap-to-answer question about what a named subject is (docs/decisions.md 2026-09-27). */
-export async function carefulQuestionsAction(rawLine: string, rawSubject?: z.infer<typeof SubjectAnswer>, rawKind?: "binary" | "numeric" | "categorical", rawChoices?: string[]): Promise<{ questions: string[] } | { ask: { subject: string } } | { error: string }> {
+export async function carefulQuestionsAction(rawLine: string, rawSubject?: z.infer<typeof SubjectAnswer>, rawKind?: "binary" | "numeric" | "categorical", rawChoices?: string[]): Promise<{ questions: CarefulQuestion[] } | { ask: { subject: string } } | { error: string }> {
   if (!(await currentUser())) return { error: WORDS.signedOut };
   const line = z.string().trim().min(3).max(280).safeParse(rawLine);
   if (!line.success) return { error: "Ask it in a line." };

@@ -7,6 +7,15 @@
  */
 import { z } from "zod";
 import { MODELS, structured, type EvidenceImage } from "./client";
+import { deadlineMismatch } from "@/lib/ledger/decide-by";
+
+/** A phrase cut back to `n` characters at a word. Pure. */
+function clipAt(s: string, n: number): string {
+  if (s.length <= n) return s;
+  const cut = s.slice(0, n + 1);
+  const at = cut.lastIndexOf(" ");
+  return (at > n / 2 ? cut.slice(0, at) : s.slice(0, n)).replace(/[\s,;:.\-]+$/, "");
+}
 
 /** Models sometimes send a list as one string (a JSON array, or lines). Read either; anything else fails the parse. */
 function listOfStrings(v: unknown): unknown {
@@ -52,7 +61,8 @@ export const Scope = z.object({
   /** True only when the line cannot be resolved as written because what would count is genuinely unclear. */
   ambiguous: z.boolean(),
   /** When ambiguous: up to three measurable ways to decide it, each a short phrase. Otherwise empty. */
-  criteria: z.preprocess(listOfStrings, z.array(z.string().trim().min(3).max(90)).max(3)),
+  // Display prose, so clipped at a word and never a reason to refuse the write-up (Haiku 5.5 writes them longer, the touch-ups round).
+  criteria: z.preprocess(listOfStrings, z.array(z.string().trim().min(3).transform((c) => clipAt(c, 90))).transform((a) => a.slice(0, 3))),
   /** The date the group could first know, YYYY-MM-DD in the asker's zone, even past the furthest a question can run, which is never a reason to refuse the write-up: the write-up then offers its nearer version (`datesOf`). */
   decideBy: z.string().trim().max(32).default(""),
   /** A nearer version, only when the answer cannot be known before the latest date a question can run. */
@@ -96,26 +106,52 @@ export function nowLine(now: Date, zone: string): string {
   return `Right now it is ${words}, in the ${zone} time zone.`;
 }
 
-/** Help define the terms' answers, as the model reads them: each a question and the asker's yes or no. */
-function answeredBlock(answers: ReadonlyArray<{ question: string; yes: boolean }> | undefined): string {
-  const answered = (answers ?? []).slice(0, 3).map((a) => `<answered question="${a.question.replace(/["<>]/g, "").slice(0, 140)}">${a.yes ? "yes" : "no"}</answered>`).join("\n");
-  return answered ? `The person asking answered these about edge cases. Write the terms so each answer is settled in them, in plain words.\n${answered}\n` : "";
+/** One answer under Help define the terms: a yes or no, or, for a question that carries its own two answers (the touch-ups round), the one picked. */
+export type CarefulAnswered = { question: string; yes: boolean; answer?: string };
+
+/** Help define the terms' answers, as the model reads them: each a question and what the asker picked, yes, no, or one of its own two answers. */
+function answeredBlock(answers: ReadonlyArray<CarefulAnswered> | undefined): string {
+  const clean = (t: string, n: number) => t.replace(/["<>]/g, "").slice(0, n);
+  const answered = (answers ?? []).slice(0, 3).map((a) => `<answered question="${clean(a.question, 140)}">${a.answer ? clean(a.answer, 60) : a.yes ? "yes" : "no"}</answered>`).join("\n");
+  return answered ? `The person asking answered these about edge cases. Write the terms so each answer is settled in them, in plain words.\n${answered}\n${SEARCH_LINE}\n` : "";
 }
 
 /** A write-up stands with a date the group could know by; Haiku left it out of 2 of 42 production questions, so one without is asked again of Sonnet. */
 export const HAS_DATE = (s: { decideBy: string }): boolean => /^\d{4}-\d{2}-\d{2}$/.test(s.decideBy);
+/**
+ * And with terms that name no other date (the touch-ups round): Haiku 5.5 wrote "by October 8, 2029" over a decide-by
+ * of today on 1 of 47 production questions, which the terms step would then refuse to send, so that one is asked
+ * again of Sonnet too. Pure.
+ */
+export const datedAndAgreeing =
+  (now: Date, zone: string) =>
+  (s: { decideBy: string; terms: string }): boolean =>
+    HAS_DATE(s) && deadlineMismatch(s.terms, s.decideBy, now, zone) === null;
 
 /** Quick setup is drafted by the quick model; the final terms under Help define the terms are the careful one's (the first-contact round). */
 function writerFor(answers: ReadonlyArray<unknown> | undefined): string {
   return answers && answers.length > 0 ? MODELS.ruling : MODELS.drafting;
 }
 
-export async function scopeMarket(input: { line: string; criterion?: string; answers?: Array<{ question: string; yes: boolean }>; now: Date; zone: string; /** The furthest a question can run, in the asker's calendar. */ latest: Latest; /** The answer's JSON as it is written (9.8). */ onDelta?: (partialJson: string) => void; onReset?: () => void }): Promise<MarketScope> {
+/** What a question about real people, teams or events may look up first (the touch-ups round): where things stand today, never anything the friends will decide. */
+export const SEARCH_LINE = `If the line names real people, teams or events whose present state matters to it (a coach's job, a team's season, a vote, a release date), you may search the web once or twice first to learn where things stand today, and write from that. Otherwise do not search. What you find frames the question and its terms; never write the answer into them, even when what you find already settles it, since everyone in it makes their own call.`;
+
+/**
+ * How a write-up is called (the touch-ups round, section 4): Quick setup by the quick model with its thinking off and
+ * room for the answer, never searching, for speed; the final terms under Help define the terms by the careful model at
+ * low effort, with room for its thinking and a quick search for a question about real people or events.
+ */
+export function writeUpCall(answers: ReadonlyArray<unknown> | undefined): { model: string; effort: "off" | "low"; maxTokens: number; timeoutMs: number; search?: { maxUses: number } } {
+  const careful = Boolean(answers && answers.length > 0);
+  return careful ? { model: writerFor(answers), effort: "low", maxTokens: 8_000, timeoutMs: 30_000, search: { maxUses: 2 } } : { model: writerFor(answers), effort: "off", maxTokens: 4_000, timeoutMs: 12_000 };
+}
+
+export async function scopeMarket(input: { line: string; criterion?: string; answers?: CarefulAnswered[]; now: Date; zone: string; /** The furthest a question can run, in the asker's calendar. */ latest: Latest; /** The answer's JSON as it is written (9.8). */ onDelta?: (partialJson: string) => void; onReset?: () => void }): Promise<MarketScope> {
   const answered = answeredBlock(input.answers);
   const user = `<line>${input.line.slice(0, 280)}</line>\n${answered ? `${answered}Set ambiguous to false.\n` : ""}${input.criterion ? `The group chose to decide it by: <criterion>${input.criterion.slice(0, 120)}</criterion>. Write the terms around that and set ambiguous to false.\n` : ""}${nowLine(input.now, input.zone)}\n${latestLine(input.latest)}`;
   return structured({
     label: "scope market",
-    model: writerFor(input.answers),
+    ...writeUpCall(input.answers),
     system: SCOPE_SYSTEM,
     user,
     toolName: "write_terms",
@@ -133,10 +169,9 @@ export async function scopeMarket(input: { line: string; criterion?: string; ans
       required: ["title", "terms", "ambiguous", "criteria", "decideBy", "outcomes"],
     },
     shape: Scope,
-    timeoutMs: 12_000,
     onDelta: input.onDelta,
     onReset: input.onReset,
-    accept: HAS_DATE,
+    accept: datedAndAgreeing(input.now, input.zone),
   });
 }
 
@@ -183,10 +218,10 @@ Write:
 
 Never mention odds, prices, markets, wagers, or money. These are friends.`;
 
-export async function scopeNumber(input: { line: string; answers?: Array<{ question: string; yes: boolean }>; now: Date; zone: string; latest: Latest; onDelta?: (partialJson: string) => void; onReset?: () => void }): Promise<MarketNumberScope> {
+export async function scopeNumber(input: { line: string; answers?: CarefulAnswered[]; now: Date; zone: string; latest: Latest; onDelta?: (partialJson: string) => void; onReset?: () => void }): Promise<MarketNumberScope> {
   return structured({
     label: "scope number",
-    model: writerFor(input.answers),
+    ...writeUpCall(input.answers),
     system: NUMBER_SCOPE_SYSTEM,
     user: `<line>${input.line.slice(0, 280)}</line>\n${answeredBlock(input.answers)}${nowLine(input.now, input.zone)}\n${latestLine(input.latest)}`,
     toolName: "write_number_terms",
@@ -205,10 +240,9 @@ export async function scopeNumber(input: { line: string; answers?: Array<{ quest
       required: ["title", "terms", "unit", "low", "high", "typical", "decideBy"],
     },
     shape: NumberScope,
-    timeoutMs: 12_000,
     onDelta: input.onDelta,
     onReset: input.onReset,
-    accept: HAS_DATE,
+    accept: datedAndAgreeing(input.now, input.zone),
   });
 }
 
@@ -244,11 +278,11 @@ Write:
 
 Never mention odds, prices, markets, wagers, or money. These are friends.`;
 
-export async function scopePickOne(input: { line: string; answers: string[]; edges?: Array<{ question: string; yes: boolean }>; now: Date; zone: string; latest: Latest; onDelta?: (partialJson: string) => void; onReset?: () => void }): Promise<MarketPickOneScope> {
+export async function scopePickOne(input: { line: string; answers: string[]; edges?: CarefulAnswered[]; now: Date; zone: string; latest: Latest; onDelta?: (partialJson: string) => void; onReset?: () => void }): Promise<MarketPickOneScope> {
   const answers = input.answers.slice(0, 6).map((a) => `<answer>${a.replace(/[<>]/g, "").slice(0, 40)}</answer>`).join("\n");
   return structured({
     label: "scope pick one",
-    model: writerFor(input.edges),
+    ...writeUpCall(input.edges),
     system: PICK_ONE_SCOPE_SYSTEM,
     user: `<line>${input.line.slice(0, 280)}</line>\n${answers}\n${answeredBlock(input.edges)}${nowLine(input.now, input.zone)}\n${latestLine(input.latest)}`,
     toolName: "write_pick_one_terms",
@@ -258,10 +292,9 @@ export async function scopePickOne(input: { line: string; answers: string[]; edg
       required: ["title", "terms", "decideBy"],
     },
     shape: PickOneScope,
-    timeoutMs: 12_000,
     onDelta: input.onDelta,
     onReset: input.onReset,
-    accept: HAS_DATE,
+    accept: datedAndAgreeing(input.now, input.zone),
   });
 }
 
@@ -291,6 +324,8 @@ Choose:
 
 rationale: two sentences at most, plain, addressed to the group. Say what decided it. confidencePercent: how sure you are, 50 to 99.
 
+If it turns on a public fact (a result, a record, an announcement), you may search the web once or twice to check what people said. Otherwise do not search.
+
 A screenshot between <screenshot> tags is what its supplier says it is: that person's claim, not a fact, and a screenshot can be edited. Read it for what it shows, say in the rationale what you took from it and who supplied it, and never treat it as settling more than what people said.`;
 
 /**
@@ -316,6 +351,8 @@ Choose:
 - "unclear" when nobody has said enough to tell. Do not guess from the question alone: you were not there.
 
 rationale: two sentences at most, plain, addressed to the group. Say what decided it. confidencePercent: how sure you are, 50 to 99.
+
+If it turns on a public fact (a result, a record, an announcement), you may search the web once or twice to check what people said. Otherwise do not search.
 
 A screenshot between <screenshot> tags is what its supplier says it is: that person's claim, not a fact, and a screenshot can be edited. Read it for what it shows, say in the rationale what you took from it and who supplied it, and never treat it as settling more than what people said.`;
 
@@ -343,6 +380,8 @@ Choose:
 
 rationale: two sentences at most, plain, addressed to the group. Say what decided it, naming the answer. confidencePercent: how sure you are, 50 to 99.
 
+If it turns on a public fact (a result, a record, an announcement), you may search the web once or twice to check what people said. Otherwise do not search.
+
 A screenshot between <screenshot> tags is what its supplier says it is: that person's claim, not a fact, and a screenshot can be edited. Read it for what it shows, say in the rationale what you took from it and who supplied it, and never treat it as settling more than what people said.`;
 
 export async function proposeAnswer(input: { title: string; terms: string; answers: string[]; statements: Array<{ name: string; said: string }>; now: Date; evidence?: EvidenceImage[] }): Promise<AnswerOutcomeProposal> {
@@ -365,7 +404,11 @@ export async function proposeAnswer(input: { title: string; terms: string; answe
       required: ["outcome", "answer", "confidencePercent", "rationale"],
     },
     shape: AnswerProposal,
-    timeoutMs: 20_000,
+    timeoutMs: 45_000,
+    // Room for its thinking at medium effort, and a quick search where a public fact decides it (the touch-ups round).
+    effort: "medium",
+    maxTokens: 8_000,
+    search: { maxUses: 2 },
   });
 }
 
@@ -389,7 +432,11 @@ export async function proposeNumber(input: { title: string; terms: string; unit:
       required: ["outcome", "number", "confidencePercent", "rationale"],
     },
     shape: NumberProposal,
-    timeoutMs: 20_000,
+    timeoutMs: 45_000,
+    // Room for its thinking at medium effort, and a quick search where a public fact decides it (the touch-ups round).
+    effort: "medium",
+    maxTokens: 8_000,
+    search: { maxUses: 2 },
   });
 }
 
@@ -412,6 +459,10 @@ export async function proposeOutcome(input: { title: string; terms: string; stat
       required: ["outcome", "confidencePercent", "rationale"],
     },
     shape: Proposal,
-    timeoutMs: 20_000,
+    timeoutMs: 45_000,
+    // Room for its thinking at medium effort, and a quick search where a public fact decides it (the touch-ups round).
+    effort: "medium",
+    maxTokens: 8_000,
+    search: { maxUses: 2 },
   });
 }

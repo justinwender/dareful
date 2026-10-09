@@ -77,7 +77,7 @@ test("every sheet holds to 10.6: the groups in order, terms of five words, one s
   for (const gone of ["Have an account? Sign in", "Names after two letters", "A wrong number"]) assert.equal(entry("market-link", gone), undefined, gone);
   // While it's called: More holds nothing attached until the end (page.tsx gates it on `ended`); the sheet's second height and the source a What's on question waits on.
   assert.equal(entry("market-voting", "More")?.description, "What the stake is in, the group’s number exactly, and for the asker its colour.");
-  assert.equal(entry("market-voting-number", "Not how I saw it")?.description, "Takes the number you saw as your vote, a note instead, or nobody can tell.");
+  assert.equal(entry("market-voting-number", "I see it differently")?.description, "Takes the number you saw as your vote, a note instead, or nobody can tell.");
   assert.ok(entry("market-voting", "Swipe the sheet up") && entry("market-voting", "The final score") && entry("market-voting-pick", "The play-by-play"));
   // Once over: a small square brings its photo into the large one (3.8), settling lives on the person's page (3.37), a void by the group counts against the asker (3.34).
   assert.ok(entry("market-ended", "Tap a small photo") && entry("market-memory", "Tap a small photo") && entry("market-ended", "Tap a photo") === undefined);

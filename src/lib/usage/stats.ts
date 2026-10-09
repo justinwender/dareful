@@ -128,7 +128,7 @@ async function one(q: ReturnType<typeof sql>): Promise<number> {
 }
 
 /** What the profile's clean-resolution rate counts as ended (`CLEAN_COUNTED_ENDINGS` and `TWO_OR_MORE_IN` in settle.ts, PLANNING.md 8e): a vote (a guest's question's quorum included), the tiebreaker or the final score, without the final score's own void, on a question two or more were in. "Nobody can tell" is minus one here. */
-const CLEAN_ENDED = sql`d.resolved_at is not null and d.resolved_by in ('quorum', 'provisional', 'arbitration', 'feed') and not (d.resolved_by = 'feed' and d.resolved_outcome = -1) and (select count(*) from dare_positions cp where cp.dare_id = d.id and cp.acknowledged_at is not null and cp.dismissed_at is null) >= 2`;
+const CLEAN_ENDED = sql`d.resolved_at is not null and d.resolved_by in ('quorum', 'provisional', 'arbitration', 'feed', 'ruling') and not (d.resolved_by = 'feed' and d.resolved_outcome = -1) and (select count(*) from dare_positions cp where cp.dare_id = d.id and cp.acknowledged_at is not null and cp.dismissed_at is null) >= 2`;
 
 /** Every number for one window, counted now. */
 export async function countStats(w: StatWindow): Promise<Counts> {

@@ -61,3 +61,11 @@ export function rollCallWords(input: { kind: "binary" | "numeric"; value: bigint
   if (percent === 50) return { said: "50%", side: null };
   return percent > 50 ? { said: `${percent}%`, side: input.teams.home } : { said: `${100 - percent}%`, side: input.teams.away };
 }
+
+/** Who agrees with the app's ruling (3.24 as amended 2026-10-08): "Dave agrees.", "Dave and you agree.", named and never counted. */
+export function agreedWords(people: ReadonlyArray<{ name: string; me: boolean }>): string {
+  if (people.length === 0) return "";
+  const names = [...people.filter((p) => !p.me).map((p) => p.name), ...(people.some((p) => p.me) ? ["you"] : [])];
+  const verb = names.length === 1 && names[0] !== "you" ? "agrees" : "agree";
+  return `${listWith(names, "and").replace(/^you/, "You")} ${verb}.`;
+}

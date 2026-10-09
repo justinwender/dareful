@@ -61,6 +61,8 @@ export const users = pgTable("users", {
   reachCardAt: ts("reach_card_at"),
   /** The screens whose first-visit tips this person has seen (docs/design.md 10.9), by their shape ("/m/[id]"): a screen counts once its first tip has shown. */
   tipsSeen: text("tips_seen").array().notNull().default(sql`'{}'::text[]`),
+  /** Stake units this person added on You (the touch-ups round, section 11), offered beside Dollars, beers, rounds and a next time when they ask: each a word, lower case. */
+  ownUnits: text("own_units").array().notNull().default(sql`'{}'::text[]`),
   /**
    * Left out of every count (the field round, 2026-10-02): the owner's own accounts, the simulator's and the
    * localhost sessions, the QA accounts. Set by hand, never by the app; a market counts only when someone counted
@@ -484,6 +486,37 @@ export const dares = pgTable(
      * signs a close of zero, as an argument does.
      */
     closesAfterFirst: boolean("closes_after_first").notNull().default(false),
+    /**
+     * A close recorded here whose chain write has not landed yet (the touch-ups round, section 0): from this moment the
+     * question is closed for the people in it, and the tick sends the write again until it lands. Null once it has,
+     * and for a question decided here. While it stands the question is neither on the chain nor provisional.
+     */
+    chainPendingAt: ts("chain_pending_at"),
+    /** When the tick last tried that write, and how many times it has. */
+    chainTriedAt: ts("chain_tried_at"),
+    chainTries: smallint("chain_tries").notNull().default(0),
+    /** Why a close the chain never took settled here as confirmations instead: the revert it met, or the day it ran out of. Null otherwise. */
+    chainGaveUp: text("chain_gave_up"),
+    /**
+     * An argument's ruling made at the ask and sealed until the close (the touch-ups round, section 2): its outcome in the
+     * chain's encoding (`VOID_OUTCOME` when the facts cannot settle it), its confidence and its reasons. Never sent to
+     * anyone, the asker included, before the close; at the close it becomes the market's ruling (`ai_*`). Null when the
+     * argument is ruled at the close instead (one that needs what the people in it saw), or the ruling failed.
+     */
+    sealedOutcome: money("sealed_outcome"),
+    sealedConfidenceBps: smallint("sealed_confidence_bps"),
+    sealedRationale: text("sealed_rationale"),
+    /** The seal's random salt and its hash, `keccak256(salt || the ruling's text)`, which the terms everyone signs carry. */
+    sealSalt: bytea("seal_salt"),
+    sealHash: bytea("seal_hash"),
+    /** When the app's ruling was shown to the people in it: the close, for a sealed one. Silence agrees a day after it. */
+    rulingRevealedAt: ts("ruling_revealed_at"),
+    /**
+     * What settles an argument, as the check at the ask found (the touch-ups round, section 2): 'facts', which the app
+     * rules on at the ask and seals, or 'evidence', what its people saw or can show, which it rules on at the close with
+     * that. Null for a dare, and for an argument asked before the round.
+     */
+    settledBy: text("settled_by"),
     /** Set once when the people still to vote were reminded, twelve hours into voting and never at night; never a second (the field round, 1.8). */
     voteRemindedAt: ts("vote_reminded_at"),
     /**
@@ -554,8 +587,9 @@ export const dares = pgTable(
     check("dares_reveal_mode_known", sql`${t.revealMode} in ('open', 'blind')`),
     check(
       "dares_resolved_by_known",
-      sql`${t.resolvedBy} is null or ${t.resolvedBy} in ('quorum', 'arbitration', 'provisional', 'expired', 'feed', 'removed')`,
+      sql`${t.resolvedBy} is null or ${t.resolvedBy} in ('quorum', 'arbitration', 'provisional', 'expired', 'feed', 'removed', 'ruling')`,
     ),
+    check("dares_settled_by_known", sql`${t.settledBy} is null or ${t.settledBy} in ('facts', 'evidence')`),
     check("dares_threshold_positive", sql`${t.threshold} > 0`),
     check(
       "dares_ai_confidence_bps_range",
@@ -702,6 +736,54 @@ export const dareStatements = pgTable(
   (t) => [
     primaryKey({ columns: [t.dareId, t.userId, t.kind] }),
     check("dare_statements_kind", sql`${t.kind} in ('update', 'statement')`),
+  ],
+).enableRLS();
+
+/**
+ * Agreeing with the app's ruling on an argument (the touch-ups round, section 2): a tap, by anyone in it, a guest
+ * included, and no signature, since everyone in agreed at entry, in the terms they signed, that the app's ruling settles
+ * it unless someone in it sees it differently. Everyone in agreeing settles it at once. One per participant.
+ */
+export const dareAgreements = pgTable(
+  "dare_agreements",
+  {
+    dareId: uuid("dare_id")
+      .notNull()
+      .references(() => dares.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+    claimId: uuid("claim_id").references(() => participantClaims.id, { onDelete: "cascade" }),
+    /** The ruling's outcome as it stood when agreed, so an agreement never carries over to a different ruling. */
+    outcome: money("outcome").notNull(),
+    agreedAt: ts("agreed_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("dare_agreements_user").on(t.dareId, t.userId).where(sql`${t.userId} is not null`),
+    uniqueIndex("dare_agreements_claim").on(t.dareId, t.claimId).where(sql`${t.claimId} is not null`),
+    check("dare_agreements_who", sql`(${t.userId} is null) <> (${t.claimId} is null)`),
+  ],
+).enableRLS();
+
+/**
+ * Seeing the app's ruling differently (the touch-ups round, section 2): what the person says it got wrong, required,
+ * shown to everyone in it, and sent with the ruling and any photo to the tiebreaker, whose ruling settles it. One per
+ * participant.
+ */
+export const dareDisputes = pgTable(
+  "dare_disputes",
+  {
+    dareId: uuid("dare_id")
+      .notNull()
+      .references(() => dares.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+    claimId: uuid("claim_id").references(() => participantClaims.id, { onDelete: "cascade" }),
+    text: text("text").notNull(),
+    disputedAt: ts("disputed_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("dare_disputes_user").on(t.dareId, t.userId).where(sql`${t.userId} is not null`),
+    uniqueIndex("dare_disputes_claim").on(t.dareId, t.claimId).where(sql`${t.claimId} is not null`),
+    check("dare_disputes_who", sql`(${t.userId} is null) <> (${t.claimId} is null)`),
+    check("dare_disputes_text", sql`char_length(${t.text}) between 2 and 400`),
   ],
 ).enableRLS();
 
@@ -939,6 +1021,28 @@ export const chainWrites = pgTable(
     toldAt: ts("told_at"),
   },
   (t) => [index("chain_writes_status_idx").on(t.status, t.createdAt), index("chain_writes_actor_idx").on(t.actorId, t.createdAt), check("chain_writes_status_known", sql`${t.status} in ('pending', 'mined', 'reverted', 'dropped')`)],
+).enableRLS();
+
+/**
+ * A chain write that keeps failing (the touch-ups round, section 0): one row per thing being written (its kind and
+ * subject), from its first failure until a send for it succeeds, so the tick can tell the owner once it has been
+ * failing for more than fifteen minutes. Written by `submit` on every failure but a pending receipt, cleared by its success.
+ */
+export const chainFailures = pgTable(
+  "chain_failures",
+  {
+    key: text("key").primaryKey(),
+    kind: text("kind").notNull(),
+    label: text("label").notNull(),
+    firstFailedAt: ts("first_failed_at").notNull().defaultNow(),
+    lastFailedAt: ts("last_failed_at").notNull().defaultNow(),
+    /** The first line of the last failure, without the RPC's address, which carries a key. */
+    lastWhy: text("last_why").notNull(),
+    failures: integer("failures").notNull().default(1),
+    /** When the owner was told; told again only after it has gone on failing for a further day. */
+    alertedAt: ts("alerted_at"),
+  },
+  (t) => [index("chain_failures_first_idx").on(t.firstFailedAt)],
 ).enableRLS();
 
 /**

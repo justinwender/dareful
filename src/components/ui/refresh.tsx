@@ -65,13 +65,13 @@ export function Refresh() {
     pullRef.current = p;
     setPull(p);
   };
-  // Letting go past the threshold crosses the fifth stroke over a stroke's time, and then the count runs (3.2).
-  const [crossing, setCrossing] = useState(false);
+  // Letting go with all five drawn holds the finished tally until the read is under way, so no frame between the two is empty.
+  const [letGo, setLetGo] = useState(false);
   useEffect(() => {
-    if (!crossing) return;
-    const t = setTimeout(() => setCrossing(false), TALLY_TIMING.stroke);
+    if (!letGo) return;
+    const t = setTimeout(() => setLetGo(false), TALLY_TIMING.stroke);
     return () => clearTimeout(t);
-  }, [crossing]);
+  }, [letGo]);
 
   useEffect(() => {
     const onPage = (t: EventTarget | null) => !(t instanceof Element) || pullStartsHere(t.closest("[data-layer]")?.getAttribute("data-layer") ?? null, t.closest("[role=dialog]") !== null);
@@ -85,7 +85,7 @@ export function Refresh() {
         setPulled(0);
         return;
       }
-      // Past the threshold the line stays full; the pull itself follows the finger with some give.
+      // Past the threshold all five stay drawn; the pull itself follows the finger with some give.
       setPulled(Math.min(1, dy / PULL_TO_REFRESH_PX));
     };
     const onEnd = () => {
@@ -94,7 +94,7 @@ export function Refresh() {
       setPulled(0);
       if (far) {
         setByPull(true);
-        setCrossing(true);
+        setLetGo(true);
         refresh();
       }
     };
@@ -137,10 +137,10 @@ export function Refresh() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- see above
   }, []);
 
-  if (pull === 0 && !pending && !settling && !crossing) return null;
-  if (pending && !byPull && !crossing) return <TopRunner state="running" />;
-  // The tally (the field round's 3.2): drawn with the pull, crossed as it is let go, counting while the screen is read again, settling once it has.
-  return <PullTally phase={crossing ? "crossing" : pending ? "loading" : settling ? "settling" : "pulling"} pull={pull} />;
+  if (pull === 0 && !pending && !settling && !letGo) return null;
+  if (pending && !byPull && !letGo) return <TopRunner state="running" />;
+  // The tally (3.2, the touch-ups round): all five drawn with the pull, the fifth redrawing while the screen is read again, settling once it has.
+  return <PullTally phase={letGo || pending ? "reloading" : settling ? "settling" : "pulling"} pull={pull} />;
 }
 
 /** The 2px line under the status band (5.5, 9.4): filling with a pull, or running while something is being read. */

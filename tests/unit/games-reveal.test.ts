@@ -22,7 +22,7 @@ import { liveOf } from "@/lib/sports/live";
 import { LIVE_FRESH_MS, liveIsFresh, liveLine, storedLive, whereWords } from "@/lib/sports/live-words";
 import { namesTeam } from "@/lib/sports";
 import { closeAfterFirstCall, FIRST_CALL_WINDOW_MS, gameIsOver } from "@/lib/ledger/markets";
-import { uprightsAt } from "@/components/ui/pull-tally";
+import { strokesAt } from "@/components/ui/pull-tally";
 import { pullTallyCss, TALLY_LOOP_MS, TALLY_STROKES, TALLY_TIMING } from "@/lib/ui/opening";
 import { onItsGamePage } from "@/lib/ledger/home";
 import { revealRoom } from "@/components/markets/weight-line";
@@ -260,19 +260,22 @@ test("the sport's words for where a game is, by the feed's status (3.33)", () =>
   assert.equal(whereWords("mlb", status("in", "STATUS_RAIN_DELAY", 1, "0:00", "Rain Delay, Top 1st")), null);
 });
 
-test("the tally on pull-to-refresh is the opening's own strokes and timing, the uprights drawn one at a time with the pull (3.2)", () => {
+test("the tally on pull-to-refresh is the opening's own strokes and timing, all five drawn one at a time with the pull, the crossing fifth last (3.2; the touch-ups round)", () => {
   assert.equal(TALLY_STROKES.length, 5);
   for (const s of TALLY_STROKES) assert.ok(s.width > 0 && s.height > 0 && s.d.length > 10 && s.viewBox.split(" ").length === 4, JSON.stringify(s));
   assert.ok(TALLY_TIMING.beat > 0 && TALLY_TIMING.stroke > 0 && TALLY_TIMING.pace > 0 && TALLY_TIMING.curve.startsWith("cubic-bezier("), JSON.stringify(TALLY_TIMING));
   assert.equal(TALLY_LOOP_MS, TALLY_TIMING.beat + 5 * TALLY_TIMING.pace + TALLY_TIMING.stroke);
-  assert.deepEqual(uprightsAt(0), [0, 0, 0, 0]);
-  assert.deepEqual(uprightsAt(0.125), [0.5, 0, 0, 0]);
-  assert.deepEqual(uprightsAt(0.5), [1, 1, 0, 0]);
-  assert.deepEqual(uprightsAt(1), [1, 1, 1, 1]);
-  assert.deepEqual(uprightsAt(3), [1, 1, 1, 1], "past the threshold nothing more draws until it is let go");
+  assert.deepEqual(strokesAt(0), [0, 0, 0, 0, 0]);
+  assert.deepEqual(strokesAt(0.1), [0.5, 0, 0, 0, 0]);
+  assert.deepEqual(strokesAt(0.5), [1, 1, 0.5, 0, 0]);
+  assert.deepEqual(strokesAt(0.9), [1, 1, 1, 1, 0.5], "the crossing fifth draws last, with the finger");
+  assert.deepEqual(strokesAt(1), [1, 1, 1, 1, 1], "all five drawn at the threshold, where letting go reads the screen again");
+  assert.deepEqual(strokesAt(3), [1, 1, 1, 1, 1]);
   const css = pullTallyCss();
   assert.match(css, /prefers-reduced-motion: reduce/, "a still mark under Reduce Motion");
-  assert.equal((css.match(/@keyframes tally-loop-/g) ?? []).length, 5);
+  assert.equal((css.match(/@keyframes tally-loop-/g) ?? []).length, 5, "the loader's count, elsewhere");
+  assert.match(css, /\[data-tally="reloading"\] \.t5\{animation:tally-fifth /, "while the screen is read again the finished tally's fifth redraws in a loop");
+  assert.ok(!/\[data-tally="reloading"\] \.t[1-4]/.test(css), "and the uprights hold still");
 });
 
 test("the offer before asking what's already asked names who asked it and who is in it, the viewer first, two named and the rest counted (3.33)", () => {

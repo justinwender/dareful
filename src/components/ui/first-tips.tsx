@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useSessionFacts } from "@/components/auth/device";
 import { FixedLayer } from "@/components/ui/layers";
 import { tipsShownAction } from "@/lib/actions/tips";
-import { INFO_ICON_ON, type InfoEntry } from "@/lib/ui/info";
+import { INFO_ICON_ON } from "@/lib/ui/info";
 import { infoSheet } from "@/lib/ui/info-sheets";
-import { seenAlready, tipPlacement, tipsFor, TIP_MAX_WIDTH, type Box } from "@/lib/ui/tips";
+import { CURATED_TIPS, seenAlready, tipPlacement, tipsFor, TIP_MAX_WIDTH, type Box, type Tip } from "@/lib/ui/tips";
 import { screenOf } from "@/lib/usage/events";
 
 const GUEST_KEY = "dareful_tips_seen";
@@ -32,9 +32,7 @@ function rememberGuest(screen: string): void {
 }
 
 /** Whether a control is on the screen to point at: drawn, visible, inside the viewport, and not under a layer (the pinned sheet over the foot of a market, which held the who's-in row under it on the simulators). */
-function onScreen(selector: string): boolean {
-  const el = document.querySelector<HTMLElement>(selector);
-  if (!el) return false;
+function visible(el: HTMLElement): boolean {
   const r = el.getBoundingClientRect();
   if (r.width === 0 || r.height === 0) return false;
   if (r.bottom <= 0 || r.top >= window.innerHeight || r.right <= 0 || r.left >= window.innerWidth) return false;
@@ -42,6 +40,15 @@ function onScreen(selector: string): boolean {
   if (hit && !el.contains(hit) && !hit.contains(el)) return false;
   return getComputedStyle(el).visibility !== "hidden";
 }
+/**
+ * The copy of a control that is on the screen: the first match is not always it (a root the router is holding keeps its
+ * own +, off the screen), and the tip once went to that one, its card cut off at the top while the + it meant stayed
+ * blurred (the touch-ups round).
+ */
+function shown(selector: string): HTMLElement | null {
+  return Array.from(document.querySelectorAll<HTMLElement>(selector)).find(visible) ?? null;
+}
+const onScreen = (selector: string): boolean => shown(selector) !== null;
 
 /**
  * First-visit tips (docs/design.md 10.9): the first time a person opens a screen, up to three of its sheet's entries,
@@ -52,30 +59,44 @@ function onScreen(selector: string): boolean {
 export function FirstTips() {
   const pathname = usePathname();
   const { me, tipsSeen } = useSessionFacts();
-  const [tips, setTips] = useState<Array<{ entry: InfoEntry; target: string }> | null>(null);
+  const [tips, setTips] = useState<Tip[] | null>(null);
   const [at, setAt] = useState(0);
   const [place, setPlace] = useState<ReturnType<typeof tipPlacement> | null>(null);
   const tipBox = useRef<HTMLDivElement>(null);
   const seenHere = useRef(new Set<string>());
+  /** The tips remembered on their own that have shown in this visit, before the account says so. */
+  const shownHere = useRef<string[]>([]);
+  const remember = useEffectEvent((key: string) => {
+    if (me) void tipsShownAction(key).catch(() => undefined);
+    else rememberGuest(key);
+  });
+  // A tip remembered on its own counts as seen the moment it shows (the touch-ups round): "Ask something" once for every tab, a new tip once.
+  useEffect(() => {
+    const key = tips?.[at]?.key;
+    if (!key || shownHere.current.includes(key)) return;
+    shownHere.current.push(key);
+    remember(key);
+  }, [tips, at]);
 
   useEffect(() => {
     if (!INFO_ICON_ON) return;
     const screen = screenOf(pathname ?? "/");
     const timer = setTimeout(() => {
       if (seenHere.current.has(screen)) return;
-      const seen = me ? tipsSeen : guestSeen();
-      if (seenAlready(seen, screen)) return;
-      // Never over a sheet that is open, nor over asking (9.5).
-      if (document.querySelector('[data-sheet="open"]') || document.querySelector('[data-layer="ask"] [data-page]')) return;
-      // The icon that is showing: Now carries two, one for each of its states, and hides the other.
-      const key = Array.from(document.querySelectorAll<HTMLElement>("[data-info-icon]")).find((el) => el.getBoundingClientRect().width > 0)?.dataset.infoIcon;
+      const seen = [...(me ? tipsSeen : guestSeen()), ...shownHere.current];
+      // Never over a sheet that is open (9.5). Asking has tips of its own since the touch-ups round, so the ask layer no longer stops them.
+      if (document.querySelector('[data-sheet="open"]')) return;
+      // The icon that is showing, the topmost: Now carries two, one for each of its states, and hides the other; the ask layer's is above its root's.
+      const key = Array.from(document.querySelectorAll<HTMLElement>("[data-info-icon]")).filter((el) => el.getBoundingClientRect().width > 0).pop()?.dataset.infoIcon;
       const sheet = key ? infoSheet(key) : null;
-      if (!sheet) return;
-      const chosen = tipsFor(sheet, onScreen);
+      if (!sheet || !key) return;
+      // A screen with new tips remembers each tip as it shows; any other remembers the screen.
+      const curated = CURATED_TIPS[key] !== undefined;
+      if (!curated && seenAlready(seen, screen)) return;
+      const chosen = tipsFor(sheet, onScreen, { key, seen });
       if (chosen.length === 0) return;
       seenHere.current.add(screen);
-      if (me) void tipsShownAction(screen).catch(() => undefined);
-      else rememberGuest(screen);
+      if (!curated) remember(screen);
       setAt(0);
       setTips(chosen);
     }, SETTLE_MS);
@@ -89,7 +110,7 @@ export function FirstTips() {
     if (!tips) return;
     const measure = () => {
       const tip = tips[at];
-      const el = tip ? document.querySelector<HTMLElement>(tip.target) : null;
+      const el = tip ? shown(tip.target) : null;
       if (!tip || !el) return setTips(null);
       const r = el.getBoundingClientRect();
       const radius = parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0;

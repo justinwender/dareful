@@ -7,7 +7,7 @@
  * Never throws. A notification that fails costs nobody their vote, and the pull path ("Needs you") carries
  * everything a channel drops.
  */
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lte, sql } from "drizzle-orm";
 import type { Address } from "viem";
 import { db, schema } from "@/db";
 import { marketById, quorumOf, tally, VOID_OUTCOME, votesOf, type DareRow } from "@/lib/ledger/markets";
@@ -84,7 +84,8 @@ export async function notifyAfterVote(dareId: string, voterId: string): Promise<
     // result goes to people who could have voted, and an extra recipient of a result harms nobody.
     const quorumWallets = resolved ? [] : await quorumOf(d);
     const quorumUsers = resolved
-      ? await db.select({ id: schema.users.id }).from(schema.users).innerJoin(schema.groupMembers, eq(schema.groupMembers.userId, schema.users.id)).where(and(eq(schema.groupMembers.groupId, d.groupId), sql`${schema.groupMembers.leftAt} is null`, sql`${schema.groupMembers.joinedAt} <= ${d.lockedAt}`))
+      ? // A typed comparison, so the moment travels as the driver takes it: a Date inside a raw template was refused by the driver (ERR_INVALID_ARG_TYPE) and every result notice after a deciding vote failed from September 20 (the touch-ups round).
+        await db.select({ id: schema.users.id }).from(schema.users).innerJoin(schema.groupMembers, eq(schema.groupMembers.userId, schema.users.id)).where(and(eq(schema.groupMembers.groupId, d.groupId), isNull(schema.groupMembers.leftAt), lte(schema.groupMembers.joinedAt, d.lockedAt)))
       : quorumWallets.length
         ? await db.select({ id: schema.users.id }).from(schema.users).where(inArray(sql`lower(${schema.users.governanceWallet})`, quorumWallets.map((w) => w.toLowerCase())))
         : [];
@@ -225,13 +226,14 @@ export async function notifyDeadline(dareId: string, creatorId: string): Promise
 export async function notifyRuling(dareId: string, askedBy: string | null): Promise<void> {
   try {
     const d = await marketById(dareId);
-    if (!d || !d.resolvedAt || d.resolvedBy !== "arbitration") return;
+    // The tiebreaker's ruling, or the app's own ruling standing because everyone in it agreed (the touch-ups round).
+    if (!d || !d.resolvedAt || (d.resolvedBy !== "arbitration" && d.resolvedBy !== "ruling")) return;
     const positions = await positionsOf(dareId);
     const outcome = d.resolvedOutcome === VOID_OUTCOME ? "void" : d.kind === "numeric" ? "number" : d.kind === "categorical" ? "answer" : d.resolvedOutcome === 1n ? "yes" : "no";
     await Promise.all(
       positions.map((p) => p.userId).filter((x): x is string => x !== null && x !== askedBy).map(async (userId) => {
         const id = await claimNotice(userId, dareId, "ruling", 0, askedBy ?? d.creatorId);
-        if (id) await deliver(userId, id, rulingNotice({ title: d.title, outcome, marketId: d.id, appUrl: APP_URL() }));
+        if (id) await deliver(userId, id, rulingNotice({ title: d.title, outcome, marketId: d.id, appUrl: APP_URL(), by: d.resolvedBy === "ruling" ? "agreed" : "tiebreaker" }));
       }),
     );
   } catch (err) {
@@ -280,7 +282,11 @@ export async function notifyBackstopResult(dareId: string): Promise<void> {
             ? d.resolvedOutcome === VOID_OUTCOME
               ? "tiebreaker_void"
               : "tiebreaker"
-            : null;
+            : d.resolvedBy === "ruling"
+              ? d.resolvedOutcome === VOID_OUTCOME
+                ? "ruling_void"
+                : "ruling"
+              : null;
     if (!how) return;
     const positions = await positionsOf(dareId);
     await Promise.all(

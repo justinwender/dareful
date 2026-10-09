@@ -1018,6 +1018,35 @@ The four positions under a thumb on a phone (the snap, the full position scrolli
 
 The page as the owner (the variable is not set on the local server during the suites); the two buttons on a phone; the chain's counts against the indexer in production. Items 171 to 173 and 184.
 
+## Session 41: the touch-ups round, on the iOS 26 and iOS 27 simulators
+
+**When:** October 8, 2026, in the evening, Eastern. **Who:** the "iPhone 17 Pro iOS 26" simulator (iOS 26.0) and the "iPhone 18 Pro" simulator (iOS 27.0), in Safari at the loopback origin as a visitor with no session, against the development server; the development browser's own session on `localhost:3000` (the excluded development account) for what needs an account; and a headless Chrome for the owner's `/stats` and the tiles. The walk's own questions belong to the development account and a guest, Dana; they are listed for the sweep. Touches through the simulator tool.
+
+### Exercised
+
+- **The app's ruling, end to end.** The development account asked "Is Mount Everest taller than K2?" as an argument; the check found facts settle it, and the draft came back sealed in 3.5 seconds: the verdict, three sentences in the app's voice, and the seal's line at the end of the terms, with nothing of the ruling on any screen. On iOS 26 the guest took the other side, joined as Dana, and the argument closed: the band read "The app has ruled", the sheet "The app's ruling: yes." with its reasons, **Agree**, and **I see it differently** under it, and "How to check it". "I see it differently" opened "What did it get wrong?" with its field and Send it, and no photo row for a guest. Dana agreed; the asker's sheet read "Dana agrees." and, once the asker agreed, it settled at once: "Settled", "Yes.", Dana's $5, "Settled by the ruling everyone agreed to" with the reasons and "How to check it", one pending proposal from Dana's claim to the asker. Found and fixed: "You agree." said twice; "On the permanent record, word for word." on a question decided here.
+- **The join step's caret.** On both simulators, a tap on the name field put the caret in the field, before and after the root now moves at the touch; typing "Sam" and "Dana" kept it after the last letter. The owner's caret above "What are the odds?" did not reproduce in Safari, so it is a phone check.
+- **The PIN.** In the development browser, with the old sheet effect put back for one run: four digits into the PIN moved the focus to "Again" and the next render sent it back; tapping "Again" and typing sent the focus back to the PIN after each digit. With the fix, the focus moved to "Again" and stayed there through every digit. On the iOS 26 simulator a field that calls `focus()` on itself after each digit kept "1234" in order, so a plain refocus is not the cause; the cause is the focus going back to the field the sheet captured.
+- **Pull to refresh.** On iOS 26 (dark) and iOS 27 (light): a pull drew all five strokes, the crossing fifth last, the release read the screen again, and the tally settled and left.
+- **Every sheet.** On iOS 27 the information sheet opened raised at about three quarters of the screen, went to full on a drag up, and closed on one long drag down. On iOS 26 the dispute sheet rose at its content's height. In the development browser the units sheet opened raised.
+- **Decided holds.** With a written write-up and with the plain fallback the owner got (sent to the page as production sent it), "This week" stored a close seven days out to the millisecond.
+- **The terms.** A question typed and left for a moment started its write-up once, after 1.2 seconds; Next showed words 0.3 seconds later and the whole terms at 0.7, where they had taken 2.7 to 6.5. Help define's questions came back with their own two answers where one offered two ways; one more either-or form was found ("…count, or only if…") and caught.
+- **Your own units.** "Pizza" added on You read "pizza", "beers" was refused with "That one's offered already.", "pizza" stood after a next time when asking and selected alone, and came off again. A name that reads as an address was refused at the field.
+- **Signing in.** On iOS 27 Safari at `localhost:3000`, signed out, "Get started" opened the app's own sheet: "Sign in", Continue with Google, the email field, Continue, "Use a phone number" and "Not now", risen to its content; "Not now" closed it. (At the loopback origin the button stays disabled, since Dynamic's SDK cannot load there.) Nothing was signed in.
+- **The tiles**, rendered from the development server at Messages' size: yes or no with and without a mark, a number, pick one, a game's question and a game page, open and settled; the yes-or-no track spans the tile with 0% and 100% at its ends.
+
+### What broke
+
+1. **"You agree." twice** on the ruling sheet. Fixed.
+2. **"On the permanent record"** on a question the chain never carried. Fixed.
+3. **The seal's hash threw** (a hex string concatenated with raw bytes), caught by its unit test before anything ran. Fixed.
+4. **`resolved_by` refused `ruling`** at the database's check, caught by the database test. Migration 0046 widened it.
+5. **Five http tests failed** on the first full run: three read questions being called whose fixtures never said it had happened (the last round's run passed only because the build then deployed opened the vote at every lock) or dated what was said after the app's read of it; two asserted the old design (the final score's ballot without Agree, the game page's row without the code). Fixtures and assertions brought to this round's rules; all 121 pass.
+
+### Not verified here
+
+A real phone: the join step's caret in the installed copy, the PIN on the owner's iPhone, signing in through the app's own sheet (Dynamic's code is the owner's), and the tips' ring and card on a phone. Items 238 to 252.
+
 ## Session 40: games and the reveal, on the iOS 26 and iOS 27 simulators
 
 **When:** October 7, 2026, in the evening, Eastern. **Who:** the "iPhone 17 Pro iOS 26" simulator (iOS 26.0), in Safari and in the development build installed from Safari ("Dareful local"), and the "iPhone 18 Pro" simulator (iOS 27.0) in Safari, against the development server. The people were temporary accounts (Rae asking, Sol, Tam and Uma) with sessions made for them on `localhost:3000`, and a guest, Gabe, joined from a tab with no session. The walk's own questions: a yes-or-no question with all four in, a number question and a pick-one question already closed, one waiting for it to happen, three questions on a test game across two of Rae's sets, and one question started on each of two real games being played that night (Timberwolves at Pacers, Dodgers at Braves) in the walk's own set. The deployed tick still opens the vote at every lock, so for ninety minutes a script cleared that mark on the walk's own questions and nothing else. Every account, question and game made for it went with the test sweep afterwards. Touches through the simulator tool; readings through the simulators' Web Inspector.
@@ -1550,3 +1579,19 @@ Items the simulator covered are marked in place above (61, 66, 93, 98, 101, 113,
 235. **The tally** (40): in the installed app, pull down from the top of Now. Expect the strokes drawn one at a time with the pull, the fifth crossing when you let go past the threshold (not while you hold it), the count looping while it reads, then the tally rising away; on its own patch of ground, never over a line of text. With Reduce Motion on, a still mark that fades. Leaving the app and coming back re-reads with the 2px line, not the tally.
 236. **On the chain** (40): after the deploy, in a set where someone not in a question was in an earlier one, close a question with three of you in, all with accounts. Expect it decided by two of the three and settled at once, with the explorer showing its own group registered with exactly the three of you; Who's got who as usual, and the person view's cancelling-out unchanged for the set's other questions.
 237. **1.1 on a phone** (40): in the installed app on iOS 26, focus a field, dismiss the keyboard, scroll: the tab bar where it was. With the keyboard up, go to the home screen and reopen onto a market: its sheet at the bottom edge.
+
+238. **Relayer** (41): after the deploy, the owner's `OPS_EMAIL` gets one email the first hour the relayer covers under three days at the past week's rate, and none while it covers more. Top it up to at least 45 MON before the next full audit, which spends about fifteen.
+239. **A close while the chain fails** (41): if a close ever answers "Sent, and still going through", the market is closed for everyone at once, and it settles on its own within the hour.
+240. **/stats** (41): open `/stats` on the iPhone signed in as the owner: every section draws, each with its own line if it is slow, and the relayer's balance and days covered at the top.
+241. **The app's ruling** (41): ask an argument facts can settle with a friend; neither of you sees the ruling until you are both in; then Agree from both phones settles it at once, and "How to check it" shows the seal from the terms.
+242. **I see it differently** (41): on another such argument, dispute with a line and a screenshot; both phones show who disputed and why, and the tiebreaker's ruling arrives as a notice.
+243. **A day of quiet** (41): on a third, agree from one phone only and wait a day: it settles as the app ruled, with a notice to both.
+244. **Every tap holds** (41): tap Join, Close, Agree and Send it on a slow connection: each shows the tally at once and sends once.
+245. **The terms** (41): type a question and wait a second before Next: the terms are there or arriving, never an empty field with a caret.
+246. **Decided** (41): ask with "This week" after a slow write-up; the tile says a close a week out.
+247. **The mark picker** (41): every category in one scroll, the chips jumping to each; the sheet raised, then full on a drag up, closed below raised.
+248. **The game page** (41): one share row under the header with share, copy and the code; the code opens the page with that question open; the open card has no row of its own.
+249. **The join step** (41): in the installed app, a link, "I'm in", a tap on Your name: the caret in the field, not above "What are the odds?".
+250. **The PIN** (41): Pass the phone, four digits in Your PIN, four in Again: the cursor stays in Again after every digit, and it turns on.
+251. **Pull to refresh** (41): pull Now until all five strokes are drawn, let go: it reloads, the fifth redrawing, then the tally settles.
+252. **Signing in and the settings** (41): signed out, Get started opens the app's own sheet; sign in. On You change your name, add a unit and see it when asking, and paste a sticker into Your marks.

@@ -52,7 +52,8 @@ export function scaleTokenValid(userId: string, range: string | null, typical: s
 export const WriteUpInput = z.object({
   line: z.string().trim().min(3).max(280),
   criterion: z.string().trim().min(3).max(120).optional(),
-  answers: z.array(z.object({ question: z.string().trim().min(3).max(160), yes: z.boolean() })).max(3).optional(),
+  // A question under Help define the terms is answered yes or no, or by one of its own two answers (the touch-ups round).
+  answers: z.array(z.object({ question: z.string().trim().min(3).max(160), yes: z.boolean(), answer: z.string().trim().min(1).max(40).optional() })).max(3).optional(),
   kind: z.enum(["binary", "numeric", "categorical"]).optional(),
   choices: z.array(z.string().trim().min(1).max(MAX_ANSWER_LENGTH)).max(MAX_ANSWERS).optional(),
 });
@@ -68,7 +69,7 @@ export async function writeUp(raw: WriteUpRequest, userId: string, zone: string,
   const criterion = raw.criterion ? z.string().trim().min(3).max(120).safeParse(raw.criterion) : null;
   const now = new Date();
   // Help define the terms' answers, for every type (the first-contact round): what the asker settled about the edge cases.
-  const answered = z.array(z.object({ question: z.string().trim().min(3).max(160), yes: z.boolean() })).max(3).safeParse(raw.answers ?? []);
+  const answered = z.array(z.object({ question: z.string().trim().min(3).max(160), yes: z.boolean(), answer: z.string().trim().min(1).max(40).optional() })).max(3).safeParse(raw.answers ?? []);
   const answers = answered.success && answered.data.length > 0 ? answered.data : undefined;
   const latest = { date: latestDate(now, zone), words: longDateWords(latestDate(now, zone)) };
   if (raw.kind === "categorical") {

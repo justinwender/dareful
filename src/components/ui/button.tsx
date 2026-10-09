@@ -5,6 +5,7 @@ import Link from "next/link";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 import { LinkPending } from "./link-pending";
+import { TallyLoader } from "./tally-loader";
 import { NOTHING_CAME_BACK, ProblemSummary } from "@/components/ledger/problem";
 import { GIVE_UP_MS, RUNNER_MS, STILL_GOING_MS, TRY_AGAIN_MS, waitStage, type WaitStage } from "@/lib/ui/motion";
 import { offlineNow, WORDS } from "@/lib/ui/errors";
@@ -15,8 +16,9 @@ export { STILL_GOING_MS, TRY_AGAIN_MS, waitStage, type WaitStage };
 /**
  * docs/design.md 3.12. Six kinds, fixed heights, radius 10, no shadows, no red. Pressed is set from `pointerdown`
  * (9.4): 0.88 on a control with a fill, 0.5 on one drawn only in lines and words, released over quick. Pending is
- * 5.2: past 300ms the label stays exactly where it was, the control holds its size at 0.88, and a 2px line runs
- * along its bottom edge on the loop; at three seconds a line under it says "Still going."; at ten it becomes the
+ * 5.2 as amended 2026-10-08 (the touch-ups round): the tap disables the control at once; past 300ms the label keeps
+ * its place unseen, the control holds its size at 0.88, and the tally counts in its middle on the loop (`TallyLoader`,
+ * still under Reduce Motion); at three seconds a line under it says "Still going."; at ten it becomes the
  * 5.1 summary block with "Try again", which fires the same tap again, and the control takes taps again too. The
  * stages are `waitStage`, the one set of rules a tap that goes somewhere reads as well (9.4). A tap is never
  * silently dropped, and nothing else on the screen locks. Focus is the global 2px ink outline (5.1). At most one
@@ -137,16 +139,47 @@ export function tapGoes(offline: boolean): { send: boolean; words: string | null
   return offline ? { send: false, words: WORDS.offline } : { send: true, words: null };
 }
 
+/**
+ * The one pending state (the touch-ups round, section 3): a tap disables its control at once, whether or not the caller
+ * says it is waiting, and holds it until the action answers: the promise the handler returns, else the caller's
+ * `loading` once it has come on and gone off again, else, for a tap that only opens something here, two frames. So
+ * nothing sends twice and nobody wonders whether it went through. Pure but for the clock it is handed.
+ */
+export function tapHolds(input: { returned: unknown; sawLoading: boolean }): "promise" | "loading" | "frames" {
+  if (input.returned !== null && typeof input.returned === "object" && typeof (input.returned as { then?: unknown }).then === "function") return "promise";
+  return input.sawLoading ? "loading" : "frames";
+}
+
 export function Button({ className, variant = "secondary", size, loading, disabled, children, onClick, type, kind = "write", ...props }: ButtonProps) {
-  const stage = useWaitStage(Boolean(loading));
-  const gaveUp = useHeldFor(Boolean(loading), GIVE_UP_MS);
+  const [tapped, setTapped] = React.useState(false);
+  const sawLoading = React.useRef(false);
+  // The caller's own wait: once it has come on, the tap is held until it goes off.
+  React.useEffect(() => {
+    if (loading) sawLoading.current = true;
+    else if (sawLoading.current) {
+      sawLoading.current = false;
+      setTapped(false);
+    }
+  }, [loading]);
+  const waiting = Boolean(loading) || tapped;
+  const stage = useWaitStage(waiting);
+  const gaveUp = useHeldFor(waiting, GIVE_UP_MS);
   const { block, pending, long, line, words } = buttonWait(stage, kind, gaveUp);
   // Past ten seconds a read's control takes taps again, and the block under it offers the same tap as "Try again"; a write's does after a minute with no answer.
-  const busy = Boolean(loading) && !block;
+  const busy = waiting && !block;
   const lastClick = React.useRef<React.MouseEvent<HTMLButtonElement> | null>(null);
   const lastControl = React.useRef<HTMLButtonElement | null>(null);
   // Offline at the tap: nothing is sent, and the words stand under the control until a tap goes through.
   const [offline, setOffline] = React.useState<string | null>(null);
+  /** Runs the handler with the tap held: released when its promise settles, when the caller's wait ends, or after two frames for a tap that started none. */
+  const run = (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (!onClick) return;
+    setTapped(true);
+    const returned: unknown = onClick(e);
+    const holds = tapHolds({ returned, sawLoading: sawLoading.current });
+    if (holds === "promise") void (returned as Promise<unknown>).finally(() => setTapped(false));
+    else requestAnimationFrame(() => requestAnimationFrame(() => (sawLoading.current ? undefined : setTapped(false))));
+  };
   return (
     <>
       <button
@@ -154,6 +187,7 @@ export function Button({ className, variant = "secondary", size, loading, disabl
         disabled={disabled}
         aria-busy={busy || undefined}
         data-press={PRESS[variant ?? "secondary"]}
+        data-waiting={pending ? "" : undefined}
         onClick={
           busy
             ? undefined
@@ -164,7 +198,7 @@ export function Button({ className, variant = "secondary", size, loading, disabl
                 lastControl.current = e.currentTarget;
                 if (!offlineNow()) {
                   setOffline(null);
-                  onClick?.(e);
+                  run(e);
                   return;
                 }
                 // The browser says offline: a request to this origin settles it before anything is sent (iOS 27 says
@@ -174,23 +208,24 @@ export function Button({ className, variant = "secondary", size, loading, disabl
                 void offlineSettled().then((off) => {
                   const go = tapGoes(off);
                   setOffline(go.words);
-                  if (go.send) retryOf({ type, form: formOf(props, control), click: onClick ? () => onClick(e) : null });
+                  if (go.send) retryOf({ type, form: formOf(props, control), click: onClick ? () => run(e) : null });
                 });
               }
         }
         type={busy && type === "submit" ? "button" : type}
         {...props}
       >
-        {children}
+        {/* The label keeps its place while the tally stands in for it, so the control never changes size. */}
+        <span className={cn("inline-flex items-center justify-center gap-2", pending ? "invisible" : undefined)}>{children}</span>
         {pending ? (
-          <span aria-hidden="true" className={cn("pointer-events-none absolute inset-x-0 bottom-0 h-[2px] overflow-hidden", variant === "primary" ? "bg-runner-track" : "bg-surface-2")}>
-            <span className={cn("absolute inset-y-0 w-1/3 motion-loop-runner", variant === "primary" ? "bg-on-chalk" : "bg-ink")} />
+          <span aria-hidden="true" className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <TallyLoader size={variant === "icon" ? 18 : 22} />
           </span>
         ) : null}
       </button>
       {long ? <span className="text-center text-caption text-ink-3">{line}</span> : null}
-      {offline && !loading ? <ProblemSummary messages={[offline]} /> : null}
-      {block && words ? <ProblemSummary messages={[words]} retry={() => retryOf({ type, form: formOf(props, lastControl.current), click: lastClick.current && onClick ? () => onClick(lastClick.current as React.MouseEvent<HTMLButtonElement>) : null })} /> : null}
+      {offline && !waiting ? <ProblemSummary messages={[offline]} /> : null}
+      {block && words ? <ProblemSummary messages={[words]} retry={() => retryOf({ type, form: formOf(props, lastControl.current), click: lastClick.current && onClick ? () => run(lastClick.current as React.MouseEvent<HTMLButtonElement>) : null })} /> : null}
     </>
   );
 }

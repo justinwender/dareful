@@ -284,7 +284,8 @@ function ask(t: AskTile) {
         </div>
       ) : t.teams ? (
         // Between two teams (3.27, 3.40): the two stamps at 88px at the ends of the empty line, equal, with the names under; the margin's line has a tie tick at the middle.
-        <>
+        // A column of its own the safe square's width, never a fragment: the renderer lays a fragment out as a row with no width, and the line collapsed to nothing with "0%100%" run together (the touch-ups round).
+        <div style={{ display: "flex", flexDirection: "column", width: SAFE.w, gap: 10 }}>
           <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", height: 110 }}>
             {teamStamp(t.teams.away, 88)}
             {teamStamp(t.teams.home, 88)}
@@ -300,9 +301,9 @@ function ask(t: AskTile) {
             <div style={{ display: "flex", fontSize: 28, color: layers.hi, alignItems: "center" }}>{t.teams.margin ? "Tie" : "Even"}</div>
             <div style={{ display: "flex" }}>{t.teams.home.name}</div>
           </div>
-        </>
+        </div>
       ) : (
-        <>
+        <div style={{ display: "flex", flexDirection: "column", width: SAFE.w, gap: 10 }}>
       {t.mark || t.markImage ? (
         <div
           style={{
@@ -341,7 +342,7 @@ function ask(t: AskTile) {
         <div style={{ display: "flex" }}>0%</div>
         <div style={{ display: "flex" }}>100%</div>
       </div>
-        </>
+        </div>
       )}
     </div>,
     ...(t.closes

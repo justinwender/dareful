@@ -11,7 +11,7 @@
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { MODELS, usageTap } from "@/lib/ai/client";
-import { arbitrate, arbitrateAnswer, arbitrateNumber, triage } from "@/lib/ai/settler";
+import { arbitrate, arbitrateAnswer, arbitrateNumber, carefulQuestions, eitherOr, triage } from "@/lib/ai/settler";
 import { proposeAnswer, proposeNumber, proposeOutcome } from "@/lib/ai/markets";
 import { deadlineMismatch } from "@/lib/ledger/decide-by";
 import { answersOf, unitOf } from "@/lib/ledger/markets";
@@ -23,9 +23,10 @@ const ROUTES = {
   old: { drafting: "claude-sonnet-5", ruling: "claude-fable-5-1" },
   new: { drafting: "claude-haiku-4-5-20251001", ruling: "claude-sonnet-5-5" },
 } as const;
-/** Dollars per million tokens, in and out, from Anthropic's pricing page on 2026-10-04. */
+/** Dollars per million tokens, in and out, from Anthropic's pricing page on 2026-10-04; Haiku 5.5 at a tenth of Haiku 4.5's, as the owner's brief of 2026-10-08 gives it. */
 const PRICE: Record<string, [number, number]> = {
   "claude-haiku-4-5-20251001": [1, 5],
+  "claude-haiku-5-5": [0.1, 0.5],
   "claude-sonnet-5": [2, 10],
   "claude-sonnet-5-5": [2, 10],
   "claude-opus-5-5": [4, 20],
@@ -33,21 +34,24 @@ const PRICE: Record<string, [number, number]> = {
 };
 const BANNED = /\b(owes?|owed|debt|balance|outstanding|overdue|odds|price|wager|bet|gambl\w*|money|market)\b|—|the one picked|the chosen one/i;
 
-type Spend = { calls: number; input: number; output: number; dollars: number; ms: number; models: string[] };
+type Spend = { calls: number; input: number; output: number; dollars: number; ms: number; models: string[]; searches: number };
+/** Web search's own price, on top of the tokens its results add: ten dollars a thousand. */
+const SEARCH_DOLLARS = 0.01;
 function route(name: keyof typeof ROUTES): void {
   (MODELS as { drafting: string; ruling: string }).drafting = ROUTES[name].drafting;
   (MODELS as { drafting: string; ruling: string }).ruling = ROUTES[name].ruling;
 }
 async function measured<T>(run: () => Promise<T>): Promise<{ value: T | null; error: string | null; spend: Spend; seconds: number }> {
-  const spend: Spend = { calls: 0, input: 0, output: 0, dollars: 0, ms: 0, models: [] };
+  const spend: Spend = { calls: 0, input: 0, output: 0, dollars: 0, ms: 0, models: [], searches: 0 };
   usageTap.fn = (u) => {
     spend.calls += 1;
     spend.input += u.input;
     spend.output += u.output;
     spend.ms += u.ms;
     spend.models.push(u.model);
+    spend.searches += u.searches;
     const [i, o] = PRICE[u.model] ?? [0, 0];
-    spend.dollars += (u.input * i + u.output * o) / 1_000_000;
+    spend.dollars += (u.input * i + u.output * o) / 1_000_000 + u.searches * SEARCH_DOLLARS;
   };
   const started = Date.now();
   try {
@@ -138,9 +142,90 @@ async function rulingsAgain(): Promise<void> {
   console.log(JSON.stringify({ when: new Date().toISOString(), rulings: rows }, null, 2));
 }
 
+/**
+ * Drafting on Haiku 4.5 against Haiku 5.5 (the touch-ups round, section 4), on everything production has asked: the
+ * quick write-up of every question a person wrote (parsed, its date, its copy, an escalation, the seconds and the
+ * dollars, and the words, for reading side by side), and Help define's three questions for each (how many came back,
+ * and any either-or answered by yes and no). Help define's final terms stay on Sonnet 5.5 and are not compared. Search
+ * is off for both, so the models are compared and not the web; `--part=search` measures search on its own. Reads
+ * production and the live API and writes nothing but the report it prints.
+ */
+async function haiku(): Promise<void> {
+  process.env.DAREFUL_NO_SEARCH = "1";
+  const dares = await db.select().from(schema.dares).where(isNull(schema.dares.templateId)).orderBy(asc(schema.dares.createdAt));
+  const rows: Array<Record<string, unknown>> = [];
+  for (const d of dares) {
+    const zone = d.zone ?? "America/New_York";
+    const kind = d.kind as "binary" | "numeric" | "categorical";
+    const row: Record<string, unknown> = { id: d.id.slice(0, 8), title: d.title, kind, pace: d.pace };
+    for (const model of ["claude-haiku-4-5-20251001", "claude-haiku-5-5"] as const) {
+      (MODELS as { drafting: string }).drafting = model;
+      (MODELS as { ruling: string }).ruling = "claude-sonnet-5-5";
+      const w = await measured(() => writeUp({ line: d.title, kind, choices: kind === "categorical" ? d.outcomeLabels : undefined }, "00000000-0000-4000-8000-000000000000", zone));
+      const v = w.value && !("error" in w.value) ? w.value : null;
+      const c = await measured(() => carefulQuestions({ line: d.title, kind, choices: kind === "categorical" ? d.outcomeLabels : undefined }));
+      const qs = c.value && "questions" in c.value ? c.value.questions : [];
+      row[model] = {
+        writeUp: { parsed: v !== null && !v.plain, escalated: w.spend.models.some((m) => m !== model), decideBy: v?.decideBy ?? null, datesAgree: v && v.decideBy ? deadlineMismatch(v.terms, v.decideBy, new Date(), zone) === null : null, copy: v ? cutPhrasesIn(`${v.title} ${v.terms}`).concat(BANNED.exec(`${v.title} ${v.terms}`)?.[0] ?? []) : [], seconds: Math.round(w.seconds * 10) / 10, dollars: Math.round(w.spend.dollars * 100000) / 100000, title: v?.title ?? null, terms: v?.terms ?? null, error: w.error },
+        careful: { count: qs.length, ask: c.value && "ask" in c.value ? c.value.ask.subject : null, eitherOrWithoutAnswers: qs.filter((q) => !q.answers && eitherOr(q.question)).length, withOwnAnswers: qs.filter((q) => q.answers).length, escalated: c.spend.models.some((m) => m !== model), seconds: Math.round(c.seconds * 10) / 10, dollars: Math.round(c.spend.dollars * 100000) / 100000, questions: qs.map((q) => (q.answers ? `${q.question} [${q.answers.join(" | ")}]` : q.question)), error: c.error },
+      };
+    }
+    rows.push(row);
+    console.error(`haiku ${rows.length}/${dares.length}`);
+  }
+  const sum = (model: string, part: "writeUp" | "careful", key: "dollars" | "seconds") => rows.reduce((acc, r) => acc + (((r[model] as Record<string, Record<string, number>>)[part]?.[key]) ?? 0), 0);
+  const count = (model: string, test: (r: Record<string, Record<string, unknown>>) => boolean) => rows.filter((r) => test(r[model] as Record<string, Record<string, unknown>>)).length;
+  const summary = Object.fromEntries(
+    ["claude-haiku-4-5-20251001", "claude-haiku-5-5"].map((m) => [
+      m,
+      {
+        writeUpsParsed: count(m, (x) => x.writeUp?.parsed === true),
+        writeUpsEscalated: count(m, (x) => x.writeUp?.escalated === true),
+        withDate: count(m, (x) => x.writeUp?.decideBy !== null),
+        datesDisagree: count(m, (x) => x.writeUp?.datesAgree === false),
+        copyFlags: count(m, (x) => Array.isArray(x.writeUp?.copy) && (x.writeUp?.copy as unknown[]).length > 0),
+        carefulThree: count(m, (x) => x.careful?.count === 3),
+        carefulEitherOrUnanswered: rows.reduce((acc, r) => acc + (((r[m] as Record<string, Record<string, number>>).careful?.eitherOrWithoutAnswers) ?? 0), 0),
+        carefulEscalated: count(m, (x) => x.careful?.escalated === true),
+        writeUpDollars: Math.round(sum(m, "writeUp", "dollars") * 10000) / 10000,
+        carefulDollars: Math.round(sum(m, "careful", "dollars") * 10000) / 10000,
+        writeUpSeconds: Math.round((sum(m, "writeUp", "seconds") / Math.max(1, rows.length)) * 10) / 10,
+        carefulSeconds: Math.round((sum(m, "careful", "seconds") / Math.max(1, rows.length)) * 10) / 10,
+      },
+    ]),
+  );
+  console.log(JSON.stringify({ when: new Date().toISOString(), questions: rows.length, summary, rows }, null, 2));
+}
+
+/**
+ * What a quick search costs Help define the terms (the touch-ups round, section 4): its questions and its final terms
+ * for each question that names real people, teams or events, with search and without, on the routing this round ships.
+ */
+async function searchCost(): Promise<void> {
+  const lines = (process.env.SEARCH_LINES ?? "Will the Yankees fire Boone?|Who gets fired first: Mike McDaniel or Aaron Boone?|Will the Rays beat the Yankees tonight?").split("|");
+  const rows = [];
+  for (const line of lines) {
+    const row: Record<string, unknown> = { line };
+    for (const search of [false, true]) {
+      process.env.DAREFUL_NO_SEARCH = search ? "0" : "1";
+      const c = await measured(() => carefulQuestions({ line, kind: "binary" }));
+      const qs = c.value && "questions" in c.value ? c.value.questions : [];
+      const answers = qs.map((q) => ({ question: q.question, yes: true, ...(q.answers ? { answer: q.answers[0] } : {}) }));
+      const w = await measured(() => writeUp({ line, kind: "binary", answers }, "00000000-0000-4000-8000-000000000000", "America/New_York"));
+      const v = w.value && !("error" in w.value) ? w.value : null;
+      row[search ? "withSearch" : "without"] = { questions: qs.map((q) => (q.answers ? `${q.question} [${q.answers.join(" | ")}]` : q.question)), carefulSeconds: Math.round(c.seconds * 10) / 10, carefulSearches: c.spend.searches, carefulDollars: Math.round(c.spend.dollars * 100000) / 100000, terms: v?.terms ?? null, termsSeconds: Math.round(w.seconds * 10) / 10, termsSearches: w.spend.searches, termsDollars: Math.round(w.spend.dollars * 100000) / 100000, errors: [c.error, w.error].filter(Boolean) };
+    }
+    rows.push(row);
+    console.error(`search ${rows.length}/${lines.length}`);
+  }
+  console.log(JSON.stringify({ when: new Date().toISOString(), rows }, null, 2));
+}
+
 async function main(): Promise<void> {
   if (process.argv.includes("--part=proposals")) return proposals();
   if (process.argv.includes("--part=rulings")) return rulingsAgain();
+  if (process.argv.includes("--part=haiku")) return haiku();
+  if (process.argv.includes("--part=search")) return searchCost();
   const dares = await db.select().from(schema.dares).where(isNull(schema.dares.templateId)).orderBy(asc(schema.dares.createdAt));
   const questions = [];
   for (const d of dares) {

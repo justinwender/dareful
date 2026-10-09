@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState, useTransition, type CSSProperties, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/ledger/avatar";
 import { Chip, chipPress } from "@/components/ledger/chip";
@@ -13,6 +13,7 @@ import { streamWriteUp } from "@/lib/ui/write-up-stream";
 import { MOTION, waitStage } from "@/lib/ui/motion";
 import { answerLands, paceRowShows } from "@/lib/ui/stage";
 import { PinnedSheet } from "@/components/ui/pinned-sheet";
+import type { CarefulQuestion } from "@/lib/ai/settler";
 import { carefulQuestionsAction, draftFromTemplateAction, draftMarketAction, gameNamedAction, openWithoutEntryAction, scopeMarketAction, triageAction, type ScopeResult, type ToSign, type TriageResult } from "@/lib/actions/markets";
 import { useSigner } from "@/components/ledger/use-signer";
 import { createMessage, daresTypes } from "@/lib/chain/typed-data";
@@ -31,8 +32,10 @@ import { kindForQuestion } from "@/lib/ui/question-shape";
 import { attempt } from "@/lib/ui/attempt";
 import { useFitsContent } from "@/lib/ui/fit-content";
 import { blankOf, type Idea } from "@/lib/ideas";
+import { useTapGuard } from "@/components/ui/tap-guard";
+import { TallyLoader } from "@/components/ui/tally-loader";
 
-type Unit = { kind: "usd" } | { kind: "existing"; id: string } | { kind: "new"; template: "beer" | "round" | "coffee" | "next_time"; label: string };
+type Unit = { kind: "usd" } | { kind: "existing"; id: string } | { kind: "new"; template: "beer" | "round" | "coffee" | "next_time" | null; label: string };
 const PRESETS = [
   { template: "beer", label: "beers" },
   { template: "round", label: "rounds" },
@@ -55,7 +58,7 @@ type Choice = { text: string; userId: string | null };
  */
 export type TemplateForAsking = { id: string; title: string; terms: string; kind: "binary" | "numeric" | "categorical"; gameName: string; /** "Sunday at 1pm": when it closes, in the asker's zone. */ closes: string; decidedByScore: boolean; /** "Off by 28 points or more scores nothing.", where the template sets a scale. */ scored: string | null };
 
-export function AskForm({ signing, people, initialLine = "", initialPace = "dare", me, screenTitle, gotCode = true, layer = false, stickers = [], canPaste = false, template = null, initialMark = null, idea = null }: { /** What the asker signs with as the question is sent (the games-and-the-reveal round). */ signing: { domain: TypedDataDomain; ledgerWallet: string }; people: Person[]; initialLine?: string; initialPace?: "dare" | "argument"; me: { id: string; name: string; hue: Hue }; /** The screen's name in its header; the form owns the screen so a picked mark can retint all of it (3.29). */ screenTitle: string; /** "Got a code?" beside the information icon on the question step (3.29, 10.3). */ gotCode?: boolean; /** Rendered in the ask layer (9.5), where the sheet sits in flow and Close sinks the layer. */ layer?: boolean; /** This person's stickers for the picker (3.28), and whether a cutout can be pasted at all. */ stickers?: Sticker[]; canPaste?: boolean; /** A public question (3.33): the flow starts at who's in, with the wording locked. */ template?: TemplateForAsking | null; /** A sticker just made from a photo (3.28): the question step opens with it as the mark. */ initialMark?: PickedMark | null; /** An idea (3.47): its question, its kind and a number's unit; a blank leaves a name for the asker. */ idea?: Idea | null }) {
+export function AskForm({ signing, people, initialLine = "", initialPace = "dare", me, screenTitle, gotCode = true, layer = false, stickers = [], canPaste = false, template = null, initialMark = null, idea = null, ownUnits = [] }: { /** Stake units the asker added on You (the touch-ups round), offered as quoted words beside the others. */ ownUnits?: string[]; /** What the asker signs with as the question is sent (the games-and-the-reveal round). */ signing: { domain: TypedDataDomain; ledgerWallet: string }; people: Person[]; initialLine?: string; initialPace?: "dare" | "argument"; me: { id: string; name: string; hue: Hue }; /** The screen's name in its header; the form owns the screen so a picked mark can retint all of it (3.29). */ screenTitle: string; /** "Got a code?" beside the information icon on the question step (3.29, 10.3). */ gotCode?: boolean; /** Rendered in the ask layer (9.5), where the sheet sits in flow and Close sinks the layer. */ layer?: boolean; /** This person's stickers for the picker (3.28), and whether a cutout can be pasted at all. */ stickers?: Sticker[]; canPaste?: boolean; /** A public question (3.33): the flow starts at who's in, with the wording locked. */ template?: TemplateForAsking | null; /** A sticker just made from a photo (3.28): the question step opens with it as the mark. */ initialMark?: PickedMark | null; /** An idea (3.47): its question, its kind and a number's unit; a blank leaves a name for the asker. */ idea?: Idea | null }) {
   const router = useRouter();
   const sign = useSigner();
   // Asking skips "Who's in" (the games-and-the-reveal round, 2026-10-07, the owner's call): every question goes to whoever the asker sends it to.
@@ -97,8 +100,10 @@ export function AskForm({ signing, people, initialLine = "", initialPace = "dare
   const [side, setSide] = useState<"yes" | "no">("yes");
   /** A pick-one argument's side: the asker's own answer, by its place in the list. */
   const [myAnswer, setMyAnswer] = useState(0);
-  const [questions, setQuestions] = useState<string[]>([]);
-  const [answers, setAnswers] = useState<Record<number, boolean>>({});
+  /** Help define the terms' questions (the touch-ups round): each answered yes or no, or by one of its own two answers. */
+  const [questions, setQuestions] = useState<CarefulQuestion[]>([]);
+  /** The answer picked for each question: 0 for yes or its first answer, 1 for no or its second. */
+  const [answers, setAnswers] = useState<Record<number, 0 | 1>>({});
   /** How many answers there were the moment one was added, so the new row alone takes focus. */
   const [addedAt, setAddedAt] = useState(0);
   const [stalemate, setStalemate] = useState<"arbitrate" | "void">("arbitrate");
@@ -119,6 +124,8 @@ export function AskForm({ signing, people, initialLine = "", initialPace = "dare
   const termsField = useFitsContent(terms);
   // When it's decided (3.20 as amended 2026-10-04): Tonight, This week, This month or a date, starting from the date the write-up proposes.
   const [decide, setDecide] = useState<DecideBy>({ key: "week" });
+  // A chip takes a tap only where the finger went down (`useTapGuard`): the page grows as the terms arrive.
+  const chipTaps = useTapGuard();
   /** The write-up's own date, for the date chip, and the date the terms name now, so a change of chip changes the terms with it. */
   const [proposedDate, setProposedDate] = useState<string | null>(null);
   /**
@@ -142,6 +149,11 @@ export function AskForm({ signing, people, initialLine = "", initialPace = "dare
   /** The terms being written (9.8): the words so far, when the last arrived, and whether it finished or failed. */
   const [written, setWritten] = useState<{ title: string; terms: string; done: boolean; failed: boolean; /** When the last words arrived, or the start once the clock has read it; null until then. */ lastAt: number | null } | null>(null);
   const lastWriteUp = useRef<{ chosen?: string; source?: string } | null>(null);
+  /** Which write-up is the current one, the request it can stop, and what it was asked, so Next can take one started while the question was still on screen. */
+  const writeUpSeq = useRef(0);
+  const writeUpAbort = useRef<AbortController | null>(null);
+  const writeUpFor = useRef<string | null>(null);
+  useEffect(() => () => writeUpAbort.current?.abort(), []);
   const writing = written !== null && !written.done && !written.failed;
   // A clock for the stall rules (9.8: "Still writing." at three seconds without new words, the block at ten), ticking only while writing.
   const [tick, setTick] = useState(0);
@@ -186,20 +198,34 @@ export function AskForm({ signing, people, initialLine = "", initialPace = "dare
    * (9.8); if the question is edited it starts again. Where the stream cannot be read, the caret waits and the
    * terms arrive whole from the action, the same result either way.
    */
+  /** What a write-up is asked: the line, the reading picked, Help define's answers, the type and a pick-one's answers. */
+  function bodyFor(chosen?: string, source?: string) {
+    const asked = questions.map((q, i) => ({ question: q.question, yes: answers[i] === 0, ...(q.answers && answers[i] !== undefined ? { answer: q.answers[answers[i] as 0 | 1] } : {}) })).filter((_, i) => i in answers);
+    return { line: source ?? line, criterion: chosen, answers: mode === "careful" && pace === "dare" ? asked : undefined, kind: (pickOne ? "categorical" : numeric ? "numeric" : "binary") as "binary" | "numeric" | "categorical", choices: pickOne ? filledChoices.map((c) => c.text.trim()) : undefined };
+  }
+
   function writeUp(chosen?: string, source?: string) {
+    // Only the newest write-up lands (the touch-ups round): one asked for an older wording is stopped, and anything it still answers is dropped.
+    const seq = ++writeUpSeq.current;
+    writeUpAbort.current?.abort();
+    const abort = new AbortController();
+    writeUpAbort.current = abort;
+    const current = () => seq === writeUpSeq.current;
     lastWriteUp.current = { chosen, source };
     setWritten({ title: "", terms: "", done: false, failed: false, lastAt: null });
     setScope(null);
     setTooFar(null);
-    const asked = questions.map((question, i) => ({ question, yes: answers[i] ?? false })).filter((_, i) => i in answers);
-    const body = { line: source ?? line, criterion: chosen, answers: mode === "careful" && pace === "dare" ? asked : undefined, kind: (pickOne ? "categorical" : numeric ? "numeric" : "binary") as "binary" | "numeric" | "categorical", choices: pickOne ? filledChoices.map((c) => c.text.trim()) : undefined };
+    const body = bodyFor(chosen, source);
+    writeUpFor.current = JSON.stringify(body);
     scoping.current = (async () => {
       let r: ScopeResult | { error: string };
       try {
-        r = await streamWriteUp<ScopeResult | { error: string }>(body, (p) => setWritten((w) => (w ? { ...w, title: p.title ?? w.title, terms: p.terms ?? w.terms, lastAt: Date.now() } : w)));
+        r = await streamWriteUp<ScopeResult | { error: string }>(body, (p) => (current() ? setWritten((w) => (w ? { ...w, title: p.title ?? w.title, terms: p.terms ?? w.terms, lastAt: Date.now() } : w)) : undefined), abort.signal);
       } catch {
+        if (!current()) return;
         r = await scopeMarketAction(body.line, body.criterion, body.answers, body.kind, body.choices);
       }
+      if (!current()) return;
       if ("error" in r) {
         setProblem(r.error);
         setWritten((w) => (w ? { ...w, failed: true } : w));
@@ -220,6 +246,18 @@ export function AskForm({ signing, people, initialLine = "", initialPace = "dare
     })();
   }
 
+  // Quick setup's write-up starts while the question is still on screen (the touch-ups round, section 4): once the line
+  // has rested a moment, so the terms are already being written when Next is tapped. A pick-one question waits for its
+  // answers, Help define the terms for its three questions, and an argument for its check.
+  const startEarly = useEffectEvent(() => {
+    if (writeUpFor.current !== JSON.stringify(bodyFor())) writeUp();
+  });
+  useEffect(() => {
+    if (step !== "question" || pace !== "dare" || mode !== "quick" || pickOne || template || blank || line.trim().length < EARLY_LINE) return;
+    const timer = setTimeout(startEarly, EARLY_WRITE_UP_MS);
+    return () => clearTimeout(timer);
+  }, [step, pace, mode, pickOne, template, blank, line, kind]);
+
   function toWho() {
     setFieldProblem(null);
     setProblem(null);
@@ -234,7 +272,15 @@ export function AskForm({ signing, people, initialLine = "", initialPace = "dare
       if (filledChoices.some((c) => c.text.trim().length > MAX_ANSWER_LENGTH)) return setProblem("Each answer is a few words.");
       if (new Set(filledChoices.map((c) => c.text.trim().toLowerCase())).size !== filledChoices.length) return setProblem("Two answers say the same thing.");
     }
-    setScope(null);
+    // A write-up already under way for exactly this question, started while it rested on screen, is the one (the
+    // touch-ups round); anything written for another wording, or for an argument or Help define's answers, is dropped.
+    const reuse = pace === "dare" && mode === "quick" && writeUpFor.current === JSON.stringify(bodyFor()) && !written?.failed && !scope?.plain;
+    if (!reuse) {
+      writeUpSeq.current += 1;
+      writeUpAbort.current?.abort();
+      writeUpFor.current = null;
+      setScope(null);
+    }
     if (pace === "argument") {
       // The triage comes before anything else, and it matters more than the ruling: some things are not the app's to call.
       return startThinking(async () => {
@@ -272,7 +318,7 @@ export function AskForm({ signing, people, initialLine = "", initialPace = "dare
         setStep("careful");
       });
     }
-    writeUp();
+    if (!reuse) writeUp();
     toTerms();
   }
 
@@ -354,7 +400,7 @@ export function AskForm({ signing, people, initialLine = "", initialPace = "dare
         blind: arguing ? false : blind,
         stalemate,
         mode,
-        argument: arguing && verdict?.kind === "ok" ? { tier: verdict.tier, criterion } : undefined,
+        argument: arguing && verdict?.kind === "ok" ? { tier: verdict.tier, criterion, settledBy: verdict.settledBy } : undefined,
       }));
       if ("error" in r) return setProblem(r.error);
       // It opens as it is sent (the games-and-the-reveal round): the asker's Create, signed here, and the question's own screen with share, copy and the code in view. A signature that does not come leaves it a draft, whose screen offers "Share it first".
@@ -420,7 +466,7 @@ export function AskForm({ signing, people, initialLine = "", initialPace = "dare
       >
         {/* The question band (3.29): on the market's field, neutral until a mark is picked. The mark row opens the picker; "Optional" is said once. */}
         <section className="-mx-2 flex flex-col gap-4 rounded-card bg-field p-4 pb-5" style={{ viewTransitionName: "ask-band" } as CSSProperties}>
-          <button type="button" aria-haspopup="dialog" aria-expanded={pickingMark} onClick={() => setPickingMark(true)} data-press="row" className="flex items-center gap-4 rounded-button text-left press-row">
+          <button type="button" aria-haspopup="dialog" aria-expanded={pickingMark} onClick={() => setPickingMark(true)} data-press="row" data-add-mark="" className="flex items-center gap-4 rounded-button text-left press-row">
             {mark ? (
               <MarkRefStamp mark={refOfPicked(mark)} size={64} onGround />
             ) : (
@@ -520,7 +566,7 @@ export function AskForm({ signing, people, initialLine = "", initialPace = "dare
           canPaste={canPaste}
           onPick={setMark}
         />
-        <div role="group" aria-label="What kind of thing" className="flex flex-wrap gap-2">
+        <div role="group" aria-label="What kind of thing" className="flex flex-wrap gap-2" data-pace-choice="">
           <button type="button" aria-pressed={pace === "dare"} onClick={() => setPace("dare")} {...chipPress(pace === "dare")}>
             <Chip size={36} selected={pace === "dare"} choice>
               Something that’ll happen
@@ -559,7 +605,7 @@ export function AskForm({ signing, people, initialLine = "", initialPace = "dare
         {paceRowShows(pace, kind) ? (
           <div data-pace-row="" className="mt-2 flex flex-col gap-2">
             <h2 className="text-label text-ink-3">AI market setup</h2>
-            <div role="group" aria-label="AI market setup" className="flex flex-wrap gap-2">
+            <div role="group" aria-label="AI market setup" className="flex flex-wrap gap-2" data-ai-setup="">
               <button type="button" aria-pressed={mode === "quick"} onClick={() => setMode("quick")} {...chipPress(mode === "quick")}>
                 <Chip size={36} selected={mode === "quick"} choice>
                   Quick setup
@@ -752,7 +798,7 @@ export function AskForm({ signing, people, initialLine = "", initialPace = "dare
         }
         setSubjectKind(kind);
         // Changing the answer rewrites the questions; answers to questions that survive the rewrite are kept (3.44).
-        setAnswers((prev) => Object.fromEntries(q.questions.flatMap((text, i) => ((was) => (was >= 0 && was in prev ? [[i, prev[was] as boolean]] : []))(questions.indexOf(text)))));
+        setAnswers((prev) => Object.fromEntries(q.questions.flatMap((next, i) => ((was) => (was >= 0 && was in prev ? [[i, prev[was] as 0 | 1]] : []))(questions.findIndex((old) => old.question === next.question)))));
         setQuestions(q.questions);
         setStep("careful");
       });
@@ -803,13 +849,14 @@ export function AskForm({ signing, people, initialLine = "", initialPace = "dare
           {questions.map((q, i) => (
             <li key={i} className="flex flex-col gap-2 rounded-card border border-line bg-surface px-4 py-3 motion-fade-in" style={{ animationDelay: `${i * MOTION.stagger}ms`, animationDuration: `${MOTION.quick}ms` }}>
               <p id={`careful-${i}`} className="text-body-sm text-ink">
-                {q}
+                {q.question}
               </p>
-              <div role="group" aria-labelledby={`careful-${i}`} className="flex gap-2">
-                {([true, false] as const).map((v) => (
-                  <button key={String(v)} type="button" aria-pressed={answers[i] === v} onClick={() => setAnswers((a) => ({ ...a, [i]: v }))} {...chipPress(answers[i] === v)}>
+              {/* Yes and No, or the question's own two answers, which wrap rather than cut (the touch-ups round). */}
+              <div role="group" aria-labelledby={`careful-${i}`} className="flex flex-wrap gap-2">
+                {([0, 1] as const).map((v) => (
+                  <button key={v} type="button" aria-pressed={answers[i] === v} onClick={() => setAnswers((a) => ({ ...a, [i]: v }))} {...chipPress(answers[i] === v)}>
                     <Chip size={36} selected={answers[i] === v} choice>
-                      {v ? "Yes" : "No"}
+                      {q.answers ? q.answers[v] : v === 0 ? "Yes" : "No"}
                     </Chip>
                   </button>
                 ))}
@@ -864,7 +911,7 @@ export function AskForm({ signing, people, initialLine = "", initialPace = "dare
   if (template) {
     const units = noUnits;
     const unitChip = (u: Unit, label: string, key: string) => {
-      const selected = u.kind === unit.kind && (u.kind === "usd" || (u.kind === "existing" && unit.kind === "existing" && u.id === unit.id) || (u.kind === "new" && unit.kind === "new" && u.template === unit.template));
+      const selected = u.kind === unit.kind && (u.kind === "usd" || (u.kind === "existing" && unit.kind === "existing" && u.id === unit.id) || (u.kind === "new" && unit.kind === "new" && u.template === unit.template && (u.template !== null || u.label === unit.label)));
       return (
         <button key={key} type="button" onClick={() => setUnit(u)} {...chipPress(selected)}>
           <Chip size={36} selected={selected} choice>
@@ -900,6 +947,8 @@ export function AskForm({ signing, people, initialLine = "", initialPace = "dare
             {unitChip({ kind: "usd" }, "Dollars", "usd")}
             {units.map((u) => unitChip({ kind: "existing", id: u.id }, u.template === "next_time" ? "a next time" : u.template ? `${u.label}s` : `“${u.label}”`, u.id))}
             {PRESETS.filter((p) => !units.some((u) => u.template === p.template)).map((p) => unitChip({ kind: "new", template: p.template, label: p.template }, p.label, p.template))}
+            {/* The asker's own units, added on You (the touch-ups round), as quoted words beside the others. */}
+            {ownUnits.filter((o) => !units.some((u) => !u.template && u.label.toLowerCase() === o)).map((o) => unitChip({ kind: "new", template: null, label: o }, `“${o}”`, `own-${o}`))}
           </div>
           <p className="text-caption text-ink-3">One kind of thing for everyone, fixed now. Dollars and beers can’t be weighed against each other.</p>
         </div>
@@ -962,7 +1011,7 @@ export function AskForm({ signing, people, initialLine = "", initialPace = "dare
 
   const units = noUnits;
   const unitChip = (u: Unit, label: string, key: string) => {
-    const selected = u.kind === unit.kind && (u.kind === "usd" || (u.kind === "existing" && unit.kind === "existing" && u.id === unit.id) || (u.kind === "new" && unit.kind === "new" && u.template === unit.template));
+    const selected = u.kind === unit.kind && (u.kind === "usd" || (u.kind === "existing" && unit.kind === "existing" && u.id === unit.id) || (u.kind === "new" && unit.kind === "new" && u.template === unit.template && (u.template !== null || u.label === unit.label)));
     return (
       <button key={key} type="button" onClick={() => setUnit(u)} {...chipPress(selected)}>
         <Chip size={36} selected={selected} choice>
@@ -1007,10 +1056,16 @@ export function AskForm({ signing, people, initialLine = "", initialPace = "dare
               <textarea id="ask-terms" ref={termsField} rows={3} value={terms} onChange={(e) => setTerms(e.target.value)} maxLength={800} aria-label="Counts if" className="field-sizing-content -mx-1 resize-none rounded-button bg-transparent px-1 text-body text-ink" />
               <p className="text-caption text-ink-3">{scope.plain ? "The write-up didn’t come through, so this is your line as you typed it. Change it however you like." : "Written up from your line. Change anything; everyone sees exactly this before they’re in."}</p>
             </>
-          ) : (
+          ) : written?.terms ? (
             <p className="min-h-6 text-body text-ink" data-terms-writing="">
-              {written?.terms ?? ""}
+              {written.terms}
               <Caret />
+            </p>
+          ) : (
+            // Before the first words, the loader and what it is doing, never an empty line with a caret that reads as a place to type (the touch-ups round).
+            <p className="flex min-h-6 items-center gap-2 text-body text-ink-2" data-terms-writing="" data-terms-loader="">
+              <TallyLoader size={20} className="text-ink" />
+              Writing the terms…
             </p>
           ),
         )}
@@ -1074,7 +1129,7 @@ export function AskForm({ signing, people, initialLine = "", initialPace = "dare
           : row(
               "Decided",
               <>
-              <div className="flex flex-wrap gap-2" data-decide-by={tooFar ? "none" : decide.key}>
+              <div className="flex flex-wrap gap-2" data-decide-by={tooFar ? "none" : decide.key} onClickCapture={chipTaps}>
                 {DECIDE_BY_SPANS.map((w) => (
                   <button key={w.key} type="button" onClick={() => pickDecide({ key: w.key })} {...chipPress(!tooFar && decide.key === w.key)}>
                     <Chip size={36} selected={!tooFar && decide.key === w.key} choice>
@@ -1122,6 +1177,8 @@ export function AskForm({ signing, people, initialLine = "", initialPace = "dare
               {unitChip({ kind: "usd" }, "Dollars", "usd")}
               {units.map((u) => unitChip({ kind: "existing", id: u.id }, u.template === "next_time" ? "a next time" : u.template ? `${u.label}s` : `“${u.label}”`, u.id))}
               {PRESETS.filter((p) => !units.some((u) => u.template === p.template)).map((p) => unitChip({ kind: "new", template: p.template, label: p.template }, p.label, p.template))}
+            {/* The asker's own units, added on You (the touch-ups round), as quoted words beside the others. */}
+            {ownUnits.filter((o) => !units.some((u) => !u.template && u.label.toLowerCase() === o)).map((o) => unitChip({ kind: "new", template: null, label: o }, `“${o}”`, `own-${o}`))}
             </div>
             <p className="text-caption text-ink-3">One kind of thing for everyone, fixed now. Dollars and beers can’t be weighed against each other.</p>
           </>,
@@ -1143,7 +1200,8 @@ export function AskForm({ signing, people, initialLine = "", initialPace = "dare
               </div>,
             )
           : null}
-        {row(
+        {/* An argument always goes to the tiebreaker when someone sees the app's ruling differently (the touch-ups round), so the choice is a dare's alone. */}
+        {pace === "dare" && row(
           "If it’s unclear",
           <>
             <div role="group" aria-label="If you can't agree" className="flex flex-wrap gap-2">
@@ -1198,4 +1256,7 @@ function Caret() {
 }
 
 /** The block when the words stop (9.8): in the sheet above "Send it", with "Try again", which writes them again. */
+/** How long a typed question rests before its write-up starts on the question step, and how long it must be (the touch-ups round). */
+export const EARLY_WRITE_UP_MS = 1200;
+export const EARLY_LINE = 8;
 export const TERMS_STOPPED = "The terms stopped partway.";

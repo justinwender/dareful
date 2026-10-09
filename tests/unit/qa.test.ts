@@ -118,7 +118,9 @@ test("the information sheet may reach the top and scrolls as one piece: the name
   assert.ok(inside.includes(INFO_FIXED_LINE) && /<h2[^>]*id="n"/.test(inside), "the name and the fixed line are in the piece that scrolls");
   assert.ok(!/\bsticky\b/.test(inside), "nothing in it is pinned");
   const panel = /<div[^>]*role="dialog"[^>]*>/.exec(sheet)?.[0] ?? "";
-  assert.ok(panel.includes("max-h-[calc(100%_-_env(safe-area-inset-top))]"), "as tall as its content, up to the status bar");
+  // Up to the status bar, on the wrapper that rises and leaves; the panel inside it is its height and moves by its own transform (the touch-ups round).
+  const wrapper = sheet.slice(0, sheet.indexOf('role="dialog"'));
+  assert.ok(wrapper.includes("max-h-[calc(100%_-_env(safe-area-inset-top))]") && panel.includes("max-h-full"), "as tall as its content, up to the status bar");
   assert.ok(!panel.includes("h-[min(560px,85%)]") && !panel.includes("max-h-[85%]") && !/\boverflow-y-auto\b/.test(panel), "neither the picker's height nor the ordinary cap, and the panel itself does not scroll");
   // The handle row and the close are the panel's; the box under them is what scrolls.
   const scroll = sheet.indexOf("data-sheet-scroll=");
@@ -311,10 +313,14 @@ test("a tap counts only on the control it began on: a click on a control that ro
   assert.equal(tapCounts({ isConnected: false }, { control: button, byPointer: true }), true, "the thing pressed has been redrawn: unknowable, so it counts");
   assert.match(CONTROLS, /button/);
   assert.match(CONTROLS, /a\[href\]/);
+  // The guard is shared since the touch-ups round (`useTapGuard`): the pinned sheet, and the Decided chips the terms step grows under.
+  const guard = readFileSync("src/components/ui/tap-guard.ts", "utf8");
+  assert.match(guard, /document\.addEventListener\("pointerdown", down, true\)/, "the press is kept from the document, in the capture phase, since it may begin outside the box");
+  assert.match(guard, /byPointer: e\.detail > 0/, "a pointer's click carries a count; a keyboard's or a script's carries none");
   const sheet = readFileSync("src/components/ui/pinned-sheet.tsx", "utf8");
-  assert.match(sheet, /document\.addEventListener\("pointerdown", down, true\)/, "the press is kept from the document, in the capture phase, since it may begin outside the sheet");
+  assert.match(sheet, /const onClickCapture = useTapGuard\(\);/);
   assert.match(sheet, /<section[^>]*onClickCapture=\{onClickCapture\}/, "and the sheet judges every click inside it before any control sees it");
-  assert.match(sheet, /byPointer: e\.detail > 0/, "a pointer's click carries a count; a keyboard's or a script's carries none");
+  assert.match(readFileSync("src/components/markets/ask-form.tsx", "utf8"), /data-decide-by=\{tooFar \? "none" : decide\.key\} onClickCapture=\{chipTaps\}/, "and so do the Decided chips, so a finger that went down on This week never picks This month as the page grows");
 });
 
 test("a well holds the question's own words and wraps rather than clips, and a quorum of one is told its word settles it (3.25; the QA round)", () => {

@@ -121,7 +121,13 @@ export function deadlineNotice(input: { title: string; marketId: string; appUrl:
 }
 
 /** To everyone in it, when the tiebreaker has been asked to call it and has. The ruling is credited to the agreement, never to the app (4.6, 4.10): the answer, whose call it was, and that the reasoning is there to read. */
-export function rulingNotice(input: { title: string; outcome: OutcomeWord; marketId: string; appUrl: string }): Notice {
+export function rulingNotice(input: { title: string; outcome: OutcomeWord; marketId: string; appUrl: string; /** Whose ruling it was: the tiebreaker's, or the app's, which everyone in it agreed with (the touch-ups round). */ by?: "tiebreaker" | "agreed" }): Notice {
+  if (input.by === "agreed")
+    return {
+      title: `“${short(input.title)}” has been called`,
+      body: input.outcome === "void" ? "Void. Everyone in it agreed the facts can’t settle it, so nothing changes hands." : `${LABEL[input.outcome]}. Everyone in it agreed with the app’s ruling.`,
+      url: `${input.appUrl}/m/${input.marketId}`,
+    };
   return {
     title: `“${short(input.title)}” has been called`,
     body: input.outcome === "void" ? "Void. The tiebreaker everyone agreed to found the terms don’t decide it, so nothing changes hands." : `${LABEL[input.outcome]}. Decided by the tiebreaker everyone agreed to. The reasoning is there to read.`,
@@ -226,7 +232,7 @@ export function backstopWarningNotice(input: { title: string; flavour: WarningFl
 const BACKSTOP_FOOTER = "You get this because you’re in this question. It’s the only one before it settles.";
 
 /** How a backstop ended it (docs/design.md 4.10): the feed's endings, the tiebreaker's two, and closing for good. */
-export type BackstopHow = "agreed" | "alone" | "conflict" | "tie" | "drive" | "drive_unknown" | "tiebreaker" | "tiebreaker_void" | "expired";
+export type BackstopHow = "agreed" | "alone" | "conflict" | "tie" | "drive" | "drive_unknown" | "tiebreaker" | "tiebreaker_void" | "expired" | "ruling" | "ruling_void";
 
 /**
  * The one notice after a backstop has acted (docs/design.md 4.10), to everyone in the market, in place of the
@@ -245,6 +251,8 @@ export function backstopResultNotice(input: { title: string; how: BackstopHow; m
     tiebreaker: "Decided by the tiebreaker everyone agreed to.",
     tiebreaker_void: "Void. The tiebreaker everyone agreed to found the terms don’t decide it, so nothing changes hands.",
     expired: "Closed for good. Nobody said what happened, so nothing changes hands.",
+    ruling: "The app’s ruling stood. Nobody saw it differently within a day.",
+    ruling_void: "Void. The app’s ruling found the facts can’t settle it, and nobody saw it differently within a day, so nothing changes hands.",
   };
   return { title: input.title, body: body[input.how], url: `${input.appUrl}/m/${input.marketId}`, email: { subject: body[input.how], footer: BACKSTOP_FOOTER } };
 }

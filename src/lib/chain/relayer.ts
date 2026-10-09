@@ -27,6 +27,7 @@ import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { timed } from "@/lib/timing";
 import { monadChain, rpcUrl } from "./contracts";
+import { clearChainFailure, noteChainFailure } from "./failures";
 
 export type Relayer = {
   account: PrivateKeyAccount;
@@ -181,16 +182,10 @@ export async function withSendLock<T>(fn: () => Promise<T>, timeoutMs = SEND_TIM
   });
 }
 
-/**
- * Simulate, submit with explicit gas, wait, and verify. `gas` is required by type; there is no default.
- */
 /** When this process last saw one of its own transactions mined; see the simulate retry below. */
 let lastMinedAt = 0;
 
-export async function submit<
-  const TAbi extends Abi,
-  TFn extends ContractFunctionName<TAbi, "nonpayable" | "payable">,
->(req: {
+type SubmitRequest<TAbi extends Abi, TFn extends ContractFunctionName<TAbi, "nonpayable" | "payable">> = {
   label: string;
   address: Address;
   abi: TAbi;
@@ -199,7 +194,43 @@ export async function submit<
   gas: bigint;
   /** What this write is for, so the tick can finish it if the receipt outlives the request. */
   write?: WriteRecord;
-}): Promise<SubmitResult> {
+};
+
+/** The reverts that say the thing is already there: the write's purpose is met, whoever met it. */
+export function alreadyThere(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : "";
+  return /\b(DareExists|GroupExists|AlreadyMember|DenomExists|ObligationExists)\b/.test(message);
+}
+
+/** The key a failing write is filed under (src/lib/chain/failures.ts): the thing being written, never the attempt. */
+export const failureKeyOf = (write: WriteRecord): string => `${write.kind}:${subjectKey(write.subject)}`;
+
+/**
+ * Simulate, submit with explicit gas, wait, and verify. `gas` is required by type; there is no default. A failure is
+ * filed under the thing being written until a send for it succeeds (the touch-ups round), so one that goes on failing
+ * reaches the owner; a receipt still to come is not a failure.
+ */
+export async function submit<
+  const TAbi extends Abi,
+  TFn extends ContractFunctionName<TAbi, "nonpayable" | "payable">,
+>(req: SubmitRequest<TAbi, TFn>): Promise<SubmitResult> {
+  const write = req.write ?? { kind: "other", subject: { label: req.label } };
+  const key = failureKeyOf(write);
+  try {
+    const result = await submitOnce(req);
+    await clearChainFailure(key);
+    return result;
+  } catch (err) {
+    if (alreadyThere(err)) await clearChainFailure(key);
+    else if (!(err instanceof SendPending)) await noteChainFailure({ key, kind: write.kind, label: req.label }, err);
+    throw err;
+  }
+}
+
+async function submitOnce<
+  const TAbi extends Abi,
+  TFn extends ContractFunctionName<TAbi, "nonpayable" | "payable">,
+>(req: SubmitRequest<TAbi, TFn>): Promise<SubmitResult> {
   const { account, publicClient, walletClient } = relayer();
   const chain = monadChain();
 

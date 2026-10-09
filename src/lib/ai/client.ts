@@ -11,8 +11,10 @@ import type { z } from "zod";
 import { timed } from "@/lib/timing";
 
 /**
- * Which model does what (the first-contact round, 2026-10-04): Haiku 4.5 drafts and reads (the write-up, its date,
- * the questions under Help define the terms); Sonnet 5.5 weighs what people decide by (the argument's triage, the
+ * Which model does what (the first-contact round, 2026-10-04): Haiku drafts and reads (the write-up, its date, the
+ * questions under Help define the terms), Haiku 5.5 since the touch-ups round (2026-10-08), at a tenth of Haiku 4.5's
+ * price, after the same comparison on all 47 questions production had asked held up everywhere but one date, which
+ * is now asked again (`datedAndAgreeing`); Sonnet 5.5 weighs what people decide by (the argument's triage, the
  * outcome proposals, the tiebreaker's ruling) and writes the final terms under Help define the terms. Nothing
  * calls Fable. Both overridable. A Haiku answer that fails its shape or runs out of time is asked once more of
  * Sonnet, and that is counted (`model_escalated`). The tiebreaker's ruling, which people pay on and whose text is
@@ -21,7 +23,7 @@ import { timed } from "@/lib/timing";
  */
 export const MODELS = {
   ruling: process.env.AI_MODEL_RULING || "claude-sonnet-5-5",
-  drafting: process.env.AI_MODEL_DRAFTING || "claude-haiku-4-5-20251001",
+  drafting: process.env.AI_MODEL_DRAFTING || "claude-haiku-5-5",
   tiebreaker: process.env.AI_MODEL_TIEBREAKER || "claude-opus-5-5",
 } as const;
 
@@ -52,7 +54,7 @@ export function forcesTool(model: string, refused: ReadonlySet<string> = asksPla
  * What each answer cost, for a script that compares routings (scripts/dev/compare-models.ts) and nothing else: the
  * app never reads it, and usage is never stored (the first-contact round).
  */
-export const usageTap: { fn: ((u: { label: string; model: string; input: number; output: number; ms: number }) => void) | null } = { fn: null };
+export const usageTap: { fn: ((u: { label: string; model: string; input: number; output: number; ms: number; /** Web searches the call ran (the touch-ups round). */ searches: number }) => void) | null } = { fn: null };
 
 /** Whether this process may call the live API: never under the test runner, which sets `NODE_TEST_CONTEXT` for every test file and so for the mutation audit too. Pure but for the environment it is given. */
 export function liveCallsAllowed(env: NodeJS.ProcessEnv = process.env): boolean {
@@ -75,7 +77,35 @@ function anthropic(): Anthropic {
  * then parsed with the caller's Zod schema: a shape the model invented, or no tool call at all, throws and never
  * reaches the caller.
  */
-type StructuredRequest<T> = { label: string; model: string; system: string; user: string; toolName: string; toolDescription: string; inputSchema: Record<string, unknown>; shape: z.ZodType<T>; timeoutMs: number; maxTokens?: number; /** Screenshots attached to what happened, each labelled with who supplied it (`evidenceBlocks`). */ images?: EvidenceImage[]; /** Each piece of the answer's JSON as the model writes it (docs/design.md 9.8): given, the call streams; the parse at the end is the same. */ onDelta?: (partialJson: string) => void; /** The streamed answer starts over: a drafting answer failed and the ruling model is asked. */ onReset?: () => void; /** What a drafting answer must also have to stand (a write-up's date): without it the ruling model is asked once, and its answer stands either way. */ accept?: (value: T) => boolean; /** How hard the model thinks, said rather than left to its default (Opus 5.5 thinks always; its default is medium). */ effort?: "low" | "medium" | "high"; /** Should the model decline, the API's default fallback answers in the same call (the beta endpoint), rather than leaving the call failed. */ fallback?: boolean };
+/**
+ * How hard a call thinks (the touch-ups round, section 4), said per model since each takes it differently: "off" where
+ * a model can stop thinking (Haiku 5.5 by disabling it, Sonnet 5.5 by `between_tools`), the lowest effort where it
+ * cannot (Opus 5.5); an effort otherwise. Haiku 4.5 does not think unless asked and takes no effort, so it is sent
+ * nothing. Left out, a model thinks as it does by default (Sonnet 5.5 adaptively at high effort).
+ */
+export type Thought = "off" | "low" | "medium" | "high";
+
+/** The request fields a call's thinking becomes on a model. Pure, so each model's rule has a test. */
+export function thinkingFor(model: string, thought: Thought | undefined): { thinking?: { type: string }; output_config?: { effort: "low" | "medium" | "high" } } {
+  if (!thought || model.startsWith("claude-haiku-4-5")) return {};
+  if (thought === "off") {
+    if (model.startsWith("claude-haiku-5-5")) return { thinking: { type: "disabled" } };
+    if (model.startsWith("claude-sonnet-5-5")) return { thinking: { type: "between_tools" } };
+    return { output_config: { effort: "low" } };
+  }
+  return { output_config: { effort: thought } };
+}
+
+/** The room a call gets when it says none: an answer and the thinking a model may do before it. */
+export const DEFAULT_ROOM = 4_000;
+/** The most a cut-off answer is given on its one second try. */
+export const MOST_ROOM = 32_000;
+/** A cut-off answer is asked once more with twice the room, before anything falls back. Pure. */
+export function roomAfterCutOff(room: number): number {
+  return Math.min(MOST_ROOM, room * 2);
+}
+
+type StructuredRequest<T> = { label: string; model: string; system: string; user: string; toolName: string; toolDescription: string; inputSchema: Record<string, unknown>; shape: z.ZodType<T>; timeoutMs: number; /** The room for the answer and any thinking before it (`DEFAULT_ROOM` when not said). */ maxTokens?: number; /** Screenshots attached to what happened, each labelled with who supplied it (`evidenceBlocks`). */ images?: EvidenceImage[]; /** Each piece of the answer's JSON as the model writes it (docs/design.md 9.8): given, the call streams; the parse at the end is the same. */ onDelta?: (partialJson: string) => void; /** The streamed answer starts over: a drafting answer failed and the ruling model is asked, or a cut-off one is asked again. */ onReset?: () => void; /** What a drafting answer must also have to stand (a write-up's date): without it the ruling model is asked once, and its answer stands either way. */ accept?: (value: T) => boolean; /** How hard the model thinks (`Thought`), said rather than left to its default. */ effort?: Thought; /** Should the model decline, the API's default fallback answers in the same call (the beta endpoint), rather than leaving the call failed. */ fallback?: boolean; /** A quick web search the model may run before answering (the touch-ups round): for Help define the terms on a question about real people or events, and for a ruling on a public fact. */ search?: { maxUses: number } };
 
 export async function structured<T>(req: StructuredRequest<T>): Promise<T> {
   return withEscalation(req, (model) => structuredOnce(req, model));
@@ -115,40 +145,69 @@ export async function withEscalation<T>(req: Pick<StructuredRequest<T>, "label" 
 /** The beta that lets a call name the API's default fallback, should its model decline. */
 export const FALLBACK_BETA = "server-side-fallback-2026-07-01";
 
+/**
+ * The search a call may run, as the API takes it: the basic version, which every model here accepts and which answers
+ * fastest. `DAREFUL_NO_SEARCH=1` turns every search off (the comparison's control, and a switch should its cost run high).
+ */
+function searchTool(search: StructuredRequest<unknown>["search"]): Array<Record<string, unknown>> {
+  return search && process.env.DAREFUL_NO_SEARCH !== "1" ? [{ type: "web_search_20250305", name: "web_search", max_uses: search.maxUses }] : [];
+}
+
+/** What a response's usage says it cost, searches included, for the comparison script (never stored). */
+function tap(label: string, model: string, res: { usage?: { input_tokens?: number; output_tokens?: number; server_tool_use?: { web_search_requests?: number } | null } | null }, started: number): void {
+  usageTap.fn?.({ label, model, input: res.usage?.input_tokens ?? 0, output: res.usage?.output_tokens ?? 0, ms: Date.now() - started, searches: res.usage?.server_tool_use?.web_search_requests ?? 0 });
+}
+
+/** How many times a paused turn (a search loop that ran long) is resumed before the call gives up. */
+const RESUMES = 2;
+
 async function structuredOnce<T>(req: StructuredRequest<T>, model: string): Promise<T> {
   if (req.onDelta) return structuredStream({ ...req, model }, req.onDelta);
   const content = req.images && req.images.length > 0 ? [{ type: "text" as const, text: req.user }, ...evidenceBlocks(req.images)] : req.user;
-  const ask = (forced: boolean) => {
+  const tools = [{ name: req.toolName, description: req.toolDescription, input_schema: { type: "object" as const, ...req.inputSchema } }, ...searchTool(req.search)];
+  const ask = (forced: boolean, room: number, prior: unknown[] = []) => {
     const params = {
       model,
-      max_tokens: req.maxTokens ?? 900,
-      system: forced ? req.system : `${req.system}\n\nAnswer by calling the ${req.toolName} tool exactly once, and write nothing else.`,
-      messages: [{ role: "user" as const, content }],
-      tools: [{ name: req.toolName, description: req.toolDescription, input_schema: { type: "object" as const, ...req.inputSchema } }],
+      max_tokens: room,
+      system: forced ? req.system : `${req.system}\n\nAnswer by calling the ${req.toolName} tool exactly once${searchTool(req.search).length ? ", after any search" : ""}, and write nothing else.`,
+      messages: [{ role: "user" as const, content }, ...prior],
+      tools,
       tool_choice: forced ? { type: "tool" as const, name: req.toolName } : { type: "auto" as const },
-      ...(req.effort ? { output_config: { effort: req.effort } } : {}),
-    };
+      ...thinkingFor(model, req.effort),
+    } as unknown as Parameters<ReturnType<typeof anthropic>["messages"]["create"]>[0] & { stream?: false };
     // A drafting call that times out goes to the ruling model at once rather than waiting out a second try of its own.
     const options = { timeout: req.timeoutMs, ...(model === MODELS.drafting ? { maxRetries: 0 } : {}) };
     // The tiebreaker's ruling asks for the API's default fallback, so a model that declines is answered for in the same call.
-    if (req.fallback) return anthropic().beta.messages.create({ ...params, betas: [FALLBACK_BETA], fallbacks: "default" }, options);
-    return anthropic().messages.create(params, options);
+    if (req.fallback) return anthropic().beta.messages.create({ ...(params as object), betas: [FALLBACK_BETA], fallbacks: "default" } as unknown as Parameters<ReturnType<typeof anthropic>["beta"]["messages"]["create"]>[0] & { stream?: false }, options) as unknown as Promise<Anthropic.Message>;
+    return anthropic().messages.create(params, options) as Promise<Anthropic.Message>;
   };
-  const started = Date.now();
-  const res = await timed(`ai ${req.label}`, async () => {
-    if (!forcesTool(model)) return ask(false);
+  // A search may want to run before the answer, so a call that may search never forces the answer's tool.
+  const opens = forcesTool(model) && searchTool(req.search).length === 0;
+  const once = async (room: number): Promise<Anthropic.Message> => {
+    let res: Anthropic.Message;
     try {
-      return await ask(true);
+      res = await ask(opens, room);
     } catch (err) {
       // Some models refuse a forced tool choice. They are asked instead; the parse below enforces the shape.
-      if (err instanceof Anthropic.BadRequestError && /tool_choice/.test(err.message)) {
+      if (opens && err instanceof Anthropic.BadRequestError && /tool_choice/.test(err.message)) {
         asksPlainly.add(model);
-        return ask(false);
-      }
-      throw err;
+        res = await ask(false, room);
+      } else throw err;
     }
-  });
-  usageTap.fn?.({ label: req.label, model, input: res.usage?.input_tokens ?? 0, output: res.usage?.output_tokens ?? 0, ms: Date.now() - started });
+    // A search loop that ran long pauses the turn: it is resumed as it stands, a couple of times at most.
+    for (let resumes = 0; res.stop_reason === "pause_turn" && resumes < RESUMES; resumes += 1) res = await ask(false, room, [{ role: "assistant", content: res.content }]);
+    return res;
+  };
+  const started = Date.now();
+  let room = req.maxTokens ?? DEFAULT_ROOM;
+  let res = await timed(`ai ${req.label}`, () => once(room));
+  // An answer cut off by the room it had is asked once more with twice the room (the touch-ups round): a cut-off is
+  // never a reason to fall back to the line as typed, and only a second cut-off is a failure.
+  if (res.stop_reason === "max_tokens") {
+    room = roomAfterCutOff(room);
+    res = await timed(`ai ${req.label} (more room)`, () => once(room));
+  }
+  tap(req.label, model, res, started);
   if (process.env.AI_RECORD_TO) (await import("node:fs")).writeFileSync(`${process.env.AI_RECORD_TO}/${req.label.replace(/\s+/g, "-")}.json`, JSON.stringify(res, null, 2));
   // An answer cut off by the token limit is a tool call with fields missing. Say that, rather than a parse error.
   if (res.stop_reason === "max_tokens") throw new Error(`the model ran out of room before finishing (${req.label})`);
@@ -158,41 +217,54 @@ async function structuredOnce<T>(req: StructuredRequest<T>, model: string): Prom
 /**
  * The same structured answer, streamed: the tool's input arrives as pieces of JSON, each handed to `onDelta` as it
  * is written, so the terms step can show the words at the pace they arrive (9.8); the final message is parsed
- * exactly as an unstreamed one, and a shape the model invented still throws.
+ * exactly as an unstreamed one, and a shape the model invented still throws. Only the answer's own block is handed
+ * on: a search's query arrives as pieces of JSON too.
  */
-async function structuredStream<T>(req: { label: string; model: string; system: string; user: string; toolName: string; toolDescription: string; inputSchema: Record<string, unknown>; shape: z.ZodType<T>; timeoutMs: number; maxTokens?: number }, onDelta: (partialJson: string) => void): Promise<T> {
+async function structuredStream<T>(req: StructuredRequest<T> & { model: string }, onDelta: (partialJson: string) => void): Promise<T> {
+  const tools = [{ name: req.toolName, description: req.toolDescription, input_schema: { type: "object", ...req.inputSchema } }, ...searchTool(req.search)];
   // A model that refuses a forced tool choice (Sonnet 5.5, the pricing page lists none for it) is asked plainly, as the unstreamed path does (the first-contact round).
-  const ask = async (forced: boolean) => {
+  const ask = async (forced: boolean, room: number) => {
     const stream = anthropic().messages.stream(
       {
         model: req.model,
-        max_tokens: req.maxTokens ?? 900,
-        system: forced ? req.system : `${req.system}\n\nAnswer by calling the ${req.toolName} tool exactly once, and write nothing else.`,
+        max_tokens: room,
+        system: forced ? req.system : `${req.system}\n\nAnswer by calling the ${req.toolName} tool exactly once${searchTool(req.search).length ? ", after any search" : ""}, and write nothing else.`,
         messages: [{ role: "user", content: req.user }],
-        tools: [{ name: req.toolName, description: req.toolDescription, input_schema: { type: "object", ...req.inputSchema } }],
+        tools,
         tool_choice: forced ? { type: "tool", name: req.toolName } : { type: "auto" },
-      },
+        ...thinkingFor(req.model, req.effort),
+      } as unknown as Parameters<ReturnType<typeof anthropic>["messages"]["stream"]>[0],
       { timeout: req.timeoutMs, ...(req.model === MODELS.drafting ? { maxRetries: 0 } : {}) },
     );
+    const answerBlocks = new Set<number>();
     for await (const event of stream) {
-      if (event.type === "content_block_delta" && event.delta.type === "input_json_delta") onDelta(event.delta.partial_json);
+      if (event.type === "content_block_start" && event.content_block.type === "tool_use" && event.content_block.name === req.toolName) answerBlocks.add(event.index);
+      if (event.type === "content_block_delta" && event.delta.type === "input_json_delta" && answerBlocks.has(event.index)) onDelta(event.delta.partial_json);
     }
     return stream.finalMessage();
   };
-  const started = Date.now();
-  const res = await timed(`ai ${req.label} (streamed)`, async () => {
-    if (!forcesTool(req.model)) return ask(false);
+  const opens = forcesTool(req.model) && searchTool(req.search).length === 0;
+  const once = async (room: number) => {
     try {
-      return await ask(true);
+      return await ask(opens, room);
     } catch (err) {
-      if (err instanceof Anthropic.BadRequestError && /tool_choice/.test(err.message)) {
+      if (opens && err instanceof Anthropic.BadRequestError && /tool_choice/.test(err.message)) {
         asksPlainly.add(req.model);
-        return ask(false);
+        return ask(false, room);
       }
       throw err;
     }
-  });
-  usageTap.fn?.({ label: req.label, model: req.model, input: res.usage?.input_tokens ?? 0, output: res.usage?.output_tokens ?? 0, ms: Date.now() - started });
+  };
+  const started = Date.now();
+  let room = req.maxTokens ?? DEFAULT_ROOM;
+  let res = await timed(`ai ${req.label} (streamed)`, () => once(room));
+  if (res.stop_reason === "max_tokens") {
+    // The words so far were cut off: the field starts over with the second try's.
+    req.onReset?.();
+    room = roomAfterCutOff(room);
+    res = await timed(`ai ${req.label} (streamed, more room)`, () => once(room));
+  }
+  tap(req.label, req.model, res, started);
   if (res.stop_reason === "max_tokens") throw new Error(`the model ran out of room before finishing (${req.label})`);
   return answerFrom(res, req.toolName, req.shape, req.label);
 }

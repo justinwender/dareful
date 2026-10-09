@@ -47,6 +47,18 @@ export function typingStarts(focus: { field: boolean; touched: boolean; inGestur
 }
 
 /**
+ * Whether a finger going down on a field moves the root to its plain height then, before the field takes the focus
+ * (the touch-ups round, section 8): iOS places the caret as the focus lands, and a root that changed height after that
+ * left the caret in the heading above the join step's name field. A finger only, on a field that is not already
+ * focused, while the root is tall; a mouse brings no keyboard. Pure.
+ */
+export function typingAtTouch(down: { pointerType: string; field: boolean; focused: boolean; typing: boolean }): boolean {
+  return down.pointerType !== "mouse" && down.field && !down.focused && !down.typing;
+}
+/** How long a root moved at the touch waits for the focus before it goes back: a tap that focused nothing. */
+export const TOUCH_FOCUS_MS = 700;
+
+/**
  * What the visible part of the screen says once it has moved: with no field focused the root is never typing; with
  * one focused and the visible part under `KEYBOARD_SHARE` of the layout a keyboard is up, however it came (a phone
  * reopened with its keyboard). Anything else leaves the attribute where it is, since a keyboard on its way in has

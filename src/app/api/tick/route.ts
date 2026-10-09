@@ -7,7 +7,9 @@ import { tick } from "@/lib/ledger/settle";
 import { sportsTick } from "@/lib/sports";
 import { balldontlie } from "@/lib/sports/balldontlie";
 import { reconcileChainWrites } from "@/lib/chain/reconcile";
-import { watchRelayer } from "@/lib/chain/watch";
+import { hourly, watchRelayer } from "@/lib/chain/watch";
+import { forgetOldFailures, tellFailures } from "@/lib/chain/failures";
+import { sendOps } from "@/lib/notify/channels";
 import { completions } from "@/lib/ledger/completions";
 import { keepWarm } from "@/lib/ops/warm";
 
@@ -40,7 +42,7 @@ export async function POST(req: Request): Promise<Response> {
     check: balldontlie,
   });
   // The tiebreaker's backstop and the void rule's end are backstops acting: the one notice after, in place of the result notice.
-  await Promise.all([...report.arbitrated, ...report.expired].map((id) => notifyBackstopResult(id)));
+  await Promise.all([...report.arbitrated, ...report.expired, ...report.stood].map((id) => notifyBackstopResult(id)));
   // A resolution the tick landed from votes already signed: the result notice goes out as the last vote's, since that vote is what decided it.
   await Promise.all(
     report.resolved.map(async (id) => {
@@ -63,5 +65,12 @@ export async function POST(req: Request): Promise<Response> {
     console.error("tick: the relayer's balance could not be read", err instanceof Error ? err.message : err);
     return null;
   });
-  return NextResponse.json({ locked: report.locked.length, resolved: report.resolved.length, notified: report.notified.length, expired: report.expired.length, arbitrated: report.arbitrated.length, warned: report.warned.length, failed: report.failed.length, feed: { synced: sports.synced, polled: sports.polled.length, drives: sports.drives.length, proposed: sports.proposed.length, settled: sports.settled.length, voided: sports.voided.length, failed: sports.failed.length }, writes: writes ? { mined: writes.mined.length, completed: writes.completed.length, reverted: writes.reverted.length, dropped: writes.dropped.length, rebroadcast: writes.rebroadcast.length } : null, relayer, warmed: await warming });
+  // A chain write failing for more than fifteen minutes reaches the owner, whatever the cause (the touch-ups round, section 0);
+  // a write nobody has tried for a week is forgotten, so the list stays the writes that are failing.
+  const failing = await tellFailures(now, sendOps).catch((err: unknown) => {
+    console.error("tick: failing chain writes could not be told", err instanceof Error ? err.message : err);
+    return 0;
+  });
+  if (hourly(now)) await forgetOldFailures(now).catch(() => undefined);
+  return NextResponse.json({ locked: report.locked.length, resolved: report.resolved.length, notified: report.notified.length, expired: report.expired.length, arbitrated: report.arbitrated.length, warned: report.warned.length, failed: report.failed.length, feed: { synced: sports.synced, polled: sports.polled.length, drives: sports.drives.length, proposed: sports.proposed.length, settled: sports.settled.length, voided: sports.voided.length, failed: sports.failed.length }, writes: writes ? { mined: writes.mined.length, completed: writes.completed.length, reverted: writes.reverted.length, dropped: writes.dropped.length, rebroadcast: writes.rebroadcast.length } : null, relayer, failing, warmed: await warming });
 }

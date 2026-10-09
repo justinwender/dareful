@@ -13,10 +13,10 @@ const count = z.number().int().min(0).max(1000);
 const method = z.enum(["phone", "email", "other", "google"]);
 
 /** How a market is settled, as the counts say it: the quorum's word is a vote, the tiebreaker's a ruling, and the feed settles only as the backstop (its ending is on the market's row). */
-export const SETTLED_BY = ["vote", "tiebreaker", "feed", "expired", "removed"] as const;
+export const SETTLED_BY = ["vote", "tiebreaker", "feed", "expired", "removed", "ruling"] as const;
 
-export function settledWord(by: "quorum" | "arbitration" | "feed"): "vote" | "tiebreaker" | "feed" {
-  return by === "quorum" ? "vote" : by === "arbitration" ? "tiebreaker" : "feed";
+export function settledWord(by: "quorum" | "arbitration" | "feed" | "ruling"): "vote" | "tiebreaker" | "feed" | "ruling" {
+  return by === "quorum" ? "vote" : by === "arbitration" ? "tiebreaker" : by === "ruling" ? "ruling" : "feed";
 }
 
 export const EVENTS = {

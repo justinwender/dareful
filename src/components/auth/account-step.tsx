@@ -23,7 +23,7 @@ const GOOGLE = "google" as ProviderEnum;
  * account's wallets and name) is the login's bootstrap, and the handoff carries the name typed and the entry across
  * it, in this tab only.
  */
-export function AccountStep({ mode, handoff, onClose }: { mode: "keep" | "sign-in"; /** What the sign-in carries across (`src/lib/ui/join-handoff.ts`), written before any code is asked for. */ handoff: Omit<JoinHandoff, "at">; onClose: () => void }) {
+export function AccountStep({ mode, handoff, onClose, titleId, closeWord }: { mode: "keep" | "sign-in"; /** What the sign-in carries across (`src/lib/ui/join-handoff.ts`), written before any code is asked for; none from a sign-in that starts nowhere in particular (Now, a claim). */ handoff?: Omit<JoinHandoff, "at">; onClose: () => void; /** The heading's id, when a sheet is labelled by it. */ titleId?: string; /** The way out's word, where "Back" goes nowhere (the sign-in sheet, which closes). */ closeWord?: string }) {
   const { connectWithEmail, connectWithSms, verifyOneTimePassword, retryOneTimePassword } = useConnectWithOtp();
   const { signInWithSocialAccount } = useSocialAccounts();
   const [via, setVia] = useState<"email" | "phone">("email");
@@ -39,7 +39,7 @@ export function AccountStep({ mode, handoff, onClose }: { mode: "keep" | "sign-i
   // Drawn only after a tap, never on the server, so the installed app's own question can be asked here.
   const google = googleOffered(installedHere());
 
-  const remember = () => writeJoinHandoff({ ...handoff, at: Date.now() });
+  const remember = () => (handoff ? writeJoinHandoff({ ...handoff, at: Date.now() }) : undefined);
 
   async function send() {
     setProblem(null);
@@ -111,7 +111,7 @@ export function AccountStep({ mode, handoff, onClose }: { mode: "keep" | "sign-i
   if (stage === "code") {
     return (
       <div className="flex flex-col gap-3" data-account-step="code">
-        <h2 className="text-body-strong text-ink">{heading}</h2>
+        <h2 id={titleId} className="text-body-strong text-ink">{heading}</h2>
         <label className="flex flex-col gap-1">
           <span className="text-label text-ink-3">The code sent to {address.trim()}</span>
           <input
@@ -143,7 +143,7 @@ export function AccountStep({ mode, handoff, onClose }: { mode: "keep" | "sign-i
   }
   return (
     <div className="flex flex-col gap-3" data-account-step="address">
-      <h2 className="text-body-strong text-ink">{heading}</h2>
+      <h2 id={titleId} className="text-body-strong text-ink">{heading}</h2>
       {google ? (
         <>
           <Button variant="primary" onClick={() => void withGoogle()} loading={busy === "google"} disabled={busy !== null && busy !== "google"} data-account-google="">
@@ -178,7 +178,7 @@ export function AccountStep({ mode, handoff, onClose }: { mode: "keep" | "sign-i
         {via === "email" ? "Use a phone number" : "Use an email"}
       </Button>
       <Button variant="tertiary" onClick={onClose} disabled={busy !== null} data-account-close="">
-        {mode === "keep" ? "Not now" : "Back"}
+        {closeWord ?? (mode === "keep" ? "Not now" : "Back")}
       </Button>
     </div>
   );

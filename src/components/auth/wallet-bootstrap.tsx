@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChainEnum, getAuthToken, useDynamicContext, useDynamicWaas, useIsLoggedIn, useRefreshUser } from "@dynamic-labs/sdk-react-core";
 import { Button } from "@/components/ui/button";
+import { TallyLoader } from "@/components/ui/tally-loader";
 import { mark } from "@/lib/ui/timing";
 import { FIELD_PROBLEM_CLASS, Problem, ProblemSummary } from "@/components/ledger/problem";
 import { useDenyGovernanceDelegation } from "@/components/auth/governance-denied";
@@ -177,7 +178,10 @@ export function WalletBootstrap({ settled, sessionDynamicUserId }: { settled: bo
     <div role="dialog" aria-modal="true" aria-live="polite" data-fixed="top" className="fixed inset-0 z-50 flex flex-col justify-center bg-ground px-5 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
       <div className="mx-auto flex w-full max-w-[420px] flex-col gap-6">
         {phase.at === "working" ? (
-          <p className="text-serif-l text-ink">{phase.line}</p>
+          // The one loader in place of the words (the touch-ups round, section 3): the words are what a screen reader hears.
+          <div className="flex justify-center text-ink" data-signing-in="">
+            <TallyLoader size={48} label={phase.line} />
+          </div>
         ) : phase.at === "error" ? (
           <>
             <p className="text-serif-l text-ink">That didn’t work.</p>

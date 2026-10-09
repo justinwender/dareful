@@ -249,5 +249,8 @@ export function pullTallyCss(): string {
     return `@keyframes tally-loop-${k + 1}{0%,${pct(start)}{clip-path:${hidden}}${pct(start + stroke)},99.9%{clip-path:inset(0 0 0 0)}100%{clip-path:${hidden}}}`;
   });
   const runs = [1, 2, 3, 4, 5].map((n) => `[data-tally="loading"] .t${n}{animation:tally-loop-${n} ${TALLY_LOOP_MS}ms ${curve} 0ms infinite both}`);
-  return `${frames.join("")}${runs.join("")}[data-tally] .t5{transition:clip-path ${stroke}ms ${curve}}[data-tally]{transition:opacity ${TALLY_TIMING.stroke}ms ${curve},transform ${TALLY_TIMING.stroke}ms ${curve}}@media (prefers-reduced-motion: reduce){[data-tally] .t1,[data-tally] .t2,[data-tally] .t3,[data-tally] .t4,[data-tally] .t5{animation:none!important;clip-path:none!important;transition:none}}`;
+  // A pull's finished tally while the screen is read again (the touch-ups round): the uprights stay, and the fifth redraws across them, holding a pace between.
+  const fifth = stroke + pace;
+  const reloading = `@keyframes tally-fifth{0%{clip-path:inset(0 100% 0 0)}${((stroke / fifth) * 100).toFixed(2)}%,100%{clip-path:inset(0 0 0 0)}}[data-tally="reloading"] .t5{animation:tally-fifth ${fifth}ms ${curve} 0ms infinite both}`;
+  return `${frames.join("")}${runs.join("")}${reloading}[data-tally]{transition:opacity ${TALLY_TIMING.stroke}ms ${curve},transform ${TALLY_TIMING.stroke}ms ${curve}}@media (prefers-reduced-motion: reduce){[data-tally] .t1,[data-tally] .t2,[data-tally] .t3,[data-tally] .t4,[data-tally] .t5{animation:none!important;clip-path:none!important;transition:none}}`;
 }

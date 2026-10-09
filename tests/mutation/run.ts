@@ -39,6 +39,14 @@ function serverAnswers(): boolean {
 const layers = args.filter((a) => !a.startsWith("--"));
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+/**
+ * The database fixture's refusal when the relayer holds under the test floor (`TEST_FLOOR_MARK`, src/lib/chain/watch.ts,
+ * written out here so the runner never opens a connection of its own): a run that met it proves nothing about the
+ * mutant, so it is never read as a kill (the touch-ups round).
+ */
+const FLOOR_MARK = "relayer under the test floor";
+let floorHit = false;
+
 function runTests(file: string, names: string[] | null): Map<string, boolean> {
   // One process, no per-file worker: a timeout can then actually kill the run. With a worker, the kill takes
   // the parent and orphans the child, which sits on its database connections until someone notices.
@@ -46,6 +54,7 @@ function runTests(file: string, names: string[] | null): Map<string, boolean> {
   if (names) argv.push(`--test-name-pattern=^(${names.map(esc).join("|")})$`);
   const r = spawnSync("node", [...argv, file], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, timeout: names ? 240_000 : 900_000, killSignal: "SIGKILL" });
   if (r.error) throw new Error(`the test run did not finish (${r.error.message}); rerun this one with --only, then npm run test:sweep`);
+  if (`${r.stdout}\n${r.stderr}`.includes(FLOOR_MARK)) floorHit = true;
   const out = new Map<string, boolean>();
   for (const line of r.stdout.split("\n")) {
     const m = /^(not ok|ok) \d+ - (.*?)(?: # (SKIP|TODO).*)?$/.exec(line);
@@ -122,9 +131,12 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
 }
 
 let serverGone: string | null = null;
+let floorSince: string | null = null;
 for (const m of chosen) {
   const http = m.suite.includes("/http/");
+  const chain = m.suite.includes("/db/");
   if (http && serverGone) continue;
+  if (chain && floorSince) continue;
   if (http && !serverAnswers()) {
     serverGone = m.id;
     continue;
@@ -137,6 +149,12 @@ for (const m of chosen) {
     if (http && !serverAnswers()) {
       serverGone = m.id;
       console.log(`VOID      ${m.id}  (the server went away during this one)`);
+      continue;
+    }
+    if (floorHit) {
+      floorSince = m.id;
+      floorHit = false;
+      console.log(`VOID      ${m.id}  (the relayer is under the test floor)`);
       continue;
     }
     for (const name of m.kills) {
@@ -163,8 +181,13 @@ if (serverGone) {
   problems.push(`nothing answers at ${BASE} since ${serverGone}: ${left} http mutant(s) were not run. Start the app again, then npm run test:audit -- http --from=${serverGone}`);
 }
 
+if (floorSince) {
+  const dbLeft = chosen.filter((m) => m.suite.includes("/db/"));
+  problems.push(`the relayer went under the test floor at ${floorSince}: ${dbLeft.length - dbLeft.findIndex((m) => m.id === floorSince)} database mutant(s) were not run. Refill it, then npm run test:audit -- db --from=${floorSince}`);
+}
+
 // A run from part-way through, or one the server left, has not seen every mutant: the baseline's "never killed" would accuse tests the missing ones cover.
-if (!only && !from && !wanted && !serverGone) {
+if (!only && !from && !wanted && !serverGone && !floorSince) {
   for (const suite of new Set(chosen.map((m) => m.suite))) {
     const baseline = runTests(suite, null);
     for (const [name, passed] of baseline) {

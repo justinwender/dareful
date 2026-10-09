@@ -15,6 +15,7 @@ import { hueFor } from "@/lib/ui/hue";
 import { glyphKeyOf, quotedUnit } from "@/lib/ui/units";
 import { viewerClock } from "@/lib/ui/zone";
 import { OfflineBar } from "@/components/ui/offline-bar";
+import { storageConfigured } from "@/lib/media/storage";
 
 export const dynamic = "force-dynamic";
 
@@ -60,7 +61,7 @@ export default async function YouPage() {
           </>
         )}
         <DraftsSection drafts={drafts} />
-        <AccountRows units={you.units.map((u) => ({ id: u.id, label: u.label, pluralLabel: u.pluralLabel, glyph: glyphKeyOf(u), monetary: u.monetary, emoji: u.emoji }))} marks={you.marks} unitsCaption={unitsCaption} marksCaption={marksCaption} passThePhone={passThePhone} hue={hue} />
+        <AccountRows name={me.displayName} units={you.units.map((u) => ({ id: u.id, label: u.label, pluralLabel: u.pluralLabel, glyph: glyphKeyOf(u), monetary: u.monetary, emoji: u.emoji }))} ownUnits={me.ownUnits ?? []} marks={you.marks} unitsCaption={unitsCaption} marksCaption={marksCaption} canPaste={storageConfigured()} passThePhone={passThePhone} hue={hue} />
       </div>
       <TabBar active="/you" start />
     </Screen>

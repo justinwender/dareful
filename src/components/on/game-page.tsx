@@ -258,6 +258,11 @@ export async function GamePage({ id, g, q, add, start }: { id: string; g: string
     return { ...x, meta, slider, myT, groupT, ink: inkOf(dare), state, mine, whose };
   });
   const firstOpenNotIn = cards.find((c) => c.state === "open" && !c.mine)?.dare.id ?? null;
+  // One share row for the whole page (the touch-ups round, section 6): with one set, the page's row shares the game with
+  // every way a market is shared, the code being the open question's, else the set's first still open; an open card
+  // then draws no row of its own. With more than one set there is no page row, and each open card's row is the one.
+  const pageShares = !many && askable && !outsider;
+  const codeQuestion = pageShares ? (cards.find((c) => c.dare.id === open && c.state === "open") ?? [...cards].filter((c) => c.state === "open" && c.dare.creatorSignature).sort((a, b) => a.dare.createdAt.getTime() - b.dare.createdAt.getTime())[0] ?? null) : null;
   // The base address the cards toggle on: the page's own, or the link's set's.
   const base = outsider && namedSet ? `/on/${game.id}/${namedSet}` : `/on/${game.id}`;
 
@@ -300,7 +305,7 @@ export async function GamePage({ id, g, q, add, start }: { id: string; g: string
               ) : null}
             </Link>
             {/* The open card is the question's own screen from under its band down, with its sheet the page's one sheet (3.33). */}
-            {isOpen ? <MarketScreen id={c.dare.id} search={{}} embedded /> : null}
+            {isOpen ? <MarketScreen id={c.dare.id} search={{}} embedded pageShares={pageShares} /> : null}
           </section>
         );
       })}
@@ -429,8 +434,8 @@ export async function GamePage({ id, g, q, add, start }: { id: string; g: string
         {/* With a card open the score stands in it, above who said what (3.24); with none, under the header. */}
         {open ? null : liveScore}
         {only && askable && !outsider ? (
-          // The who's-in row with the game as the unit (3.42): everyone in on any of its questions, and the one place the game is shared from, under the header so sharing a new game is on screen without scrolling (the second-pass round). The link is the game page's for this set (3.33); a code is one question's, so there is none here.
-          <WhosInRow people={inIds.map((pid) => ({ name: inPeople.get(pid)?.displayName ?? "Someone", hue: hueFor(pid), ghost: inPeople.get(pid)?.ghost === true }))} holdouts={[]} count={whosIn.count} share={{ url: `${appUrl}/on/${game.id}/${only.groupId}`, title: game.name }} code={null} chalk={whosIn.chalk} />
+          // The who's-in row with the game as the unit (3.42): everyone in on any of its questions, and the one place the page is shared from, under the header so sharing a new game is on screen without scrolling (the second-pass round). The link is the game page's for this set (3.33); the code is the open question's, or the set's first still open, and opens this page with it open (the touch-ups round).
+          <WhosInRow people={inIds.map((pid) => ({ name: inPeople.get(pid)?.displayName ?? "Someone", hue: hueFor(pid), ghost: inPeople.get(pid)?.ghost === true }))} holdouts={[]} count={whosIn.count} share={{ url: `${appUrl}/on/${game.id}/${only.groupId}`, title: game.name }} code={codeQuestion ? { dareId: codeQuestion.dare.id, question: codeQuestion.dare.title, mark: markRefOf(codeQuestion.dare) } : null} chalk={whosIn.chalk} />
         ) : null}
         <section className="flex flex-col gap-[10px]">
           <SectionLabel>Questions</SectionLabel>

@@ -334,6 +334,11 @@ export async function bindClaimToUser(claimId: string, userId: string, via: Even
         and not exists (select 1 from ${schema.darePositions} q where q.dare_id = p.dare_id and q.user_id = ${userId})
     `);
     await tx.update(schema.personalLinks).set({ claimId: null, userId }).where(eq(schema.personalLinks.claimId, claim.id));
+    // Agreeing with an app's ruling, and seeing it differently (the touch-ups round): the guest's become the account's, where the account has none of its own on that question.
+    for (const t of [schema.dareAgreements, schema.dareDisputes] as const) {
+      await tx.execute(sql`update ${t} a set claim_id = null, user_id = ${userId} where a.claim_id = ${claim.id} and not exists (select 1 from ${t} b where b.dare_id = a.dare_id and b.user_id = ${userId})`);
+      await tx.delete(t).where(eq(t.claimId, claim.id));
+    }
 
     await tx.update(schema.participantClaims).set({ claimedBy: userId, claimedAt: now }).where(eq(schema.participantClaims.id, claim.id));
 

@@ -19,9 +19,17 @@ import { BPS, nets, scoreBinary, scoreCategorical, scoreNumeric, settle, type Sc
 type DareRow = typeof schema.dares.$inferSelect;
 type PositionRow = typeof schema.darePositions.$inferSelect;
 
-/** Locked, and never sent to the chain: the mark of a provisional market. */
-export function isProvisional(d: Pick<DareRow, "lockedAt" | "onchainId">): boolean {
-  return d.lockedAt !== null && d.onchainId === null;
+/**
+ * Locked, and never sent to the chain: the mark of a provisional market. A close whose chain write is still to land
+ * (the touch-ups round, section 0) is neither: it is on its way to the chain, and only settles here if that is given up.
+ */
+export function isProvisional(d: Pick<DareRow, "lockedAt" | "onchainId" | "chainPendingAt">): boolean {
+  return d.lockedAt !== null && d.onchainId === null && d.chainPendingAt === null;
+}
+
+/** Closed here, with its chain write still to land: voting goes on as for any closed question, and the resolution waits for the write. */
+export function chainPending(d: Pick<DareRow, "onchainId" | "chainPendingAt">): boolean {
+  return d.onchainId === null && d.chainPendingAt !== null;
 }
 
 /**
@@ -76,19 +84,6 @@ export function snapshotIsThePeopleIn(snapshot: readonly string[], inIt: readonl
   return named.size === people.size && [...named].every((w) => people.has(w));
 }
 
-/**
- * The lock, with no chain write: the moment is recorded, the room closes with the numbers, and the threshold is
- * the contract's rule over the account-holders who can vote. Idempotent.
- */
-export async function lockProvisional(d: Pick<DareRow, "id" | "creatorId">, positions: Array<Pick<PositionRow, "userId">>): Promise<{ threshold: number; voters: string[] }> {
-  const voters = provisionalVoters(positions);
-  const threshold = thresholdFor(voters.length);
-  const now = new Date();
-  await db.update(schema.dares).set({ lockedAt: now, threshold }).where(and(eq(schema.dares.id, d.id), isNull(schema.dares.lockedAt)));
-  await db.update(schema.roomCodes).set({ closedAt: now }).where(and(eq(schema.roomCodes.dareId, d.id), isNull(schema.roomCodes.closedAt)));
-  return { threshold, voters };
-}
-
 /** The score the contract would give, by kind, in basis points. */
 export function scoreOf(d: Pick<DareRow, "kind" | "range" | "outcomeLabels">, p: Pick<PositionRow, "value" | "confidenceBps">, outcome: bigint): bigint {
   if (d.kind === "numeric") return d.range !== null && d.range > 0n ? scoreNumeric(p.value, outcome, d.range) : p.value === outcome ? BPS : 0n;
@@ -103,7 +98,7 @@ export const VOID_OUTCOME = -1n;
  * and one pending proposal per transfer, from the lower scorer to the higher, with a ghost on whichever side a
  * ghost is. A void leaves scores empty and proposes nothing. A market already decided is left as it is.
  */
-export async function settleProvisional(d: DareRow, positions: PositionRow[], outcome: bigint, how: { by: "quorum" | "arbitration" | "feed"; rulingText?: string; rulingHash?: Hex }): Promise<{ proposals: number }> {
+export async function settleProvisional(d: DareRow, positions: PositionRow[], outcome: bigint, how: { by: "quorum" | "arbitration" | "feed" | "ruling"; rulingText?: string; rulingHash?: Hex }): Promise<{ proposals: number }> {
   const voided = outcome === VOID_OUTCOME;
   const denom = await denominationById(d.denomId);
   if (!denom) throw new Error("unknown unit");

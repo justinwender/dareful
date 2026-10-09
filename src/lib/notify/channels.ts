@@ -24,19 +24,54 @@ function vapid(): boolean {
   return (vapidReady = true);
 }
 
-/** True if at least one of this person's browsers took it. A subscription the push service says is gone is deleted. */
-export async function sendPush(userId: string, notice: Notice): Promise<boolean> {
+/**
+ * What a failed push says (the touch-ups round): the subscription is dead (the push service's 404 or 410, a 403 for a
+ * key pair this server does not hold, a 400 for a token it will never take, or keys the library cannot encrypt to,
+ * which it says before anything is sent and which carry no status at all), the send may go through a second time
+ * (the network, or the service's 429 or 5xx), or neither. Pure.
+ */
+export function pushFailure(err: unknown): "dead" | "retry" | "failed" {
+  const status = typeof err === "object" && err !== null && "statusCode" in err ? Number((err as { statusCode: unknown }).statusCode) : 0;
+  if (status === 400 || status === 403 || status === 404 || status === 410) return "dead";
+  if (status === 429 || status >= 500) return "retry";
+  if (status !== 0) return "failed";
+  const message = err instanceof Error ? err.message : "";
+  if (/subscription (p256dh|auth)|user public key|user auth|subscription endpoint|at least an endpoint/i.test(message)) return "dead";
+  return "retry";
+}
+
+/** How long a second try waits: long enough for a dropped connection, short enough for the request it rides in. */
+export const PUSH_RETRY_MS = 600;
+
+/**
+ * True if at least one of this person's browsers took it. A subscription that can never take one is deleted; a send
+ * that failed on the way is tried once more, and only a second failure is logged, by its status alone.
+ */
+export async function sendPush(userId: string, notice: Notice, send: typeof webpush.sendNotification = (sub, payload, opts) => webpush.sendNotification(sub, payload, opts)): Promise<boolean> {
   if (!vapid()) return false;
   const subs = await db.select().from(schema.pushSubscriptions).where(eq(schema.pushSubscriptions.userId, userId));
   let delivered = false;
   for (const s of subs) {
-    try {
-      await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, JSON.stringify(notice), { TTL: 60 * 60 * 12 });
-      delivered = true;
-    } catch (err) {
-      const status = typeof err === "object" && err !== null && "statusCode" in err ? Number((err as { statusCode: unknown }).statusCode) : 0;
-      if (status === 404 || status === 410) await db.delete(schema.pushSubscriptions).where(eq(schema.pushSubscriptions.id, s.id));
-      else console.error("push failed", { userId, status });
+    const once = () => send({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, JSON.stringify(notice), { TTL: 60 * 60 * 12 });
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      try {
+        await once();
+        delivered = true;
+        break;
+      } catch (err) {
+        const what = pushFailure(err);
+        if (what === "dead") {
+          await db.delete(schema.pushSubscriptions).where(eq(schema.pushSubscriptions.id, s.id));
+          break;
+        }
+        if (what === "retry" && attempt === 1) {
+          await new Promise((r) => setTimeout(r, PUSH_RETRY_MS));
+          continue;
+        }
+        const status = typeof err === "object" && err !== null && "statusCode" in err ? Number((err as { statusCode: unknown }).statusCode) : 0;
+        console.error("push failed", { userId, status, tries: attempt });
+        break;
+      }
     }
   }
   return delivered;

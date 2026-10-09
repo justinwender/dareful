@@ -24,7 +24,7 @@ import { GUEST_LINE_HEIGHT, guestLineWords } from "@/lib/ui/guest-words";
 import { escalationWhy, liveCallsAllowed, MODELS, structured, taskOf, withEscalation } from "@/lib/ai/client";
 import { z } from "zod";
 import { answerIndexOf, clipWords, Triage } from "@/lib/ai/settler";
-import { HAS_DATE } from "@/lib/ai/markets";
+import { datedAndAgreeing, HAS_DATE } from "@/lib/ai/markets";
 import { browserSaysOffline, browserWentOffline, offlineSettled, reachable, PROBE_PATH } from "@/lib/ui/connection";
 import { emailOfDynamicUser } from "@/lib/notify/channels";
 import { inCount } from "@/lib/ui/copy";
@@ -312,6 +312,7 @@ test("first-visit tips: the first three entries that point at a control on the s
   assert.equal(placed.tip.x, 390 - 12 - 240, "moved sideways to stay 12px inside the screen");
   assert.equal(placed.tip.y, 34 + 56 + 2 + 6, "6px off the ring");
   assert.equal(tipPlacement({ x: 20, y: 700, width: 100, height: 48 }, 12, { width: 390, height: 844 }, { width: 240, height: 100 }).below, false, "over a control in the bottom half");
+  assert.equal(tipPlacement({ x: 20, y: 500, width: 100, height: 48 }, 12, { width: 390, height: 844 }, { width: 240, height: 100 }).below, false, "over a control in the bottom half, with room on both sides (the touch-ups round)");
   assert.equal(seenAlready(["/m/[id]"], "/m/[id]"), true, "a market once you're in is the same screen");
 });
 
@@ -331,8 +332,8 @@ test("a draft is on Now for a day and on You after, and a guest's line says what
   assert.ok(readFileSync("src/app/layout.tsx", "utf8").includes("pt-[calc(env(safe-area-inset-top)+var(--guest-line,0px))]"), "the page starts under the line, outside the scroller");
 });
 
-test("models: Haiku 4.5 drafts, Sonnet 5.5 weighs and writes Help define's terms, nothing calls Fable, and a drafting answer that fails its shape or its time goes once to Sonnet", () => {
-  if (!process.env.AI_MODEL_DRAFTING) assert.equal(MODELS.drafting, "claude-haiku-4-5-20251001");
+test("models: Haiku 5.5 drafts (4.5 until the touch-ups round), Sonnet 5.5 weighs and writes Help define's terms, nothing calls Fable, and a drafting answer that fails its shape or its time goes once to Sonnet", () => {
+  if (!process.env.AI_MODEL_DRAFTING) assert.equal(MODELS.drafting, "claude-haiku-5-5");
   if (!process.env.AI_MODEL_RULING) assert.equal(MODELS.ruling, "claude-sonnet-5-5");
   for (const f of ["src/lib/ai/client.ts", "src/lib/ai/markets.ts", "src/lib/ai/settler.ts"]) assert.ok(!/claude-fable/i.test(readFileSync(f, "utf8")), `${f} names no Fable model`);
   const zod = new Error("bad");
@@ -375,7 +376,12 @@ test("a write-up Haiku answers without a date is asked once of Sonnet, whose ans
   await withEscalation({ ...req, model: MODELS.ruling }, once({}), note);
   assert.deepEqual(asked, [MODELS.ruling], "a ruling call is not asked again");
   const markets = readFileSync("src/lib/ai/markets.ts", "utf8");
-  assert.equal(markets.split("    accept: HAS_DATE,").length - 1, 3, "every write-up's three kinds carry the check");
+  assert.equal(markets.split("    accept: datedAndAgreeing(input.now, input.zone),").length - 1, 3, "every write-up's three kinds carry the check, the date and the terms agreeing (the touch-ups round)");
+  const agreeing = datedAndAgreeing(new Date("2026-10-08T13:27:00Z"), "America/New_York");
+  assert.equal(agreeing({ decideBy: "2026-10-08", terms: "Yes if Boone is out as manager by October 8, 2029." }), false, "Haiku 5.5's one miss in the comparison: terms three years out over a decide-by of today");
+  assert.equal(agreeing({ decideBy: "2029-10-08", terms: "Yes if Boone is out as manager by October 8, 2029." }), true);
+  assert.equal(agreeing({ decideBy: "2026-10-15", terms: "Yes if Boone is out as manager." }), true, "terms that name no date agree with any");
+  assert.equal(agreeing({ decideBy: "", terms: "Yes if Boone is out as manager." }), false);
 });
 
 test("a guest's entry stage keeps its place in the page across the entry, so the sheet's next step survives the refresh that brings the entry line in", () => {
@@ -564,17 +570,17 @@ test("the ask flow's fields grow with what they hold where the browser will not,
 
 test("the tiebreaker rules on Opus 5.5 with its effort said, room for its thinking and the API's fallback, voids unless what it has clearly supports one outcome, and names the outcome; everything else stays where it was", () => {
   assert.equal(MODELS.tiebreaker, "claude-opus-5-5", "Opus 5.5 by default");
-  assert.deepEqual([MODELS.ruling, MODELS.drafting], ["claude-sonnet-5-5", "claude-haiku-4-5-20251001"], "the rest as routed before");
+  assert.deepEqual([MODELS.ruling, MODELS.drafting], ["claude-sonnet-5-5", "claude-haiku-5-5"], "the rest as routed (drafting on Haiku 5.5 since the touch-ups round)");
   const settler = readFileSync("src/lib/ai/settler.ts", "utf8");
   assert.equal(settler.split("model: MODELS.tiebreaker,").length - 1, 3, "the three tiebreaker calls: yes or no, a number, pick one");
   assert.equal(settler.split("...TIEBREAKER_CALL,").length - 1, 3);
-  assert.ok(settler.includes('const TIEBREAKER_CALL = { maxTokens: 16_000, effort: "medium", fallback: true } as const;'), "medium said aloud, sixteen thousand of room, and the fallback");
+  assert.ok(settler.includes('const TIEBREAKER_CALL = { maxTokens: 16_000, effort: "medium", fallback: true, search: { maxUses: 3 } } as const;'), "medium said aloud, sixteen thousand of room, the fallback, and a quick search for a public fact (the touch-ups round)");
   for (const what of ["one outcome", "one number", "one of the listed answers"]) assert.ok(settler.includes(`unless what is in front of you clearly supports ${what} under the terms as recorded`), `the void rule, for ${what}`);
   assert.equal(settler.split("When it does clearly support one, rule it, even when the answer is uncomfortable, and say in the ruling which").length - 1, 3, "and the outcome named when it rules");
   assert.ok(/label: "rule claim",\s*model: MODELS\.ruling,/.test(settler), "an argument's proposed ruling, which the two can overrule, stays on the ruling model");
   const client = readFileSync("src/lib/ai/client.ts", "utf8");
-  assert.ok(client.includes('if (req.fallback) return anthropic().beta.messages.create({ ...params, betas: [FALLBACK_BETA], fallbacks: "default" }, options);') && client.includes('export const FALLBACK_BETA = "server-side-fallback-2026-07-01";'), "the fallback asked for on the beta endpoint");
-  assert.ok(client.includes("...(req.effort ? { output_config: { effort: req.effort } } : {}),"), "the effort sent when it is said");
+  assert.ok(client.includes('if (req.fallback) return anthropic().beta.messages.create({ ...(params as object), betas: [FALLBACK_BETA], fallbacks: "default" }') && client.includes('export const FALLBACK_BETA = "server-side-fallback-2026-07-01";'), "the fallback asked for on the beta endpoint");
+  assert.equal(client.split("...thinkingFor(").length - 1, 2, "the effort sent when it is said, on the plain call and the streamed one, each model's own way (`thinkingFor`, the touch-ups round)");
 });
 
 test("a deadline the terms name with its year is that date, one without agrees with the same month and day in a later year, a chip moves a written year with the date, and the refusal says the year when it is not this one's", () => {

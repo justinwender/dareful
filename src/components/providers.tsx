@@ -9,6 +9,7 @@ import { OauthReturn } from "@/components/auth/oauth-return";
 import { FirstTips } from "@/components/ui/first-tips";
 import { DeviceNotice, MeProvider, useSessionFacts } from "@/components/auth/device";
 import { SessionRefresh } from "@/components/auth/session-refresh";
+import { SignInSheetHost } from "@/components/auth/sign-in-sheet";
 import type { SessionFacts } from "@/lib/auth/session-facts";
 import { OpenFromNotification } from "@/components/notify/open-from-notification";
 import { Refresh } from "@/components/ui/refresh";
@@ -40,26 +41,29 @@ export function Providers({ children, facts }: { children: ReactNode; /** The se
         walletConnectors: [EthereumWalletConnectors],
         overrides: { evmNetworks },
         initialAuthenticationMode: "connect-and-sign",
-        // No visible wallet ceremony: the modal offers email or phone and nothing that says "wallet".
+        // No visible wallet ceremony: nothing offers a wallet, and since the touch-ups round no screen opens Dynamic's modal at all.
         walletsFilter: (wallets) => wallets.filter((w) => w.walletConnector.isEmbeddedWallet),
       }}
       theme="dark"
     >
       <MeProvider facts={facts}>
-        {/* The two pieces of the frame that read the session wait for it here, under everything and in nobody's way. */}
-        <Suspense fallback={null}>
-          <SessionPieces />
-          <SessionRefresh />
-        </Suspense>
-        <ColdMarks />
-        <OauthReturn />
-        <OpenFromNotification />
-        <Refresh />
-        <Traversals />
-        <ZoneReporter />
-        <NotificationOpened />
-        <Shells />
-        {children}
+        {/* Every sign-in opens the app's own sheet (the touch-ups round), so the bootstrap and the device's line can too. */}
+        <SignInSheetHost>
+          {/* The two pieces of the frame that read the session wait for it here, under everything and in nobody's way. */}
+          <Suspense fallback={null}>
+            <SessionPieces />
+            <SessionRefresh />
+          </Suspense>
+          <ColdMarks />
+          <OauthReturn />
+          <OpenFromNotification />
+          <Refresh />
+          <Traversals />
+          <ZoneReporter />
+          <NotificationOpened />
+          <Shells />
+          {children}
+        </SignInSheetHost>
       </MeProvider>
     </DynamicContextProvider>
   );

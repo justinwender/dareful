@@ -51,6 +51,8 @@ Round D), following the phone's setting, with an Appearance row on You.
 
 ### What changed in this revision
 
+Amended 2026-10-08 by the touch-ups round, in dated notes at the ends of 3.24 (the app's rulings: sealed at the ask, Agree and "I see it differently", the stages, how to check it), 3.27 (the tile's track), 3.29 (every category in the picker, Decided's chips, Help define's questions, your own units), 3.33 (one share row), 3.34 (your name, units and stickers), 5.2 (one pending state and the tally loader), 5.5 (pull to refresh draws all five), 9.8 (the terms' loader and the early start), 9.9 (every sheet's positions) and 10.9 (the tips, widened).
+
 Amended 2026-10-06 by the second-pass round, in dated notes at the ends of 3.17 (joining: the votes line above the name, Join as the whole name, "I already have an account" under it, and Google first in keeping an entry), 3.20 ("Whoever I send it to" first), 3.24 (a draft's moves above its terms, and the asker's sheet resting), 3.29 (a question too far out, and the year in the terms' date), 3.33 (the share row under the header), 3.42 (the count), 4.5 (Google's mark) and 4.7 (the card, Google first).
 
 Amended 2026-10-04 by the first-contact round, in dated notes at the ends of 3.13 (the line starts at 50%), 3.14 and 3.47 (ideas), 3.15 (drafts and who votes), 3.17 (joining: the name, then keeping it in an account), 3.24 (the room, tucked and the long drag), 3.29 (asking: the labels, the type from the shape, decided by, who's in, drafts), 3.42 (the row from creation), 3.46, 4.7 (the one card) and 10.9 (the ring).
@@ -1701,6 +1703,8 @@ the entry line (3.38), on the claimant's screen and the voter's alike; the pictu
 
 (Amended 2026-10-07, the games-and-the-reveal round. **Calls are in**, built to this section and 3.42 as the fifteenth session wrote them: a market closes on the first of its asker, as many of the people in saying calls are in as it takes to settle a vote among them, its close time, or a game's start; the line names who has said it and, after "when", who could close it ("when Tam and Gabe say so too" when it takes everyone left, never "two of Tam and Gabe"), and never counts. With nobody asked by name, the asker's close is a secondary once two are in, under "Whoever isn't in yet can't get in after.", and the main action only once the market is stuck past its close time; the line "Everyone you asked is in." is gone. **It's happened** is the same 48px secondary as "Calls are in", in a sheet that keeps its handle; before it, or the final score, or the date in the terms, nobody can vote or say what happened, and the sheet says "Voting opens once it's happened." The ballot then names who opened it ("Gabe says it's happened."). The quorum is the people in.)
 
+(Amended 2026-10-08, the touch-ups round, the owner's rules for **the app's rulings on an argument**. When the check at the ask finds that facts settle an argument, the app rules then and seals it: the ruling's verdict and reasons, with a random salt, are hashed, and the seal ends the terms everyone signs ("The app's ruling is sealed until it closes: 0x…. It stands unless someone in it sees it differently within a day of the close, and then the tiebreaker decides."). Nobody sees the ruling before the close, the asker included. An argument that turns on what its people saw is ruled at the close from what they say. After the close the band names the ruling's stage in plain words ("Say what happened", "Being weighed", "The app has ruled", "With the tiebreaker"), never "It's happened". While a ruling is being weighed the sheet is the loader and nothing to pick. Once ruled the sheet holds the ruling's verdict as its header ("The app's ruling: yes."), its reasons in the app's voice, three sentences at most, one main button, **Agree**, and under it a quiet text button, **I see it differently**, as the join step offers "I already have an account". The line under the reasons names who agrees ("Dave agrees."), never a count, and says "You agree." once you have. Everyone in agreeing settles it at once; a day after it shows with nobody seeing it differently, it stands. Seeing it differently asks "What did it get wrong?", required, with a photo or a screenshot for an account, and sends both with the ruling to the tiebreaker, whose ruling settles it with the burden on whoever disputes; everyone in it sees who disputed and why. A sealed ruling settled shows "How to check it": the seal, the salt and the words that hash to it. A claim a person makes about what happened still needs the people in, and uses the same Agree screen. "On the permanent record, word for word." is said only of a ruling the chain carries.)
+
 ### 3.25 The question band and the market screen
 
 The top of every market screen. 12px from the screen edges, radius 12, the market's field
@@ -1934,6 +1938,8 @@ an amount ("Decided." and the screen). The result tile carries the answer ("14 s
 difference is intended: a notice goes out on its own to everyone, and a tile goes out because a
 person chose to send it, the same person who could have typed the number into the chat.
 
+(Amended 2026-10-08, the touch-ups round, from the owner's screenshot: the asking tile's odds track spans the safe square, 0% at its left end and 100% at its right, on every kind; it had collapsed to nothing with "0%100%" run together, because the renderer laid out the empty answer as a row with no width. Checked at the size Messages shows them: yes or no with and without a mark, a number, pick one, a game's question and a game page, open and settled.)
+
 ### 3.28 Making a sticker
 
 A sticker is a picture mark with transparency: the same stamp, the same ink rule, and a table of
@@ -2130,6 +2136,8 @@ mark".
 (Amended 2026-10-06, the second-pass round, the owner's brief. **A question too far out.** A question runs at most three calendar years, to the day, in the asker's zone. When the write-up's date is past that it is never moved: no decided chip is picked, the line at the field says "That can't be known until October 6, 2056, and the furthest a question can run is October 6, 2029.", and under it is one nearer version measurable in time, a card with its title and terms and the secondary "Ask this instead", which puts it in the step; the asker may also pick a date, and the date picker stops at the furthest one. **The terms' date and the decided date** are compared with their years where the terms write one, and the line names the year when the decided date is not this year's ("The terms say October 6, 2029, and it's decided October 6, 2030. Make them match.").)
 
 (Amended 2026-10-07, the games-and-the-reveal round, the owner's brief. **A question that names a game.** When a question asked here names both teams of a game played before it is decided, the terms step asks once, in a card at its top: the game and when ("Timberwolves at Pacers, on now." or "Fri 7:30pm"), "Let the final score settle it" as a secondary and "Keep it as it is" as a tertiary. Taking it asks that game's question in its place (the total for a number, who wins otherwise) and opens it on the game page; keeping it changes nothing and the card does not come back for that question.)
+
+(Amended 2026-10-08, the touch-ups round. **The mark picker shows every category**, each under its name in one grid, with the row of category chips standing at the top of the sheet and jumping to its category; the chip of the category in view is the selected one. It opens raised and drags up to full (9.9). **Decided** takes a tap only on the chip the finger went down on, since the page grows as the terms arrive. **Help define the terms** asks questions that yes or no answers, or that carry their own two answers ("Only a firing", "Stepping down counts too"), and may look up where things stand today when the question names real people, teams or events; it never writes the answer into the terms. **Your own units**, added on You (3.34), stand as quoted words after a next time on the stakes row.)
 
 ### 3.30 Pick one: entering
 
@@ -2492,6 +2500,8 @@ with one question is that question everywhere, apart from this page.
 
 (Amended 2026-10-07, the games-and-the-reveal round: **built in full**, not the smaller version above. A game is one page for each person across their sets, each card naming its people only when there is more than one set; one question is open at a time in place, with the page's one sheet its own; a link to any question on a game, and its code's six letters, open the page with that question open; "Add another" offers a menu question already asked in another set first ("Rae already asked who wins.", "Go to that one", "Ask your own"); share, copy and the code on a game question send the game page with the game's tile. An asker's own unsent question on a game opens on their game page. The "Part of Chiefs at Bills" row on a question's own screen is superseded: a question on a game is always shown on its page.)
 
+(Amended 2026-10-08, the touch-ups round, from the owner's screenshot: **one share row for the page.** With one set, the row under the header shares the game page with every way a market is shared, share, copy and the code; the code is the open question's, or the set's first still open, and its six letters open the page with that question open. An open card then draws no share of its own. With more than one set there is no page row, and the open card's row is the one.)
+
 ### 3.34 You: how your calls land
 
 You is where the product's claim is added up: every market's score is already a measurement of
@@ -2604,6 +2614,8 @@ markets this person is in, any state but a draft or a removal, since the first e
 
 This revision draws the stats on You only. Whether friends ever see someone's clean-resolution
 rate is a separate decision, and nothing here depends on it.
+
+(Amended 2026-10-08, the touch-ups round, the smallest version of each setting. **Your name** is a row above Your units, its caption the name; it opens a sheet with the name in a field and Save, refusing what the sign-up step refuses ("Say what your friends call you."). **Your units** gains your own: each a word or two, lower case, letters only, never one every question offers, six at most, each with a way to take it off, and a field "One of your own" with Add; they stand as quoted words after a next time when you ask. **Your marks** gains the paste cell from the picker: a cutout pasted there is saved to your stickers.)
 
 ### 3.35 The ballot when a final score answers it
 
@@ -4279,6 +4291,8 @@ a photo going up.
 
 (Amended 2026-10-03, the owner's check: "Still going" cannot run for good. A tap with no network sends nothing and the offline words stand under the control; an action that throws answers the table's words at the control, never the error card in place of the screen; and a write with no answer after a minute gets the block with "Something broke on our end. Try again in a minute." and takes taps again. A signature the device cannot make, thirty days after the first sign-in, opens the code step in the tap's own place; left unanswered, the control says "You’ve been signed out. Sign in to finish this.")
 
+(Amended 2026-10-08, the touch-ups round. **One shared pending state for every tap**: a tapped button holds at once and shows the tally loader until the server answers, so nothing sends twice. The same loader stands wherever a wait runs past about a third of a second: signing in, joining, closing, the terms being written, a ruling being weighed. Under Reduce Motion it is a still tally.)
+
 ### 5.3 Waiting, and the one place a skeleton is allowed
 
 A tap that does something keeps the screen it was made on, and the control carries the wait. A
@@ -4334,6 +4348,8 @@ mid-gesture.
 ---
 
 (Amended 2026-10-07, the games-and-the-reveal round, the field round's 3.2: **pulling draws the tally** in place of the line. Under the status band the logo's strokes draw one at a time with the pull, from the opening's own paths and timing; the fifth crosses them as the pull is let go past 72px, never while it is held; the count redraws in a loop while the screen is read; and the tally settles and retracts once it has. It sits on its own 44px patch of ground, the status band's paint with its grain lined up with the screen's, because once let go the page springs back under it and its strokes must never cross a line of text. Under Reduce Motion it is a still mark that fades. The re-read on return keeps the 2px line, since nobody pulled.)
+
+(Amended 2026-10-08, the touch-ups round. **Pull to refresh draws all five strokes with the finger**, the four uprights one at a time and then the crossing fifth, whole at the threshold; letting go once all five are drawn reads the screen again. While it is read, the four uprights hold and the fifth redraws across them in a loop; when the screen has arrived the tally settles and retracts. Before, the fifth came only after letting go, and people kept pulling for it.)
 
 ## 6. The shell: four destinations and one button
 
@@ -5101,6 +5117,8 @@ which on Now shrinks the ink into the market's new row.
 With Reduce Motion, every step change is a crossfade over base, nothing slides, the band's
 height changes at once, and the caret holds still.
 
+(Amended 2026-10-08, the touch-ups round. Until its first words arrive, Counts if shows the tally loader and "Writing the terms…", never an empty line with a caret, which read as a place to type. Under Quick setup the write-up starts on the question step once the line has rested a moment, so the terms are often written by the time Next is tapped; an answer for an older wording never lands.)
+
 ### 9.9 Sheets
 
 Board: `SheetMotion`.
@@ -5142,6 +5160,8 @@ says.
 With Reduce Motion, the sheet still follows a dragging finger, since the person is moving it,
 and every settle, arrival and exit is instant, with the sheet's content crossfading over quick
 where it changes.
+
+(Amended 2026-10-08, the touch-ups round. **Every sheet has the same positions and the same handle.** A modal sheet opens raised, at most 72% of the screen and no taller than its content; drags up to full, to the status bar, when raised cannot show it all; and closes when dragged below raised or with a flick. A tap on the handle moves it between raised and full. The snap, the give past the top and the settle are the pinned sheet's. While raised its content scrolls with room under it, so everything in it can be reached at either height. Signing in is this sheet everywhere, never the sign-in library's own.)
 
 ### 9.10 Everything else that moves
 
@@ -5556,6 +5576,8 @@ the hackathon (10.3).
 (Built 2026-10-04, the first-contact round. One change from the drawing: the ring moves with its cut-out at once and only the tip travels, since a clip path cannot travel and the simulator caught a sliding ring apart from its cut-out. A guest's seen screens are kept on the phone.)
 
 ---
+
+(Amended 2026-10-08, the touch-ups round, widened beyond what is not visible. "Ask something" shows once per person, since the + is the same on every tab. New tips, one at a time, each shown once wherever its control first shows: on a market, share, copy the link, show a code to scan, pass the phone ("A friend makes their call on your phone, with their own PIN.") and photos; when asking, add a mark, stickers ("Make one from a photo here, or hold a photo's subject on an iPhone, tap Copy, and paste it in."), what kind of thing, the market type and AI market setup; on People, who's got who; on a person's page, I got this one. Their words are the screen's sheet's where it has them. The ring and the card land on the copy of the control that is on the screen, and the card stays inside the screen, over or under its control as there is room.)
 
 ## 11. The opening
 

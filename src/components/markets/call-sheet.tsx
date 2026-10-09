@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { PinnedSheet } from "@/components/ui/pinned-sheet";
 import { RefreshWhile } from "@/components/ui/refresh-while";
 import { Sheet } from "@/components/ui/sheet";
+import { TallyWait } from "@/components/ui/tally-loader";
 import {
   arbitrateAction,
   castVoteAction,
@@ -91,6 +92,8 @@ export type CallSheetProps = {
   } | null;
   /** An argument whose read is on its way: the screen re-reads itself for a minute. */
   awaitingProposal: boolean;
+  /** What someone said is being weighed by the app right now (the touch-ups round, section 2): the loader, and nothing to pick until it is in. */
+  weighing?: boolean;
   /** A number question: what the number counts, and on a signed margin its shift and the two sides. The sheet then takes a number where it took yes or no (3.24). */
   numberUnit?: { singular: string; plural: string; margin?: { shift: string; home: string; away: string } | null } | null;
   /**
@@ -118,7 +121,7 @@ export type CallSheetProps = {
 
 /**
  * The sheet on a locked market (docs/design.md 3.24): whose move it is, and the move. Not yet known: say what
- * happened, as two equal wells. Voting, not said: the count line, the chalk agree and "Not how I saw it".
+ * happened, as two equal wells. Voting, not said: the count line, Agree and the quiet "I see it differently" (3.24 as amended 2026-10-08).
  * Voting, said: one line and Change. Split: add what you saw, and the tiebreaker everyone agreed to going in.
  *
  * A vote binds everyone in the market, so casting one still gets the app's own short modal sheet on top: pick,
@@ -378,6 +381,26 @@ export function CallSheet(props: CallSheetProps) {
     </div>
   );
 
+  // Being weighed (3.24 as amended 2026-10-08): the loader and nothing to pick, so nobody is asked to call it before the app's read is in.
+  if (props.weighing && myVote === null) {
+    return (
+      <PinnedSheet
+        label="Being weighed"
+        low={
+          <div className="flex flex-col gap-3">
+            {props.statements.map((st, i) => (
+              <p key={`w${i}`} className="text-body-sm text-ink-2">
+                <span className="text-ink">{st.name}:</span> {st.said}
+              </p>
+            ))}
+            <TallyWait />
+            <RefreshWhile everyMs={3000} forMs={90_000} />
+          </div>
+        }
+      />
+    );
+  }
+
   // A tie the contract cannot score (3.35; docs/decisions.md, public markets): said, never put to a vote.
   if (myVote === null && claim === null && feed?.tie) {
     return (
@@ -477,12 +500,7 @@ export function CallSheet(props: CallSheetProps) {
               <Button variant="tertiary" onClick={() => setChoice("void")}>
                 Nobody can tell
               </Button>
-              {props.awaitingProposal ? (
-                <p className="text-caption text-ink-3">
-                  The app is weighing it up. You don’t have to wait for it.
-                  <RefreshWhile />
-                </p>
-              ) : null}
+              {props.awaitingProposal ? <RefreshWhile /> : null}
             </>
           }
           high={
@@ -541,12 +559,13 @@ export function CallSheet(props: CallSheetProps) {
                 {proposal?.source === "app" ? <p className="text-caption text-ink-3" data-count-line="">{countLine}</p> : null}
                 <ProblemSummary messages={[choice === null ? problem : null]} />
                 {props.myNote ? <p className="text-caption text-ink-3">You added a note. Only a number counts toward settling it.</p> : null}
-                <Button variant="primary" onClick={() => setChoice(claim)}>
-                  {claim === "void" ? `${label(claim, unit)}, that’s right` : unit || answers || wells ? `That’s right, ${bare(claim, unit)}` : `${label(claim, unit)}, that’s right`}
+                {/* Agree is the default (3.24 as amended 2026-10-08): one main button, and under it a quiet text button, the way the join step offers "I already have an account". */}
+                <Button variant="primary" onClick={() => setChoice(claim)} data-agree="">
+                  Agree
                 </Button>
-                <Button variant="secondary" onClick={() => setPicking(true)}>
-                  Not how I saw it
-                </Button>
+                <button type="button" onClick={() => setPicking(true)} className="self-center px-2 py-2 text-body-sm font-semibold text-ink-2 press-line" data-press="line" data-see-differently="">
+                  I see it differently
+                </button>
               </>
             )
           }
@@ -638,15 +657,15 @@ export function CallSheet(props: CallSheetProps) {
   );
 }
 
-type Shot = { file: File; preview: string };
-const SHOTS_MAX = 3;
+export type Shot = { file: File; preview: string };
+export const SHOTS_MAX = 3;
 
 /**
  * The row to attach proof with the claim or a case (3.24): "Add a photo or a screenshot", the phone's library
  * first, up to three per person, each shown as a 44px square with a remove control before it goes anywhere.
  * Words on it are a control's, so the budget does not count them (4.8).
  */
-function AttachRow({ shots, disabled, onChange }: { shots: Shot[]; disabled: boolean; onChange: (shots: Shot[]) => void }) {
+export function AttachRow({ shots, disabled, onChange }: { shots: Shot[]; disabled: boolean; onChange: (shots: Shot[]) => void }) {
   return (
     <div className="flex flex-col gap-2" data-attach-row="">
       {shots.length > 0 ? (

@@ -302,6 +302,41 @@
       "when": 1791413194882,
       "tag": "0042_live_score",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1791493479732,
+      "tag": "0043_relayer_dry",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1791495300508,
+      "tag": "0044_sealed_rulings",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1791495722689,
+      "tag": "0045_settled_by",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1791496906109,
+      "tag": "0046_ruling_ending",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1791499435305,
+      "tag": "0047_own_units",
+      "breakpoints": true
     }
   ]
 }

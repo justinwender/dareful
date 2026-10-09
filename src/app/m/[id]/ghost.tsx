@@ -23,6 +23,10 @@ import { answersOf, marketById, pastItsClose, positionsOf, stateOf, unitOf, VOID
 import { numbersVisible } from "@/lib/ledger/market-view";
 import { numberAxis, serialiseAxis, unitPhrase } from "@/lib/ledger/number-axis";
 import { participantsOf, pidOf } from "@/lib/ledger/participants";
+import { RulingSheet } from "@/components/markets/ruling-sheet";
+import { agreementsOf, disputesOf, rulingStage, STAGE_WORDS } from "@/lib/ledger/rulings";
+import { sealedText } from "@/lib/ledger/seal";
+import { bufferToHex } from "@/lib/ledger/ids";
 import { pickOneCaption } from "@/lib/ledger/pick-one";
 import { pulseFor } from "@/lib/ledger/pulse";
 import { farOffThreshold } from "@/lib/ledger/scale";
@@ -116,7 +120,8 @@ export async function GhostMarketPage({ id, clock, embedded = false }: { id: str
   const votingIsOpen = state === "locked" && votingOpen(d, game ? { finalSeenAt: game.finalSeenAt, expectedEndAt: game.expectedEndAt } : null, now);
   const bandState: MarketMark = state === "open" ? (mine ? "in" : "open") : state === "locked" ? (votingIsOpen ? "voting" : "locked") : state;
   // The band's clock as the member's screen has it (`bandClock`): a visitor never sees votes.
-  const bandClock = bandClockWords({ state, resolvesBy: d.resolvesBy, resolvedAt: d.resolvedAt, resolvedBy: d.resolvedBy, votes: 0, now, zone: clock.zone, votingOpen: votingIsOpen, firstCall: d.closesAfterFirst });
+  // An argument after its close names its ruling's stage, never "It's happened" (the touch-ups round).
+  const bandClock = d.pace === "argument" && state === "locked" ? STAGE_WORDS[rulingStage({ ruled: d.aiOutcome !== null && d.aiProposedAt !== null, disputes: (await disputesOf(d.id)).length, settledBy: d.settledBy, said: 0, weighing: false })] : bandClockWords({ state, resolvesBy: d.resolvesBy, resolvedAt: d.resolvedAt, resolvedBy: d.resolvedBy, votes: 0, now, zone: clock.zone, votingOpen: votingIsOpen, firstCall: d.closesAfterFirst });
   // The close and the stretch after it, for a guest who is in (the games-and-the-reveal round): calls are in, by name, and "It's happened"; a guest has no vote.
   const calls = state === "open" && mine && positions.length >= 2 ? await callsAreIn(d.id) : [];
   const saidIt = new Set(calls.map((c) => c.userId ?? c.claimId));
@@ -189,7 +194,28 @@ export async function GhostMarketPage({ id, clock, embedded = false }: { id: str
     );
 
   // The stretch after the close for a guest who is in (the games-and-the-reveal round): "It's happened" opens the vote for the people with accounts in it.
-  const stretch = state === "locked" && mine && !votingIsOpen ? <CallsAreInSheet dareId={d.id} byScore={fromTemplate?.template.decidedByScore === true} /> : null;
+  // An argument's ruling after its close (the touch-ups round, section 2): a guest in it agrees, or sees it differently in words; a photo needs an account.
+  const rulingFlow = d.pace === "argument" && d.stalemate === "arbitrate" && state === "locked" && mine;
+  const [agreements, disputes] = rulingFlow ? await Promise.all([agreementsOf(d.id), disputesOf(d.id)]) : [[], []];
+  const rulingPeople = rulingFlow ? await participantsOf([...agreements.map((a) => a.pid), ...disputes.map((x) => x.pid)]) : new Map();
+  const rulingPerson = (pid: string) => ({ name: firstName(rulingPeople.get(pid)?.displayName ?? "Someone"), hue: rulingPeople.get(pid)?.kind === "user" ? hueFor(pid) : null, me: pid === viewerId });
+  const ruled = d.aiOutcome !== null && d.aiProposedAt !== null;
+  const rulingAt = rulingFlow ? rulingStage({ ruled, disputes: disputes.length, settledBy: d.settledBy, said: 0, weighing: false }) : null;
+  const answerTexts = answersOf(d)?.map((a) => a.text) ?? null;
+  const verdict = d.aiOutcome === null ? "" : d.aiOutcome === VOID_OUTCOME ? "The app finds the facts can’t settle it." : `The app’s ruling: ${answerTexts ? (answerTexts[Number(d.aiOutcome)] ?? "") : d.aiOutcome === 1n ? "yes" : "no"}.`;
+  const stretch = rulingFlow && rulingAt ? (
+    <RulingSheet
+      dareId={d.id}
+      stage={rulingAt}
+      ruling={ruled ? { line: verdict, rationale: d.aiRationale ?? "" } : null}
+      agreed={agreements.filter((a) => a.outcome === d.aiOutcome).map((a) => rulingPerson(a.pid))}
+      disputes={disputes.map((x) => ({ ...rulingPerson(x.pid), said: x.text }))}
+      mine={{ agreed: agreements.some((a) => a.pid === viewerId && a.outcome === d.aiOutcome), disputed: disputes.some((x) => x.pid === viewerId) }}
+      canAttach={false}
+      canSay={false}
+      seal={d.sealHash && d.sealSalt && d.sealedRationale !== null && d.sealedOutcome !== null ? { seal: bufferToHex(d.sealHash), salt: bufferToHex(d.sealSalt), text: sealedText(d.sealedOutcome, d.sealedRationale, answerTexts) } : null}
+    />
+  ) : state === "locked" && mine && !votingIsOpen ? <CallsAreInSheet dareId={d.id} byScore={fromTemplate?.template.decidedByScore === true} /> : null;
   const inner = (
     <>
           {/* In (3.17, frame 6): the entry line and the picture first, as anyone in sees them, then who's in and the facts. */}

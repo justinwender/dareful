@@ -56,7 +56,7 @@ export function InfoSheetView({ sheet, open, onClose, labelledBy }: { sheet: str
   const content = infoSheet(sheet);
   if (!content) return null;
   return (
-    <Sheet open={open} onClose={onClose} labelledBy={labelledBy} full>
+    <Sheet open={open} onClose={onClose} labelledBy={labelledBy}>
       <div className="flex flex-col gap-5" data-info-sheet={sheet}>
         <div className="flex flex-col gap-1">
           <h2 id={labelledBy} className="text-body-strong text-ink">

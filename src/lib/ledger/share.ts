@@ -261,7 +261,7 @@ export async function marketTile(rawId: string): Promise<Tile | null> {
       photos,
       outcomeLine: `${tileAnswers[picked]?.text ?? "Decided"}.`,
       rows: tileAnswers.map((a, i) => ({ ...a, pickers: positions.filter((p) => Number(p.value) === i).map((p) => ({ name: p.name, hue: hueFor(p.userId ?? "") })), called: i === picked })),
-      line: d.resolvedBy === "arbitration" ? `Settled by the tiebreaker everyone agreed to. ${calledItLine(callers, false)}`.trim() : calledItLine(callers, false),
+      line: d.resolvedBy === "arbitration" ? `Settled by the tiebreaker everyone agreed to. ${calledItLine(callers, false)}`.trim() : d.resolvedBy === "ruling" ? `Settled by the ruling everyone agreed to. ${calledItLine(callers, false)}`.trim() : calledItLine(callers, false),
     };
   }
   if (unit && d.resolvedOutcome !== null) {
@@ -288,7 +288,7 @@ export async function marketTile(rawId: string): Promise<Tile | null> {
     };
   }
   const closest = best
-    ? `${clip(firstName(best.name), 18)} ${d.resolvedBy === "arbitration" || d.resolvedBy === "feed" ? "was closest" : "called it"} at ${teams ? leanPill(Number(best.value) / 100, teams.away.name, teams.home.name) : `${Number(best.value) / 100}%`}.`
+    ? `${clip(firstName(best.name), 18)} ${d.resolvedBy === "arbitration" || d.resolvedBy === "feed" || d.resolvedBy === "ruling" ? "was closest" : "called it"} at ${teams ? leanPill(Number(best.value) / 100, teams.away.name, teams.home.name) : `${Number(best.value) / 100}%`}.`
     : "";
   return {
     kind: "called",
@@ -309,6 +309,8 @@ export async function marketTile(rawId: string): Promise<Tile | null> {
     line:
       d.resolvedBy === "arbitration"
         ? `Settled by the tiebreaker everyone agreed to. ${closest}`.trim()
+        : d.resolvedBy === "ruling"
+          ? `Settled by the ruling everyone agreed to. ${closest}`.trim()
         : d.resolvedBy === "feed"
           ? `Decided by the final score, as the terms said. ${closest}`.trim()
           : closest,

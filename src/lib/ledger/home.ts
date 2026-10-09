@@ -7,6 +7,7 @@
  */
 import { draftOnNow } from "./drafts";
 import { CALLS_ARE_IN, FIRST_CALL_CLOSE, inCount, IT_HAPPENED } from "@/lib/ui/copy";
+import { STAGE_WORDS } from "./rulings";
 import { and, desc, eq, inArray, isNotNull, isNull, ne, or } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { inkOf, type InkName } from "@/lib/ui/ink";
@@ -102,6 +103,12 @@ export function needFromMarket(m: Pick<MarketCardData, "dare" | "state" | "peopl
     if (!iAmIn && !timesUp) return { ...base, kind: "enter", href: `/m/${d.id}#enter`, verb: "Enter", context: `${d.resolvesBy ? `Closes ${closes(d.resolvesBy)} · ` : d.closesAfterFirst ? `${FIRST_CALL_CLOSE} · ` : ""}${inCount(m.people.length)}`, deadline: d.resolvesBy, since: d.createdAt };
     return null;
   }
+  // An argument's ruling, once shown (the touch-ups round, section 2): agreeing or seeing it differently is this person's
+  // move until they have made one; `voted` says they have. While it is weighed, or with the tiebreaker, nothing is theirs.
+  if (d.pace === "argument" && d.stalemate === "arbitrate") {
+    if (m.state !== "locked" || !iAmIn || voted || d.aiOutcome === null || d.aiProposedAt === null) return null;
+    return { ...base, kind: "vote", href: `/m/${d.id}#ballot`, verb: "Agree", context: STAGE_WORDS.ruled, deadline: null, since: d.rulingRevealedAt ?? d.lockedAt ?? d.createdAt };
+  }
   // Calls are in, and the vote waits for the thing to happen (the games-and-the-reveal round): nothing to do yet, so it runs.
   if (m.state === "locked" && iAmIn && !voted && m.votingOpen) {
     // The mark says it is in voting (3.23); the words beside it are who spoke and the count, never the state again.
@@ -150,7 +157,9 @@ export function runningCaption(m: Pick<MarketCardData, "dare" | "state" | "peopl
   // Once it closes, the stretch and what you said (3.15 as the fifteenth session drew it): "Calls are in · you said 70%", then "It's happened · you said 70%".
   if (m.state === "locked") {
     const said = !mine ? null : m.pickOne && mine.pick !== null ? `you said ${m.pickOne.answers.find((a) => a.index === mine.pick)?.text ?? "?"}` : m.unit && mine.number !== null ? `you said ${unitPhrase(BigInt(mine.number), m.unit)}` : mine.percent !== null ? `you said ${mine.percent}%` : null;
-    return [m.votingOpen ? IT_HAPPENED : CALLS_ARE_IN, said].filter(Boolean).join(" · ");
+    // An argument has nothing that happens: its ruling's stage instead (the touch-ups round, section 2).
+    const stretch = m.dare.pace === "argument" ? (m.dare.aiOutcome !== null && m.dare.aiProposedAt !== null ? STAGE_WORDS.ruled : m.dare.settledBy === "evidence" ? STAGE_WORDS.asking : STAGE_WORDS.weighing) : m.votingOpen ? IT_HAPPENED : CALLS_ARE_IN;
+    return [stretch, said].filter(Boolean).join(" · ");
   }
   const entry = !mine ? null : m.pickOne && mine.pick !== null ? `You’re in: ${m.pickOne.answers.find((a) => a.index === mine.pick)?.text ?? "?"}` : m.unit && mine.number !== null ? `You’re in at ${unitPhrase(BigInt(mine.number), m.unit)}` : mine.percent !== null ? `You’re in at ${mine.percent}%` : "You’re in";
   const n = m.people.length;
@@ -257,13 +266,22 @@ export function listOf(m: Pick<MarketCardData, "state" | "viewerIn">, needed: bo
 
 /** Every question this person can see, sorted into what needs them, what is running, and what is over. */
 async function questionsFor(me: { id: string }, opts: { now: Date; closes: (at: Date) => string; zone: string }): Promise<{ needs: NeedRow[]; running: RunningRow[]; over: MarketCardData[]; gamesOver: Array<Extract<HomeData["happened"][number], { kind: "game" }>> }> {
-  const [cards, myVotes] = await Promise.all([marketCards({ viewerId: me.id, limit: 40 }), db.select({ dareId: schema.dareVotes.dareId }).from(schema.dareVotes).where(eq(schema.dareVotes.userId, me.id))]);
+  const [cards, myVotes, myAgreements, myDisputes] = await Promise.all([
+    marketCards({ viewerId: me.id, limit: 40 }),
+    db.select({ dareId: schema.dareVotes.dareId }).from(schema.dareVotes).where(eq(schema.dareVotes.userId, me.id)),
+    db.select({ dareId: schema.dareAgreements.dareId, outcome: schema.dareAgreements.outcome }).from(schema.dareAgreements).where(eq(schema.dareAgreements.userId, me.id)),
+    db.select({ dareId: schema.dareDisputes.dareId }).from(schema.dareDisputes).where(eq(schema.dareDisputes.userId, me.id)),
+  ]);
   const voted = new Set(myVotes.map((v) => v.dareId));
+  // On an argument, answering the app's ruling is the move (the touch-ups round): agreeing with it as it stands, or seeing it differently.
+  const agreedWith = new Map(myAgreements.map((a) => [a.dareId, a.outcome]));
+  const disputed = new Set(myDisputes.map((x) => x.dareId));
+  const answered = (m: MarketCardData) => (m.dare.pace === "argument" ? disputed.has(m.dare.id) || (agreedWith.has(m.dare.id) && agreedWith.get(m.dare.id) === m.dare.aiOutcome) : voted.has(m.dare.id));
   const needs: NeedRow[] = [];
   const running: RunningRow[] = [];
   const over: MarketCardData[] = [];
   for (const m of cards) {
-    const n = needFromMarket(m, me.id, voted.has(m.dare.id), opts.now, opts.closes);
+    const n = needFromMarket(m, me.id, answered(m), opts.now, opts.closes);
     const shell = shellOf(m, me.id, opts.now, opts.zone);
     const list = listOf(m, n !== null);
     if (n && list === "needs") needs.push({ ...n, groupId: m.dare.groupId, shell } as NeedRow);

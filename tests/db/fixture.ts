@@ -8,6 +8,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 import { and, eq, inArray, isNull, like, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { monOf, TEST_FLOOR, TEST_FLOOR_MARK } from "@/lib/chain/watch";
 import * as claims from "@/lib/ledger/claims";
 import { ensureUsd } from "@/lib/ledger/denominations";
 import { proposeCover } from "@/lib/ledger/proposals";
@@ -65,8 +66,26 @@ export async function tempUser(name: string, phoneHash?: Buffer): Promise<User> 
 
 export type Signer = { user: User; ledger: PrivateKeyAccount; governance: PrivateKeyAccount };
 
+/**
+ * The suites send real transactions with the relayer production depends on, and on October 8 the last round's runs
+ * emptied it for sixteen hours (the touch-ups round, section 0). A suite that signs anything refuses to start under
+ * `TEST_FLOOR`, once a process; `TEST_FLOOR_MARK` is what the mutation runner looks for, so the refusal is never read
+ * as a mutant killed.
+ */
+let roomChecked: Promise<void> | null = null;
+export function relayerHasRoom(): Promise<void> {
+  roomChecked ??= (async () => {
+    const { relayer } = await import("@/lib/chain/relayer");
+    const { account, publicClient } = relayer();
+    const balance = await publicClient.getBalance({ address: account.address });
+    if (balance < TEST_FLOOR) throw new Error(`${TEST_FLOOR_MARK}: the relayer holds ${monOf(balance)} MON, under the ${monOf(TEST_FLOOR)} MON the suites leave for production. Refill it from the faucet, then run again.`);
+  })();
+  return roomChecked;
+}
+
 /** A temporary user whose two wallets have keys, for anything that has to be signed: entries, and votes. */
 export async function tempSigner(name: string): Promise<Signer> {
+  await relayerHasRoom();
   const ledger = privateKeyToAccount(generatePrivateKey());
   const governance = privateKeyToAccount(generatePrivateKey());
   const [u] = await db

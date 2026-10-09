@@ -27,6 +27,10 @@ import { Screen, SectionLabel, TopBar } from "@/components/ledger/screen";
 import { When } from "@/components/ledger/when";
 import { CallLine, Ruler } from "@/components/markets/call-line";
 import { CallSheet, type Word } from "@/components/markets/call-sheet";
+import { HowToCheck, RulingSheet } from "@/components/markets/ruling-sheet";
+import { agreementsOf, disputesOf, rulingStage, STAGE_WORDS } from "@/lib/ledger/rulings";
+import { sealedText } from "@/lib/ledger/seal";
+import { bufferToHex } from "@/lib/ledger/ids";
 import { Leaderboard, NumberLeaderboard, WhoHasWho } from "@/components/markets/leaderboard";
 import type { PickOneAnswer, PickOneBar } from "@/components/markets/pick-one-bars";
 import { PickOneRows } from "@/components/markets/pick-one-rows";
@@ -121,11 +125,13 @@ import { LinkOpened } from "@/components/ui/usage";
 
 
 /** The market screen's information sheet (10.1): one per state that changes what a person can do. */
-function infoKeyFor(state: string, memory: boolean, kind: "binary" | "numeric" | "categorical", votingOpen = true): string {
+function infoKeyFor(state: string, memory: boolean, kind: "binary" | "numeric" | "categorical", votingOpen = true, ruled = false): string {
   if (memory) return "market-memory";
   if (state === "draft") return "market-draft";
   const swap = kind === "numeric" ? "-number" : kind === "categorical" ? "-pick" : "";
   if (state === "open") return `market-open${swap}`;
+  // An argument after its close is the app's ruling, agreed with or seen differently (the touch-ups round).
+  if (state === "locked" && ruled) return "market-ruling";
   // Closed and waiting for it to happen: calls are in (3.24); once it has, the vote.
   if (state === "locked") return votingOpen ? `market-voting${swap}` : "market-calls";
   return "market-ended";
@@ -143,7 +149,7 @@ const wordFor =
  * the back control and the screen's chrome are the page's, the details are a row that opens them, and the card wears
  * the question's ink while the page stays the neutral room.
  */
-export async function MarketScreen({ id, search, embedded = false }: { id: string; search: { side?: string; pick?: string }; embedded?: boolean }) {
+export async function MarketScreen({ id, search, embedded = false, pageShares = false }: { id: string; search: { side?: string; pick?: string }; embedded?: boolean; /** Embedded under a game page whose own row shares the page (the touch-ups round): this card draws no share of its own. */ pageShares?: boolean }) {
   const clock = await viewerClock();
   const me = await currentUser();
   // Arriving from a link with no account (docs/design.md 3.17; PLANNING.md section 4): the market's own screen, and a way in without one.
@@ -766,7 +772,12 @@ export async function MarketScreen({ id, search, embedded = false }: { id: strin
               ? "voting"
               : "locked"
           : state;
-  const bandClockWords = bandClock({ state, resolvesBy: d.resolvesBy, resolvedAt: d.resolvedAt, resolvedBy: d.resolvedBy, votes: votes.length, now, zone: clock.zone, votingOpen: votingIsOpen, firstCall: d.closesAfterFirst });
+  // An argument's ruling after its close (the touch-ups round, section 2): who agreed, who sees it differently, and the stage, which the band names.
+  const rulingFlow = d.pace === "argument" && d.stalemate === "arbitrate" && state === "locked";
+  const [agreements, disputes] = rulingFlow ? await Promise.all([agreementsOf(d.id), disputesOf(d.id)]) : [[], []];
+  const ruled = d.aiOutcome !== null && d.aiProposedAt !== null;
+  const rulingAt = rulingFlow ? rulingStage({ ruled, disputes: disputes.length, settledBy: d.settledBy, said: statements.length, weighing: false }) : null;
+  const bandClockWords = rulingAt ? STAGE_WORDS[rulingAt] : bandClock({ state, resolvesBy: d.resolvesBy, resolvedAt: d.resolvedAt, resolvedBy: d.resolvedBy, votes: votes.length, now, zone: clock.zone, votingOpen: votingIsOpen, firstCall: d.closesAfterFirst });
   const bandLive =
     d.resolvesBy !== null &&
     ((state === "open" && !mine) || (state === "locked" && myVote === null));
@@ -870,8 +881,34 @@ export async function MarketScreen({ id, search, embedded = false }: { id: strin
   // Only the people in it call it (the first-contact round, 2026-10-04): no ballot for anyone else, and the count is over the account-holders in.
   // Who opened the vote, when a person did: "Maya says it's happened." under the ballot's heading (3.24).
   const happenedBy = d.happenedUser ? (d.happenedUser === me.id ? "You" : firstName((await participantsOf([d.happenedUser])).get(d.happenedUser)?.displayName ?? "Someone")) : d.happenedClaim ? firstName((await participantsOf([d.happenedClaim])).get(d.happenedClaim)?.displayName ?? "Someone") : null;
+  // The people behind the agreements and disputes, by first name and colour, the viewer as themselves.
+  const rulingPeople = rulingFlow ? await participantsOf([...agreements.map((a) => a.pid), ...disputes.map((x) => x.pid)]) : new Map();
+  const rulingPerson = (pid: string) => ({ name: firstName(rulingPeople.get(pid)?.displayName ?? "Someone"), hue: rulingPeople.get(pid)?.kind === "user" ? hueFor(pid) : null, me: pid === me.id });
+  const rulingLine =
+    d.aiOutcome === null
+      ? ""
+      : d.aiOutcome === VOID_OUTCOME
+        ? "The app finds the facts can’t settle it."
+        : soft
+          ? `The app leans ${SAID(word(d.aiOutcome) ?? "void")}, ${Math.round((d.aiConfidenceBps ?? 0) / 100)} to ${100 - Math.round((d.aiConfidenceBps ?? 0) / 100)}.`
+          : `The app’s ruling: ${SAID(word(d.aiOutcome) ?? "void")}.`;
+  // What someone said is being weighed (the touch-ups round): the app's read is older than the last thing said, for a minute and a half at most, after which the sheet asks without it.
+  const lastSaid = statements.reduce<Date | null>((m, st) => (m === null || st.statedAt > m ? st.statedAt : m), null);
+  const weighingClaim = d.pace === "dare" && !decidedByFeed && lastSaid !== null && (d.aiProposedAt === null || d.aiProposedAt < lastSaid) && now.getTime() - lastSaid.getTime() < 90_000;
   const callSheet =
-    state === "locked" && mine && !votingIsOpen ? (
+    rulingFlow && mine && rulingAt ? (
+      <RulingSheet
+        dareId={d.id}
+        stage={rulingAt}
+        ruling={ruled ? { line: rulingLine.replace(/^./, (c) => c.toUpperCase()), rationale: d.aiRationale ?? "" } : null}
+        agreed={agreements.filter((a) => a.outcome === d.aiOutcome).map((a) => rulingPerson(a.pid))}
+        disputes={disputes.map((x) => ({ ...rulingPerson(x.pid), said: x.text }))}
+        mine={{ agreed: agreements.some((a) => a.pid === me.id && a.outcome === d.aiOutcome), disputed: disputes.some((x) => x.pid === me.id) }}
+        canAttach
+        canSay
+        seal={d.sealHash && d.sealSalt && d.sealedRationale !== null && d.sealedOutcome !== null ? { seal: bufferToHex(d.sealHash), salt: bufferToHex(d.sealSalt), text: sealedText(d.sealedOutcome, d.sealedRationale, answers ? answers.map((a) => a.text) : null) } : null}
+      />
+    ) : state === "locked" && mine && !votingIsOpen ? (
       <CallsAreInSheet dareId={d.id} byScore={decidedByScore} />
     ) : state === "locked" && mine ? (
       <CallSheet
@@ -929,6 +966,7 @@ export async function MarketScreen({ id, search, embedded = false }: { id: strin
             : null
         }
         awaitingProposal={d.pace === "argument" && !d.aiProposedAt}
+        weighing={weighingClaim}
         numberUnit={numberUnit}
         split={
           // Never on a question the feed settles (the score, or the play-by-play on the first drive): its tiebreaker is the terms' own, and the request is refused (settle.ts).
@@ -988,6 +1026,8 @@ export async function MarketScreen({ id, search, embedded = false }: { id: strin
         ? "Nobody else got in."
         : d.resolvedBy === "arbitration"
         ? "The terms didn’t decide it. Nothing changes hands."
+        : d.resolvedBy === "ruling"
+        ? "The app found the facts can’t settle it. Nothing changes hands."
         : d.resolvedBy === "feed"
           ? feedEnding === "tie"
             ? `${scoreCaption ? `${scoreCaption} ` : ""}The terms make a tie void, so nothing changes hands, and it counts against nobody.`
@@ -1037,7 +1077,7 @@ export async function MarketScreen({ id, search, embedded = false }: { id: strin
   const relayWords = state === "locked" ? `We’re waiting on your call: ${d.title}` : `We’re waiting on you: ${d.title}`;
   // On a game, share, copy and the code to scan send the game page's link for this set, with the game tile and the game as its title (3.33, "Inviting is to the game"); the code's six characters are still this question's.
   const whosIn = (
-    <WhosInRow people={whosInPeople} holdouts={holdouts} count={whosInCount} share={game ? { url: `${appUrl}/on/${game.id}/${d.groupId}`, title: game.name } : { url: `${appUrl}/m/${d.id}`, title: d.title }} code={state === "open" ? { dareId: d.id, question: d.title, mark: markRefOf(d) } : null} chalk={state === "open" && (alone || (d.creatorId === me.id && positions.length === 0))} list={{ dareId: d.id, canRemove: state === "open" && d.creatorId === me.id, out: stillOut, stage: state === "locked" ? "vote" : "enter", canNudge: mine !== null, relay: { url: `${appUrl}/m/${d.id}`, text: relayWords } }} pass={state === "open" && mine ? { dareId: d.id, explained: me.handOverExplainedAt !== null } : null} />
+    <WhosInRow people={whosInPeople} holdouts={holdouts} count={whosInCount} share={pageShares ? null : game ? { url: `${appUrl}/on/${game.id}/${d.groupId}`, title: game.name } : { url: `${appUrl}/m/${d.id}`, title: d.title }} code={state === "open" && !pageShares ? { dareId: d.id, question: d.title, mark: markRefOf(d) } : null} chalk={!pageShares && state === "open" && (alone || (d.creatorId === me.id && positions.length === 0))} list={{ dareId: d.id, canRemove: state === "open" && d.creatorId === me.id, out: stillOut, stage: state === "locked" ? "vote" : "enter", canNudge: mine !== null, relay: { url: `${appUrl}/m/${d.id}`, text: relayWords } }} pass={state === "open" && mine ? { dareId: d.id, explained: me.handOverExplainedAt !== null } : null} />
   );
   // The photos while it is open and through the vote (3.37 and 3.39, amended 2026-09-27: the album is open the whole time): the same slot and frame as after it ends, last on the screen under the details, for everyone the door admits, someone in and the group it was asked in (a signed-in viewer past this point is one or the other: a non-member got the invitation above). The add tile and the empty slot are for someone who can add, which before the end means someone who is in while it is open; someone who only opened the link sees nothing here.
   const albumItems = media.memories.map((m) => ({ id: m.id, author: { name: m.author.displayName, hue: hueFor(m.author.id) }, removable: m.author.id === me.id }));
@@ -1234,9 +1274,12 @@ export async function MarketScreen({ id, search, embedded = false }: { id: strin
           {/* The tiebreaker's ruling, word for word (3.38); a final score's ending is the one caption line under the outcome (3.35), never a card. */}
           {d.rulingText && d.resolvedBy !== "feed" && (state === "resolved" || state === "voided") ? (
             <section className="flex flex-col gap-2 rounded-card border border-line bg-surface px-4 py-[14px]" data-ruling={d.resolvedBy ?? ""}>
-              <h2 className="text-body-strong text-ink">Settled by the tiebreaker everyone agreed to</h2>
-              <p className="text-body-sm text-ink-2">{d.rulingText}</p>
-              <p className="text-caption text-ink-3">On the permanent record, word for word.</p>
+              {/* The app's own ruling that stood (the touch-ups round) credits the agreement, as the tiebreaker's does: its reasons, and how to check a sealed one. */}
+              <h2 className="text-body-strong text-ink">{d.resolvedBy === "ruling" ? "Settled by the ruling everyone agreed to" : "Settled by the tiebreaker everyone agreed to"}</h2>
+              <p className="text-body-sm text-ink-2">{d.resolvedBy === "ruling" ? (d.aiRationale ?? d.rulingText) : d.rulingText}</p>
+              {/* Said only where it is true: a question decided here never went on the chain (the touch-ups round). */}
+              {d.onchainId ? <p className="text-caption text-ink-3">On the permanent record, word for word.</p> : null}
+              {d.resolvedBy === "ruling" && d.sealHash && d.sealSalt && d.sealedRationale !== null && d.sealedOutcome !== null ? <HowToCheck seal={{ seal: bufferToHex(d.sealHash), salt: bufferToHex(d.sealSalt), text: sealedText(d.sealedOutcome, d.sealedRationale, answers ? answers.map((a) => a.text) : null) }} /> : null}
             </section>
           ) : null}
 
@@ -1244,7 +1287,7 @@ export async function MarketScreen({ id, search, embedded = false }: { id: strin
           {callSheet}
           {headsUp}
           {/* A market in voting goes stale on screen: a light poll of Postgres, never the indexer, while it is locked and this screen is visible. */}
-          {state === "locked" ? <VotePoll dareId={d.id} pulse={pulseOf({ votes, statements, resolvedAt: d.resolvedAt, aiProposedAt: d.aiProposedAt, evidence: media.evidence.map((e) => e.id), feedOutcomeAt: d.feedOutcomeAt, happenedAt: d.happenedAt, voteAskedAt: d.voteAskedAt })} /> : null}
+          {state === "locked" ? <VotePoll dareId={d.id} pulse={pulseOf({ votes, statements, resolvedAt: d.resolvedAt, aiProposedAt: d.aiProposedAt, evidence: media.evidence.map((e) => e.id), feedOutcomeAt: d.feedOutcomeAt, happenedAt: d.happenedAt, voteAskedAt: d.voteAskedAt, answers: [...agreements.map((a) => ({ pid: `a${a.pid}`, at: a.agreedAt })), ...disputes.map((x) => ({ pid: `d${x.pid}`, at: x.disputedAt }))] })} /> : null}
     </>
   );
   if (embedded)
@@ -1268,7 +1311,7 @@ export async function MarketScreen({ id, search, embedded = false }: { id: strin
       <Screen arrive="fade">
         <LinkOpened link="market" dareId={d.id} signedIn />
         {/* Back, More and the information icon, and no context chip (10.3, 3.19): the band's asker line already names who was asked. */}
-        <TopBar back right={mine || state !== "open" ? more : null} info={infoKeyFor(state, memoryView, pickAnswers ? "categorical" : numberUnit ? "numeric" : "binary", votingIsOpen)} />
+        <TopBar back right={mine || state !== "open" ? more : null} info={infoKeyFor(state, memoryView, pickAnswers ? "categorical" : numberUnit ? "numeric" : "binary", votingIsOpen, rulingFlow)} />
         <div className="flex flex-col gap-7 py-2">
           {band}
           {body}

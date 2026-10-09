@@ -40,7 +40,8 @@ export const completions: Completions = {
   },
   arbitrate: async (subject) => {
     const id = str(subject.dareId);
-    return id ? reconcileFromIndexer(id, { by: "arbitration", rulingText: str(subject.rulingText) ?? undefined, rulingHash: (str(subject.rulingHash) as Hex | null) ?? undefined }) : true;
+    // The app's own ruling standing is recorded through `arbitrate` too (the touch-ups round); its subject says so.
+    return id ? reconcileFromIndexer(id, { by: subject.by === "ruling" ? "ruling" : "arbitration", rulingText: str(subject.rulingText) ?? undefined, rulingHash: (str(subject.rulingHash) as Hex | null) ?? undefined }) : true;
   },
   feed: async (subject) => {
     const id = str(subject.dareId);

@@ -4,8 +4,8 @@ import { useContext, useEffect, useRef, useState, type CSSProperties, type React
 import { FixedLayer, InFlowSheets, useLayersHost } from "./layers";
 import { HANDLE_ROW } from "./handle";
 import { MOTION, overscroll, settleDuration } from "@/lib/ui/motion";
-import { CONTROLS, tapCounts } from "@/lib/ui/taps";
 import { cn } from "@/lib/utils";
+import { useTapGuard } from "./tap-guard";
 
 /**
  * The sheet (docs/design.md 3.24 as amended 2026-10-02, 9.9): every market screen and every task screen keeps its
@@ -204,21 +204,7 @@ export function PinnedSheet({
 
   // A tap counts only on the control it began on (`taps.ts`): the sheet moves under a finger, and a control that
   // rises into the spot where the finger went down must not take its click.
-  const pressed = useRef<EventTarget | null>(null);
-  useEffect(() => {
-    const down = (e: PointerEvent) => {
-      pressed.current = e.target;
-    };
-    document.addEventListener("pointerdown", down, true);
-    return () => document.removeEventListener("pointerdown", down, true);
-  }, []);
-  const onClickCapture = (e: React.MouseEvent<HTMLElement>) => {
-    const control = e.target instanceof Element ? e.target.closest(CONTROLS) : null;
-    const began = pressed.current instanceof Node ? pressed.current : null;
-    if (tapCounts(began, { control, byPointer: e.detail > 0 })) return;
-    e.stopPropagation();
-    e.preventDefault();
-  };
+  const onClickCapture = useTapGuard();
 
   const startY = useRef<number | null>(null);
   const pulled = useRef(0);

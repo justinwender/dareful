@@ -24,7 +24,8 @@ import { pidOf, participantsOf } from "./participants";
 import { isProvisional, settleProvisional } from "./provisional";
 import { isMember } from "./groups";
 import { record } from "@/lib/usage";
-import { answersOf, lockMarket, marketById, MarketError, mirrorSettlement, positionsOf, reconcileFromIndexer, resolveFromVotes, settlementFromReceipt, stateOf, tally, toChainOutcome, unitOf, VOID_OUTCOME, votesOf, type DareRow, markExpired, countedAtClose } from "./markets";
+import { disputesOf, disputesToHear, rulingsToStand, stampOldRulings, standRuling, verdictWords } from "./rulings";
+import { answersOf, chainLocksDue, finishChainLock, leaseChainLock, lockMarket, marketById, MarketError, mirrorSettlement, positionsOf, reconcileFromIndexer, resolveFromVotes, settlementFromReceipt, stateOf, tally, toChainOutcome, unitOf, VOID_OUTCOME, votesOf, type DareRow, markExpired, countedAtClose } from "./markets";
 
 /** If nobody presses, the scheduler hears a deadlock this long after the question was due (or locked, if later). */
 export const ARBITRATION_BACKSTOP_MS = 24 * 3_600_000;
@@ -57,23 +58,28 @@ export async function afterEntry(dareId: string): Promise<{ locked: boolean }> {
   return { locked: true };
 }
 
-/** The immediate proposal. A model is never on the critical path: with no ruling the ballot simply opens with nothing picked. */
+/**
+ * The ruling at the close, for an argument that has none sealed (the touch-ups round, section 2): one the facts settle
+ * whose ruling at the ask did not come, or one asked before the round. One that needs what its people saw is ruled when
+ * they say it (`refreshProposal`), never here. A model is never on the critical path: with no ruling the sheet asks
+ * what happened instead.
+ */
 export async function proposeForArgument(dareId: string): Promise<void> {
   const d = await marketById(dareId);
-  if (!d || d.pace !== "argument" || d.aiProposedAt || d.resolvedAt) return;
+  if (!d || d.pace !== "argument" || d.aiProposedAt || d.resolvedAt || d.settledBy === "evidence") return;
   // A pick-one argument (the first-contact round): the ruling names one of the answers, each person's side.
   if (d.kind === "categorical") {
     const a = await ruleAnswerClaim({ title: d.title, terms: d.termsText, criterion: d.criterion, answers: d.outcomeLabels });
     await db
       .update(schema.dares)
-      .set({ aiOutcome: a.index === null ? VOID_OUTCOME : BigInt(a.index), aiConfidenceBps: a.confidencePercent * 100, aiRationale: a.rationale, aiProposedAt: new Date() })
+      .set({ aiOutcome: a.index === null ? VOID_OUTCOME : BigInt(a.index), aiConfidenceBps: a.confidencePercent * 100, aiRationale: a.rationale, aiProposedAt: new Date(), rulingRevealedAt: new Date() })
       .where(and(eq(schema.dares.id, d.id), isNull(schema.dares.aiProposedAt)));
     return;
   }
   const r = await ruleClaim({ title: d.title, terms: d.termsText, criterion: d.criterion });
   await db
     .update(schema.dares)
-    .set({ aiOutcome: r.outcome === "yes" ? 1n : r.outcome === "no" ? 0n : VOID_OUTCOME, aiConfidenceBps: r.confidencePercent * 100, aiRationale: r.rationale, aiProposedAt: new Date() })
+    .set({ aiOutcome: r.outcome === "yes" ? 1n : r.outcome === "no" ? 0n : VOID_OUTCOME, aiConfidenceBps: r.confidencePercent * 100, aiRationale: r.rationale, aiProposedAt: new Date(), rulingRevealedAt: new Date() })
     .where(and(eq(schema.dares.id, d.id), isNull(schema.dares.aiProposedAt)));
 }
 
@@ -134,12 +140,16 @@ export async function arbitrateMarket(dareId: string, byUserId: string | null, n
   const answers = answersOf(d);
   // Screenshots attached to what happened, each labelled with who supplied it: a claim by that person, weighed as one.
   const evidence = await evidenceFor(d.id).catch(() => []);
+  // The app's ruling, and what each person who sees it differently says it got wrong (the touch-ups round, section 2): the burden is theirs.
+  const disputes = await disputesOf(d.id);
+  const disputers = disputes.length ? await participantsOf(disputes.map((x) => x.pid)) : new Map();
+  const disputed = disputes.length && d.aiOutcome !== null ? { verdict: verdictWords(d), ruling: d.aiRationale ?? "", disputes: disputes.map((x) => ({ name: disputers.get(x.pid)?.displayName.split(/\s+/)[0] ?? "Someone", said: x.text })) } : undefined;
   const heard = await (answers
     ? // A pick-one question (3.30): the answer that happened, from the list the asker wrote, or that the terms do not decide it.
-      arbitrateAnswer({ title: d.title, terms: d.termsText, answers: answers.map((a) => a.text), positions: positions.map((p) => ({ name: nameOf(pidOf(p)), answer: answers[Number(p.value)]?.text ?? "?" })), updates, statements, evidence }).then((r) => ({ voided: r.outcome === "cannot_decide" || r.answer === null || r.answer >= answers.length, outcome: r.outcome === "answer" && r.answer !== null && r.answer < answers.length ? BigInt(r.answer) : VOID_OUTCOME, ruling: r.ruling, word: "answer" as const }))
+      arbitrateAnswer({ title: d.title, terms: d.termsText, answers: answers.map((a) => a.text), positions: positions.map((p) => ({ name: nameOf(pidOf(p)), answer: answers[Number(p.value)]?.text ?? "?" })), updates, statements, evidence, disputed }).then((r) => ({ voided: r.outcome === "cannot_decide" || r.answer === null || r.answer >= answers.length, outcome: r.outcome === "answer" && r.answer !== null && r.answer < answers.length ? BigInt(r.answer) : VOID_OUTCOME, ruling: r.ruling, word: "answer" as const }))
     : unit
-    ? arbitrateNumber({ title: d.title, terms: d.termsText, unit, positions: positions.map((p) => ({ name: nameOf(pidOf(p)), number: p.value.toString() })), updates, statements, evidence }).then((r) => ({ voided: r.outcome === "cannot_decide" || r.number === null, outcome: r.outcome === "number" && r.number !== null ? BigInt(r.number) : VOID_OUTCOME, ruling: r.ruling, word: "number" as const }))
-    : askArbitrator({ title: d.title, terms: d.termsText, positions: positions.map((p) => ({ name: nameOf(pidOf(p)), percent: Math.round(Number(p.value) / 100) })), updates, statements, evidence }).then((r) => ({ voided: r.outcome === "cannot_decide", outcome: r.outcome === "cannot_decide" ? VOID_OUTCOME : r.outcome === "yes" ? 1n : 0n, ruling: r.ruling, word: r.outcome === "yes" ? ("yes" as const) : ("no" as const) }))
+    ? arbitrateNumber({ title: d.title, terms: d.termsText, unit, positions: positions.map((p) => ({ name: nameOf(pidOf(p)), number: p.value.toString() })), updates, statements, evidence, disputed }).then((r) => ({ voided: r.outcome === "cannot_decide" || r.number === null, outcome: r.outcome === "number" && r.number !== null ? BigInt(r.number) : VOID_OUTCOME, ruling: r.ruling, word: "number" as const }))
+    : askArbitrator({ title: d.title, terms: d.termsText, positions: positions.map((p) => ({ name: nameOf(pidOf(p)), percent: Math.round(Number(p.value) / 100) })), updates, statements, evidence, disputed }).then((r) => ({ voided: r.outcome === "cannot_decide", outcome: r.outcome === "cannot_decide" ? VOID_OUTCOME : r.outcome === "yes" ? 1n : 0n, ruling: r.ruling, word: r.outcome === "yes" ? ("yes" as const) : ("no" as const) }))
   ).catch((err: unknown) => {
     console.error("the arbitrator did not answer", { dareId, err });
     throw new MarketError("The app couldn't hear it just now. Nothing changed. Try again in a minute.", "chain");
@@ -208,7 +218,7 @@ export async function completeExpire(dareId: string, now: Date = new Date()): Pr
  * which its quorum decided here), the tiebreaker and the final score. Expiry, a removal and the final score's own
  * void are in neither number (`cleanResolutionOf`).
  */
-export const CLEAN_COUNTED_ENDINGS = ["quorum", "provisional", "arbitration", "feed"] as const;
+export const CLEAN_COUNTED_ENDINGS = ["quorum", "provisional", "arbitration", "feed", "ruling"] as const;
 
 /**
  * Only a question two or more people were in is counted (the first-contact round, 2026-10-04): with one person in,
@@ -288,12 +298,13 @@ export async function toArbitrate(now: Date, mine: SQL | undefined, limit: numbe
   return db
     .select({ id: schema.dares.id })
     .from(schema.dares)
-    .where(and(mine, eq(schema.dares.stalemate, "arbitrate"), isNotNull(schema.dares.lockedAt), isNull(schema.dares.resolvedAt), lt(schema.dares.lockedAt, cutoff), or(lt(schema.dares.resolvesBy, cutoff), eq(schema.dares.pace, "argument")), sql`not ${byFeed}`))
+    // An argument the app has ruled on is settled by its people's agreeing, a day of silence, or the tiebreaker a dispute sends it to (`rulingsToStand`, `disputesToHear`), never by this backstop over them (the touch-ups round).
+    .where(and(mine, eq(schema.dares.stalemate, "arbitrate"), isNotNull(schema.dares.lockedAt), isNull(schema.dares.resolvedAt), isNull(schema.dares.chainPendingAt), lt(schema.dares.lockedAt, cutoff), or(lt(schema.dares.resolvesBy, cutoff), eq(schema.dares.pace, "argument")), sql`not ${byFeed}`, sql`not (${schema.dares.pace} = 'argument' and ${schema.dares.aiOutcome} is not null)`))
     .orderBy(asc(schema.dares.lockedAt))
     .limit(limit);
 }
 
-export type TickReport = { locked: string[]; /** Questions whose votes had already decided them and whose resolution the tick landed. */ resolved: string[]; notified: string[]; /** Questions whose quorum was told voting opened (the field round, 1.8). */ votingOpened: string[]; /** Questions whose holdout voters were reminded, twelve hours in. */ reminded: string[]; expired: string[]; arbitrated: string[]; warned: Array<{ id: string; flavour: WarningFlavour }>; failed: Array<{ id: string; what: string; why: string }> };
+export type TickReport = { /** Arguments whose app ruling stood after a day of silence (the touch-ups round). */ stood: string[]; locked: string[]; /** Questions whose votes had already decided them and whose resolution the tick landed. */ resolved: string[]; notified: string[]; /** Questions whose quorum was told voting opened (the field round, 1.8). */ votingOpened: string[]; /** Questions whose holdout voters were reminded, twelve hours in. */ reminded: string[]; expired: string[]; arbitrated: string[]; warned: Array<{ id: string; flavour: WarningFlavour }>; failed: Array<{ id: string; what: string; why: string }> };
 /** Which backstop a warning is about (docs/design.md 4.10): the final score, the two results disagreeing, the play-by-play, the tiebreaker everyone agreed to, or closing for good. */
 export type BackstopFlavour = WarningFlavour;
 
@@ -334,7 +345,7 @@ export async function tick(now: Date, notifyDeadline: (dareId: string, creatorId
   const limit = opts.limit ?? 10;
   // Tests run against the real database, so a test names the questions it made and the tick touches nothing else.
   const mine = opts.onlyIds ? inArray(schema.dares.id, opts.onlyIds.length ? opts.onlyIds : ["00000000-0000-4000-8000-000000000000"]) : undefined;
-  const report: TickReport = { locked: [], resolved: [], notified: [], votingOpened: [], reminded: [], expired: [], arbitrated: [], warned: [], failed: [] };
+  const report: TickReport = { stood: [], locked: [], resolved: [], notified: [], votingOpened: [], reminded: [], expired: [], arbitrated: [], warned: [], failed: [] };
   const attempt = async (id: string, what: string, fn: () => Promise<void>) => {
     try {
       await fn();
@@ -379,6 +390,16 @@ export async function tick(now: Date, notifyDeadline: (dareId: string, creatorId
       if ((resolvesBy ? countedAtClose(ps, resolvesBy).counted : ps).length >= 2) return;
       await completeExpire(id, now);
       report.expired.push(id);
+    });
+  }
+
+  // 1c. A close recorded here whose chain write has not landed (the touch-ups round, section 0): tried again, a few a
+  // tick, least recently tried first, never while one of its writes waits on a receipt or another try holds it.
+  for (const { id } of await chainLocksDue(now, mine, Math.min(limit, 3))) {
+    await attempt(id, "chain write for a close", async () => {
+      if (!(await leaseChainLock(id, now))) return;
+      const r = await finishChainLock(id, now, null);
+      if (r.how === "landed") report.locked.push(id);
     });
   }
 
@@ -443,8 +464,27 @@ export async function tick(now: Date, notifyDeadline: (dareId: string, creatorId
   }
 
   // 3. The void rule: expire, silently.
-  const toExpire = await db.select({ id: schema.dares.id }).from(schema.dares).where(and(mine, eq(schema.dares.stalemate, "void"), isNotNull(schema.dares.lockedAt), isNull(schema.dares.resolvedAt), due)).limit(limit);
+  const toExpire = await db.select({ id: schema.dares.id }).from(schema.dares).where(and(mine, eq(schema.dares.stalemate, "void"), isNotNull(schema.dares.lockedAt), isNull(schema.dares.resolvedAt), isNull(schema.dares.chainPendingAt), due)).limit(limit);
   for (const { id } of toExpire) await attempt(id, "expire", async () => void ((await expireMarket(id, now)) && report.expired.push(id)));
+
+  // 3b. The app's ruling on an argument (the touch-ups round, section 2): one ruled before the round is given its moment
+  // of being shown, once; one shown a day ago that nobody sees differently stands; and one somebody sees differently whose
+  // tiebreaker never answered (the model down when they sent it) is heard again, a few minutes on.
+  await stampOldRulings(now, mine).catch((err: unknown) => report.failed.push({ id: "-", what: "stamp rulings", why: err instanceof Error ? err.message.split("\n")[0] ?? "" : "unknown" }));
+  for (const { id } of await rulingsToStand(now, mine, Math.min(limit, 3))) {
+    await attempt(id, "the app's ruling stands", async () => {
+      const d = await marketById(id);
+      if (!d) return;
+      await standRuling(d, "silence");
+      report.stood.push(id);
+    });
+  }
+  for (const { id } of await disputesToHear(now, mine, Math.min(limit, 2))) {
+    await attempt(id, "hear a dispute", async () => {
+      await arbitrateMarket(id, null, now);
+      report.arbitrated.push(id);
+    });
+  }
 
   // 4. The arbitrate rule, as a backstop only: the group, and then anyone in it who presses, get a day first.
   const toHear = await toArbitrate(now, mine, Math.min(limit, 3));

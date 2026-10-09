@@ -8,21 +8,25 @@
 import { and, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 
-export function pulseOf(input: { votes: Array<{ userId: string; outcome: bigint; signedAt: Date }>; statements: Array<{ userId: string; statedAt: Date }>; resolvedAt: Date | null; aiProposedAt: Date | null; /** Screenshots attached to what happened: the claim card shows them. */ evidence?: string[]; /** When the final score last put its proposal on the ballot (3.35). */ feedOutcomeAt?: Date | null; /** When someone in said it has happened, and when the vote was opened for everyone (the games-and-the-reveal round): either raises the ballot. */ happenedAt?: Date | null; voteAskedAt?: Date | null }): string {
+export function pulseOf(input: { votes: Array<{ userId: string; outcome: bigint; signedAt: Date }>; statements: Array<{ userId: string; statedAt: Date }>; resolvedAt: Date | null; aiProposedAt: Date | null; /** Screenshots attached to what happened: the claim card shows them. */ evidence?: string[]; /** When the final score last put its proposal on the ballot (3.35). */ feedOutcomeAt?: Date | null; /** When someone in said it has happened, and when the vote was opened for everyone (the games-and-the-reveal round): either raises the ballot. */ happenedAt?: Date | null; voteAskedAt?: Date | null; /** Agreeing with the app's ruling and seeing it differently (the touch-ups round): each changes who the sheet names. */ answers?: Array<{ pid: string; at: Date }> }): string {
   const votes = [...input.votes].sort((a, b) => a.userId.localeCompare(b.userId)).map((v) => `${v.userId}:${v.outcome.toString()}:${v.signedAt.getTime()}`);
   const said = [...input.statements].sort((a, b) => a.userId.localeCompare(b.userId)).map((s) => `${s.userId}:${s.statedAt.getTime()}`);
   const shots = [...(input.evidence ?? [])].sort();
-  return `v[${votes.join(",")}] s[${said.join(",")}] e[${shots.join(",")}] r${input.resolvedAt?.getTime() ?? 0} p${input.aiProposedAt?.getTime() ?? 0} f${input.feedOutcomeAt?.getTime() ?? 0} h${input.happenedAt?.getTime() ?? 0} o${input.voteAskedAt?.getTime() ?? 0}`;
+  const answers = [...(input.answers ?? [])].sort((a, b) => a.pid.localeCompare(b.pid)).map((a) => `${a.pid}:${a.at.getTime()}`);
+  return `v[${votes.join(",")}] s[${said.join(",")}] e[${shots.join(",")}] r${input.resolvedAt?.getTime() ?? 0} p${input.aiProposedAt?.getTime() ?? 0} f${input.feedOutcomeAt?.getTime() ?? 0} h${input.happenedAt?.getTime() ?? 0} o${input.voteAskedAt?.getTime() ?? 0}${answers.length ? ` a[${answers.join(",")}]` : ""}`;
 }
 
 /** The pulse of one market, from the database: votes, what was said, whether it has resolved, and whether the app has proposed. */
 export async function pulseFor(dareId: string): Promise<{ pulse: string; resolved: boolean } | null> {
   const [d] = await db.select({ resolvedAt: schema.dares.resolvedAt, aiProposedAt: schema.dares.aiProposedAt, feedOutcomeAt: schema.dares.feedOutcomeAt, happenedAt: schema.dares.happenedAt, voteAskedAt: schema.dares.voteAskedAt }).from(schema.dares).where(eq(schema.dares.id, dareId)).limit(1);
   if (!d) return null;
-  const [votes, statements, shots] = await Promise.all([
+  const [votes, statements, shots, agreed, disputed] = await Promise.all([
     db.select({ userId: schema.dareVotes.userId, outcome: schema.dareVotes.outcome, signedAt: schema.dareVotes.signedAt }).from(schema.dareVotes).where(eq(schema.dareVotes.dareId, dareId)),
     db.select({ userId: schema.dareStatements.userId, statedAt: schema.dareStatements.statedAt }).from(schema.dareStatements).where(and(eq(schema.dareStatements.dareId, dareId), eq(schema.dareStatements.kind, "update"))),
     db.select({ id: schema.media.id }).from(schema.media).where(and(eq(schema.media.dareId, dareId), eq(schema.media.role, "evidence"))),
+    db.select({ userId: schema.dareAgreements.userId, claimId: schema.dareAgreements.claimId, at: schema.dareAgreements.agreedAt }).from(schema.dareAgreements).where(eq(schema.dareAgreements.dareId, dareId)),
+    db.select({ userId: schema.dareDisputes.userId, claimId: schema.dareDisputes.claimId, at: schema.dareDisputes.disputedAt }).from(schema.dareDisputes).where(eq(schema.dareDisputes.dareId, dareId)),
   ]);
-  return { pulse: pulseOf({ votes, statements, resolvedAt: d.resolvedAt, aiProposedAt: d.aiProposedAt, evidence: shots.map((s) => s.id), feedOutcomeAt: d.feedOutcomeAt, happenedAt: d.happenedAt, voteAskedAt: d.voteAskedAt }), resolved: d.resolvedAt !== null };
+  const answers = [...agreed.map((a) => ({ pid: `a${a.userId ?? a.claimId}`, at: a.at })), ...disputed.map((x) => ({ pid: `d${x.userId ?? x.claimId}`, at: x.at }))];
+  return { pulse: pulseOf({ votes, statements, resolvedAt: d.resolvedAt, aiProposedAt: d.aiProposedAt, evidence: shots.map((s) => s.id), feedOutcomeAt: d.feedOutcomeAt, happenedAt: d.happenedAt, voteAskedAt: d.voteAskedAt, answers }), resolved: d.resolvedAt !== null };
 }

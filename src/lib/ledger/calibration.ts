@@ -124,7 +124,7 @@ export async function calibrationFor(userId: string): Promise<CalibrationRecord>
     .from(schema.darePositions)
     .innerJoin(schema.dares, eq(schema.dares.id, schema.darePositions.dareId))
     // The final score settling a game's question scores it like any quorum (3.35); a void, an expiry and a removal score nobody and are already out by the score being null.
-    .where(and(eq(schema.darePositions.userId, userId), isNotNull(schema.darePositions.score), isNotNull(schema.dares.resolvedAt), inArray(schema.dares.resolvedBy, ["quorum", "arbitration", "feed"]), sql`${schema.dares.resolvedOutcome} <> ${VOID_OUTCOME}`))
+    .where(and(eq(schema.darePositions.userId, userId), isNotNull(schema.darePositions.score), isNotNull(schema.dares.resolvedAt), inArray(schema.dares.resolvedBy, ["quorum", "arbitration", "feed", "ruling"]), sql`${schema.dares.resolvedOutcome} <> ${VOID_OUTCOME}`))
     .orderBy(desc(schema.dares.resolvedAt));
   const binaryRows = rows.filter((r) => r.kind === "binary" && r.score !== null && r.outcome !== null);
   const binary = binaryRows.map((r) => ({ valueBps: r.value, outcome: (r.outcome === 1n ? 1 : 0) as 0 | 1, score: r.score as number }));

@@ -21,12 +21,14 @@ import { randomUUID } from "node:crypto";
 import { drawable, emojiInk } from "@/lib/ui/emoji-ink";
 import { inkFor, inkOf, isInkName, type InkName } from "@/lib/ui/ink";
 import { pictureMarkById } from "@/lib/media/marks";
-import { and, asc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import { decodeEventLog, keccak256, stringToHex, verifyTypedData, type Address, type Hex } from "viem";
 import { db, schema } from "@/db";
 import { contracts } from "@/lib/chain/contracts";
 import { gasFor } from "@/lib/chain/gas";
 import { relayer, SendPending, submit } from "@/lib/chain/relayer";
+import { contractRefused, failureWhy } from "@/lib/chain/failures";
+import { sealedText } from "./seal";
 import { daresDomain, daresTypes, Kind, Pace, Stalemate, VOID, type CreateFields } from "@/lib/chain/typed-data";
 import { denominationById } from "./denominations";
 import { dareByOnchainId } from "./envio";
@@ -39,7 +41,7 @@ import { scaleAfterward } from "./scale";
 import { bufferToHex, bytes16ToUuid, dareOnchainId, denomOnchainId, groupOnchainId, hexToBuffer, questionGroupOnchainId } from "./ids";
 import { ensureDenomOnchain, ensureGroupOnchain, ensureQuestionGroupOnchain, registeredVoters } from "./registry";
 import { pidOf } from "./participants";
-import { chainCarries, creatorFor, isProvisional, lockProvisional, provisionalVoters, settleProvisional, snapshotIsThePeopleIn, whereItLocks } from "./provisional";
+import { chainCarries, chainPending, creatorFor, isProvisional, provisionalVoters, settleProvisional, snapshotIsThePeopleIn, thresholdFor, whereItLocks } from "./provisional";
 import { record } from "@/lib/usage";
 import { settledWord } from "@/lib/usage/events";
 import { LATEST_YEARS } from "./decide-by";
@@ -299,6 +301,10 @@ export type DraftInput = {
   templateId?: string | null;
   /** Started on a game already being played (section 5): it closes five minutes after its first call. Set only by `draftFromTemplate`. */
   closesAfterFirst?: boolean;
+  /** An argument: what settles it, as the check at the ask found (the touch-ups round, section 2). */
+  settledBy?: "facts" | "evidence" | null;
+  /** An argument the app ruled on at the ask: the ruling and its seal, whose line the terms already end with (`sealRuling`). Never sent to a client before the close. */
+  seal?: { outcome: bigint; confidenceBps: number; rationale: string; salt: Hex; hash: Hex } | null;
 };
 
 /** The latest moment a question may close, as the server checks it: three calendar years on, and a day for the asker's zone. Pure. */
@@ -313,7 +319,9 @@ export async function draftMarket(input: DraftInput): Promise<DareRow> {
   const title = input.title.trim();
   const termsText = input.termsText.trim();
   if (title.length < 3 || title.length > 140) throw new MarketError("Ask it in a line.", "bad_input");
-  if (termsText.length < 3 || termsText.length > 800) throw new MarketError("The terms need a sentence.", "bad_input");
+  // A sealed ruling's line is the app's, added to the asker's terms (the touch-ups round), so sealed terms may run longer.
+  if (termsText.length < 3 || termsText.length > (input.seal ? 1_100 : 800)) throw new MarketError("The terms need a sentence.", "bad_input");
+  if (input.seal && (input.pace ?? "dare") !== "argument") throw new MarketError("Only an argument is ruled at the ask.", "bad_input");
   const pace = input.pace ?? "dare";
   if (pace === "dare" && !input.closesAfterFirst && (!input.resolvesBy || input.resolvesBy.getTime() <= Date.now())) throw new MarketError("Pick a time that hasn't passed.", "bad_input");
   // Nothing runs past the furthest a question can (the second-pass round): three years by the calendar, a day either side for the asker's zone.
@@ -374,6 +382,8 @@ export async function draftMarket(input: DraftInput): Promise<DareRow> {
       tier: input.tier ?? null,
       criterion: input.criterion?.trim() || null,
       mode: input.mode ?? "quick",
+      settledBy: input.settledBy ?? null,
+      ...(input.seal ? { sealedOutcome: input.seal.outcome, sealedConfidenceBps: input.seal.confidenceBps, sealedRationale: input.seal.rationale, sealSalt: hexToBuffer(input.seal.salt), sealHash: hexToBuffer(input.seal.hash) } : {}),
       creatorId: input.creatorId,
       title,
       termsText,
@@ -614,8 +624,35 @@ export async function markExpired(dareId: string, now: Date): Promise<boolean> {
   return done.length > 0;
 }
 
-/** `byUserId` null is the app itself: an argument locks the moment its second person is in, and the scheduler locks a question whose time has come. */
-export async function lockMarket(dareId: string, byUserId: string | null, now: Date = new Date(), /** Enough of the people in said calls are in (the games-and-the-reveal round): the app closes it for them. */ how?: "calls"): Promise<{ txHash: Hex; threshold: number; quorum: Address[]; /** The close found fewer than two entries that count, so the question ended as an expiry instead. */ expired?: true }> {
+/** What became of a close's chain write: on the chain, sent and waiting on its receipt, decided here by design, failed for now, or given up and settled here. */
+export type ChainLock = "landed" | "pending" | "here" | "failed" | "gave_up";
+
+/** A close's chain write that has not landed a day after the close settles here as confirmations (the touch-ups round, section 0). */
+export const CHAIN_LOCK_GIVE_UP_MS = 24 * 3_600_000;
+/** A contract refusal is believed after this many tries, since a node a block behind can refuse what the chain would take. */
+export const CHAIN_LOCK_REFUSALS = 3;
+/** How long one try holds the question against another (the person's own close, then the tick's): longer than a try takes. */
+export const CHAIN_LOCK_LEASE_MS = 2 * 60_000;
+
+/**
+ * Whether a close's chain write that failed is given up for good, so the question settles here as confirmations: the
+ * contract refused it on enough tries, or it has failed for a day. Pure.
+ */
+export function givesUp(input: { refused: boolean; tries: number; pendingSince: Date; now: Date }): boolean {
+  if (input.refused && input.tries >= CHAIN_LOCK_REFUSALS) return true;
+  return input.now.getTime() - input.pendingSince.getTime() >= CHAIN_LOCK_GIVE_UP_MS;
+}
+
+/**
+ * `byUserId` null is the app itself: an argument locks the moment its second person is in, and the scheduler locks a
+ * question whose time has come.
+ *
+ * The close is the question's, here, first (the touch-ups round, section 0): it is claimed in one statement, so two
+ * people closing at once close it once, and from that moment nobody gets in or changes a number. The chain's part
+ * follows (`finishChainLock`), and a failure there no longer reopens anything or tells the person "Nothing changed":
+ * the tick sends it again until it lands, and a write the chain never takes settles here as confirmations.
+ */
+export async function lockMarket(dareId: string, byUserId: string | null, now: Date = new Date(), /** Enough of the people in said calls are in (the games-and-the-reveal round): the app closes it for them. */ how?: "calls"): Promise<{ txHash: Hex; threshold: number; quorum: Address[]; /** The close found fewer than two entries that count, so the question ended as an expiry instead. */ expired?: true; /** The close is recorded and its chain write is still to land. */ pending?: true }> {
   const d = await marketById(dareId);
   if (!d) throw new MarketError("That one doesn't exist.", "not_found");
   // A second tap on Close, or a close the time made while the first was on its way, finds it closed: that is the
@@ -630,146 +667,245 @@ export async function lockMarket(dareId: string, byUserId: string | null, now: D
   // A close after the close time counts only the entries as they stood at that time (`countedAtClose`): with fewer
   // than two of those the question ends as an expiry, and an entry changed after it is out of the close, whoever
   // closes and however late. An argument has no close time of its own, so it is never past it here.
+  let late: PositionRow[] = [];
   if (pastItsClose(d, now) && d.resolvesBy) {
-    const { counted, late } = countedAtClose(positions, d.resolvesBy);
-    if (counted.length < 2) {
+    const split = countedAtClose(positions, d.resolvesBy);
+    if (split.counted.length < 2) {
       await markExpired(d.id, now);
       return { txHash: "0x" as Hex, threshold: d.threshold, quorum: [], expired: true };
     }
-    for (const p of late) {
-      await db
-        .update(schema.darePositions)
-        .set({ dismissedAt: now })
-        .where(and(eq(schema.darePositions.dareId, d.id), p.userId ? eq(schema.darePositions.userId, p.userId) : eq(schema.darePositions.claimId, p.claimId as string)));
-    }
-    if (late.length > 0) console.warn("entries changed after the close time were left out of the close", { dareId: d.id, late: late.length });
-    positions = counted;
+    late = split.late;
+    positions = split.counted;
   }
   if (positions.length < 2) throw new MarketError("It takes two to close it.", "wrong_state");
   // Nothing goes onchain for a position nobody signed (PLANNING.md section 4): a ghost's number, or one bound to
   // an account but never signed, makes the market provisional. It locks here, and its transfers become proposals.
-  await record("closed", { by: how === "calls" ? "calls" : byUserId !== null ? "asker" : d.pace === "argument" ? "both_in" : "time", game: d.templateId !== null }, { userId: byUserId }, { dareId: d.id });
-  if (positions.some((p) => !p.userId || !p.enterSignature)) {
-    const r = await lockProvisional(d, positions);
-    return { txHash: "0x" as Hex, threshold: r.threshold, quorum: [] };
+  const provisional = positions.some((p) => !p.userId || !p.enterSignature);
+  const claimed = await claimClose(d, now, { chain: !provisional, threshold: thresholdFor(provisionalVoters(positions).length) });
+  // Somebody else's close got there first: theirs is the close, and this one is answered as done.
+  if (!claimed) return { txHash: "0x" as Hex, threshold: d.threshold, quorum: [] };
+  for (const p of late) {
+    await db
+      .update(schema.darePositions)
+      .set({ dismissedAt: now })
+      .where(and(eq(schema.darePositions.dareId, d.id), p.userId ? eq(schema.darePositions.userId, p.userId) : eq(schema.darePositions.claimId, p.claimId as string)));
   }
+  if (late.length > 0) console.warn("entries changed after the close time were left out of the close", { dareId: d.id, late: late.length });
+  await record("closed", { by: how === "calls" ? "calls" : byUserId !== null ? "asker" : d.pace === "argument" ? "both_in" : "time", game: d.templateId !== null }, { userId: byUserId }, { dareId: d.id });
+  if (provisional) {
+    const voters = provisionalVoters(positions);
+    return { txHash: "0x" as Hex, threshold: thresholdFor(voters.length), quorum: [] };
+  }
+  const r = await finishChainLock(d.id, now, byUserId);
+  const after = await marketById(d.id);
+  return { txHash: r.txHash, threshold: after?.threshold ?? d.threshold, quorum: [...r.quorum], ...(r.how === "pending" || r.how === "failed" ? { pending: true as const } : {}) };
+}
 
+/**
+ * The close itself, in one statement: closed from now for everyone (the room with it), the threshold the people in
+ * make, and for a question the chain is to carry, the mark that its write is still to land, with this request's lease
+ * on trying it. An argument's close time is the moment it closed. False when another close got there first.
+ */
+async function claimClose(d: DareRow, now: Date, how: { chain: boolean; threshold: number }): Promise<boolean> {
+  // An argument's sealed ruling is shown at its close (the touch-ups round, section 2): it becomes the question's ruling in the same statement that closes it, so no screen can show the close without it.
+  const reveal = d.pace === "argument" && d.sealHash && d.sealedRationale ? { aiOutcome: d.sealedOutcome, aiConfidenceBps: d.sealedConfidenceBps, aiRationale: d.sealedRationale, aiProposedAt: now, rulingRevealedAt: now } : {};
+  const [row] = await db
+    .update(schema.dares)
+    .set({ lockedAt: now, threshold: how.threshold, ...(how.chain ? { chainPendingAt: now, chainTriedAt: now } : {}), ...(d.pace === "argument" && !d.resolvesBy ? { resolvesBy: now } : {}), ...reveal })
+    .where(and(eq(schema.dares.id, d.id), isNull(schema.dares.lockedAt), isNull(schema.dares.resolvedAt)))
+    .returning({ id: schema.dares.id });
+  if (!row) return false;
+  await db.update(schema.roomCodes).set({ closedAt: now }).where(and(eq(schema.roomCodes.dareId, d.id), isNull(schema.roomCodes.closedAt)));
+  return true;
+}
+
+/**
+ * The chain's part of a close already recorded here (the touch-ups round, section 0): the registration and `create`,
+ * from the entries that counted at the close. The close calls it once, and the tick again until it lands; each try
+ * holds the question for `CHAIN_LOCK_LEASE_MS` against another. A send whose receipt is still to come is the
+ * reconciler's to finish; a failure is counted and tried again; a contract that refuses it on three tries, or a day of
+ * failing, settles it here as confirmations, said in the log and kept on the row (`chain_gave_up`).
+ */
+export async function finishChainLock(dareId: string, now: Date, actor: string | null): Promise<{ how: ChainLock; txHash: Hex; quorum: readonly Address[] }> {
+  const none = { txHash: "0x" as Hex, quorum: [] as readonly Address[] };
+  const d = await marketById(dareId);
+  if (!d || !d.lockedAt || d.onchainId || !d.chainPendingAt || d.resolvedAt) return { how: d?.onchainId ? "landed" : "here", ...none };
+  const positions = await positionsOf(d.id);
   const users = await db.select().from(schema.users).where(inArray(schema.users.id, positions.map((p) => p.userId as string)));
   const ledgerOf = new Map(users.map((u) => [u.id, u.ledgerWallet as Address]));
   const [creator] = await db.select().from(schema.users).where(eq(schema.users.id, d.creatorId)).limit(1);
   if (!creator) throw new MarketError("unknown creator", "not_found");
 
-  // A question is decided by a majority of the people in it, and nobody else counts (the owner's rule, 2026-10-06),
-  // and every one of them all of whose entries are signed is decided and settled on the chain (the owner's rule,
-  // 2026-10-07). The deployed contract asks everyone ever registered in the group a question is created in, and
-  // takes as its creator anyone registered there who signed `Create`. So a question is created in its set's own
-  // group when that is exactly the people in (the asker one of them, whose signature opened it), and otherwise in a
-  // group of its own registered now with exactly the people in, with whoever is in as its creator on the chain, by
-  // the `Create` each entry signs over that group. Only a question none of whose entries carry that signature (all
-  // made before this round) and whose set is wider is still decided here.
-  const inIt = positions.map((p) => p.userId as string);
-  const wallets = users.map((u) => u.governanceWallet);
-  const signer = creatorFor(positions, d.creatorId);
-  const where = whereItLocks({ setCarries: chainCarries({ registered: await registeredVoters(d.groupId), inIt: wallets, asker: creator.governanceWallet }), questionSigner: signer !== null });
-  const typed = createTypedData(d);
-  let groupId: Hex = typed.message.groupId;
-  let creatorWallet = creator.ledgerWallet as Address;
-  let creatorSignature: Hex = bufferToHex(d.creatorSignature);
-  if (where === "set") {
-    // Registration: the people in, and the asker, who is one of them here, and the unit. Both are idempotent.
-    await ensureGroupOnchain(d.groupId, [...inIt, d.creatorId]);
-    await ensureDenomOnchain(d.denomId, [...inIt, d.creatorId]);
-  } else {
-    const own = where === "question" && signer ? await ensureQuestionGroupOnchain(d.id, d.denomId, inIt) : null;
-    if (!own || !signer) {
-      if (where === "question") console.error("a question's own group on the chain names someone not in it, so it is decided here", { dareId: d.id });
-      const r = await lockProvisional(d, positions);
-      return { txHash: "0x" as Hex, threshold: r.threshold, quorum: [] };
-    }
-    groupId = own;
-    creatorWallet = ledgerOf.get(signer.userId as string) as Address;
-    creatorSignature = bufferToHex(signer.questionSignature as Buffer);
-  }
-
-  const { dares } = contracts();
-  // The voters the contract will snapshot are the people in, as checked above.
-  const quorumNow = wallets;
-
-  const dareStruct = {
-    id: typed.message.dareId,
-    groupId,
-    kind: typed.message.kind,
-    pace: typed.message.pace,
-    creator: creatorWallet,
-    termsHash: typed.message.termsHash,
-    denomId: typed.message.denomId,
-    range: typed.message.range,
-    options: typed.message.options,
-    stalemate: typed.message.stalemate,
-    quorum: [] as Address[], // ignored by the contract, which reads the ledger
-    threshold: 0,
-    resolvesBy: typed.message.resolvesBy,
-    status: 0,
-    outcome: 0n,
-  };
-  const ps = positions.map((p) => {
-    const ledger = ledgerOf.get(p.userId as string);
-    if (!ledger) throw new MarketError("someone in it has no account", "wrong_state");
-    // A pick carries everything on it (3.30); a number carries no confidence. The same figure each person signed.
-    return { ledger, stake: p.stake, value: p.value, confidenceBps: confidenceFor(d) };
-  });
-  const sigs = positions.map((p) => bufferToHex(p.enterSignature as Buffer));
-
-  let txHash: Hex;
-  let minedIn: bigint | undefined;
   try {
-    const result = await submit({
-      label: `create market ${d.id}`,
-      address: dares.address,
-      abi: dares.abi,
-      functionName: "create",
-      args: [dareStruct, ps, sigs, creatorSignature],
-      gas: gasFor.create(ps.length, quorumNow.length),
-      write: { kind: "create", subject: { dareId: d.id }, actor: byUserId },
-    });
-    txHash = result.hash;
-    minedIn = result.receipt.blockNumber;
-  } catch (err) {
-    if (err instanceof SendPending) throw err;
-    // A retry after a lock whose mirror never got written finds the market already there. That is a lock.
-    const already = /DareExists/.test(err instanceof Error ? err.message : "");
-    // The raw failure goes to the log, never to the person (5.4): what reaches the screen is what happened and what to do.
-    if (!already) {
-      console.error("lock failed", { dareId: d.id, err: err instanceof Error ? err.message : err });
-      throw new MarketError("Closing it didn’t go through. Nothing changed.", "chain");
+    // A question is decided by a majority of the people in it, and nobody else counts (the owner's rule, 2026-10-06),
+    // and every one of them all of whose entries are signed is decided and settled on the chain (the owner's rule,
+    // 2026-10-07). The deployed contract asks everyone ever registered in the group a question is created in, and
+    // takes as its creator anyone registered there who signed `Create`. So a question is created in its set's own
+    // group when that is exactly the people in (the asker one of them, whose signature opened it), and otherwise in a
+    // group of its own registered now with exactly the people in, with whoever is in as its creator on the chain, by
+    // the `Create` each entry signs over that group. Only a question none of whose entries carry that signature (all
+    // made before this round) and whose set is wider is still decided here.
+    const inIt = positions.map((p) => p.userId as string);
+    const wallets = users.map((u) => u.governanceWallet);
+    const signer = creatorFor(positions, d.creatorId);
+    const where = whereItLocks({ setCarries: chainCarries({ registered: await registeredVoters(d.groupId), inIt: wallets, asker: creator.governanceWallet }), questionSigner: signer !== null });
+    const typed = createTypedData(d);
+    let groupId: Hex = typed.message.groupId;
+    let creatorWallet = creator.ledgerWallet as Address;
+    let creatorSignature: Hex = bufferToHex(d.creatorSignature as Buffer);
+    if (where === "set") {
+      // Registration: the people in, and the asker, who is one of them here, and the unit. Both are idempotent.
+      await ensureGroupOnchain(d.groupId, [...inIt, d.creatorId]);
+      await ensureDenomOnchain(d.denomId, [...inIt, d.creatorId]);
+    } else {
+      const own = where === "question" && signer ? await ensureQuestionGroupOnchain(d.id, d.denomId, inIt) : null;
+      if (!own || !signer) {
+        if (where === "question") console.error("a question's own group on the chain names someone not in it, so it is decided here", { dareId: d.id });
+        await settleHereInstead(d.id, null);
+        return { how: "here", ...none };
+      }
+      groupId = own;
+      creatorWallet = ledgerOf.get(signer.userId as string) as Address;
+      creatorSignature = bufferToHex(signer.questionSignature as Buffer);
     }
-    txHash = "0x" as Hex;
+
+    const { dares } = contracts();
+    const dareStruct = {
+      id: typed.message.dareId,
+      groupId,
+      kind: typed.message.kind,
+      pace: typed.message.pace,
+      creator: creatorWallet,
+      termsHash: typed.message.termsHash,
+      denomId: typed.message.denomId,
+      range: typed.message.range,
+      options: typed.message.options,
+      stalemate: typed.message.stalemate,
+      quorum: [] as Address[], // ignored by the contract, which reads the ledger
+      threshold: 0,
+      resolvesBy: typed.message.resolvesBy,
+      status: 0,
+      outcome: 0n,
+    };
+    const ps = positions.map((p) => {
+      const ledger = ledgerOf.get(p.userId as string);
+      if (!ledger) throw new MarketError("someone in it has no account", "wrong_state");
+      // A pick carries everything on it (3.30); a number carries no confidence. The same figure each person signed.
+      return { ledger, stake: p.stake, value: p.value, confidenceBps: confidenceFor(d) };
+    });
+    const sigs = positions.map((p) => bufferToHex(p.enterSignature as Buffer));
+
+    let txHash: Hex = "0x" as Hex;
+    let minedIn: bigint | undefined;
+    try {
+      const result = await submit({
+        label: `create market ${d.id}`,
+        address: dares.address,
+        abi: dares.abi,
+        functionName: "create",
+        // The voters the contract will snapshot are the people in, as checked above.
+        args: [dareStruct, ps, sigs, creatorSignature],
+        gas: gasFor.create(ps.length, wallets.length),
+        write: { kind: "create", subject: { dareId: d.id }, actor },
+      });
+      txHash = result.hash;
+      minedIn = result.receipt.blockNumber;
+    } catch (err) {
+      // A try after a lock whose mirror never got written finds the market already there. That is a lock.
+      if (!/DareExists/.test(err instanceof Error ? err.message : "")) throw err;
+    }
+    const onchain = await completeLock(d, minedIn);
+    return { how: "landed", txHash, quorum: onchain.quorum };
+  } catch (err) {
+    // Sent, and the receipt is still to come: the reconciler finishes it (`completeLock` from the create's completion).
+    if (err instanceof SendPending) return { how: "pending", ...none };
+    const tries = d.chainTries + 1;
+    await db.update(schema.dares).set({ chainTries: tries, chainTriedAt: now }).where(eq(schema.dares.id, d.id));
+    const why = failureWhy(err);
+    console.error("a close's chain write failed; the question is closed and the write will be tried again", { dareId: d.id, tries, why });
+    if (givesUp({ refused: contractRefused(err), tries, pendingSince: d.chainPendingAt, now })) {
+      const reason = contractRefused(err) ? `the contract refused it: ${why}` : `it failed for a day: ${why}`;
+      await settleHereInstead(d.id, reason);
+      console.error("a close's chain write was given up; the question is decided here and settles as confirmations", { dareId: d.id, reason });
+      // Votes cast while it waited are the same governance signatures a question decided here takes: they decide it now if they can.
+      const here = await marketById(d.id);
+      if (here) await resolveFromVotes(here, null).catch((e: unknown) => console.error("a question given up to here could not be resolved from its votes yet", { dareId: d.id, why: failureWhy(e) }));
+      return { how: "gave_up", ...none };
+    }
+    return { how: "failed", ...none };
   }
-  const onchain = await completeLock(d, minedIn);
-  return { txHash, threshold: onchain.threshold, quorum: [...onchain.quorum] };
 }
 
 /**
- * The offchain mirror of a lock once the chain has it, idempotent: the market is locked the moment the
- * transaction succeeds, so that is recorded first and nothing after can leave a market locked onchain and open
- * here; the room closes with the numbers; then what the contract decided is read at the block it was mined in
- * (a load-balanced node can otherwise say the market does not exist). The tick calls this for a send whose
- * receipt outlived the request (docs/decisions.md 2026-09-27).
+ * A question the chain will not carry after all is decided here, as a guest's is: its votes are the same governance
+ * signatures, and what it leaves comes as proposals to confirm. `why` is kept when that is a failure, and null when it
+ * is the design (the question's own group names someone not in it).
+ */
+async function settleHereInstead(dareId: string, why: string | null): Promise<void> {
+  await db
+    .update(schema.dares)
+    .set({ chainPendingAt: null, ...(why ? { chainGaveUp: why.slice(0, 500) } : {}) })
+    .where(and(eq(schema.dares.id, dareId), isNull(schema.dares.onchainId), isNotNull(schema.dares.chainPendingAt)));
+}
+
+/**
+ * The offchain mirror of a lock once the chain has it, idempotent: the market is on the chain the moment the
+ * transaction succeeds, so that is recorded first; the room closes with the numbers (already closed by a close the
+ * touch-ups round recorded first); then what the contract decided is read at the block it was mined in (a
+ * load-balanced node can otherwise say the market does not exist). The tick calls this for a send whose receipt
+ * outlived the request (docs/decisions.md 2026-09-27). A question already settled here (given up) is never moved onto
+ * the chain under its proposals: that is said loudly and left.
  */
 export async function completeLock(d: DareRow, minedIn?: bigint): Promise<{ threshold: number; quorum: readonly Address[] }> {
   const { dares } = contracts();
   const { publicClient } = relayer();
   const dareId = createTypedData(d).message.dareId;
-  await db.update(schema.dares).set({ onchainId: hexToBuffer(dareId), lockedAt: new Date() }).where(and(eq(schema.dares.id, d.id), isNull(schema.dares.lockedAt)));
-  await db.update(schema.roomCodes).set({ closedAt: new Date() }).where(and(eq(schema.roomCodes.dareId, d.id), isNull(schema.roomCodes.closedAt)));
+  const now = new Date();
+  const [moved] = await db
+    .update(schema.dares)
+    .set({ onchainId: hexToBuffer(dareId), lockedAt: sql`coalesce(${schema.dares.lockedAt}, ${now.toISOString()}::timestamptz)`, chainPendingAt: null })
+    .where(and(eq(schema.dares.id, d.id), isNull(schema.dares.onchainId), or(isNull(schema.dares.lockedAt), isNotNull(schema.dares.chainPendingAt))))
+    .returning({ id: schema.dares.id });
+  if (!moved) {
+    const [row] = await db.select({ onchainId: schema.dares.onchainId }).from(schema.dares).where(eq(schema.dares.id, d.id)).limit(1);
+    if (!row?.onchainId) console.error("a question decided here was created on the chain as well; its proposals stand and the chain's copy is left open", { dareId: d.id });
+  }
+  await db.update(schema.roomCodes).set({ closedAt: now }).where(and(eq(schema.roomCodes.dareId, d.id), isNull(schema.roomCodes.closedAt)));
   const onchain = (await publicClient.readContract({ address: dares.address, abi: dares.abi, functionName: "dareOf", args: [dareId], blockNumber: minedIn })) as { threshold: number; quorum: readonly Address[]; groupId: Hex };
   // Which group it was created in, as the chain says: its set's own, or its own of exactly the people in (the games-and-the-reveal round).
-  await db.update(schema.dares).set({ threshold: onchain.threshold, chainGroup: hexToBuffer(onchain.groupId) }).where(eq(schema.dares.id, d.id));
+  await db.update(schema.dares).set({ threshold: onchain.threshold, chainGroup: hexToBuffer(onchain.groupId) }).where(and(eq(schema.dares.id, d.id), isNotNull(schema.dares.onchainId)));
   // Only the people in decide it (2026-10-06): a registration landing between the lock's check and its send would
   // have put someone else in the chain's snapshot, which no later step can take out, so it is said here, loudly.
   const people = await db.select({ wallet: schema.users.governanceWallet }).from(schema.darePositions).innerJoin(schema.users, eq(schema.users.id, schema.darePositions.userId)).where(and(eq(schema.darePositions.dareId, d.id), isNotNull(schema.darePositions.acknowledgedAt), isNull(schema.darePositions.dismissedAt)));
   if (!snapshotIsThePeopleIn(onchain.quorum, people.map((p) => p.wallet))) console.error("a lock's voters on the chain are not the people in", { dareId: d.id, snapshot: onchain.quorum.length, inIt: people.length });
   return onchain;
+}
+
+/**
+ * The questions whose close's chain write is still to land and that a try may take now: not held by a try in the last
+ * `CHAIN_LOCK_LEASE_MS`, and with no write of theirs still waiting on a receipt. Least recently tried first.
+ */
+export async function chainLocksDue(now: Date, mine: ReturnType<typeof inArray> | undefined, limit: number): Promise<Array<{ id: string }>> {
+  const lease = new Date(now.getTime() - CHAIN_LOCK_LEASE_MS);
+  const D = schema.dares;
+  const openWrite = sql`exists (select 1 from ${schema.chainWrites} w where w.status = 'pending' and (w.subject like '%' || ${D.id}::text || '%' or w.subject like '%' || ${D.groupId}::text || '%' or w.subject like '%' || ${D.denomId}::text || '%'))`;
+  return db
+    .select({ id: D.id })
+    .from(D)
+    .where(and(mine, isNotNull(D.chainPendingAt), isNull(D.onchainId), isNull(D.resolvedAt), or(isNull(D.chainTriedAt), lte(D.chainTriedAt, lease)), sql`not ${openWrite}`))
+    .orderBy(sql`${D.chainTriedAt} asc nulls first`)
+    .limit(limit);
+}
+
+/** Claims a try at a question's chain write for this tick, against the person's own close and another tick. */
+export async function leaseChainLock(dareId: string, now: Date): Promise<boolean> {
+  const lease = new Date(now.getTime() - CHAIN_LOCK_LEASE_MS);
+  const [row] = await db
+    .update(schema.dares)
+    .set({ chainTriedAt: now })
+    .where(and(eq(schema.dares.id, dareId), isNotNull(schema.dares.chainPendingAt), isNull(schema.dares.onchainId), or(isNull(schema.dares.chainTriedAt), lte(schema.dares.chainTriedAt, lease))))
+    .returning({ id: schema.dares.id });
+  return Boolean(row);
 }
 
 // -------------------------------------------------------------------------------------------------- voting
@@ -779,10 +915,11 @@ export async function completeLock(d: DareRow, minedIn?: bigint): Promise<{ thre
  * on a market the chain holds only those of them its snapshot names. The ballot is only ever offered to these.
  */
 export async function quorumOf(d: DareRow): Promise<Address[]> {
-  if (!isProvisional(d) && !d.onchainId) return [];
+  if (!isProvisional(d) && !d.onchainId && !chainPending(d)) return [];
   const voters = provisionalVoters(await positionsOf(d.id));
   const users = voters.length ? await db.select({ governanceWallet: schema.users.governanceWallet }).from(schema.users).where(inArray(schema.users.id, voters)) : [];
   const theirs = users.map((u) => u.governanceWallet.toLowerCase() as Address);
+  // Closed with its chain write still to land (the touch-ups round): the chain will snapshot exactly the people in, so they vote now.
   if (isProvisional(d) || !d.onchainId) return theirs;
   const { dares } = contracts();
   const onchain = (await relayer().publicClient.readContract({ address: dares.address, abi: dares.abi, functionName: "dareOf", args: [bufferToHex(d.onchainId)] })) as { quorum: readonly Address[] };
@@ -854,6 +991,8 @@ export async function castVote(input: { dareId: string; userId: string; outcome:
  * question whose votes reached the threshold and whose resolution never landed (docs/decisions.md 2026-09-27).
  */
 export async function resolveFromVotes(d: DareRow, byUserId: string | null): Promise<{ resolved: boolean; txHash?: Hex }> {
+  // The votes are kept; the resolution waits for the close's chain write, and the tick lands it once that has (`decidedUnresolved`).
+  if (chainPending(d)) return { resolved: false };
   const votes = await votesOf(d.id);
   const leading = tally(votes)[0];
   if (!leading || leading.votes < d.threshold) return { resolved: false };
@@ -926,7 +1065,7 @@ export function settlementFromReceipt(result: { hash: Hex; receipt: { logs: Read
  * and one shadow `obligations` row per minted edge (the edge's onchain id is its uuid, so the two sides join the
  * way every other obligation does). A partial result is refused rather than recorded.
  */
-export async function mirrorSettlement(d: DareRow, s: Settlement, how: { by: "quorum" | "arbitration" | "feed"; rulingText?: string; rulingHash?: Hex }): Promise<void> {
+export async function mirrorSettlement(d: DareRow, s: Settlement, how: { by: "quorum" | "arbitration" | "feed" | "ruling"; rulingText?: string; rulingHash?: Hex }): Promise<void> {
   const positions = await positionsOf(d.id);
   const users = await db.select().from(schema.users).where(inArray(schema.users.id, positions.map((p) => p.userId as string)));
   const byLedger = new Map(users.map((u) => [u.ledgerWallet.toLowerCase(), u]));
@@ -986,7 +1125,7 @@ export async function mirrorSettlement(d: DareRow, s: Settlement, how: { by: "qu
  * the only chain reader). Covers a mirror write that failed after the transaction succeeded, and two final votes
  * arriving at once. Returns whether the market is now recorded as decided.
  */
-export async function reconcileFromIndexer(dareId: string, how?: { by: "quorum" | "arbitration" | "feed"; rulingText?: string; rulingHash?: Hex }): Promise<boolean> {
+export async function reconcileFromIndexer(dareId: string, how?: { by: "quorum" | "arbitration" | "feed" | "ruling"; rulingText?: string; rulingHash?: Hex }): Promise<boolean> {
   const d = await marketById(dareId);
   if (!d || !d.onchainId) return false;
   if (d.resolvedAt) return true;
@@ -997,8 +1136,17 @@ export async function reconcileFromIndexer(dareId: string, how?: { by: "quorum" 
     txHash: indexed.resolveTx as Hex,
     scores: new Map(indexed.positions.filter((p) => p.score !== null).map((p) => [p.participant.toLowerCase(), p.score as number])),
     edges: indexed.edges.map((e) => ({ tokenId: BigInt(e.tokenId), debtor: e.debtor.toLowerCase(), creditor: e.creditor.toLowerCase(), qty: BigInt(e.qty), obligationId: e.id as Hex, unique: e.unique })),
-  }, how ?? { by: indexed.rulingHash ? "arbitration" : "quorum" });
+  }, how ?? { by: indexed.rulingHash ? (appRulingStood(d, indexed.rulingHash) ? "ruling" : "arbitration") : "quorum" });
   return true;
+}
+
+/**
+ * Whether a ruling the chain recorded is the app's own ruling standing (the touch-ups round), told by its hash: the app's
+ * ruling is recorded as its sealed text, the verdict on its line and then the reasons, and the tiebreaker's never is. Pure.
+ */
+export function appRulingStood(d: Pick<DareRow, "aiOutcome" | "aiRationale" | "kind" | "outcomeLabels" | "pace">, recordedHash: string): boolean {
+  if (d.pace !== "argument" || d.aiOutcome === null || !d.aiRationale) return false;
+  return keccak256(stringToHex(sealedText(d.aiOutcome, d.aiRationale, d.kind === "categorical" ? d.outcomeLabels : null))).toLowerCase() === recordedHash.toLowerCase();
 }
 
 /**

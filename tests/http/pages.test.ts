@@ -173,8 +173,9 @@ before(async () => {
   const ev = await markets.openMarket(evDraft.id, asker.user.id, await asker.ledger.signTypedData(markets.createTypedData(evDraft)));
   await markets.enterMarket({ dareId: ev.id, userId: asker.user.id, stake: 600n, value: 8000n, signature: await asker.ledger.signTypedData(markets.enterTypedData(ev, 600n, 8000n)) });
   await markets.enterMarket({ dareId: ev.id, userId: friend.user.id, stake: 600n, value: 3000n, signature: await friend.ledger.signTypedData(markets.enterTypedData(ev, 600n, 3000n)) });
-  await db.update(schema.dares).set({ lockedAt: new Date(Date.now() - 600_000), aiOutcome: 1n, aiConfidenceBps: 8000, aiRationale: "The screenshot Priya supplied shows the kettle's base scorched.", aiProposedAt: new Date(), outcomeWords: ["The kettle boiled dry", "The kettle held", "It boiled dry.", "It held."] }).where(eq(schema.dares.id, ev.id));
-  await db.insert(schema.dareStatements).values({ dareId: ev.id, userId: asker.user.id, kind: "update", statement: "Scorched the base. Photo attached." });
+  // Being called means it has happened (the reveal round's rule), and what was said came before the app's read of it (the touch-ups round: a read older than the last thing said is still being weighed).
+  await db.update(schema.dares).set({ lockedAt: new Date(Date.now() - 600_000), happenedAt: new Date(Date.now() - 300_000), aiOutcome: 1n, aiConfidenceBps: 8000, aiRationale: "The screenshot Priya supplied shows the kettle's base scorched.", aiProposedAt: new Date(), outcomeWords: ["The kettle boiled dry", "The kettle held", "It boiled dry.", "It held."] }).where(eq(schema.dares.id, ev.id));
+  await db.insert(schema.dareStatements).values({ dareId: ev.id, userId: asker.user.id, kind: "update", statement: "Scorched the base. Photo attached.", statedAt: new Date(Date.now() - 60_000) });
   await db.insert(schema.dareVotes).values({ dareId: ev.id, userId: asker.user.id, outcome: 1n, signature: Buffer.alloc(65) });
   evidenceId = ((await db.insert(schema.media).values({ dareId: ev.id, kind: "photo", role: "evidence", storageKey: "frames/check.jpg", width: 800, height: 500, authorId: asker.user.id }).returning({ id: schema.media.id }))[0] as { id: string }).id;
   evidenceMarketId = ev.id;
@@ -245,14 +246,14 @@ before(async () => {
   const pLocked = await markets.openMarket(pLockedDraft.id, nia.user.id, await nia.ledger.signTypedData(markets.createTypedData(pLockedDraft)));
   await enterPick(pLocked, nia, 500n, 1n);
   await enterPick(pLocked, friend, 500n, 0n);
-  await db.update(schema.dares).set({ lockedAt: new Date(Date.now() - 600_000) }).where(eq(schema.dares.id, pLocked.id));
+  await db.update(schema.dares).set({ lockedAt: new Date(Date.now() - 600_000), happenedAt: new Date(Date.now() - 300_000) }).where(eq(schema.dares.id, pLocked.id));
   pickLockedId = pLocked.id;
   const pVotingDraft = await askPick("Who picks the movie?");
   const pVoting = await markets.openMarket(pVotingDraft.id, asker.user.id, await asker.ledger.signTypedData(markets.createTypedData(pVotingDraft)));
   await enterPick(pVoting, asker, 600n, 1n);
   await enterPick(pVoting, friend, 600n, 0n);
-  await db.update(schema.dares).set({ lockedAt: new Date(Date.now() - 600_000), aiOutcome: 1n, aiConfidenceBps: 8000, aiRationale: "Priya says Dev picked it, and nobody has said otherwise.", aiProposedAt: new Date() }).where(eq(schema.dares.id, pVoting.id));
-  await db.insert(schema.dareStatements).values({ dareId: pVoting.id, userId: asker.user.id, kind: "update", statement: "Dev had the remote the whole time." });
+  await db.update(schema.dares).set({ lockedAt: new Date(Date.now() - 600_000), happenedAt: new Date(Date.now() - 300_000), aiOutcome: 1n, aiConfidenceBps: 8000, aiRationale: "Priya says Dev picked it, and nobody has said otherwise.", aiProposedAt: new Date() }).where(eq(schema.dares.id, pVoting.id));
+  await db.insert(schema.dareStatements).values({ dareId: pVoting.id, userId: asker.user.id, kind: "update", statement: "Dev had the remote the whole time.", statedAt: new Date(Date.now() - 60_000) });
   await db.insert(schema.dareVotes).values({ dareId: pVoting.id, userId: asker.user.id, outcome: 1n, signature: Buffer.alloc(65) });
   pickVotingId = pVoting.id;
   const pSettledDraft = await askPick("Who fell asleep first?");
@@ -1030,6 +1031,8 @@ test("a market in voting can be watched: its pulse is Postgres only, answers the
   assert.ok(waiting.text.includes("Voting opens once it’s happened.") && waiting.html.includes('data-it-happened=""') && !waiting.text.includes("Type what it was"), "calls are in: no ballot until it has happened");
   await db.update(schema.dares).set({ happenedAt: new Date() }).where(eq(schema.dares.id, numberId));
   await markets.sayWhatHappened(numberId, asker.user.id, "14, then a seam gave out");
+  // The app's read after it, as the action makes one (none can be made under the test runner): until then the sheet is the loader (the touch-ups round).
+  await db.update(schema.dares).set({ aiProposedAt: sql`now()` }).where(eq(schema.dares.id, numberId));
   const again = (await (await fetch(`${BASE}/api/m/${numberId}/pulse`, { headers: { cookie: `dareful_session=${cFriend}` } })).json()) as { pulse: string };
   assert.notEqual(again.pulse, body.pulse, "what was said moves the pulse");
   assert.equal((await fetch(`${BASE}/api/m/${numberId}/pulse`, { headers: { cookie: `dareful_session=${cStranger}` } })).status, 404, "someone outside the group");
@@ -1436,11 +1439,11 @@ test("a locked pick-one question offers the answers as equal wells, and voting n
   const voting = await get(`/m/${pickVotingId}`, cFriend);
   assert.equal(voting.status, 200);
   assert.ok(voting.text.includes("1 of 2 says You. One more and it settles.") || voting.text.includes("1 of 2 says Dev."), "the count line names the claimed answer, counted over the people in it (3.24; the first-contact round)");
-  assert.ok(voting.text.includes("That’s right, You") || voting.text.includes("That’s right, Dev"), "the chalk repeats the answer");
-  assert.ok(voting.text.includes("Not how I saw it"));
+  assert.ok(voting.html.includes('data-agree=""') && /\bAgree\b/.test(voting.text), "Agree is the main button, the claim card having named the answer (3.24 as amended 2026-10-08)");
+  assert.ok(voting.text.includes("I see it differently"), "and the other way of seeing it is the quiet one");
   assert.ok(voting.text.includes("Priya says you") || voting.text.includes("Priya says Dev"), "the claim card names the answer");
   const asNia = await get(`/m/${pickVotingId}`, cNia);
-  assert.ok(asNia.status === 200 && !asNia.text.includes("One more and it settles.") && !asNia.text.includes("That’s right"), "someone in the set who never got in has no ballot and no count (the first-contact round)");
+  assert.ok(asNia.status === 200 && !asNia.text.includes("One more and it settles.") && !asNia.html.includes('data-agree=""'), "someone in the set who never got in has no ballot and no count (the first-contact round)");
 });
 
 test("a settled pick-one question says the answer and who called it, shows everyone's pick with the called row washed, and never ranks", async () => {
@@ -1569,7 +1572,7 @@ test("the ballot when a final score answers it: the source card where the claim 
   assert.ok(!r.text.includes("says"), "no avatar and no says: the score is speaking, not a person");
   assert.ok(r.text.includes("Nobody has said yet. Two of you and it settles."), "the count line's empty state as the sheet's header (3.35, Round C part 2)");
   assert.ok(!r.text.includes(`From the final score: ${finalHome} 24, ${finalAway} 17.`), "the score speaks on the source card, not in the header");
-  assert.ok(r.text.includes(`That’s right, the ${finalHome} won`), "the chalk names the outcome in the voter's voice and names the team (3.35)");
+  assert.ok(r.html.includes('data-agree=""') && /\bAgree\b/.test(r.text) && r.html.includes('data-see-differently=""'), "Agree is the main button and \"I see it differently\" the quiet one, the score having named the team on its card (3.24 as amended 2026-10-08)");
   assert.ok(r.html.includes(`data-team-stamp="${finalHomeAbbr}"`), "each row of the source card wears its team's stamp");
   assert.ok(!r.text.includes("Can’t agree?") && !r.text.includes("Let the tiebreaker call it"), "the final score is the tiebreaker: the model is never offered");
   const s = await get(onGame(finalGameId, feedSettledId), cNia);
@@ -1615,11 +1618,11 @@ test("the game page: one page per person with a card per question they are in or
   // Who asked, as a sentence about the set (3.33), never the chip's label after a verb.
   assert.ok(asker.text.includes("You asked the Question check. Everything closes at kickoff."), "the header's caption, to the asker");
   assert.ok(friendly.text.includes("Priya asked the Question check. Everything closes at kickoff."), "and to someone she asked");
-  // The who's-in row (3.42) with the game as the unit: share and copy at its end, no code (a code is one question's), no list and no pass.
+  // The who's-in row (3.42) with the game as the unit: the page's one share row (the touch-ups round), share, copy and the code of a question still open, and no list and no pass.
   for (const [who, page] of [["the asker", asker], ["someone not in yet", friendly]] as const) {
     assert.ok(page.html.includes('data-whos-in=""') && page.html.includes('data-share=""') && page.html.includes("data-copy="), `${who}: the row, with share and copy`);
     assert.ok(!page.text.includes("Send it to the chat") && !/<button[^>]*>\s*Copy\s*<\/button>/.test(page.html), `${who}: the old row is gone`);
-    assert.ok(!page.html.includes('data-code=""') && !page.html.includes("data-whos-in-list") && !page.html.includes('data-pass-phone=""') && !page.html.includes('data-holdout=""'), `${who}: no code, no list, no pass, and nobody following the stack as still out`);
+    assert.ok(page.html.includes('data-code=""') && !page.html.includes("data-whos-in-list") && !page.html.includes('data-pass-phone=""') && !page.html.includes('data-holdout=""'), `${who}: the code, and no list, no pass, and nobody following the stack as still out`);
   }
   assert.ok(/data-whos-in-count=""[^>]*>\s*Just you so far/.test(asker.html) && /data-whos-in-count=""[^>]*>\s*1 in/.test(friendly.html), "who is in on any question: just you so far for the asker alone, 1 in to anyone else");
   const shareOf = (html: string) => /<button[^>]*data-share=""[^>]*>/.exec(html)?.[0] ?? "";

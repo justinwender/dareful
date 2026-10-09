@@ -38,7 +38,7 @@ export default async function PeoplePage() {
           <ul className="flex flex-col gap-1.5">
             {people.people.map(({ user: p, token }) => (
               <li key={p.id}>
-                <Link prefetch={false} href={`/p/${p.id}`} data-press="row" className="press-row relative flex min-h-14 items-center gap-3 rounded-button bg-surface px-3">
+                <Link prefetch={false} href={`/p/${p.id}`} data-press="row" data-person-row="" className="press-row relative flex min-h-14 items-center gap-3 rounded-button bg-surface px-3">
                   <LinkPending />
                   <Avatar name={p.displayName} hue={hueFor(p.id)} size={36} />
                   <span className="min-w-0 flex-1 truncate text-body-strong text-ink">{p.displayName}</span>

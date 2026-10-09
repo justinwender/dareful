@@ -8,7 +8,8 @@ import { LayersRoot } from "@/components/ui/layers";
 import { Presses } from "@/components/ui/press";
 import { Typing } from "@/components/ui/typing";
 import { sessionFacts } from "@/lib/auth/session-facts";
-import { GROUND_DARK, GROUND_LIGHT, launchImageLinks, OPENING_ELEMENT, OPENING_HANDOFF_SCRIPT, OPENING_STYLE } from "@/lib/ui/opening";
+import { GROUND_DARK, GROUND_LIGHT, launchImageLinks, OPENING_ELEMENT, OPENING_HANDOFF_SCRIPT, OPENING_STYLE, pullTallyCss } from "@/lib/ui/opening";
+import { OpeningFallback } from "@/components/ui/opening-fallback";
 import { THEME_SCRIPT } from "@/lib/ui/theme";
 
 const hanken = Hanken_Grotesk({
@@ -74,6 +75,8 @@ export default function RootLayout({ children, ask }: { children: ReactNode; /**
         <style dangerouslySetInnerHTML={{ __html: OPENING_STYLE }} />
         {/* Appearance (8.1): the stored choice onto `html` before anything paints. */}
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+        {/* The one loader's loop (the touch-ups round, section 3), once for every tally on the page, from the opening's own timing. */}
+        <style dangerouslySetInnerHTML={{ __html: pullTallyCss() }} />
       </head>
       {/* An installed app draws under the status bar and the home indicator (viewport-fit=cover, translucent status
           bar). The top and side insets are paid once, here, so no screen can forget them; anything fixed or sticky
@@ -88,6 +91,7 @@ export default function RootLayout({ children, ask }: { children: ReactNode; /**
             {ask}
             <Presses />
             <Typing />
+            <OpeningFallback />
             <LayersRoot />
           </Providers>
         </div>

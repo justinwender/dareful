@@ -378,7 +378,7 @@ export async function feedBackstop(now: Date, opts: { check?: CheckSource; onlyI
     .from(schema.dares)
     .innerJoin(schema.publicQuestions, eq(schema.publicQuestions.id, schema.dares.templateId))
     .innerJoin(schema.sportsGames, eq(schema.sportsGames.id, schema.publicQuestions.gameId))
-    .where(and(isNotNull(schema.dares.lockedAt), isNull(schema.dares.resolvedAt), eq(schema.dares.stalemate, "arbitrate"), eq(schema.publicQuestions.decidedByFeed, true), isNotNull(schema.sportsGames.finalSeenAt), lt(schema.sportsGames.finalSeenAt, dueBy), some(opts.onlyIds, schema.dares.id)))
+    .where(and(isNotNull(schema.dares.lockedAt), isNull(schema.dares.resolvedAt), isNull(schema.dares.chainPendingAt), eq(schema.dares.stalemate, "arbitrate"), eq(schema.publicQuestions.decidedByFeed, true), isNotNull(schema.sportsGames.finalSeenAt), lt(schema.sportsGames.finalSeenAt, dueBy), some(opts.onlyIds, schema.dares.id)))
     .orderBy(asc(schema.sportsGames.finalSeenAt))
     // Read past what must wait: a question whose two sources have not agreed yet waits up to three days, and cut at the tick's two it held a place against one that could settle (the field round, 1.2's pattern). The tick still acts on two at most.
     .limit(BACKSTOP_SCAN);
