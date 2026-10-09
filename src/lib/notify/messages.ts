@@ -86,7 +86,7 @@ export function nudgeNotice(input: { nudgerName: string; title: string; stage: "
  * on a named phone, so a notice may exist. Names whose phone, never the PIN or how close the tries came.
  */
 export function pinLockedNotice(input: { hostName: string; appUrl: string }): Notice {
-  return { title: "Your PIN is locked for an hour", body: `Five wrong tries on ${input.hostName}’s phone. Nothing got in. If that wasn’t you, turn pass the phone off and on again with a new PIN.`, url: `${input.appUrl}/you` };
+  return { title: "Your PIN is paused for an hour", body: `Five wrong tries on ${input.hostName}’s phone. Nothing got in. If that wasn’t you, turn pass the phone off and on again with a new PIN.`, url: `${input.appUrl}/you` };
 }
 
 /** Someone entered a question from a friend's phone (3.45, frame 7): the question as the title, and whose phone. */

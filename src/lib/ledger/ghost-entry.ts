@@ -98,11 +98,11 @@ export async function enterAsGhost(input: { dareId: string; who: GhostWho; token
   const d = await marketById(input.dareId);
   if (!d) throw new MarketError("That one doesn't exist.", "not_found");
   const state = stateOf(d);
-  if (state !== "open") throw new MarketError(state === "draft" ? "It isn't open yet." : "Numbers are locked.", "wrong_state");
+  if (state !== "open") throw new MarketError(state === "draft" ? "It isn't open yet." : "It’s closed.", "wrong_state");
   // The close is a hard cutoff for a ghost as for anyone (`pastItsClose`): past its time, nobody gets in or changes, locked yet or not.
-  if (pastItsClose(d, new Date())) throw new MarketError("Numbers are locked.", "wrong_state");
+  if (pastItsClose(d, new Date())) throw new MarketError("It’s closed.", "wrong_state");
   // A question started during a game closes at its final at the latest (the games-and-the-reveal round, section 5).
-  if (d.closesAfterFirst && (await gameOverFor(d))) throw new MarketError("Numbers are locked.", "wrong_state");
+  if (d.closesAfterFirst && (await gameOverFor(d))) throw new MarketError("It’s closed.", "wrong_state");
   if (!valueAllowed(d.kind, input.value, d.outcomeLabels.length)) throw new MarketError(d.kind === "numeric" ? "Any whole number, up to nine digits." : d.kind === "categorical" ? "Pick one of the answers." : "A number from 0 to 100.", "bad_input");
   const denom = await denominationById(d.denomId);
   if (!denom) throw new MarketError("unknown unit", "not_found");
@@ -203,7 +203,7 @@ export async function removeGhostEntry(input: { dareId: string; claimId: string;
   const d = await marketById(input.dareId);
   if (!d) throw new MarketError("That one doesn't exist.", "not_found");
   if (d.creatorId !== input.byUserId) throw new MarketError("Only the person who asked it can remove someone.", "not_yours");
-  if (stateOf(d) !== "open") throw new MarketError("Numbers are locked.", "wrong_state");
+  if (stateOf(d) !== "open") throw new MarketError("It’s closed.", "wrong_state");
   const [row] = await db
     .update(schema.darePositions)
     .set({ dismissedAt: new Date() })

@@ -33,9 +33,17 @@ export function sealOf(salt: Hex, text: string): Hex {
   return keccak256(concat([salt, stringToHex(text)]));
 }
 
+/** The rule a sealed ruling's people sign: silence agrees with it. Only terms that carry it are settled by silence (the final round, section 8). */
+export const SILENCE_CLAUSE = "It stands unless someone in it sees it differently within a day of the close";
+
 /** The line the terms carry, which everyone signs: the seal, and the rule that consent rests on. Pure. */
 export function sealLine(seal: Hex): string {
-  return `The app’s ruling is sealed until it closes: ${seal}. It stands unless someone in it sees it differently within a day of the close, and then the tiebreaker decides.`;
+  return `The app’s ruling is sealed until it closes: ${seal}. ${SILENCE_CLAUSE}, and then the tiebreaker decides.`;
+}
+
+/** Whether the terms its people signed let silence agree with the app's ruling. Pure. */
+export function silenceSigned(terms: string): boolean {
+  return terms.includes(SILENCE_CLAUSE);
 }
 
 /** The seal a set of terms carries, or null. Pure. */

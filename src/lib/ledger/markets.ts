@@ -452,6 +452,41 @@ export async function draftFromTemplate(input: { templateId: string; creatorId: 
   });
 }
 
+/** The key a question someone wrote on a game page goes by among the game's questions (the final round, section 5). */
+export const ownKey = (dareId: string) => `own:${dareId}`;
+/** Whether a game question is one someone wrote, settled by its people rather than by the feed. Pure. */
+export const isOwnKey = (key: string): boolean => key.startsWith("own:");
+
+/**
+ * A question someone wrote on a game page (the final round, section 5): "Will Crosby score?", written up like any other
+ * question and tied to the game by a row of its own among the game's questions (`own:` and the question's id), so the
+ * game page, Now and the tick treat it as the game's. It closes as the game's others do, at the start, or five minutes
+ * after its first call once the game is under way, and its own people settle it, since the feed answers only the
+ * questions it was built for (`decided_by_feed` off). Refused as `draftFromTemplate` refuses: a game with no confirmed
+ * start, one that is off, and one that is over.
+ */
+export async function draftOwnGameQuestion(input: Omit<DraftInput, "templateId" | "closesAfterFirst" | "resolvesBy" | "pace" | "tier" | "criterion" | "settledBy" | "seal"> & { gameId: string; now?: Date }): Promise<DareRow> {
+  const [game] = await db.select().from(schema.sportsGames).where(eq(schema.sportsGames.id, input.gameId)).limit(1);
+  if (!game) throw new MarketError("That game isn't on any more.", "not_found");
+  const now = input.now ?? new Date();
+  if (!game.timeValid) throw new MarketError("That game doesn't have a confirmed start time yet.", "bad_input");
+  if (game.status === "postponed" || game.status === "canceled") throw new MarketError("That game is off.", "bad_input");
+  if (gameIsOver(game)) throw new MarketError("That game is over, so it's too late to ask.", "bad_input");
+  const live = game.startsAt.getTime() <= now.getTime();
+  const id = input.id ?? randomUUID();
+  const kind: MarketKind = input.kind ?? "binary";
+  if (kind === "numeric" && !input.scale) throw new MarketError("Say how far off scores nothing, like 20.", "bad_input");
+  const labels = kind === "categorical" ? (input.answers ?? []).map((a) => a.text.trim()) : kind === "numeric" ? [input.unit?.singular ?? "", input.unit?.plural ?? input.unit?.singular ?? ""] : ["no", "yes"];
+  const key = ownKey(id);
+  await db
+    .insert(schema.publicQuestions)
+    .values({ gameId: game.id, key, kind, title: input.title.trim(), termsText: input.termsText.trim(), outcomeLabels: labels, range: kind === "numeric" ? (input.scale?.range ?? null) : null, typical: input.typical ?? null, decidedByScore: false, decidedByFeed: false, outcomeWords: kind === "binary" ? (input.outcomeWords ?? null) : null, sort: 99 })
+    .onConflictDoNothing();
+  const [template] = await db.select({ id: schema.publicQuestions.id }).from(schema.publicQuestions).where(and(eq(schema.publicQuestions.gameId, game.id), eq(schema.publicQuestions.key, key))).limit(1);
+  if (!template) throw new MarketError("Couldn't save that.", "chain");
+  return draftMarket({ ...input, id, pace: "dare", stalemate: "arbitrate", resolvesBy: live ? null : game.startsAt, closesAfterFirst: live, templateId: template.id });
+}
+
 /** Whether a game is over for asking and entering (section 5): its final is in, or the scoreboard says it is complete. Pure. */
 export function gameIsOver(game: { finalSeenAt: Date | null; completed: boolean }): boolean {
   return game.finalSeenAt !== null || game.completed;
@@ -525,11 +560,11 @@ export function pastItsClose(d: Pick<DareRow, "pace" | "resolvesBy">, now: Date)
 export async function enterMarket(input: { dareId: string; userId: string; stake: bigint; value: bigint; signature: Hex; /** The host, when the entry was made on a friend's phone (3.45); the person themselves otherwise. */ enteredBy?: string; /** The entrant's `Create` over the question's own group (`questionCreateTypedData`); a page from before the round sends none. */ questionSignature?: Hex | null }): Promise<PositionRow> {
   const d = await marketById(input.dareId);
   if (!d) throw new MarketError("That one doesn't exist.", "not_found");
-  if (stateOf(d) !== "open") throw new MarketError(stateOf(d) === "draft" ? "It isn't open yet." : "Numbers are locked.", "wrong_state");
+  if (stateOf(d) !== "open") throw new MarketError(stateOf(d) === "draft" ? "It isn't open yet." : "It’s closed.", "wrong_state");
   // Past its time and not yet locked: the same refusal as after the lock, since to the person it is the same fact.
-  if (pastItsClose(d, new Date())) throw new MarketError("Numbers are locked.", "wrong_state");
+  if (pastItsClose(d, new Date())) throw new MarketError("It’s closed.", "wrong_state");
   // A question started during a game closes at its final at the latest (section 5).
-  if (d.closesAfterFirst && (await gameOverFor(d))) throw new MarketError("Numbers are locked.", "wrong_state");
+  if (d.closesAfterFirst && (await gameOverFor(d))) throw new MarketError("It’s closed.", "wrong_state");
   if (!(await isMember(d.groupId, input.userId))) throw new MarketError("This one is for the people in its group.", "not_member");
   if (!valueAllowed(d.kind, input.value, d.outcomeLabels.length)) throw new MarketError(d.kind === "numeric" ? "Any whole number, up to nine digits." : d.kind === "categorical" ? "Pick one of the answers." : "A number from 0 to 100.", "bad_input");
   const denom = await denominationById(d.denomId);
@@ -962,7 +997,7 @@ export function tally(votes: Pick<VoteRow, "outcome">[]): Tally {
 export async function castVote(input: { dareId: string; userId: string; outcome: bigint; signature: Hex }): Promise<{ resolved: boolean; txHash?: Hex }> {
   const d = await marketById(input.dareId);
   if (!d) throw new MarketError("That one doesn't exist.", "not_found");
-  if (stateOf(d) !== "locked") throw new MarketError(d.resolvedAt ? "It's already decided." : "It isn't locked yet.", "wrong_state");
+  if (stateOf(d) !== "locked") throw new MarketError(d.resolvedAt ? "It's already decided." : "It isn’t closed yet.", "wrong_state");
   if (!outcomeAllowed(d.kind, input.outcome, d.outcomeLabels.length)) throw new MarketError(d.kind === "numeric" ? "A whole number, or nobody can tell." : d.kind === "categorical" ? "One of the answers, or nobody can tell." : "Yes, no, or nobody can tell.", "bad_input");
 
   // Only the people in it vote (the first-contact round, 2026-10-04): a member of the set who never got in is refused here, before any signature is read.
@@ -972,7 +1007,7 @@ export async function castVote(input: { dareId: string; userId: string; outcome:
   const [user] = await db.select().from(schema.users).where(eq(schema.users.id, input.userId)).limit(1);
   if (!user) throw new MarketError("unknown user", "not_found");
   const quorum = await quorumOf(d);
-  if (!quorum.includes(user.governanceWallet.toLowerCase() as Address)) throw new MarketError("This one was locked before you joined the group, so it isn't yours to call.", "not_member");
+  if (!quorum.includes(user.governanceWallet.toLowerCase() as Address)) throw new MarketError("This one closed before you joined the group, so it isn’t yours to call.", "not_member");
   const ok = await verifyTypedData({ ...voteTypedData(d, input.outcome), address: user.governanceWallet as Address, signature: input.signature });
   if (!ok) throw new MarketError("That didn't come from your account.", "bad_signature");
 
@@ -1009,7 +1044,7 @@ async function resolveMarket(d: DareRow, outcome: bigint, agreeing: VoteRow[], b
     await settleProvisional(d, await positionsOf(d.id), outcome, { by: "quorum" });
     return "0x" as Hex;
   }
-  if (!d.onchainId) throw new MarketError("It isn't locked yet.", "wrong_state");
+  if (!d.onchainId) throw new MarketError("It isn’t closed yet.", "wrong_state");
   const positions = await positionsOf(d.id);
   const { dares, ledger } = contracts();
   let result;

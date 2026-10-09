@@ -1,0 +1,1 @@
+ALTER TABLE "participant_claims" ADD COLUMN "excluded_from_counts" boolean DEFAULT false NOT NULL;

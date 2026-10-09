@@ -16,7 +16,7 @@ import { nextPosition, roomFor, SNAP_PX, visibleAt, type SheetMeasure } from "@/
 import { addYears, clampProposal, datePhrase, dateWords, deadlineMismatch, decideByDate, decideByMoment, DECIDE_BY_SPANS, fromProposal, latestDate, longDateWords, pastTheLatest, shortDateWords, swapDateWords, termsDeadlines } from "@/lib/ledger/decide-by";
 import { kindForQuestion } from "@/lib/ui/question-shape";
 import { IDEAS, IDEA_GROUPS, blankOf, ideaById, ideaKindWords, ideasOnNow } from "@/lib/ideas";
-import { seenAlready, tipPlacement, tipsFor, tipTarget, TIPS_AT_MOST } from "@/lib/ui/tips";
+import { ASK_SOMETHING_KEY, CURATED_TIPS, tipPlacement, tipsFor, TIPS_AT_MOST } from "@/lib/ui/tips";
 import { infoSheet } from "@/lib/ui/info-sheets";
 import { draftOnNow, DRAFT_ON_NOW_MS } from "@/lib/ledger/drafts";
 import { guestLineFor } from "@/lib/ledger/guest";
@@ -295,17 +295,27 @@ test("ideas: thirteen fixed questions in four groups, two with a blank, the tile
   assert.ok(readFileSync("src/components/home/now-content.tsx", "utf8").includes("{ideasOnNow(home.running.length) ? <IdeasTile /> : null}"), "last on Now while fewer than three are running");
 });
 
-test("first-visit tips: the first three entries that point at a control on the screen, rules skipped, placed beside the control and kept inside the screen", () => {
+test("first-visit tips: the owner's set, three at a time, each once, \"Ask something\" once for every tab, placed beside the control and kept inside the screen", () => {
   const sheet = infoSheet("market-open");
   assert.ok(sheet);
-  const all = tipsFor(sheet!, () => true);
+  const all = tipsFor(sheet!, () => true, { key: "market-open" });
   assert.equal(all.length, TIPS_AT_MOST, "three at most");
-  assert.ok(all.every((t) => tipTarget(t.entry) !== null), "only entries that point at something");
-  assert.deepEqual(all.map((t) => t.entry.term), ["Tap the avatars", "Swipe the sheet", "More"], "in the sheet's own order, gestures first");
-  assert.deepEqual(tipsFor(sheet!, (s) => s === "[data-share]").map((t) => t.entry.term), ["Share"], "a control off the screen is skipped");
-  assert.equal(tipsFor(infoSheet("now")!, () => false).length, 0, "nothing on screen, no tips");
-  const rulesOnly = { name: "A rule", groups: { "Rules and timing": [{ term: "Swipe the sheet", description: "A rule whose words name a control." }] } };
-  assert.deepEqual(tipsFor(rulesOnly, () => true), [], "a rule is never a tip, even when its words name a control");
+  assert.deepEqual(all.map((t) => t.entry.term), ["Share", "Copy the link", "Show a code to scan"], "each way to share, in order");
+  assert.deepEqual(tipsFor(sheet!, () => true, { key: "market-open", seen: ["/tips/share", "/tips/copy", "/tips/code"] }).map((t) => t.entry.term), ["Pass the phone", "Photos"], "then pass the phone and adding photos");
+  assert.equal(CURATED_TIPS["market-open"]?.find((t) => t.entry.term === "Pass the phone")?.entry.description, "A friend makes their call on your phone, with their own PIN.", "the owner's words for pass the phone");
+  assert.deepEqual(tipsFor(sheet!, (s) => s === "button[data-share]", { key: "market-open" }).map((t) => t.entry.term), ["Share"], "a control not on the page is skipped");
+  assert.deepEqual(tipsFor(sheet!, () => true, { key: "market-open", seen: ["/tip/share"] })[0]?.entry.term, "Share", "the touch-ups round's keys say nothing about what anyone has read");
+  for (const k of ["game", "game-link", "game-night", "market-voting", "market-ended", "market-link"]) assert.equal(CURATED_TIPS[k], CURATED_TIPS["market-open"], `${k} shares the market's tips`);
+  assert.deepEqual(tipsFor(infoSheet("ask-question")!, () => true, { key: "ask-question" }).map((t) => t.entry.term), ["Add a mark", "Stickers", "What kind of thing"], "when asking: the mark, stickers, then each choice");
+  assert.deepEqual(tipsFor(infoSheet("ask-question")!, () => true, { key: "ask-question", seen: ["/tips/mark", "/tips/stickers", "/tips/pace"] }).map((t) => t.entry.term), ["Market type", "AI market setup"]);
+  assert.deepEqual(tipsFor(infoSheet("people")!, () => true, { key: "people", seen: [ASK_SOMETHING_KEY] }).map((t) => t.entry.term), ["Who’s got who"]);
+  assert.deepEqual(tipsFor(infoSheet("person")!, () => true, { key: "person" }).map((t) => t.entry.term), ["I got this one"]);
+  assert.deepEqual(tipsFor(infoSheet("now")!, () => true, { key: "now" }).map((t) => t.key), [ASK_SOMETHING_KEY], "\"Ask something\" on a tab, once");
+  assert.equal(tipsFor(infoSheet("whats-on")!, () => true, { key: "whats-on", seen: [ASK_SOMETHING_KEY] }).length, 0, "and never again on another tab");
+  assert.equal(tipsFor(infoSheet("now")!, () => false, { key: "now" }).length, 0, "nothing on the page, no tips");
+  assert.equal(tipsFor(infoSheet("you")!, () => true, { key: "you", seen: [ASK_SOMETHING_KEY] }).length, 0, "a screen outside the set has none of its own");
+  const keys = Object.values(CURATED_TIPS).flat().map((t) => t.key);
+  assert.ok(keys.every((k) => k.startsWith("/tips/")), "every key is the new kind");
   const placed = tipPlacement({ x: 300, y: 40, width: 44, height: 44 }, 22, { width: 390, height: 844 }, { width: 240, height: 100 });
   assert.deepEqual(placed.cut, { x: 294, y: 34, width: 56, height: 56, radius: 28 }, "6px larger on every side, rounded to match");
   assert.equal(placed.below, true, "a control in the top half gets its tip under it");
@@ -313,7 +323,16 @@ test("first-visit tips: the first three entries that point at a control on the s
   assert.equal(placed.tip.y, 34 + 56 + 2 + 6, "6px off the ring");
   assert.equal(tipPlacement({ x: 20, y: 700, width: 100, height: 48 }, 12, { width: 390, height: 844 }, { width: 240, height: 100 }).below, false, "over a control in the bottom half");
   assert.equal(tipPlacement({ x: 20, y: 500, width: 100, height: 48 }, 12, { width: 390, height: 844 }, { width: 240, height: 100 }).below, false, "over a control in the bottom half, with room on both sides (the touch-ups round)");
-  assert.equal(seenAlready(["/m/[id]"], "/m/[id]"), true, "a market once you're in is the same screen");
+});
+
+test("first-visit tips show (the final round, section 3): a control under the tips' own layer still counts as on the screen, a tip is remembered only once it stands beside its control, and none is measured under the opening", () => {
+  const src = readFileSync("src/components/ui/first-tips.tsx", "utf8");
+  assert.ok(src.includes('document.elementsFromPoint(r.left + r.width / 2, r.top + r.height / 2).find((h) => !h.closest("[data-first-tips]"))'), "looks through its own layer");
+  assert.ok(src.includes("const key = place?.for === at ? tips?.[at]?.key : undefined;"), "remembered once placed, never on the frame it was chosen");
+  assert.ok(src.includes('if (document.getElementById("opening")) return later(SETTLE_MS);'), "waits for the opening to leave");
+  assert.ok(src.includes("const rest = tips.filter((_, i) => i !== at);"), "one that cannot be pointed at leaves the rest showing");
+  assert.ok(src.includes('const GUEST_KEY = "dareful_tips_shown";'), "a guest's shown tips under the new key");
+  assert.ok(src.includes(`if (document.querySelector('[data-sheet="open"], [data-account-step]')) return later(SETTLE_MS);`), "never over an open sheet or the account step a guest is offered, and shown once either has gone");
 });
 
 test("a draft is on Now for a day and on You after, and a guest's line says what an account gets until a win says it louder", () => {
@@ -538,7 +557,7 @@ test("a question too far off to decide says so at Decided with its nearer versio
   assert.ok(form.includes("message={`That can’t be known until ${longDateWords(tooFar.knownBy)}, and the furthest a question can run is ${longDateWords(tooFar.latest)}.`}"), "said in plain words, at the field it is about");
   assert.ok(/onClick=\{askNearer\} data-ask-nearer="">\s*Ask this instead\s*<\/Button>/.test(form), "one nearer version, taken whole with a tap");
   assert.ok(form.includes("<Chip size={36} selected={!tooFar && decide.key === w.key} choice>") && form.includes("<Chip size={36} selected={!tooFar && decide.key === \"date\"} choice>"), "no date picked for the asker");
-  assert.ok(form.includes('if (tooFar && pace !== "argument") return setProblem("Pick when it’s decided.");'), "nothing sent until they choose");
+  assert.ok(form.includes('if (tooFar && pace !== "argument" && !game) return setProblem("Pick when it’s decided.");'), "nothing sent until they choose");
   assert.ok(form.includes("max={latestDate(new Date(), askerZone())}"), "the phone's date picker stops at the same furthest date");
 });
 

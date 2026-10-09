@@ -69,3 +69,26 @@ export function typingFromViewport(v: { field: boolean; visible: number; layout:
   if (v.visible < v.layout * KEYBOARD_SHARE) return true;
   return null;
 }
+
+/**
+ * The room kept between a field brought into view and the edge of what shows. A browser's own bar can sit over the
+ * foot of the page without saying so (Brave's address bar rides on the keyboard), so a field is put in the middle of
+ * what shows rather than against its edge.
+ */
+export const FIELD_MARGIN = 16;
+
+type Span = { top: number; bottom: number };
+
+/**
+ * How far a box that scrolls must move to bring the field typed into back into view, or null while it shows (the final
+ * round, section 1). A browser that hosts the page in its own app (Brave and Chrome on an iPhone) can shrink the page to
+ * the space above the keyboard, and the sheet the field sits in then lays out shorter than its content with the field
+ * under its foot, where the phone's own reveal cannot reach. `box` is the part that scrolls, `visible` the part of the
+ * screen the keyboard leaves; the field goes to the middle of what shows of the box. Pure.
+ */
+export function revealBy(v: { field: Span; box: Span; visible: Span; margin: number }): number | null {
+  const top = Math.max(v.box.top, v.visible.top);
+  const bottom = Math.min(v.box.bottom, v.visible.bottom);
+  if (v.field.top >= top + v.margin && v.field.bottom <= bottom - v.margin) return null;
+  return Math.round((v.field.top + v.field.bottom) / 2 - (top + bottom) / 2);
+}

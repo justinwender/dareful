@@ -1,18 +1,15 @@
 import type { Metadata } from "next";
 import { Suspense, type ReactNode } from "react";
 import { notFound } from "next/navigation";
-import { isNotNull } from "drizzle-orm";
 import { Screen, TopBar } from "@/components/ledger/screen";
 import { StatsActions } from "@/components/you/stats-actions";
 import { TallyWait } from "@/components/ui/tally-loader";
 import { currentUser } from "@/lib/auth/session";
 import { isOwner } from "@/lib/usage/owner";
-import { countStats, PERCENT_STATS, snapshots, STATS, windowFor } from "@/lib/usage/stats";
+import { countedOnchain, countStats, PERCENT_STATS, snapshots, STATS, windowFor } from "@/lib/usage/stats";
 import { onchainCounts, ONCHAIN_COUNT_CAP } from "@/lib/ledger/envio";
 import { explorerAddressUrl } from "@/lib/chain/explorer";
 import { monOf, relayerRunway, RUNWAY_DAYS } from "@/lib/chain/watch";
-import { db, schema } from "@/db";
-import { bufferToHex, questionGroupOnchainId } from "@/lib/ledger/ids";
 import { within, SECTION_LIMIT_MS } from "@/lib/usage/within";
 
 export const metadata: Metadata = { title: "Dareful", robots: { index: false, follow: false } };
@@ -52,7 +49,7 @@ export default async function StatsPage() {
           <Suspense fallback={<TallyWait />}>
             <Chain />
           </Suspense>
-          <p className="text-caption text-ink-3">Counted from the indexer, since the contracts were deployed. Every account is in these, test accounts included.</p>
+          <p className="text-caption text-ink-3">Counted from the indexer, since the contracts were deployed: questions with someone counted in them, and the people counted, their obligations and their sets. The test runs share the contracts and are left out.</p>
           <Contracts />
         </section>
         <section className="flex flex-col gap-3" data-stats-days="">
@@ -141,16 +138,12 @@ async function Relayer() {
 async function Chain() {
   let chain: Awaited<ReturnType<typeof onchainCounts>>;
   try {
-    // A question's own group is told from a set by the question's own id (the games-and-the-reveal round), which only Postgres can turn back into the uuid it was made from.
+    // Real use only (the final round, section 0): what Postgres says is real use, asked of the indexer by id.
     chain = await within(
       SECTION_LIMIT_MS.chain,
       (async () => {
-        const onchainIds = await db.select({ id: schema.dares.id, onchainId: schema.dares.onchainId }).from(schema.dares).where(isNotNull(schema.dares.onchainId));
-        const uuidOf = new Map(onchainIds.map((r) => [bufferToHex(r.onchainId as Buffer).toLowerCase(), r.id]));
-        return onchainCounts((dareId) => {
-          const id = uuidOf.get(dareId.toLowerCase());
-          return id ? questionGroupOnchainId(id) : "";
-        });
+        const counted = await countedOnchain();
+        return onchainCounts(counted, counted.questionGroups);
       })(),
     );
   } catch (err) {

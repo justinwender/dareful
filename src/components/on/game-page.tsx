@@ -16,6 +16,7 @@ import { SetupSheet } from "@/components/markets/setup-sheet";
 import { WhosInRow } from "@/components/markets/whos-in-row";
 import { LinkPending } from "@/components/ui/link-pending";
 import { GameHeader, StartGame, type AlreadyAsked, type MenuItem } from "@/components/on/start-game";
+import { isOwnKey } from "@/lib/ledger/markets";
 import { LiveScore } from "@/components/on/live-score";
 import { OpenCardScroll } from "@/components/on/open-card-scroll";
 import { EmptySlot } from "@/components/markets/empty-slot";
@@ -171,7 +172,7 @@ export async function GamePage({ id, g, q, add, start }: { id: string; g: string
 
   // Starting: from What's on with nothing of theirs on it, or asked to; until the final (section 5).
   if (askable && !outsider && (start || questions.length === 0)) {
-    return <StartGame game={header} menu={menuItems} sets={[]} chrome={<TopBar back title="Start a game" info="game-start" />} signing={signing} mode={{ kind: "start" }} closes={closes} existing={existing} />;
+    return <StartGame game={header} menu={menuItems} sets={[]} chrome={<TopBar back title="Start a game" info="game-start" />} signing={signing} mode={{ kind: "start" }} closes={closes} existing={existing} ownUnits={me?.ownUnits ?? []} />;
   }
   if (questions.length === 0) {
     // Over, or off, with nothing of theirs on it: nothing to show but the game.
@@ -196,7 +197,7 @@ export async function GamePage({ id, g, q, add, start }: { id: string; g: string
     // The one already on the page is offered first, from either set (3.33). A set runs each question once, so asking your own
     // where that set already runs it goes to whoever you send it to, as every question does (the games-and-the-reveal round).
     const taken = questions.some((x) => x.set.groupId === addTo.groupId && x.template.key === key && x.dare.creatorSignature !== null);
-    return <StartGame game={header} menu={menuItems.filter((m) => m.key === add)} sets={[set]} chrome={<TopBar back title="Add another" info="game-start" />} signing={signing} mode={{ kind: "add", groupId: taken ? null : addTo.groupId, groupLabel: groupLabel(addTo.facts), key }} closes={closes} existing={existing} />;
+    return <StartGame game={header} menu={menuItems.filter((m) => m.key === add)} sets={[set]} chrome={<TopBar back title="Add another" info="game-start" />} signing={signing} mode={{ kind: "add", groupId: taken ? null : addTo.groupId, groupLabel: groupLabel(addTo.facts), key }} closes={closes} existing={existing} ownUnits={me?.ownUnits ?? []} />;
   }
 
   // The cards: each question's meta line by its state (3.33), with the viewer's own value and the group's number where numbers may be shown.
@@ -245,6 +246,7 @@ export async function GamePage({ id, g, q, add, start }: { id: string; g: string
       votingOpen: state === "locked" ? votingOpen(dare, { finalSeenAt: game.finalSeenAt, expectedEndAt: game.expectedEndAt }, now) : undefined,
       live: liveNow && !liveNow.final ? `${liveLine(liveNow, game.awayShort, game.homeShort)}${liveNow.where ? ` · ${liveNow.where.charAt(0).toLowerCase()}${liveNow.where.slice(1)}` : ""}` : null,
       gameOver: game.expectedEndAt.getTime() <= now.getTime() && game.finalSeenAt === null,
+      own: isOwnKey(template.key),
     };
     const meta = cardMeta(input);
     // The line under a slider card (3.33): the two 20px stamps, a 6px track on the question's field with a tick at the middle, and once you're in a dot at your value and a tick at the group's number.
@@ -305,7 +307,7 @@ export async function GamePage({ id, g, q, add, start }: { id: string; g: string
               ) : null}
             </Link>
             {/* The open card is the question's own screen from under its band down, with its sheet the page's one sheet (3.33). */}
-            {isOpen ? <MarketScreen id={c.dare.id} search={{}} embedded pageShares={pageShares} /> : null}
+            {isOpen ? <MarketScreen id={c.dare.id} search={{}} embedded pageShares={pageShares} pagePhotos={!outsider} /> : null}
           </section>
         );
       })}
@@ -415,6 +417,16 @@ export async function GamePage({ id, g, q, add, start }: { id: string; g: string
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://dareful.app";
   const whosIn = gameWhosIn({ inIds, viewerId: me.id, startedBy: firstOfOnly?.dare.creatorId ?? null });
   const toAdd = askable && !outsider ? menu.filter((m) => !mineAsked.has(m.key)) : [];
+  // A question of one's own (the final round, section 5): anyone on the page, to the set of the open card or the page's latest, until the final.
+  const ownHref = askable && !outsider && addTo ? `/m/new?game=${game.id}&g=${addTo.groupId}` : null;
+  // The game's photos in one place (the final round, section 5): every memory on its questions, before and after it
+  // settles, and one way to add one, going to the earliest question this person is in (the server admits a photo only
+  // from someone in its question); the open card draws none of its own.
+  const runningFrames = await frameOnMarkets(outsider ? [] : ids);
+  const runningPhotos = ids.flatMap((d) => (runningFrames.get(d) ?? []).filter((m) => m.role === "memory")).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime()).map((m) => ({ id: m.id, author: { name: m.author.displayName, hue: hueFor(m.author.id) }, removable: m.author.id === me.id }));
+  const runningTarget = outsider ? null : nightPhotoTarget(questions, positionsByQuestion, me.id);
+  const canAddRunning = runningTarget !== null && storageConfigured();
+  const tonight = fromThatNight(now, now, clock.zone);
   const more = (
     <SetupSheet>
       {questions.map(({ dare, template }) => (
@@ -427,6 +439,7 @@ export async function GamePage({ id, g, q, add, start }: { id: string; g: string
   );
 
   return (
+    <PhotoAdding dareId={runningTarget?.dare.id ?? ids[0] ?? ""} night={tonight} canAdd={canAddRunning} capture={false} viewer={{ name: me.displayName, hue: hueFor(me.id) }}>
     <Screen>
       <TopBar back right={more} info="game" />
       <div className="flex flex-col gap-7 py-2">
@@ -441,7 +454,7 @@ export async function GamePage({ id, g, q, add, start }: { id: string; g: string
           <SectionLabel>Questions</SectionLabel>
           {cardsList}
         </section>
-        {toAdd.length > 0 ? (
+        {toAdd.length > 0 || ownHref ? (
           <section className="flex flex-col gap-[10px]" data-add-another="">
             <SectionLabel>Add another</SectionLabel>
             <div className="flex flex-col gap-2">
@@ -458,11 +471,28 @@ export async function GamePage({ id, g, q, add, start }: { id: string; g: string
                   <span className="link-tertiary">Add</span>
                 </Link>
               ))}
+              {ownHref ? (
+                <Link prefetch={false} href={ownHref} data-own-question="" className="relative grid h-16 grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-3 rounded-card border-[1.5px] border-dashed border-line-strong px-3">
+                  <LinkPending />
+                  <span aria-hidden="true" className="flex h-10 w-10 items-center justify-center rounded-button border-[1.5px] border-dashed border-line-strong text-ink-2">
+                    +
+                  </span>
+                  <span className="flex min-w-0 flex-col">
+                    <span className="text-body-strong text-ink">Your own question</span>
+                    <span className="text-caption text-ink-3">Settled by the people in it</span>
+                  </span>
+                  <span className="link-tertiary">Add</span>
+                </Link>
+              ) : null}
             </div>
           </section>
         ) : null}
+        {/* The game's photos, last on the page as on a market (3.8), in one place for the whole game (the final round, section 5). */}
+        {runningPhotos.length > 0 ? <MediaFrame items={runningPhotos} height={200} inset add={canAddRunning ? { night: tonight } : null} stickers={storageConfigured()} /> : canAddRunning ? <EmptySlot /> : null}
+        {canAddRunning ? <PhotoProblem /> : null}
       </div>
     </Screen>
+    </PhotoAdding>
   );
 }
 

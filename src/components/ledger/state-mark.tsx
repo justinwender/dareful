@@ -25,9 +25,9 @@ export type MarkState = MarketMark | ObligationMark | TapMark;
 const LABEL: Record<MarkState, string> = {
   open: "Open",
   in: "You’re in",
-  locked: "Locked",
+  locked: "Closed",
   voting: "In voting",
-  deadlocked: "Deadlocked",
+  deadlocked: "Stuck",
   resolved: "Resolved",
   voided: "Voided",
   expired: "Expired",

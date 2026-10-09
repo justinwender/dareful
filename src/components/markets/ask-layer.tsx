@@ -65,7 +65,7 @@ export function AskLayer({ children }: { children: ReactNode }) {
             data-ask-layer={phase}
             data-fixed="top"
             onAnimationEnd={() => phase === "rising" && setPhase("up")}
-            className={`fixed inset-0 z-40 flex flex-col overflow-y-auto overscroll-contain bg-ground ${phase === "rising" ? "motion-rise" : phase === "closing" ? "motion-sink" : ""}`}
+            className={`fixed inset-0 z-40 flex flex-col overflow-x-hidden overflow-y-auto overscroll-contain bg-ground ${phase === "rising" ? "motion-rise" : phase === "closing" ? "motion-sink" : ""}`}
           >
             {/* The band behind the status bar, inside the layer as a sticky strip rather than anything fixed (9.3). */}
             <div aria-hidden="true" className="grain sticky top-0 z-20 h-[env(safe-area-inset-top)] shrink-0" />

@@ -52,21 +52,24 @@ test("an entry or a change is refused once the question's own time has passed, l
   await enter(ana, 7000n);
   await timePasses(d.id);
   assert.equal(markets.stateOf((await markets.marketById(d.id))!), "open", "the tick has not locked it: one person in");
-  assert.deepEqual(await refused(() => enter(ana, 9000n)), ["wrong_state", "Numbers are locked."], "the asker cannot change theirs after the close");
-  assert.deepEqual(await refused(() => enter(ben, 3000n)), ["wrong_state", "Numbers are locked."], "and nobody gets in after it, whether or not the lock has been sent");
+  assert.deepEqual(await refused(() => enter(ana, 9000n)), ["wrong_state", "It’s closed."], "the asker cannot change theirs after the close");
+  assert.deepEqual(await refused(() => enter(ben, 3000n)), ["wrong_state", "It’s closed."], "and nobody gets in after it, whether or not the lock has been sent");
   const rows = await markets.positionsOf(d.id);
   assert.deepEqual(rows.map((p) => [p.userId, p.value]), [[ana.user.id, 7000n]], "nothing moved and nothing was added");
 });
 
 test("someone from the link is refused after the close like anyone: no new ghost, and a ghost already in cannot change", async () => {
-  const { d, enter, ghost } = await question();
-  await enter(ana, 7000n);
+  const { d, ghost } = await question();
+  // One person in, as above: with two in and its time past, production's scheduler (it shares this database) may close
+  // it between two lines here, and a refusal for that reason would pass this test with the cutoff broken (the final
+  // round's audit saw exactly that).
   const gabe = await ghost("Gabe", [], 9000n);
   await timePasses(d.id);
-  assert.deepEqual(await refused(() => ghost("Gabe", [gabe.browserToken as string], 2000n)), ["wrong_state", "Numbers are locked."], "the same browser cannot change its number after the close");
-  assert.deepEqual(await refused(() => ghost("Late", [], 5000n)), ["wrong_state", "Numbers are locked."], "and nobody new gets in");
+  assert.equal(markets.stateOf((await markets.marketById(d.id))!), "open", "not closed: one person in");
+  assert.deepEqual(await refused(() => ghost("Gabe", [gabe.browserToken as string], 2000n)), ["wrong_state", "It’s closed."], "the same browser cannot change its number after the close");
+  assert.deepEqual(await refused(() => ghost("Late", [], 5000n)), ["wrong_state", "It’s closed."], "and nobody new gets in");
   const rows = await markets.positionsOf(d.id);
-  assert.deepEqual(rows.map((p) => p.value), [7000n, 9000n], "the two numbers already in, untouched");
+  assert.deepEqual(rows.map((p) => p.value), [9000n], "the number already in, untouched");
   const ghosts = await db.select({ id: schema.participantClaims.id }).from(schema.participantClaims).where(eq(schema.participantClaims.createdBy, ana.user.id));
   assert.equal(ghosts.some((c) => c.id !== gabe.claimId), false, "no ghost was made for the late name");
 });

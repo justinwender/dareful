@@ -74,8 +74,8 @@ test("netting reads only edges in a set's own group: a question's own group neve
   assert.equal(inItsSetsGroup(questionGroupOnchainId(set), set), false);
 });
 
-test("/stats counts a question's own group as a question's, never as a set (section 0)", () => {
-  const own = questionGroupOnchainId("q-1");
+test("/stats counts a question's own group as a question's, never as a set (section 0), from what the indexer answered for real use (the final round, section 0)", () => {
+  const own = questionGroupOnchainId("q-1").toLowerCase();
   const tally = onchainTally(
     {
       Obligation: [{ id: "o1" }, { id: "o2" }],
@@ -83,10 +83,13 @@ test("/stats counts a question's own group as a question's, never as a set (sect
         { id: "q-1", groupId: own.toUpperCase().replace("0X", "0x") },
         { id: "q-2", groupId: "0xset" },
       ],
-      Member: [{ ledger: "0xA" }, { ledger: "0xa" }, { ledger: "0xb" }],
-      Group: [{ id: "0xset" }, { id: own }],
+      Member: [
+        { id: "0xset-0xA", ledger: "0xA" },
+        { id: "0xSET-0xa", ledger: "0xa" },
+        { id: `${own}-0xb`, ledger: "0xb" },
+      ],
     },
-    questionGroupOnchainId,
+    new Set([own]),
   );
   assert.deepEqual(tally, { obligations: 2, questions: 2, people: 2, sets: 1, questionGroups: 1 });
 });

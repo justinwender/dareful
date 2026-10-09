@@ -92,7 +92,7 @@ function marketVoting(kind: "binary" | "numeric" | "categorical"): InfoSheet {
         say,
         dissent,
         e("Change, on your line", "Reopens your vote while it’s undecided."),
-        e("Add what you saw", "Your case for the tiebreaker in a line, with a photo or a screenshot if you like.", { qualifier: "in a deadlock, once you’ve voted" }),
+        e("Add what you saw", "Your case for the tiebreaker in a line, with a photo or a screenshot if you like.", { qualifier: "when it’s stuck, once you’ve voted" }),
       ],
     },
   };
@@ -107,8 +107,9 @@ function marketRuling(): InfoSheet {
       "Rules and timing": [
         e("Ruled when it was asked", "The ruling was sealed then, and the terms everyone signed carry its seal.", { qualifier: "when facts settle it" }),
         e("Everyone agreeing", "Settles it at once; a tap, binding nobody who hasn’t."),
-        e("A day of quiet", "With nobody seeing it differently a day after it shows, the ruling stands."),
+        e("A day of quiet", "With nobody seeing it differently a day after it shows, the ruling stands.", { qualifier: "when the terms say so" }),
         e("The tiebreaker", "Hears the ruling and what anyone says it got wrong, and its ruling settles it."),
+        e("Nobody agreeing in a day", "The tiebreaker hears it, as the terms said.", { qualifier: "when they have no day of quiet" }),
       ],
       "Everything else": [
         e("Agree", "Says the ruling is right; once everyone in it has, it’s settled."),
@@ -156,7 +157,8 @@ export const INFO_SHEETS: Record<string, InfoSheet> = {
       "Everything else": [
         e("Ask something", "Opens the question step; once sent, your question shows here under Running."),
         e("The six boxes", "Type or paste a code a friend read you; Join opens their question."),
-        e("Got a link?", "Opens the code screen, where Paste a link reads one off your clipboard."),
+        e("Ideas", "Questions ready to ask, each with its own mark."),
+        e("Got a link instead?", "Opens the code screen, where you paste a friend’s link."),
         e("A game row", "Opens the game to ask your friends something about it."),
         e("A question to start from", "Opens the question step with that question already typed.", { qualifier: "when no games are listed" }),
       ],
@@ -196,7 +198,7 @@ export const INFO_SHEETS: Record<string, InfoSheet> = {
         e("Numbers", "Draws from five resolved number questions, and never shows one question’s distance."),
         e("Questions you asked", "A void by the group or the tiebreaker counts against the asker; an expiry against nobody."),
         e("What this never is", "No score, grade or rank, and nobody else sees any of it."),
-        e("Your PIN", "Five wrong tries in a row lock it for an hour, and you hear whose phone it was on."),
+        e("Your PIN", "Five wrong tries in a row pause it for an hour, and you hear whose phone it was on."),
       ],
       "Everything else": [
         e("Your units and marks", "Read-only lists: units from questions and covers with their yep, marks from questions."),
@@ -396,7 +398,11 @@ export const INFO_SHEETS: Record<string, InfoSheet> = {
         e("Wrong codes", "Twenty an hour, then it asks you to wait or to get the link."),
         e("What joining does", "A code or a link adds you to the people it was asked of, before you enter anything."),
       ],
-      "Everything else": [e("Paste a link", "Reads a market link off your clipboard and opens it; a field takes one if it can’t."), e("Join", "In the sheet at the bottom; it waits for all six characters.")],
+      "Everything else": [
+        e("Paste a link", "Reads a link to a question or a game off your clipboard and opens it."),
+        e("The link field", "Paste one yourself and tap Go, where the clipboard can’t be read."),
+        e("Join", "In the sheet at the bottom; it waits for all six characters."),
+      ],
     },
   },
   "claim-landing": {

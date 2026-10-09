@@ -124,33 +124,34 @@ export async function dareByOnchainId(dareId: string): Promise<EnvioDare | null>
 }
 
 const Ids = z.array(z.object({ id: z.string() }));
-const OnchainCounts = z.object({ Obligation: Ids, Dare: z.array(z.object({ id: z.string(), groupId: z.string() })), Member: z.array(z.object({ id: z.string(), ledger: z.string() })), Group: Ids });
+const OnchainCounts = z.object({ Obligation: Ids, Dare: z.array(z.object({ id: z.string(), groupId: z.string() })), Member: z.array(z.object({ id: z.string(), ledger: z.string() })) });
 /** How many rows of each kind one read asks for; a count that reaches it is said as "or more". */
 export const ONCHAIN_COUNT_CAP = 1000;
 
 /**
- * What the contracts hold, counted from the indexer (the field round, 3.1): obligations minted, questions closed
- * onto the chain, the people registered and the groups. Every account is in these, test accounts included: the
- * chain has no notion of an excluded account. A question created in a group of its own (the games-and-the-reveal
- * round, 2026-10-07) is a group too, and its people are members of it, so groups are counted as sets and as
- * questions' own, and people once each however many groups they are in.
+ * What the contracts hold from real use, counted from the indexer (the field round, 3.1; the final round, section 0):
+ * the questions closed onto the chain with someone counted in them, the obligations with a counted person on either
+ * side, the counted people registered and the sets they are registered in. The test runs share the contracts, and the
+ * chain has no notion of an excluded account, so the indexer is asked only for what Postgres says is real use: the
+ * questions by their onchain ids, and the people by their ledger addresses. A question created in a group of its own
+ * (the games-and-the-reveal round) is a group too, so groups are counted as sets and as questions' own.
  */
-export async function onchainCounts(questionGroupOf: (dareId: string) => string): Promise<{ obligations: number; questions: number; people: number; sets: number; questionGroups: number }> {
+export async function onchainCounts(counted: { dareIds: string[]; ledgers: string[] }, questionGroups: ReadonlySet<string>): Promise<{ obligations: number; questions: number; people: number; sets: number; questionGroups: number }> {
   const data = await query(
-    `query OnchainCounts($n: Int!) {
-      Obligation(limit: $n) { id }
-      Dare(limit: $n) { id groupId }
-      Member(limit: $n) { id ledger }
-      Group(limit: $n) { id }
+    `query OnchainCounts($dares: [String!]!, $ledgers: [String!]!, $n: Int!) {
+      Dare(where: {id: {_in: $dares}}, limit: $n) { id groupId }
+      Member(where: {ledger: {_in: $ledgers}}, limit: $n) { id ledger }
+      Obligation(where: {_or: [{debtor: {_in: $ledgers}}, {creditor: {_in: $ledgers}}]}, limit: $n) { id }
     }`,
-    { n: ONCHAIN_COUNT_CAP },
+    { dares: counted.dareIds.map((d) => d.toLowerCase()), ledgers: counted.ledgers.map((l) => l.toLowerCase()), n: ONCHAIN_COUNT_CAP },
     OnchainCounts,
   );
-  return onchainTally(data, questionGroupOf);
+  return onchainTally(data, questionGroups);
 }
 
-/** The counts from what the indexer answered: a question's own group is one its own question was created in. Pure. */
-export function onchainTally(data: { Obligation: Array<{ id: string }>; Dare: Array<{ id: string; groupId: string }>; Member: Array<{ ledger: string }>; Group: Array<{ id: string }> }, questionGroupOf: (dareId: string) => string): { obligations: number; questions: number; people: number; sets: number; questionGroups: number } {
-  const own = new Set(data.Dare.filter((d) => d.groupId.toLowerCase() === questionGroupOf(d.id).toLowerCase()).map((d) => d.groupId.toLowerCase()));
-  return { obligations: data.Obligation.length, questions: data.Dare.length, people: new Set(data.Member.map((m) => m.ledger.toLowerCase())).size, sets: data.Group.length - own.size, questionGroups: own.size };
+/** The counts from what the indexer answered for real use: a member's group is the part of its id before the address; a question's own group is one of `questionGroups`. Pure. */
+export function onchainTally(data: { Obligation: Array<{ id: string }>; Dare: Array<{ id: string; groupId: string }>; Member: Array<{ id: string; ledger: string }> }, questionGroups: ReadonlySet<string>): { obligations: number; questions: number; people: number; sets: number; questionGroups: number } {
+  const own = new Set(data.Dare.map((d) => d.groupId.toLowerCase()).filter((g) => questionGroups.has(g)));
+  const groups = new Set(data.Member.map((m) => (m.id.split("-")[0] ?? "").toLowerCase()).filter((g) => g.length > 0));
+  return { obligations: data.Obligation.length, questions: data.Dare.length, people: new Set(data.Member.map((m) => m.ledger.toLowerCase())).size, sets: [...groups].filter((g) => !questionGroups.has(g)).length, questionGroups: own.size };
 }

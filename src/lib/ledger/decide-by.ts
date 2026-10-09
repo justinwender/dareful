@@ -111,11 +111,30 @@ export function clampProposal(raw: string | null | undefined, now: Date, zone: s
   return date;
 }
 
-/** Where the chips start: the write-up's date (today's is Tonight), else This week. */
+/** The span whose day a date is (Tonight today, This week a week on, This month thirty days on), or null. Pure. */
+export function spanOn(date: string, now: Date, zone: string): "tonight" | "week" | "month" | null {
+  for (const s of DECIDE_BY_SPANS) if (decideByDate({ key: s.key }, now, zone) === date) return s.key;
+  return null;
+}
+
+/**
+ * Where the chips start: the write-up's date, as the chip that already lands on that day where there is one (the final
+ * round, section 8: on October 8 the row showed Tonight picked and an "Oct 8" beside it), else as a date; This week
+ * when there is none.
+ */
 export function fromProposal(date: string | null, now: Date, zone: string): DecideBy {
   const d = clampProposal(date, now, zone);
   if (!d) return { key: "week" };
-  return d === localDate(now, zone) ? { key: "tonight" } : { key: "date", date: d };
+  const span = spanOn(d, now, zone);
+  return span ? { key: span } : { key: "date", date: d };
+}
+
+/** The date chip's words: the picked date, else the write-up's date unless a chip already names that day, else "A date". Pure. */
+export function dateChipWords(v: { decide: DecideBy; proposed: string | null; tooFar: boolean }, now: Date, zone: string): string {
+  if (v.tooFar) return "A date";
+  if (v.decide.key === "date") return shortDateWords(v.decide.date);
+  if (v.proposed && DATE.test(v.proposed) && spanOn(v.proposed, now, zone) === null) return shortDateWords(v.proposed);
+  return "A date";
 }
 
 const DEADLINE = /\b(by|before|until|till|through|on)\s+(?:the\s+)?(?:(?:mon|tues|wednes|thurs|fri|satur|sun)day,?\s+)?(january|jan|february|feb|march|mar|april|apr|may|june|jun|july|jul|august|aug|september|sept|sep|october|oct|november|nov|december|dec)\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?\b/gi;

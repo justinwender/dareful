@@ -7,13 +7,22 @@
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
-import { plainNumberScope, plainPickOneScope, plainScope, scopeMarket, scopeNumber, scopePickOne } from "@/lib/ai/markets";
+import { aboutGameLine, plainNumberScope, plainPickOneScope, plainScope, scopeMarket, scopeNumber, scopePickOne } from "@/lib/ai/markets";
+import { eq } from "drizzle-orm";
+import { db, schema } from "@/db";
 import { checkScale } from "@/lib/ledger/scale";
 import { MAX_ANSWER_LENGTH, MAX_ANSWERS, MIN_ANSWERS } from "@/lib/ledger/pick-one";
 import { outcomeWordsFrom } from "@/lib/ui/outcome-words";
 import { clampProposal, latestDate, longDateWords, pastTheLatest } from "@/lib/ledger/decide-by";
+import { drawable } from "@/lib/ui/emoji-ink";
 
-export type ScopeResult = { title: string; terms: string; ambiguous: boolean; criteria: string[]; /** The date the write-up proposes deciding it by, YYYY-MM-DD in the asker's zone; null when it proposed none, or one past the furthest a question can run (`clampProposal`). */ decideBy: string | null; /** A question that cannot be known before the furthest a question can run (the second-pass round): when it could be known, that furthest date, and one nearer version that can be decided by then, or none. Never moved to fit. */ tooFar: TooFar | null; plain: boolean; number: NumberScopeResult | null; /** The outcomes in the question's own words (3.25), when the write-up gave four usable phrasings. */ outcomes: [string, string, string, string] | null };
+/** A suggested mark the app can use: one emoji the link tiles can draw, else none. Pure. */
+export function markOf(raw: string | null | undefined): string | null {
+  const m = (raw ?? "").trim();
+  return m.length > 0 && m.length <= 16 && drawable(m) ? m : null;
+}
+
+export type ScopeResult = { title: string; terms: string; ambiguous: boolean; criteria: string[]; /** The date the write-up proposes deciding it by, YYYY-MM-DD in the asker's zone; null when it proposed none, or one past the furthest a question can run (`clampProposal`). */ decideBy: string | null; /** A question that cannot be known before the furthest a question can run (the second-pass round): when it could be known, that furthest date, and one nearer version that can be decided by then, or none. Never moved to fit. */ tooFar: TooFar | null; plain: boolean; number: NumberScopeResult | null; /** The outcomes in the question's own words (3.25), when the write-up gave four usable phrasings. */ outcomes: [string, string, string, string] | null; /** The mark it suggests for a question asked without one (the final round, section 7): one emoji the tiles can draw, or none. */ mark: string | null };
 export type TooFar = { knownBy: string; latest: string; nearer: { title: string; terms: string; decideBy: string } | null };
 
 /**
@@ -56,8 +65,10 @@ export const WriteUpInput = z.object({
   answers: z.array(z.object({ question: z.string().trim().min(3).max(160), yes: z.boolean(), answer: z.string().trim().min(1).max(40).optional() })).max(3).optional(),
   kind: z.enum(["binary", "numeric", "categorical"]).optional(),
   choices: z.array(z.string().trim().min(1).max(MAX_ANSWER_LENGTH)).max(MAX_ANSWERS).optional(),
+  /** A question asked on a game page (the final round, section 5): the game it is about. */
+  gameId: z.string().uuid().optional(),
 });
-export type WriteUpRequest = { line: string; criterion?: string; answers?: Array<{ question: string; yes: boolean }>; kind?: "binary" | "numeric" | "categorical"; choices?: string[] };
+export type WriteUpRequest = { line: string; criterion?: string; answers?: Array<{ question: string; yes: boolean }>; kind?: "binary" | "numeric" | "categorical"; choices?: string[]; gameId?: string };
 
 /**
  * `zone` is the asker's, so the date the model proposes is a date in their calendar; `onReset` says a streamed
@@ -72,41 +83,44 @@ export async function writeUp(raw: WriteUpRequest, userId: string, zone: string,
   const answered = z.array(z.object({ question: z.string().trim().min(3).max(160), yes: z.boolean(), answer: z.string().trim().min(1).max(40).optional() })).max(3).safeParse(raw.answers ?? []);
   const answers = answered.success && answered.data.length > 0 ? answered.data : undefined;
   const latest = { date: latestDate(now, zone), words: longDateWords(latestDate(now, zone)) };
+  // A question asked on a game page is about that game alone (the final round, section 5).
+  const game = raw.gameId && z.string().uuid().safeParse(raw.gameId).success ? ((await db.select({ name: schema.sportsGames.name, startsAt: schema.sportsGames.startsAt }).from(schema.sportsGames).where(eq(schema.sportsGames.id, raw.gameId)).limit(1))[0] ?? null) : null;
+  const about = game ? aboutGameLine({ name: game.name, startsAt: game.startsAt, started: game.startsAt.getTime() <= now.getTime() }, zone) : undefined;
   if (raw.kind === "categorical") {
     // A pick-one question (3.29): the write-up is given the answers and leaves them exactly as the asker wrote them.
     const choices = z.array(z.string().trim().min(1).max(MAX_ANSWER_LENGTH)).min(MIN_ANSWERS).max(MAX_ANSWERS).safeParse(raw.choices ?? []);
     if (!choices.success) return { error: `Two to ${MAX_ANSWERS} answers, a few words each.` };
     try {
-      const s = await scopePickOne({ line: line.data, answers: choices.data, edges: answers, now, zone, latest, onDelta, onReset });
-      return { title: s.title, terms: s.terms, ambiguous: false, criteria: [], ...datesOf(s, now, zone), plain: false, number: null, outcomes: null };
+      const s = await scopePickOne({ line: line.data, answers: choices.data, edges: answers, now, zone, latest, about, onDelta, onReset });
+      return { title: s.title, terms: s.terms, ambiguous: false, criteria: [], ...datesOf(s, now, zone), plain: false, number: null, outcomes: null, mark: markOf(s.mark) };
     } catch (err) {
       console.error("scoping a pick-one question failed; using the line as typed", err);
       const p = plainPickOneScope(line.data);
-      return { ...p, ambiguous: false, criteria: [], decideBy: null, tooFar: null, plain: true, number: null, outcomes: null };
+      return { ...p, ambiguous: false, criteria: [], decideBy: null, tooFar: null, plain: true, number: null, outcomes: null, mark: null };
     }
   }
   if (raw.kind === "numeric") {
     try {
-      const s = await scopeNumber({ line: line.data, answers, now, zone, latest, onDelta, onReset });
+      const s = await scopeNumber({ line: line.data, answers, now, zone, latest, about, onDelta, onReset });
       const unit = { singular: s.unit.singular.toLowerCase(), plural: s.unit.plural.toLowerCase() };
       // The model's scale is used only when it passes the check; otherwise the asker sets one (src/lib/ledger/scale.ts).
       const checked = checkScale({ low: s.low, high: s.high, typical: s.typical });
       if (!checked.ok) console.warn("number scale proposal refused", { why: checked.why, low: s.low, high: s.high, typical: s.typical });
       const range = checked.ok ? checked.range.toString() : null;
       const typical = Number.isInteger(s.typical) && s.typical >= 0 ? String(s.typical) : "0";
-      return { title: s.title, terms: s.terms, ambiguous: false, criteria: [], ...datesOf(s, now, zone), plain: false, number: { unit, model: { range, typical, token: scaleToken(userId, range, typical) } }, outcomes: null };
+      return { title: s.title, terms: s.terms, ambiguous: false, criteria: [], ...datesOf(s, now, zone), plain: false, number: { unit, model: { range, typical, token: scaleToken(userId, range, typical) } }, outcomes: null, mark: markOf(s.mark) };
     } catch (err) {
       console.error("scoping a number question failed; using the line as typed", err);
       const p = plainNumberScope(line.data);
-      return { ...p, ambiguous: false, criteria: [], decideBy: null, tooFar: null, plain: true, number: { unit: { singular: "", plural: "" }, model: null }, outcomes: null };
+      return { ...p, ambiguous: false, criteria: [], decideBy: null, tooFar: null, plain: true, number: { unit: { singular: "", plural: "" }, model: null }, outcomes: null, mark: null };
     }
   }
   try {
-    const s = await scopeMarket({ line: line.data, criterion: criterion?.success ? criterion.data : undefined, answers, now, zone, latest, onDelta, onReset });
-    return { title: s.title, terms: s.terms, ambiguous: s.ambiguous && s.criteria.length > 0, criteria: s.criteria, ...datesOf(s, now, zone), plain: false, number: null, outcomes: outcomeWordsFrom(s.outcomes) };
+    const s = await scopeMarket({ line: line.data, criterion: criterion?.success ? criterion.data : undefined, answers, now, zone, latest, about, onDelta, onReset });
+    return { title: s.title, terms: s.terms, ambiguous: s.ambiguous && s.criteria.length > 0, criteria: s.criteria, ...datesOf(s, now, zone), plain: false, number: null, outcomes: outcomeWordsFrom(s.outcomes), mark: markOf(s.mark) };
   } catch (err) {
     console.error("scoping failed; using the line as typed", err);
     const p = plainScope(line.data);
-    return { ...p, ambiguous: false, criteria: [], decideBy: null, tooFar: null, plain: true, number: null, outcomes: null };
+    return { ...p, ambiguous: false, criteria: [], decideBy: null, tooFar: null, plain: true, number: null, outcomes: null, mark: null };
   }
 }

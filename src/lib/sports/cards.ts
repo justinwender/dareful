@@ -41,6 +41,8 @@ export type CardInput = {
   live?: string | null;
   /** The game is past its expected end with no final from the feed (3.33: "Waiting on the final score"). */
   gameOver?: boolean;
+  /** A question someone wrote on the game page (the final round, section 5): its people settle it, never the feed. */
+  own?: boolean;
 };
 
 export type CardMeta = { mark: MarketMark; text: string };
@@ -63,6 +65,8 @@ export function cardMeta(input: CardInput): CardMeta {
     const waiting = input.key === "first_drive" ? "Waiting on the play-by-play" : "Waiting on the final score";
     // Calls are in (3.33 as the fifteenth session drew it): from the first pitch the live score, and once the game is over and the feed hasn't said, the wait.
     if (input.votingOpen === false) return { mark: "locked", text: input.gameOver ? waiting : (input.live ?? CALLS_ARE_IN) };
+    // A question of one's own is its people's to call once voting opens: nothing from the feed is coming.
+    if (input.own) return { mark: "voting", text: input.votesCast > 0 && input.votingEnds ? `Voting ends ${input.votingEnds}` : "Say what happened" };
     if (input.votesCast === 0 && !input.proposed) return { mark: "voting", text: waiting };
     // In voting: the mark and the clock (3.33), never a count beside it.
     return { mark: "voting", text: input.votingEnds ? `Voting ends ${input.votingEnds}` : input.key === "first_drive" ? "The play-by-play is in" : "The final score is in" };

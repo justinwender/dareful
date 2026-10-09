@@ -105,7 +105,7 @@ import {
   VOID_OUTCOME,
   votesOf,
   pastItsClose,
-} from "@/lib/ledger/markets";
+ isOwnKey } from "@/lib/ledger/markets";
 import {
   clockOf,
   closesLabel,
@@ -149,7 +149,7 @@ const wordFor =
  * the back control and the screen's chrome are the page's, the details are a row that opens them, and the card wears
  * the question's ink while the page stays the neutral room.
  */
-export async function MarketScreen({ id, search, embedded = false, pageShares = false }: { id: string; search: { side?: string; pick?: string }; embedded?: boolean; /** Embedded under a game page whose own row shares the page (the touch-ups round): this card draws no share of its own. */ pageShares?: boolean }) {
+export async function MarketScreen({ id, search, embedded = false, pageShares = false, pagePhotos = false }: { id: string; search: { side?: string; pick?: string }; embedded?: boolean; /** Embedded under a game page whose own row shares the page (the touch-ups round): this card draws no share of its own. */ pageShares?: boolean; /** Embedded under a game page that holds the game's photos in one place (the final round, section 5): this card draws none of its own. */ pagePhotos?: boolean }) {
   const clock = await viewerClock();
   const me = await currentUser();
   // Arriving from a link with no account (docs/design.md 3.17; PLANNING.md section 4): the market's own screen, and a way in without one.
@@ -384,7 +384,9 @@ export async function MarketScreen({ id, search, embedded = false, pageShares = 
   const memoryView = ended && daysBetween(endedAt, now, clock.zone) >= 1;
   const night = fromThatNight(endedAt, now, clock.zone);
   // Someone who is in adds a memory while it is open (the camera, 3.39) and once it has ended (the library, 3.8); nobody adds one while it is being called.
-  const canAdd = (ended || state === "open") && mine !== null && storageConfigured();
+  // On a game page the photos are the page's, one set for the whole game (the final round, section 5), so the open card adds none and shows none.
+  const photosHere = !(embedded && pagePhotos);
+  const canAdd = photosHere && (ended || state === "open") && mine !== null && storageConfigured();
   // The picture of where everyone landed, for someone who is in. Weights when numbers may be seen (an open
   // question once you have picked, or any question once locked); otherwise who is in and nothing about where.
   const entries = positions.map((p) => ({
@@ -675,10 +677,18 @@ export async function MarketScreen({ id, search, embedded = false, pageShares = 
       </dd>
       {fromTemplate ? (
         // Once it is running it looks like any other market, with one extra row (3.33): no badge, no link to other groups.
-        <>
-          <dt className="text-label text-ink-3">Question from</dt>
-          <dd className="text-body text-ink">What’s on{game ? `, ${game.name}` : ""}</dd>
-        </>
+        // A question someone wrote on the game page (the final round, section 5) names its game, and nothing as its source.
+        isOwnKey(fromTemplate.template.key) ? (
+          <>
+            <dt className="text-label text-ink-3">Game</dt>
+            <dd className="text-body text-ink">{game?.name ?? ""}</dd>
+          </>
+        ) : (
+          <>
+            <dt className="text-label text-ink-3">Question from</dt>
+            <dd className="text-body text-ink">What’s on{game ? `, ${game.name}` : ""}</dd>
+          </>
+        )
       ) : null}
       <dt className="text-label text-ink-3">Stakes</dt>
       <dd className="text-body text-ink">
@@ -1019,7 +1029,7 @@ export async function MarketScreen({ id, search, embedded = false, pageShares = 
   const frameItems = media.frame.map((m) => ({ id: m.id, author: { name: m.author.displayName, hue: hueFor(m.author.id) }, removable: m.role === "memory" && m.author.id === me.id }));
   // The frame, or the empty slot for someone who can add, or nothing (3.8): never an empty frame.
   // "Make a sticker" in the full-screen photo (3.28), for any photo the viewer can see, while a cutout can be stored.
-  const frameOrSlot = (height: 200 | 260) => (frameItems.length > 0 ? <MediaFrame items={frameItems} height={height} inset add={canAdd ? { night } : null} stickers={storageConfigured()} /> : canAdd ? <EmptySlot /> : null);
+  const frameOrSlot = (height: 200 | 260) => (!photosHere ? null : frameItems.length > 0 ? <MediaFrame items={frameItems} height={height} inset add={canAdd ? { night } : null} stickers={storageConfigured()} /> : canAdd ? <EmptySlot /> : null);
   const endedCaption =
     state === "voided"
       ? d.resolvedBy === "removed"
@@ -1084,7 +1094,7 @@ export async function MarketScreen({ id, search, embedded = false, pageShares = 
   // The memories alone: while it is being called, the claim's clip is on the claim card, never in a frame.
   const openFrame = albumItems.length > 0 ? <MediaFrame items={albumItems} height={200} inset add={canAdd ? { night } : null} stickers={storageConfigured()} /> : canAdd ? <EmptySlot /> : null;
   const openPhotos =
-    (state === "open" || state === "locked") && openFrame ? (
+    photosHere && (state === "open" || state === "locked") && openFrame ? (
       <section className="flex flex-col gap-2" data-open-photos="">
         {openFrame}
       </section>

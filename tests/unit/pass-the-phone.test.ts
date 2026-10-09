@@ -36,7 +36,7 @@ test("the fifth wrong try in a row locks the PIN for an hour and counts a lockou
 
 test("the lockout notice names whose phone and never the PIN; the entered-from notice carries the question and whose phone, and neither carries a number or an amount", () => {
   const locked = pinLockedNotice({ hostName: "Sam", appUrl: "https://dareful.app" });
-  assert.equal(locked.title, "Your PIN is locked for an hour");
+  assert.equal(locked.title, "Your PIN is paused for an hour");
   assert.ok(locked.body.startsWith("Five wrong tries on Sam’s phone.") && locked.url === "https://dareful.app/you");
   const entered = enteredFromNotice({ hostName: "Sam", title: "Does Theo clear the fence?", marketId: "m1", appUrl: "https://dareful.app" });
   assert.deepEqual([entered.title, entered.body, entered.url], ["Does Theo clear the fence?", "You entered this from Sam’s phone.", "https://dareful.app/m/m1"]);

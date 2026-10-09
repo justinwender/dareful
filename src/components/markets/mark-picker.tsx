@@ -231,7 +231,7 @@ export function MarkPicker({ open, onClose, value, onPick, hue, preview = true, 
         placeholder="Search"
         aria-label="Search marks"
         autoComplete="off"
-        className="h-11 w-full rounded-button bg-field px-4 text-[15px] leading-[20px] text-ink placeholder:text-ink-3"
+        className="h-11 w-full rounded-button bg-field px-4 text-body text-ink placeholder:text-ink-3"
       />
       {!query.trim() && (canPaste || mine.length > 0) ? (
         // Reserved for stickers (3.29), now in use (3.28): the paste cell first, then this person's stickers, newest first.
@@ -275,11 +275,13 @@ export function MarkPicker({ open, onClose, value, onPick, hue, preview = true, 
         </div>
       ) : null}
       {!query.trim() ? (
-        // The row of chips stays at the top of the sheet and jumps to its category (the touch-ups round).
-        <div role="tablist" aria-label="Categories" className="sticky -top-3 z-10 -mx-4 flex gap-2 overflow-x-auto bg-surface px-4 py-2 [scrollbar-width:none]" data-category-jump="">
+        // The row of categories stays at the top of the sheet while it scrolls, whole across it, an icon for each, and
+        // jumps to its category (the touch-ups round; the final round, section 7). It never shrinks: a row that scrolled
+        // sideways in the sheet's column could be squeezed to a sliver under the recents.
+        <div role="tablist" aria-label="Categories" className="sticky -top-3 z-10 -mx-4 flex shrink-0 items-center justify-between bg-surface px-4 py-2" data-category-jump="">
           {CATEGORIES.map((c) => (
-            <button key={c.group} type="button" role="tab" aria-selected={group === c.group} onClick={() => jumpTo(c.group)} data-press={group === c.group ? "fill" : "line"} className={cn("inline-flex h-9 shrink-0 items-center rounded-pill border px-3 chip-text", group === c.group ? "border-ink-3 bg-surface-2 text-ink press-fill" : "border-line-strong text-ink-2 press-line")}>
-              {c.label}
+            <button key={c.group} type="button" role="tab" aria-selected={group === c.group} aria-label={c.label} title={c.label} onClick={() => jumpTo(c.group)} data-press={group === c.group ? "fill" : "line"} className={cn("inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-pill border text-[20px] leading-none", group === c.group ? "border-ink-3 bg-surface-2 press-fill" : "border-transparent press-line")}>
+              <span aria-hidden="true">{c.icon}</span>
             </button>
           ))}
         </div>

@@ -35,12 +35,26 @@ test("a character no code contains is named, not just refused", () => {
   assert.ok("problem" in r && /no zero in any code/.test(r.problem));
 });
 
-test("only this app's own market links are read from a paste", () => {
-  assert.deepEqual(readPastedLink("https://dareful.app/m/F3B9E7C5-5252-45c4-8fd8-189dbc7570ea"), { marketId: "f3b9e7c5-5252-45c4-8fd8-189dbc7570ea" });
+test("every link the app makes is read from a paste, with or without https, a query or the words around it, and nothing else (the final round, section 4)", () => {
+  const q = "f3b9e7c5-5252-45c4-8fd8-189dbc7570ea";
+  const game = "c9c31705-947c-4cbc-b380-904893d50382";
+  const set = "7c11e4e7-dd9f-4aa3-a9aa-214b8530cd9e";
+  assert.deepEqual(readPastedLink(`https://dareful.app/m/${q.toUpperCase()}`), { kind: "market", marketId: q });
+  assert.deepEqual(readPastedLink(`dareful.app/m/${q}?via=push&n=3`), { kind: "market", marketId: q }, "no https, a query");
+  assert.deepEqual(readPastedLink(`Does the kettle boil first? dareful.app/m/${q}.`), { kind: "market", marketId: q }, "inside the relay's sentence, a full stop after");
+  assert.deepEqual(readPastedLink(`https://dareful.app/on/${game}`), { kind: "game", gameId: game, groupId: null, questionId: null }, "a game's page");
+  assert.deepEqual(readPastedLink(`https://dareful.app/on/${game}/${set}`), { kind: "game", gameId: game, groupId: set, questionId: null }, "a game's page for a set, as the share row sends it");
+  assert.deepEqual(readPastedLink(`dareful.app/on/${game}?g=${set}&q=${q}`), { kind: "game", gameId: game, groupId: set, questionId: q }, "with the set and the open question in the query");
+  const token = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJ0123456";
+  assert.deepEqual(readPastedLink(`https://dareful.app/c/${token}`), { kind: "claim", token }, "a claim's link");
+  assert.equal(readPastedLink(`dareful.app/c/${token}x`), null, "a claim's token is exactly its length");
   assert.equal(readPastedLink("dareful.app/join/abcDEF123_-xyz?x=1"), null, "a group is a set of people, never a place with a link of its own");
-  assert.equal(readPastedLink("dareful.app/join/f3b9e7c5-5252-45c4-8fd8-189dbc7570ea"), null, "even a well-formed id after /join/ is nothing");
+  assert.equal(readPastedLink(`dareful.app/join/${q}`), null, "even a well-formed id after /join/ is nothing");
   assert.equal(readPastedLink("https://dareful.app/m/not-a-uuid-at-all"), null);
+  assert.equal(readPastedLink(`https://dareful.app/m/${q}0`), null, "an id with more after it is not an id");
+  assert.equal(readPastedLink(`https://dareful.app/form/${q}`), null, "a path that only ends in m is not a question's");
   assert.equal(readPastedLink("https://example.com/o/123"), null);
+  assert.equal(readPastedLink(""), null);
 });
 
 test("a set of people nobody named is described by first names and you, and never called unnamed", () => {

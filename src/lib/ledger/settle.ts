@@ -24,7 +24,7 @@ import { pidOf, participantsOf } from "./participants";
 import { isProvisional, settleProvisional } from "./provisional";
 import { isMember } from "./groups";
 import { record } from "@/lib/usage";
-import { disputesOf, disputesToHear, rulingsToStand, stampOldRulings, standRuling, verdictWords } from "./rulings";
+import { disputesOf, disputesToHear, rulingsToStand, silenceIn, stampOldRulings, standRuling, verdictWords } from "./rulings";
 import { answersOf, chainLocksDue, finishChainLock, leaseChainLock, lockMarket, marketById, MarketError, mirrorSettlement, positionsOf, reconcileFromIndexer, resolveFromVotes, settlementFromReceipt, stateOf, tally, toChainOutcome, unitOf, VOID_OUTCOME, votesOf, type DareRow, markExpired, countedAtClose } from "./markets";
 
 /** If nobody presses, the scheduler hears a deadlock this long after the question was due (or locked, if later). */
@@ -163,7 +163,7 @@ export async function arbitrateMarket(dareId: string, byUserId: string | null, n
     await settleProvisional(d, positions, voided ? VOID_OUTCOME : outcome, { by: "arbitration", rulingText: ruling.ruling, rulingHash: hash });
     return { outcome: voided ? "void" : heard.word, number: voided || (heard.word !== "number" && heard.word !== "answer") ? undefined : outcome, txHash: "0x" as Hex };
   }
-  if (!d.onchainId) throw new MarketError("It isn't locked yet.", "wrong_state");
+  if (!d.onchainId) throw new MarketError("It isn’t closed yet.", "wrong_state");
   const { dares } = contracts();
   let result;
   try {
@@ -298,8 +298,9 @@ export async function toArbitrate(now: Date, mine: SQL | undefined, limit: numbe
   return db
     .select({ id: schema.dares.id })
     .from(schema.dares)
-    // An argument the app has ruled on is settled by its people's agreeing, a day of silence, or the tiebreaker a dispute sends it to (`rulingsToStand`, `disputesToHear`), never by this backstop over them (the touch-ups round).
-    .where(and(mine, eq(schema.dares.stalemate, "arbitrate"), isNotNull(schema.dares.lockedAt), isNull(schema.dares.resolvedAt), isNull(schema.dares.chainPendingAt), lt(schema.dares.lockedAt, cutoff), or(lt(schema.dares.resolvesBy, cutoff), eq(schema.dares.pace, "argument")), sql`not ${byFeed}`, sql`not (${schema.dares.pace} = 'argument' and ${schema.dares.aiOutcome} is not null)`))
+    // An argument whose signed terms let silence agree is settled by its people's agreeing, a day of silence, or the tiebreaker a dispute sends it to (`rulingsToStand`, `disputesToHear`), never by this backstop over them (the touch-ups round). One signed before that rule keeps it: nobody agreeing for a day is a stalemate, and the tiebreaker it was signed with hears it (the final round, section 8).
+    // An argument whose ruling was shown counts its day from then, as its people's Agree screen does (`backstopMoment`).
+    .where(and(mine, eq(schema.dares.stalemate, "arbitrate"), isNotNull(schema.dares.lockedAt), isNull(schema.dares.resolvedAt), isNull(schema.dares.chainPendingAt), sql`coalesce(${schema.dares.rulingRevealedAt}, ${schema.dares.lockedAt}) < ${cutoff.toISOString()}::timestamptz`, or(lt(schema.dares.resolvesBy, cutoff), eq(schema.dares.pace, "argument")), sql`not ${byFeed}`, sql`not (${schema.dares.pace} = 'argument' and ${schema.dares.aiOutcome} is not null and ${silenceIn(schema.dares.termsText)})`))
     .orderBy(asc(schema.dares.lockedAt))
     .limit(limit);
 }
@@ -315,7 +316,7 @@ export type BackstopFlavour = WarningFlavour;
  * three days after; the play-by-play three days after the first drive was read, or three days after the game
  * was complete when it could not say. Null while nothing is on its way. Pure, so the moments have tests.
  */
-export function backstopMoment(input: { stalemate: string; pace: string; lockedAt: Date | null; resolvesBy: Date | null; template: { decidedByScore: boolean; decidedByFeed: boolean; key: string } | null; game: { finalSeenAt: Date | null; check: FinalScore | null; firstDriveSeenAt: Date | null; firstDriveResult: string | null } | null; final: FinalScore | null }): { flavour: WarningFlavour; actsAt: Date } | null {
+export function backstopMoment(input: { stalemate: string; pace: string; lockedAt: Date | null; resolvesBy: Date | null; /** When an argument's ruling was shown: its day counts from then (the final round). */ rulingRevealedAt?: Date | null; template: { decidedByScore: boolean; decidedByFeed: boolean; key: string } | null; game: { finalSeenAt: Date | null; check: FinalScore | null; firstDriveSeenAt: Date | null; firstDriveResult: string | null } | null; final: FinalScore | null }): { flavour: WarningFlavour; actsAt: Date } | null {
   if (!input.lockedAt) return null;
   if (input.template?.decidedByFeed && input.game) {
     if (!input.game.finalSeenAt) return null;
@@ -327,7 +328,8 @@ export function backstopMoment(input: { stalemate: string; pace: string; lockedA
     return { flavour: "score", actsAt: new Date(input.game.finalSeenAt.getTime() + ALONE_AFTER_MS) };
   }
   if (input.stalemate === "void") return input.resolvesBy ? { flavour: "void", actsAt: input.resolvesBy } : null;
-  if (input.pace === "argument") return { flavour: "tiebreaker", actsAt: new Date(input.lockedAt.getTime() + ARBITRATION_BACKSTOP_MS) };
+  // An argument's day counts from when its ruling was shown, its Agree screen's day, and from its close when it has none.
+  if (input.pace === "argument") return { flavour: "tiebreaker", actsAt: new Date((input.rulingRevealedAt ?? input.lockedAt).getTime() + ARBITRATION_BACKSTOP_MS) };
   if (!input.resolvesBy) return null;
   return { flavour: "tiebreaker", actsAt: new Date(Math.max(input.lockedAt.getTime(), input.resolvesBy.getTime()) + ARBITRATION_BACKSTOP_MS) };
 }
@@ -523,7 +525,8 @@ export async function tick(now: Date, notifyDeadline: (dareId: string, creatorId
           isNull(schema.dares.backstopWarnedAt),
           or(
             and(eq(schema.publicQuestions.decidedByFeed, true), isNotNull(schema.sportsGames.finalSeenAt), lt(schema.sportsGames.finalSeenAt, new Date(now.getTime() - AGREE_AFTER_MS + BACKSTOP_WARNING_MS + 14 * 3_600_000))),
-            and(or(isNull(schema.publicQuestions.decidedByFeed), eq(schema.publicQuestions.decidedByFeed, false)), eq(schema.dares.stalemate, "arbitrate"), lt(schema.dares.lockedAt, reach), or(lt(schema.dares.resolvesBy, reach), eq(schema.dares.pace, "argument"))),
+            // Not an argument whose ruling silence agrees with: no tiebreaker is coming for it, and its notice after says what happened (the final round).
+            and(or(isNull(schema.publicQuestions.decidedByFeed), eq(schema.publicQuestions.decidedByFeed, false)), eq(schema.dares.stalemate, "arbitrate"), lt(schema.dares.lockedAt, reach), or(lt(schema.dares.resolvesBy, reach), eq(schema.dares.pace, "argument")), sql`not (${schema.dares.pace} = 'argument' and ${silenceIn(schema.dares.termsText)})`),
             and(eq(schema.dares.stalemate, "void"), isNotNull(schema.dares.resolvesBy), lt(schema.dares.resolvesBy, new Date(now.getTime() + BACKSTOP_WARNING_MS + 14 * 3_600_000)), gt(schema.dares.resolvesBy, now)),
           ),
         ),
@@ -540,7 +543,7 @@ export async function tick(now: Date, notifyDeadline: (dareId: string, creatorId
           check = await opts.check.finalOf({ sport: game.sport as Sport, startsAt: game.startsAt, homeAbbr: game.homeAbbr, awayAbbr: game.awayAbbr }).catch(() => null);
           await db.update(schema.sportsGames).set({ checkHomeScore: check?.home ?? null, checkAwayScore: check?.away ?? null, checkedAt: now }).where(eq(schema.sportsGames.id, game.id));
         }
-        const moment = backstopMoment({ stalemate: dare.stalemate, pace: dare.pace, lockedAt: dare.lockedAt, resolvesBy: dare.resolvesBy, template: template ? { decidedByScore: template.decidedByScore, decidedByFeed: template.decidedByFeed, key: template.key } : null, game: game ? { finalSeenAt: game.finalSeenAt, check, firstDriveSeenAt: game.firstDriveSeenAt, firstDriveResult: game.firstDriveResult } : null, final });
+        const moment = backstopMoment({ stalemate: dare.stalemate, pace: dare.pace, lockedAt: dare.lockedAt, resolvesBy: dare.resolvesBy, rulingRevealedAt: dare.rulingRevealedAt, template: template ? { decidedByScore: template.decidedByScore, decidedByFeed: template.decidedByFeed, key: template.key } : null, game: game ? { finalSeenAt: game.finalSeenAt, check, firstDriveSeenAt: game.firstDriveSeenAt, firstDriveResult: game.firstDriveResult } : null, final });
         if (!moment || now.getTime() < warningSendTime(moment.actsAt, dare.zone ?? FALLBACK_ZONE).getTime()) return;
         const [claimed] = await db.update(schema.dares).set({ backstopWarnedAt: now }).where(and(eq(schema.dares.id, dare.id), isNull(schema.dares.backstopWarnedAt))).returning({ id: schema.dares.id });
         if (!claimed) return;

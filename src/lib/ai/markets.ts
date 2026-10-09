@@ -43,6 +43,15 @@ export const Nearer = z
   .nullish()
   .catch(null);
 
+/**
+ * The mark the write-up suggests for a question asked without one (the final round, section 7): one everyday emoji that
+ * pictures it. Read leniently: anything that is not one emoji the tiles can draw is none (`markOf`, write-up.ts), and
+ * never a reason to refuse the write-up. The asker can change it or take it off.
+ */
+export const SuggestedMark = z.string().trim().max(16).catch("").default("");
+/** What every write-up is told about the mark. */
+export const MARK_LINE = `- mark: one everyday emoji that pictures the question at a glance (❄️ for snow before Thanksgiving, 🍕 for who orders the pizza, 🚆 for a late train). Never a flag, a face of a real person, or anything rude.`;
+
 /** The furthest a question can run, as the write-up is told it: the date and its words, in the asker's calendar. */
 export type Latest = { date: string; words: string };
 /** The line that tells the model the furthest date, beside the asker's now. */
@@ -74,6 +83,7 @@ export const Scope = z.object({
   outcomes: z
     .object({ yesWell: z.string().trim().max(60).default(""), noWell: z.string().trim().max(60).default(""), yesLine: z.string().trim().max(60).default(""), noLine: z.string().trim().max(60).default("") })
     .default({ yesWell: "", noWell: "", yesLine: "", noLine: "" }),
+  mark: SuggestedMark,
 });
 export type MarketScope = z.infer<typeof Scope>;
 
@@ -92,8 +102,23 @@ Write:
 - In the terms, a deadline is that same date, written as the month and the day ("by October 13"). Never write any other date as the deadline.
 - If the line asks which of several things, or who, the yes is one named answer: write the terms about that answer by name, never about "the one picked" or "the chosen one".
 - outcomes: the two answers in the question's own words, as four short phrasings. yesWell and noWell are what someone taps to say what happened, two to five words, no full stop ("He fell asleep", "He stayed up"). yesLine and noLine are the settled headline, a short sentence with its full stop ("He did.", "He didn't."). Use the people and things in the question, never "yes" or "no" as the whole phrase.
+${MARK_LINE}
 
 Never mention odds, prices, markets, wagers, or money. These are friends.`;
+
+/**
+ * The game a question asked on a game page is about (the final round, section 5), so its terms are about that game
+ * alone, decided when it ends: "Will Judge homer?" means in this game, never over the next three years. Pure.
+ */
+export function aboutGameLine(game: { name: string; startsAt: Date; started: boolean }, zone: string): string {
+  let when: string;
+  try {
+    when = new Intl.DateTimeFormat("en-US", { timeZone: zone, weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit" }).format(game.startsAt);
+  } catch {
+    when = game.startsAt.toISOString();
+  }
+  return `The question is about one game only: <game>${game.name.replace(/[<>]/g, "")}</game>, ${game.started ? `which started ${when} and is being played now` : `which starts ${when}`}. Write the terms about what happens in this game alone, and decideBy the day it ends.`;
+}
 
 /** The asker's own now, so a date the model writes is a date in their calendar (the first-contact round). */
 export function nowLine(now: Date, zone: string): string {
@@ -146,9 +171,9 @@ export function writeUpCall(answers: ReadonlyArray<unknown> | undefined): { mode
   return careful ? { model: writerFor(answers), effort: "low", maxTokens: 8_000, timeoutMs: 30_000, search: { maxUses: 2 } } : { model: writerFor(answers), effort: "off", maxTokens: 4_000, timeoutMs: 12_000 };
 }
 
-export async function scopeMarket(input: { line: string; criterion?: string; answers?: CarefulAnswered[]; now: Date; zone: string; /** The furthest a question can run, in the asker's calendar. */ latest: Latest; /** The answer's JSON as it is written (9.8). */ onDelta?: (partialJson: string) => void; onReset?: () => void }): Promise<MarketScope> {
+export async function scopeMarket(input: { line: string; criterion?: string; answers?: CarefulAnswered[]; now: Date; zone: string; /** The furthest a question can run, in the asker's calendar. */ latest: Latest; /** A question asked on a game page: the game it is about (`aboutGameLine`). */ about?: string; /** The answer's JSON as it is written (9.8). */ onDelta?: (partialJson: string) => void; onReset?: () => void }): Promise<MarketScope> {
   const answered = answeredBlock(input.answers);
-  const user = `<line>${input.line.slice(0, 280)}</line>\n${answered ? `${answered}Set ambiguous to false.\n` : ""}${input.criterion ? `The group chose to decide it by: <criterion>${input.criterion.slice(0, 120)}</criterion>. Write the terms around that and set ambiguous to false.\n` : ""}${nowLine(input.now, input.zone)}\n${latestLine(input.latest)}`;
+  const user = `<line>${input.line.slice(0, 280)}</line>\n${answered ? `${answered}Set ambiguous to false.\n` : ""}${input.criterion ? `The group chose to decide it by: <criterion>${input.criterion.slice(0, 120)}</criterion>. Write the terms around that and set ambiguous to false.\n` : ""}${input.about ? `${input.about}\n` : ""}${nowLine(input.now, input.zone)}\n${latestLine(input.latest)}`;
   return structured({
     label: "scope market",
     ...writeUpCall(input.answers),
@@ -165,8 +190,9 @@ export async function scopeMarket(input: { line: string; criterion?: string; ans
         decideBy: { type: "string", description: "YYYY-MM-DD" },
         outcomes: { type: "object", properties: { yesWell: { type: "string" }, noWell: { type: "string" }, yesLine: { type: "string" }, noLine: { type: "string" } }, required: ["yesWell", "noWell", "yesLine", "noLine"] },
         nearer: NEARER_SCHEMA,
+        mark: { type: "string", description: "one emoji" },
       },
-      required: ["title", "terms", "ambiguous", "criteria", "decideBy", "outcomes"],
+      required: ["title", "terms", "ambiguous", "criteria", "decideBy", "outcomes", "mark"],
     },
     shape: Scope,
     onDelta: input.onDelta,
@@ -198,6 +224,7 @@ export const NumberScope = z.object({
   typical: z.number(),
   decideBy: z.string().trim().max(32).default(""),
   nearer: Nearer,
+  mark: SuggestedMark,
 });
 export type MarketNumberScope = z.infer<typeof NumberScope>;
 
@@ -215,15 +242,16 @@ Write:
 - decideBy is that date even when it is after the latest date in the message: never move it earlier to fit.
 - nearer: only when decideBy is after the latest date in the message, one nearer version of the same question that can be decided by then, measured over a time that ends by it (for a question about the next thirty years, how it goes over the coming year), counting the same unit, with its own title, terms and decideBy. Otherwise leave nearer out.
 - In the terms, a deadline is that same date, written as the month and the day ("by October 13"). Never write any other date as the deadline.
+${MARK_LINE}
 
 Never mention odds, prices, markets, wagers, or money. These are friends.`;
 
-export async function scopeNumber(input: { line: string; answers?: CarefulAnswered[]; now: Date; zone: string; latest: Latest; onDelta?: (partialJson: string) => void; onReset?: () => void }): Promise<MarketNumberScope> {
+export async function scopeNumber(input: { line: string; answers?: CarefulAnswered[]; now: Date; zone: string; latest: Latest; about?: string; onDelta?: (partialJson: string) => void; onReset?: () => void }): Promise<MarketNumberScope> {
   return structured({
     label: "scope number",
     ...writeUpCall(input.answers),
     system: NUMBER_SCOPE_SYSTEM,
-    user: `<line>${input.line.slice(0, 280)}</line>\n${answeredBlock(input.answers)}${nowLine(input.now, input.zone)}\n${latestLine(input.latest)}`,
+    user: `<line>${input.line.slice(0, 280)}</line>\n${answeredBlock(input.answers)}${input.about ? `${input.about}\n` : ""}${nowLine(input.now, input.zone)}\n${latestLine(input.latest)}`,
     toolName: "write_number_terms",
     toolDescription: "Record the question, its terms, its unit and where answers would land.",
     inputSchema: {
@@ -236,8 +264,9 @@ export async function scopeNumber(input: { line: string; answers?: CarefulAnswer
         typical: { type: "integer", minimum: 0 },
         decideBy: { type: "string", description: "YYYY-MM-DD" },
         nearer: NEARER_SCHEMA,
+        mark: { type: "string", description: "one emoji" },
       },
-      required: ["title", "terms", "unit", "low", "high", "typical", "decideBy"],
+      required: ["title", "terms", "unit", "low", "high", "typical", "decideBy", "mark"],
     },
     shape: NumberScope,
     onDelta: input.onDelta,
@@ -261,6 +290,7 @@ export const PickOneScope = z.object({
   terms: z.string().trim().min(10).transform((t) => t.replace(/\s*\u2014\s*|\s+\u2013\s+/g, ", ")).pipe(z.string().max(700)),
   decideBy: z.string().trim().max(32).default(""),
   nearer: Nearer,
+  mark: SuggestedMark,
 });
 export type MarketPickOneScope = z.infer<typeof PickOneScope>;
 
@@ -275,21 +305,22 @@ Write:
 - decideBy is that date even when it is after the latest date in the message: never move it earlier to fit.
 - nearer: only when decideBy is after the latest date in the message, one nearer version of the same question that can be decided by then, measured over a time that ends by it (for a question about the next thirty years, how it goes over the coming year), with the same answers, with its own title, terms and decideBy. Otherwise leave nearer out.
 - In the terms, a deadline is that same date, written as the month and the day ("by October 13"). Never write any other date as the deadline.
+${MARK_LINE}
 
 Never mention odds, prices, markets, wagers, or money. These are friends.`;
 
-export async function scopePickOne(input: { line: string; answers: string[]; edges?: CarefulAnswered[]; now: Date; zone: string; latest: Latest; onDelta?: (partialJson: string) => void; onReset?: () => void }): Promise<MarketPickOneScope> {
+export async function scopePickOne(input: { line: string; answers: string[]; edges?: CarefulAnswered[]; now: Date; zone: string; latest: Latest; about?: string; onDelta?: (partialJson: string) => void; onReset?: () => void }): Promise<MarketPickOneScope> {
   const answers = input.answers.slice(0, 6).map((a) => `<answer>${a.replace(/[<>]/g, "").slice(0, 40)}</answer>`).join("\n");
   return structured({
     label: "scope pick one",
     ...writeUpCall(input.edges),
     system: PICK_ONE_SCOPE_SYSTEM,
-    user: `<line>${input.line.slice(0, 280)}</line>\n${answers}\n${answeredBlock(input.edges)}${nowLine(input.now, input.zone)}\n${latestLine(input.latest)}`,
+    user: `<line>${input.line.slice(0, 280)}</line>\n${answers}\n${answeredBlock(input.edges)}${input.about ? `${input.about}\n` : ""}${nowLine(input.now, input.zone)}\n${latestLine(input.latest)}`,
     toolName: "write_pick_one_terms",
     toolDescription: "Record the question and its terms.",
     inputSchema: {
-      properties: { title: { type: "string" }, terms: { type: "string" }, decideBy: { type: "string", description: "YYYY-MM-DD" }, nearer: NEARER_SCHEMA },
-      required: ["title", "terms", "decideBy"],
+      properties: { title: { type: "string" }, terms: { type: "string" }, decideBy: { type: "string", description: "YYYY-MM-DD" }, nearer: NEARER_SCHEMA, mark: { type: "string", description: "one emoji" } },
+      required: ["title", "terms", "decideBy", "mark"],
     },
     shape: PickOneScope,
     onDelta: input.onDelta,

@@ -19,11 +19,13 @@ const STARTERS = ["Does John fall asleep during the movie?", "Does anyone actual
 export function FirstRun({ games = [], viewerHue = "stone" }: { games?: GameRowData[]; viewerHue?: Hue }) {
   return (
     <div className="flex flex-1 flex-col gap-7 py-6">
+      {/* An empty Now leads with the ideas tile (the final round, section 2: the owner's finding over 3.14, which had it last, under the games, where a phone never showed it). */}
+      <IdeasTile />
       <div className="flex flex-col gap-3">
         <h1 className="text-serif-xl text-ink">Nothing happens here until somebody else is in it.</h1>
       </div>
       <div className="flex flex-col gap-3">
-        <ButtonLink prefetch href="/m/new" variant="primary">
+        <ButtonLink prefetch href="/m/new" variant="primary" data-ask-something="">
           Ask something
         </ButtonLink>
         <CodeJoinCompact label="Someone sent you a code?" />
@@ -56,8 +58,6 @@ export function FirstRun({ games = [], viewerHue = "stone" }: { games?: GameRowD
           </ul>
         </section>
       )}
-      {/* Then the ideas tile (3.14, 3.47), with the games or without them. */}
-      <IdeasTile />
     </div>
   );
 }

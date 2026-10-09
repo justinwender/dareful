@@ -24,9 +24,29 @@ export function readCode(raw: string): { code: string } | { problem: string } {
   return { code };
 }
 
-/** A market link someone pasted instead: the market's id, or nothing. Only this app's own path is read (a group is a set of people, never a place with a link of its own: Round C). */
-export function readPastedLink(raw: string): { marketId: string } | null {
-  const m = raw.trim().match(/(?:^|\/)m\/([A-Za-z0-9_-]{8,64})(?:[/?#]|$)/);
-  if (!m || !m[1]) return null;
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(m[1]) ? { marketId: m[1].toLowerCase() } : null;
+const UUID = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
+/** Where a pasted link goes: a question, a game's page (for a set, with a question open), or a claim. */
+export type PastedLink = { kind: "market"; marketId: string } | { kind: "game"; gameId: string; groupId: string | null; questionId: string | null } | { kind: "claim"; token: string };
+
+/**
+ * A link someone pasted instead of a code: every link Dareful makes (the final round, section 4), a question's
+ * (`/m/<id>`), a game's page (`/on/<game>` or `/on/<game>/<set>`, with `?q=` for the open question) and a claim's
+ * (`/c/<token>`), with or without `https://`, with any query or fragment, and inside whatever the chat put around it (the
+ * relay's sentence, a trailing full stop). Only the path is read, and the ids are checked against the database by the
+ * action; the link is never fetched. Nothing else: a group is a set of people, never a place with a link of its own
+ * (Round C). Pure.
+ */
+export function readPastedLink(raw: string): PastedLink | null {
+  const text = raw.trim();
+  const market = new RegExp(`(?:^|[\\s/])m/(${UUID})(?![0-9A-Za-z-])`).exec(text);
+  if (market?.[1]) return { kind: "market", marketId: market[1].toLowerCase() };
+  const game = new RegExp(`(?:^|[\\s/])on/(${UUID})(?:/(${UUID}))?(?![0-9A-Za-z-])`).exec(text);
+  if (game?.[1]) {
+    const rest = text.slice(game.index + game[0].length);
+    const param = (name: string) => new RegExp(`^[^\\s]*?[?&]${name}=(${UUID})(?![0-9A-Za-z-])`).exec(rest)?.[1]?.toLowerCase() ?? null;
+    return { kind: "game", gameId: game[1].toLowerCase(), groupId: game[2]?.toLowerCase() ?? param("g"), questionId: param("q") };
+  }
+  const claim = /(?:^|[\s/])c\/([A-Za-z0-9_-]{43})(?![A-Za-z0-9_-])/.exec(text);
+  if (claim?.[1]) return { kind: "claim", token: claim[1] };
+  return null;
 }

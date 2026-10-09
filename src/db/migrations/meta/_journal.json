@@ -337,6 +337,20 @@
       "when": 1791499435305,
       "tag": "0047_own_units",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1791517790275,
+      "tag": "0048_own_game_questions",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1791518321876,
+      "tag": "0049_guests_out_of_counts",
+      "breakpoints": true
     }
   ]
 }

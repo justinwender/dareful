@@ -6,6 +6,7 @@ import { HANDLE_ROW } from "./handle";
 import { MOTION, overscroll, settleDuration } from "@/lib/ui/motion";
 import { cn } from "@/lib/utils";
 import { useTapGuard } from "./tap-guard";
+import { useFieldInView } from "./field-in-view";
 
 /**
  * The sheet (docs/design.md 3.24 as amended 2026-10-02, 9.9): every market screen and every task screen keeps its
@@ -43,6 +44,8 @@ export type SheetMeasure = { handle: number; rest: number; natural: number; rais
 /** The raised position shows at most this share of the screen; full reaches the status band less this much. */
 export const RAISED_SHARE = 0.72;
 export const FULL_GAP = 60;
+/** How long after the keyboard leaves a sheet it goes back to where it was: the tap that took the keyboard away lands first. */
+const RESTORE_AFTER_TAP_MS = 400;
 /** The snap: more than this many pixels of travel moves the sheet one position by direction (3.24). */
 export const SNAP_PX = 24;
 
@@ -156,6 +159,11 @@ export function PinnedSheet({
   useEffect(() => {
     positionRef.current = position;
   }, [position]);
+  const top = available[available.length - 1] ?? "resting";
+  const topRef = useRef(top);
+  useEffect(() => {
+    topRef.current = top;
+  }, [top]);
 
   // Everything measured at once, whenever any part changes size: the handle row, the resting part, what is laid
   // out in all, and the screen's two caps. The resting height becomes the screen's bottom padding
@@ -187,6 +195,9 @@ export function PinnedSheet({
     ro.observe(el);
     ro.observe(row);
     ro.observe(all);
+    // The screen itself: a keyboard that shrinks the page (a browser hosting it in its own app) changes the raised share.
+    const screen = document.getElementById("app");
+    if (screen) ro.observe(screen);
     if (more.current) ro.observe(more.current);
     measure();
     return () => {
@@ -220,9 +231,52 @@ export function PinnedSheet({
     setWasPosition(position);
     if (settle === null && !dragging) setSettle(MOTION.travel);
   }
+
+  // A field in the sheet stays in view while it is typed into (the final round, section 1; `useFieldInView`): Brave
+  // shrinks the page to the space above the keyboard, and the sheet then lays out shorter than its content with the
+  // join step's name field under its foot. The sheet rises to its top position if it is lower and its content scrolls
+  // the field into the middle of what shows; once risen it keeps to the top while the field is typed into, so a
+  // button's label growing under the field never drops it back, and when the keyboard leaves it goes back to where it was.
+  const roseFrom = useRef<SheetPosition | null>(null);
+  const restoring = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (restoring.current) clearTimeout(restoring.current);
+  }, []);
+  useFieldInView(panel, body, {
+    on: !inFlow,
+    version: host,
+    travelMs: MOTION.travel,
+    act: (by) => {
+      if (restoring.current) clearTimeout(restoring.current);
+      restoring.current = null;
+      if (by === null && roseFrom.current === null) return "none";
+      roseFrom.current ??= positionRef.current;
+      if (positionRef.current !== topRef.current) {
+        setSettle(MOTION.travel);
+        setOwn(topRef.current);
+        return "wait";
+      }
+      return by === null ? "none" : "scroll";
+    },
+    done: () => {
+      const was = roseFrom.current;
+      roseFrom.current = null;
+      if (was === null) return;
+      // Once the tap that took the keyboard away has landed: put back at once, the content slid out from under the finger
+      // between the press and its click, and "Join" did nothing (the final round, the Brave layout on the iOS 26 simulator).
+      if (restoring.current) clearTimeout(restoring.current);
+      restoring.current = setTimeout(() => {
+        restoring.current = null;
+        if (was !== positionRef.current) {
+          setSettle(MOTION.travel);
+          setOwn(was);
+        }
+        if (body.current) body.current.scrollTop = 0;
+      }, RESTORE_AFTER_TAP_MS);
+    },
+  });
   /** The translate that leaves `visibleAt(p)` of the sheet above the viewport's foot. */
   const yOf = (p: SheetPosition) => Math.max(0, m.fullCap - visibleAt(p, m));
-  const top = available[available.length - 1] ?? "resting";
   const travel = Math.max(1, yOf("tucked") - yOf(top));
   const handleProps = inFlow && !high
     ? {}
@@ -293,6 +347,9 @@ export function PinnedSheet({
     maxHeight: inFlow ? undefined : `calc(100lvh - env(safe-area-inset-top) - ${FULL_GAP}px)`,
   };
   const hidden = !isRaised && (Boolean(high) || Boolean(foot));
+  // The content scrolls at full, and at whatever position is the sheet's highest when the screen is too short for it
+  // (a keyboard taking half the screen in a browser that shrinks the page): nothing is ever cut off out of reach.
+  const scrolls = position === "full" || (position === top && m.natural > m.fullCap + 1);
   const state = position === "resting" ? "low" : position;
 
   const section = (
@@ -328,7 +385,7 @@ export function PinnedSheet({
               {header ? <div className="pt-1">{header}</div> : null}
             </div>
           </div>
-          <div ref={body} className={cn("flex min-h-0 flex-col", position === "full" ? "overflow-y-auto overscroll-y-contain" : "overflow-hidden")} data-sheet-body={position === "full" ? "scrolls" : undefined}>
+          <div ref={body} className={cn("flex min-h-0 flex-col", scrolls ? "overflow-x-hidden overflow-y-auto overscroll-y-contain" : "overflow-hidden")} data-sheet-body={scrolls ? "scrolls" : undefined}>
             <div ref={content} className="flex flex-col">
               <div className={cn("flex flex-col gap-[10px]", header && "pt-[10px]")}>{low}</div>
               {high || foot ? (

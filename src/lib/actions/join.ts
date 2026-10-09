@@ -9,10 +9,13 @@ import { dismissNamePrompt, nameGroup } from "@/lib/ledger/groups";
 import { MarketError } from "@/lib/ledger/markets";
 import { readPastedLink } from "@/lib/ledger/room-code";
 import { joinByCode, joinByMarketLink, roomCodeFor } from "@/lib/ledger/rooms";
+import { gameById } from "@/lib/sports";
 import { record } from "@/lib/usage";
 
 const uuid = z.string().uuid();
 type Refusal = { error: string; at: "field" | "form" };
+/** What the paste field says to a text with no link of this app's in it. */
+const NOT_A_LINK = "That isn't a Dareful link. It starts with dareful.app.";
 
 /**
  * A code someone read out. A wrong shape is the field's problem; a code that matches nothing, or too many
@@ -37,16 +40,25 @@ export async function joinByCodeAction(raw: string): Promise<Refusal> {
   redirect(`/m/${marketId}`);
 }
 
-/** A link pasted into the joining screen: a question's link. Only this app's own path is read. */
+/**
+ * A link pasted into the joining screen: any link Dareful makes (the final round, section 4). A question's joins its
+ * set and opens it, as tapping it in the chat would; a game's page opens for its set with its question, and joins
+ * nobody (a person gets in by entering a question); a claim opens its own page. A text with none of these in it is the
+ * field's problem.
+ */
 export async function joinByLinkAction(raw: string): Promise<Refusal> {
   const user = await currentUser();
   if (!user) return { error: WORDS.signedOut, at: "form" };
-  const typed = z.string().max(400).safeParse(raw);
+  const typed = z.string().max(600).safeParse(raw);
   const link = typed.success ? readPastedLink(typed.data) : null;
-  if (!link) return { error: "That isn't a Dareful link. It starts with dareful.app.", at: "field" };
+  if (!link) return { error: NOT_A_LINK, at: "field" };
   let to: string;
   try {
-    to = `/m/${(await joinByMarketLink(link.marketId, user.id)).marketId}`;
+    if (link.kind === "market") to = `/m/${(await joinByMarketLink(link.marketId, user.id)).marketId}`;
+    else if (link.kind === "game") {
+      if (!(await gameById(link.gameId))) return { error: "That link doesn't go anywhere. Ask them to send it again.", at: "form" };
+      to = `/on/${link.gameId}${link.groupId ? `/${link.groupId}` : ""}${link.questionId ? `?q=${link.questionId}` : ""}`;
+    } else to = `/c/${link.token}`;
   } catch (err) {
     if (err instanceof MarketError) return { error: err.message, at: "form" };
     console.error("join by link failed", err);

@@ -65,7 +65,7 @@ export function InvitePreview({ data, viewerName }: { data: InvitePreviewData; v
         </h1>
         {data.countLine ? <p className="text-body-sm text-ink-2">{data.countLine}</p> : null}
         <div className="flex flex-col gap-2 border-t border-line pt-3 text-body-sm text-ink-2">
-          {data.finished ? <p>This one’s finished. Numbers are locked, so you can watch but not enter.</p> : data.decidesLine ? <p>{data.decidesLine}</p> : null}
+          {data.finished ? <p>This one’s finished, so you can watch but not enter.</p> : data.decidesLine ? <p>{data.decidesLine}</p> : null}
           {data.criterionLine ? <p>{data.criterionLine}</p> : null}
           <p>{data.argument ? "Two sides. Whoever’s right has got the other." : "Everyone puts in a number. Closest one does best."}</p>
           <p>{data.stalemateLine}</p>

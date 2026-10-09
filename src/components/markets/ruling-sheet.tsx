@@ -30,7 +30,7 @@ export type RulingSheetProps = {
   disputes: Array<Person & { said: string }>;
   /** Whether this person agrees already, and whether they disputed it. */
   mine: { agreed: boolean; disputed: boolean };
-  /** A photo or a screenshot needs an account; a guest says it in words. */
+  /** A photo or a screenshot, never required, needs an account; a guest says it in words. */
   canAttach: boolean;
   /** An argument that needs what its people saw, before anyone has said: they can say it here (an account's to give). */
   canSay: boolean;
@@ -128,7 +128,7 @@ function DisputeLine({ person }: { person: Person & { said: string } }) {
   );
 }
 
-/** What the ruling got wrong, required, with a photo or a screenshot for an account; sent with the ruling to the tiebreaker. */
+/** What the ruling got wrong, required, with a photo or a screenshot if they like (never required, the final round), for an account; sent with the ruling to the tiebreaker. */
 function DisputeSheet({ dareId, open, onClose, canAttach }: { dareId: string; open: boolean; onClose: () => void; canAttach: boolean }) {
   const router = useRouter();
   const titleId = useId();

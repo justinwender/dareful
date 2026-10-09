@@ -48,7 +48,7 @@ export function HandOver({ dareId, host, question, mark, url, candidates, change
       setPin("");
       if (r.ok) return setDone(friend);
       if ("locked" in r) {
-        setProblem("That PIN is locked for now.");
+        setProblem("That PIN is paused for an hour.");
         setTimeout(leave, 1200);
         return;
       }

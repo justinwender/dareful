@@ -26,7 +26,7 @@ import { appRulingStood } from "@/lib/ledger/markets";
 import { roomAfterCutOff, thinkingFor } from "@/lib/ai/client";
 import { FLICK_PX_PER_MS, modalNext, modalOffset, modalPositions } from "@/components/ui/sheet";
 import { RAISED_SHARE } from "@/components/ui/pinned-sheet";
-import { ASK_SOMETHING_KEY, CURATED_TIPS, tipPlacement, tipsFor } from "@/lib/ui/tips";
+import { ASK_SOMETHING_KEY, ASK_TARGET, CURATED_TIPS, tipPlacement, tipsFor } from "@/lib/ui/tips";
 import { infoSheet } from "@/lib/ui/info-sheets";
 import { cutPhrasesIn } from "@/lib/ui/copy-rules";
 import { nameProblem, NOT_A_NAME, ownUnitOf } from "@/lib/ledger/settings";
@@ -270,13 +270,13 @@ test("a modal sheet has the pinned sheet's positions: it opens raised, at most t
 });
 
 test("first-visit tips: Ask something once for every tab, each new tip once wherever its control shows, three at a time, and the card kept on the screen", () => {
-  const plus = tipsFor(infoSheet("now")!, (s) => s === "[data-start]");
+  const plus = tipsFor(infoSheet("now")!, (s) => s === ASK_TARGET);
   assert.deepEqual(plus.map((t) => [t.entry.term, t.key]), [["Ask something", ASK_SOMETHING_KEY]]);
-  assert.deepEqual(tipsFor(infoSheet("people")!, (s) => s === "[data-start]", { seen: [ASK_SOMETHING_KEY] }), [], "seen on Now, never again on People");
+  assert.deepEqual(tipsFor(infoSheet("people")!, (s) => s === ASK_TARGET, { seen: [ASK_SOMETHING_KEY] }), [], "seen on Now, never again on People");
   const market = infoSheet("market-open")!;
-  assert.deepEqual(tipsFor(market, () => true, { key: "market-open", seen: [] }).map((t) => t.key), ["/tip/share", "/tip/copy", "/tip/code"], "three at a time, in order");
-  assert.deepEqual(tipsFor(market, () => true, { key: "market-open", seen: ["/tip/share", "/tip/copy", "/tip/code"] }).map((t) => t.key), ["/tip/pass", "/tip/photos"], "the rest on a later visit, each once");
-  assert.deepEqual(tipsFor(market, (s) => s === "[data-pass-phone]", { key: "market-open", seen: [] }).map((t) => t.entry.description), ["A friend makes their call on your phone, with their own PIN."], "only what is on screen");
+  assert.deepEqual(tipsFor(market, () => true, { key: "market-open", seen: [] }).map((t) => t.key), ["/tips/share", "/tips/copy", "/tips/code"], "three at a time, in order");
+  assert.deepEqual(tipsFor(market, () => true, { key: "market-open", seen: ["/tips/share", "/tips/copy", "/tips/code"] }).map((t) => t.key), ["/tips/pass", "/tips/photos"], "the rest on a later visit, each once");
+  assert.deepEqual(tipsFor(market, (s) => s === "button[data-pass-phone]", { key: "market-open", seen: [] }).map((t) => t.entry.description), ["A friend makes their call on your phone, with their own PIN."], "only what is on screen");
   assert.deepEqual(tipsFor(infoSheet("ask-question")!, () => true, { key: "ask-question", seen: [] }).map((t) => t.entry.term), ["Add a mark", "Stickers", "What kind of thing"]);
   for (const tips of Object.values(CURATED_TIPS))
     for (const t of tips) {
@@ -324,7 +324,7 @@ test("the tiles lay their line out as a column the safe square's width, never a 
   const tiles = readFileSync("src/lib/ui/tiles.tsx", "utf8");
   assert.ok(!/<>|<\/>/.test(tiles), "no fragment: the renderer lays one out as a row with no width");
   const page = readFileSync("src/components/on/game-page.tsx", "utf8");
-  assert.ok(page.includes("<MarketScreen id={c.dare.id} search={{}} embedded pageShares={pageShares} />") && page.includes("code={codeQuestion ?"), "the page's row carries the code, and the open card draws no row of its own");
+  assert.ok(page.includes("<MarketScreen id={c.dare.id} search={{}} embedded pageShares={pageShares} pagePhotos={!outsider} />") && page.includes("code={codeQuestion ?"), "the page's row carries the code, and the open card draws no row of its own");
   const screen = readFileSync("src/app/m/[id]/market-screen.tsx", "utf8");
   assert.ok(screen.includes("share={pageShares ? null :") && screen.includes('code={state === "open" && !pageShares ?'));
 });

@@ -208,7 +208,7 @@ export function WhosInRow({ people, holdouts = [], count, share, code, chalk = f
       {code && share ? <CodeSheet open={codeOpen} onClose={() => setCodeOpen(false)} dareId={code.dareId} url={share.url} question={code.question} mark={code.mark} /> : null}
       {list ? <WhosInSheet open={listOpen} onClose={() => setListOpen(false)} people={people} list={list} /> : null}
       {byHand && share ? (
-        <input readOnly value={share.url} aria-label="The link, to copy by hand" data-copy-by-hand="" onFocus={(e) => e.currentTarget.select()} className="mt-2 h-11 w-full basis-full rounded-button border border-line bg-surface px-3 text-body-sm text-ink" />
+        <input readOnly value={share.url} aria-label="The link, to copy by hand" data-copy-by-hand="" onFocus={(e) => e.currentTarget.select()} className="mt-2 h-11 w-full basis-full rounded-button border border-line bg-surface px-3 text-body text-ink" />
       ) : null}
     </section>
   );

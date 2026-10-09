@@ -5,8 +5,9 @@
  * launch and the last seven days), and a daily snapshot the owner can take or backfill, kept in
  * `usage_snapshots` so the week's line survives the events table growing. A day is an Eastern day.
  */
-import { sql } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { bufferToHex, questionGroupOnchainId } from "@/lib/ledger/ids";
 
 export type StatKey =
   | "accounts"
@@ -117,17 +118,23 @@ function inWindow(col: string, w: StatWindow) {
   return w.from ? sql`${sql.raw(col)} >= ${w.from.toISOString()}::timestamptz and ${sql.raw(col)} < ${to}` : sql`${sql.raw(col)} < ${to}`;
 }
 
-/** Events in the window by counted actors: an excluded account's events never count, and a guest's or a device's always do. */
+/** Events in the window by counted actors: an excluded account's or an excluded guest's events never count, and any other guest's or a device's always do. */
 function events(name: string, w: StatWindow, extra = sql``) {
-  return sql`select count(*)::int as n from usage_events e left join users u on u.id = e.user_id where e.name = ${name} and coalesce(u.excluded_from_counts, false) = false and ${inWindow("e.at", w)} ${extra}`;
+  return sql`select count(*)::int as n from usage_events e left join users u on u.id = e.user_id left join participant_claims c on c.id = e.claim_id where e.name = ${name} and coalesce(u.excluded_from_counts, false) = false and coalesce(c.excluded_from_counts, false) = false and ${inWindow("e.at", w)} ${extra}`;
 }
+
+/**
+ * The entries on a question that count toward "two or more in": a counted person's or a guest's, never an excluded
+ * account's or an excluded guest's (the final round, section 9: a market counts only when someone counted is in it).
+ */
+const COUNTED_IN = (dare: string) => sql.raw(`(select count(*) from dare_positions cp left join users cu on cu.id = cp.user_id left join participant_claims cc on cc.id = cp.claim_id where cp.dare_id = ${dare} and cp.acknowledged_at is not null and cp.dismissed_at is null and not coalesce(cu.excluded_from_counts, false) and not coalesce(cc.excluded_from_counts, false))`);
 
 async function one(q: ReturnType<typeof sql>): Promise<number> {
   const rows = (await db.execute(q)) as unknown as Array<{ n: number }>;
   return Number(rows[0]?.n ?? 0);
 }
 
-/** What the profile's clean-resolution rate counts as ended (`CLEAN_COUNTED_ENDINGS` and `TWO_OR_MORE_IN` in settle.ts, PLANNING.md 8e): a vote (a guest's question's quorum included), the tiebreaker or the final score, without the final score's own void, on a question two or more were in. "Nobody can tell" is minus one here. */
+/** What the profile's clean-resolution rate counts as ended (`CLEAN_COUNTED_ENDINGS` and `TWO_OR_MORE_IN` in settle.ts, PLANNING.md 8e): a vote (a guest's question's quorum included), the tiebreaker or the final score, without the final score's own void, on a question two or more were in, anyone in counting as the profile counts them (the final round keeps this the profile's own rule; "Questions with two or more in" counts only the counted). "Nobody can tell" is minus one here. */
 const CLEAN_ENDED = sql`d.resolved_at is not null and d.resolved_by in ('quorum', 'provisional', 'arbitration', 'feed', 'ruling') and not (d.resolved_by = 'feed' and d.resolved_outcome = -1) and (select count(*) from dare_positions cp where cp.dare_id = d.id and cp.acknowledged_at is not null and cp.dismissed_at is null) >= 2`;
 
 /** Every number for one window, counted now. */
@@ -137,7 +144,7 @@ export async function countStats(w: StatWindow): Promise<Counts> {
     one(sql`select count(distinct e.user_id)::int as n from usage_events e join users u on u.id = e.user_id where not u.excluded_from_counts and ${inWindow("e.at", w)}`),
     one(sql`select count(distinct e.user_id)::int as n from usage_events e join users u on u.id = e.user_id where e.name = 'asked' and not u.excluded_from_counts and ${inWindow("e.at", w)}`),
     one(events("asked", w)),
-    one(sql`select count(*)::int as n from dares d join users u on u.id = d.creator_id where not u.excluded_from_counts and d.creator_signature is not null and ${inWindow("d.created_at", w)} and (select count(*) from dare_positions p where p.dare_id = d.id and p.acknowledged_at is not null and p.dismissed_at is null) >= 2`),
+    one(sql`select count(*)::int as n from dares d join users u on u.id = d.creator_id where not u.excluded_from_counts and d.creator_signature is not null and ${inWindow("d.created_at", w)} and ${COUNTED_IN("d.id")} >= 2`),
     one(events("entered", w, sql`and e.props->>'as' <> 'guest'`)),
     one(events("entered", w, sql`and e.props->>'as' = 'guest'`)),
     one(events("closed", w)),
@@ -237,4 +244,29 @@ export async function backfillSnapshots(now: Date): Promise<string[]> {
 export async function snapshots(limit = 60): Promise<Array<{ day: string; takenAt: Date; counts: Counts }>> {
   const rows = await db.select().from(schema.usageSnapshots).orderBy(sql`${schema.usageSnapshots.day} desc`).limit(limit);
   return rows.map((r) => ({ day: r.day, takenAt: r.takenAt, counts: r.counts as Counts }));
+}
+
+/**
+ * What the chain's counts ask the indexer for (the final round, section 0): the questions on the chain with a counted
+ * account in them, by their onchain ids, and the counted accounts, by their ledger addresses. The test runs share the
+ * contracts, and the chain has no notion of an excluded account, so real use is what Postgres says it is. Every
+ * question's own group is returned too, the only way to tell a set from one (the id it is made from is the question's
+ * uuid).
+ */
+export async function countedOnchain(): Promise<{ dareIds: string[]; ledgers: string[]; questionGroups: Set<string> }> {
+  const [questions, people, onchain] = await Promise.all([
+    db
+      .selectDistinct({ onchainId: schema.dares.onchainId })
+      .from(schema.dares)
+      .innerJoin(schema.darePositions, eq(schema.darePositions.dareId, schema.dares.id))
+      .innerJoin(schema.users, eq(schema.users.id, schema.darePositions.userId))
+      .where(and(isNotNull(schema.dares.onchainId), eq(schema.users.excludedFromCounts, false))),
+    db.select({ ledger: schema.users.ledgerWallet }).from(schema.users).where(and(eq(schema.users.excludedFromCounts, false), isNotNull(schema.users.ledgerWallet))),
+    db.select({ id: schema.dares.id }).from(schema.dares).where(isNotNull(schema.dares.onchainId)),
+  ]);
+  return {
+    dareIds: questions.map((r) => bufferToHex(r.onchainId as Buffer).toLowerCase()),
+    ledgers: people.map((r) => (r.ledger as string).toLowerCase()),
+    questionGroups: new Set(onchain.map((r) => questionGroupOnchainId(r.id).toLowerCase())),
+  };
 }

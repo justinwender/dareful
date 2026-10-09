@@ -36,7 +36,7 @@ function CodeBoxes({ id, value, onChange, field, describedBy, height, gap, autoF
         spellCheck={false}
         aria-invalid={field ? true : undefined}
         aria-describedby={describedBy}
-        className="absolute inset-0 h-full w-full cursor-text opacity-0"
+        className="absolute inset-0 h-full w-full cursor-text text-body opacity-0"
       />
       <div aria-hidden="true" className={cn("grid", height === 60 ? "grid-cols-[repeat(6,minmax(0,1fr))]" : "grid-cols-6")} style={{ gap }}>
         {Array.from({ length: CODE_LENGTH }, (_, i) => {
@@ -91,15 +91,10 @@ export function CodeJoinCompact({ label = "Someone read you a code?" }: { label?
         submit();
       }}
     >
-      <div className="flex items-center justify-between gap-3">
-        <label htmlFor={id} className="text-label text-ink-2">
-          {label}
-        </label>
-        <Link prefetch href="/join" data-press="line" className="relative -my-3 inline-flex h-11 items-center text-label text-ink-2 press-line">
-          <LinkPending />
-          Got a link?
-        </Link>
-      </div>
+      {/* The boxes take a code, and only the code's own line heads them; the way in by a link sits under them (the final round, section 2: "Got a link?" over the boxes read as their heading). */}
+      <label htmlFor={id} className="text-label text-ink-2">
+        {label}
+      </label>
       <div className="flex items-start gap-2">
         <CodeBoxes id={id} value={value} onChange={setValue} field={field} describedBy={field ? `${id}-problem` : undefined} height={48} gap={6} inputRef={input} />
         <Button type="submit" variant="secondary" loading={pending}>
@@ -108,6 +103,10 @@ export function CodeJoinCompact({ label = "Someone read you a code?" }: { label?
       </div>
       <Problem id={`${id}-problem`} message={field} />
       <ProblemSummary messages={[form]} retry={submit} />
+      <Link prefetch href="/join" data-press="line" data-got-a-link="" className="relative -my-1 inline-flex h-11 items-center self-start text-label text-ink-2 press-line">
+        <LinkPending />
+        Got a link instead?
+      </Link>
     </form>
   );
 }
@@ -177,25 +176,28 @@ export function CodeJoinFocused({ initial = "", initialProblem = null }: { initi
 }
 
 /**
- * "Got a link instead?" (3.38): tap it in the chat, or paste it here, as a 44px row action that reads the
- * clipboard and opens that market's screen. A clipboard with no market link on it gets the form-level block. Where
- * the clipboard cannot be read (a browser that refuses, or asks and is told no), a field takes the paste instead.
- * A link is read only if it is one of this app's own, and never fetched.
+ * "Got a link instead?" (3.38; the final round, section 4): tap it in the chat, or paste it here. The field is always
+ * there, since a browser may refuse to let the page read the clipboard (or ask and be told no), and "Paste a link"
+ * beside it reads the clipboard in one tap where it can. Any link Dareful makes opens its screen: a question, a game's
+ * page, a claim (`readPastedLink`). A link is read only if it is one of this app's own, and never fetched.
  */
 export function LinkJoin() {
   const id = useId();
   const [value, setValue] = useState("");
-  const [typing, setTyping] = useState(false);
   const [field, setField] = useState<string | null>(null);
   const [form, setForm] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  function go(text: string) {
+  const input = useRef<HTMLInputElement>(null);
+  function go(text: string, from: "clipboard" | "field") {
     setField(null);
     setForm(null);
     start(async () => {
       const r = await attempt(() => joinByLinkAction(text));
-      if ("at" in r && r.at === "field") setForm("There’s no market link on your clipboard.");
-      else setForm(r.error);
+      if (!("at" in r && r.at === "field")) return setForm(r.error);
+      // What the person typed or pasted themselves is the field's; what the clipboard held, they never saw.
+      if (from === "field") return setField(r.error);
+      setValue(text);
+      setForm("There’s no Dareful link on your clipboard.");
     });
   }
   async function paste() {
@@ -205,11 +207,12 @@ export function LinkJoin() {
     try {
       text = (await navigator.clipboard.readText()).trim();
     } catch {
-      setTyping(true);
+      // Refused, or asked and told no: the field takes the paste.
+      input.current?.focus();
       return;
     }
-    if (!text) return setForm("There’s no market link on your clipboard.");
-    go(text);
+    if (!text) return setForm("There’s no Dareful link on your clipboard.");
+    go(text, "clipboard");
   }
   return (
     <form
@@ -219,7 +222,7 @@ export function LinkJoin() {
       onSubmit={(e) => {
         e.preventDefault();
         if (!value.trim()) return setField("Paste the link they sent you.");
-        go(value.trim());
+        go(value.trim(), "field");
       }}
     >
       <div className="flex items-center justify-between gap-3">
@@ -229,32 +232,30 @@ export function LinkJoin() {
           </label>
           <span className="text-caption text-ink-3">Tap it in the chat, or paste it here.</span>
         </div>
-        {!typing ? (
-          <Button type="button" variant="row" onClick={() => void paste()} loading={pending}>
-            Paste a link
-          </Button>
-        ) : null}
+        <Button type="button" variant="row" onClick={() => void paste()} loading={pending} data-paste-link="">
+          Paste a link
+        </Button>
       </div>
-      {typing ? (
-        <div className="flex gap-2">
-          <input
-            id={id}
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            inputMode="url"
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-            autoFocus
-            aria-invalid={field ? true : undefined}
-            aria-describedby={field ? `${id}-problem` : undefined}
-            className={cn("h-12 min-w-0 flex-1 rounded-button border border-line bg-surface px-4 text-body-sm text-ink", field && FIELD_PROBLEM_CLASS)}
-          />
-          <Button type="submit" variant="secondary" loading={pending}>
-            Go
-          </Button>
-        </div>
-      ) : null}
+      <div className="flex gap-2">
+        <input
+          ref={input}
+          id={id}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          inputMode="url"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          enterKeyHint="go"
+          aria-invalid={field ? true : undefined}
+          aria-describedby={field ? `${id}-problem` : undefined}
+          className={cn("h-12 min-w-0 flex-1 rounded-button border border-line bg-surface px-4 text-body text-ink", field && FIELD_PROBLEM_CLASS)}
+          data-link-field=""
+        />
+        <Button type="submit" variant="secondary" loading={pending}>
+          Go
+        </Button>
+      </div>
       <Problem id={`${id}-problem`} message={field} />
       <ProblemSummary messages={[form]} />
     </form>

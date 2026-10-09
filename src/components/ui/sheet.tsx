@@ -3,6 +3,7 @@
 import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 import { FixedLayer } from "./layers";
 import { HANDLE_ROW } from "./handle";
+import { useFieldInView } from "./field-in-view";
 import { nextPosition, RAISED_SHARE, type SheetPosition } from "./pinned-sheet";
 import { MOTION, overscroll, settleDuration } from "@/lib/ui/motion";
 import { dropKeyboard } from "@/lib/ui/viewport";
@@ -135,9 +136,16 @@ export function Sheet({ open, onClose, labelledBy, children, closeLabel, clear =
     ro.observe(el);
     ro.observe(box);
     for (const child of Array.from(el.children)) ro.observe(child);
+    // The screen itself: a keyboard that shrinks the page (Brave hosting it in its own app) changes what raised shows.
+    const screen = document.getElementById("app");
+    if (screen) ro.observe(screen);
     read();
     return () => ro.disconnect();
   }, [open, children]);
+
+  // A field in the sheet stays in view while it is typed into (the final round, section 1): its content scrolls the
+  // field into the middle of what shows whenever the screen shrinks under it (`useFieldInView`).
+  useFieldInView(panel, scroller, { on: open, travelMs: MOTION.travel, act: (by) => (by === null ? "none" : "scroll") });
 
   if (!open && !leaving) return null;
   const closing = !open && leaving;
@@ -239,7 +247,7 @@ export function Sheet({ open, onClose, labelledBy, children, closeLabel, clear =
                 </button>
               )}
             </div>
-            <div ref={scroller} style={room > 0 ? { paddingBottom: `calc(max(1.5rem, env(safe-area-inset-bottom)) + ${room}px)` } : undefined} className={`flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto overscroll-contain px-4 pt-3 pb-[max(1.5rem,env(safe-area-inset-bottom))] ${fits && !clear ? "touch-none" : ""}`} data-sheet-scroll={fits ? "fits" : "scrolls"}>
+            <div ref={scroller} style={room > 0 ? { paddingBottom: `calc(max(1.5rem, env(safe-area-inset-bottom)) + ${room}px)` } : undefined} className={`flex min-h-0 flex-1 flex-col gap-5 overflow-x-hidden overflow-y-auto overscroll-contain px-4 pt-3 pb-[max(1.5rem,env(safe-area-inset-bottom))] ${fits && !clear ? "touch-none" : ""}`} data-sheet-scroll={fits ? "fits" : "scrolls"}>
               {children}
             </div>
           </div>

@@ -17,9 +17,12 @@ import { bufferToHex } from "./ids";
 import { answersOf, marketById, MarketError, mirrorSettlement, positionsOf, reconcileFromIndexer, settlementFromReceipt, stateOf, toChainOutcome, VOID_OUTCOME, type DareRow } from "./markets";
 import { pidOf } from "./participants";
 import { isProvisional, settleProvisional } from "./provisional";
-import { sealedText } from "./seal";
+import { SILENCE_CLAUSE, sealedText } from "./seal";
 import type { Sayer } from "./calls";
 import { rulingHash } from "./settle";
+
+/** Whether a question's signed terms let silence agree, in SQL: the clause, word for word (`silenceSigned`). */
+export const silenceIn = (terms: SQL | typeof schema.dares.termsText) => sql`position(${SILENCE_CLAUSE} in ${terms}) > 0`;
 
 /** How long a shown ruling waits before silence agrees with it. */
 export const SILENCE_MS = 24 * 3_600_000;
@@ -150,6 +153,8 @@ export async function standRuling(d: DareRow, how: "agreed" | "silence"): Promis
 /**
  * The tick's queue (the field round, 1.2's pattern: what cannot be acted on is left out in SQL): arguments whose shown
  * ruling a day of silence settles, oldest first, never one on its way to the chain, and never one someone disputed.
+ * Silence agrees only where the terms its people signed say so (the final round, section 8): an argument signed before
+ * the rule keeps the rule it was signed under, and a day with nobody agreeing goes to the tiebreaker (`toArbitrate`).
  */
 export async function rulingsToStand(now: Date, mine: SQL | undefined, limit: number): Promise<Array<{ id: string }>> {
   const D = schema.dares;
@@ -157,7 +162,7 @@ export async function rulingsToStand(now: Date, mine: SQL | undefined, limit: nu
   return db
     .select({ id: D.id })
     .from(D)
-    .where(and(mine, eq(D.pace, "argument"), eq(D.stalemate, "arbitrate"), isNotNull(D.lockedAt), isNull(D.resolvedAt), isNull(D.chainPendingAt), isNotNull(D.aiOutcome), lte(D.rulingRevealedAt, new Date(now.getTime() - SILENCE_MS)), sql`not ${disputed}`))
+    .where(and(mine, eq(D.pace, "argument"), eq(D.stalemate, "arbitrate"), isNotNull(D.lockedAt), isNull(D.resolvedAt), isNull(D.chainPendingAt), isNotNull(D.aiOutcome), lte(D.rulingRevealedAt, new Date(now.getTime() - SILENCE_MS)), sql`not ${disputed}`, silenceIn(D.termsText)))
     .orderBy(asc(D.rulingRevealedAt))
     .limit(limit);
 }

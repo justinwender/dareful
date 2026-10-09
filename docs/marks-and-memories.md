@@ -28,6 +28,11 @@ keeps up with a group inventing bets every weekend. Anything a group invents can
 - A mark is an emoji, a picture, or a sticker (a cutout with transparency) the creator picks.
   Nothing is generated, suggested from the words, or defaulted. For now it is emoji only:
   pictures and stickers wait for the upload pipeline.
+  (Amended 2026-10-09, the final round, the owner's finding over this rule: a question typed
+  without a mark is offered one by its write-up, one everyday emoji the tiles can draw, shown on
+  the terms step where the asker changes it or takes it off, and never put over a mark the asker
+  picked; every idea carries a mark of its own. A unit's mark is still never suggested, and a
+  mark still carries nothing: switch every mark off and the app still reads. design.md 3.29.)
 - Two things can carry one: a **market** (Priya's sleep market gets a moon) and a
   **denomination** (the dumpling run gets a dumpling).
 - Blank is the default and stays blank. An empty stamp never gets a placeholder.

@@ -8,17 +8,21 @@
 /** One row of the catalog: the glyph, its CLDR name, its group, its tags, and its skin-tone variants or 0. */
 export type CatalogRow = [glyph: string, name: string, group: number, tags: string, skins: string[] | 0];
 
-/** The category chips as words (3.29), in the order the design gives them, over emojibase's group numbers. */
-export const CATEGORIES: Array<{ label: string; group: number }> = [
-  { label: "Smileys", group: 0 },
-  { label: "People", group: 1 },
-  { label: "Animals", group: 3 },
-  { label: "Food", group: 4 },
-  { label: "Activities", group: 6 },
-  { label: "Travel", group: 5 },
-  { label: "Objects", group: 7 },
-  { label: "Symbols", group: 8 },
-  { label: "Flags", group: 9 },
+/**
+ * The categories (3.29), in the order the design gives them, over emojibase's group numbers, each with its icon: the
+ * row of chips shows the icons, whole across the sheet, with the words for a screen reader (the final round, section 7:
+ * the row of words ran off the sheet and was cut short under the recents).
+ */
+export const CATEGORIES: Array<{ label: string; group: number; icon: string }> = [
+  { label: "Smileys", group: 0, icon: "😀" },
+  { label: "People", group: 1, icon: "👋" },
+  { label: "Animals", group: 3, icon: "🐶" },
+  { label: "Food", group: 4, icon: "🍔" },
+  { label: "Activities", group: 6, icon: "⚽" },
+  { label: "Travel", group: 5, icon: "✈️" },
+  { label: "Objects", group: 7, icon: "💡" },
+  { label: "Symbols", group: 8, icon: "❤️" },
+  { label: "Flags", group: 9, icon: "🏁" },
 ];
 const RECENT_KEY = "dareful_marks_recent";
 const TONE_KEY = "dareful_mark_tones";

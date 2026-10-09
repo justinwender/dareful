@@ -1018,6 +1018,40 @@ The four positions under a thumb on a phone (the snap, the full position scrolli
 
 The page as the owner (the variable is not set on the local server during the suites); the two buttons on a phone; the chain's counts against the indexer in production. Items 171 to 173 and 184.
 
+## Session 42: the final round, on the iOS 26 and iOS 27 simulators, in Safari, installed copies and a test app
+
+**When:** October 9, 2026, after midnight, Eastern. **Who:** the "iPhone 17 Pro iOS 26" simulator (iOS 26.0) and the "iPhone 18 Pro" simulator (iOS 27.0), each in Safari (on iOS 27 a private tab), in an installed copy ("Dareful local" on iOS 26, "Dareful dev" on iOS 27), and in a minimal test app built for this round that hosts the page in WebKit the way Brave and Chrome do on an iPhone (`WebShell`: Brave's layout, where the page ends above a bar riding on the keyboard and so shrinks when the keyboard shows, and Chrome's, where the keyboard covers a page that keeps its size); all as visitors with no session at the loopback origin or the forwarded port, against the development server; and the development browser's own session on `localhost:3000` (the excluded development account) for what needs an account. The walk's own rows are the development account's three questions and eight guests (Wren, Fern, Gale, Hazel, Iris, Juno, Kai and Lark Test), listed for the sweep. Readings through the simulators' Web Inspector; touches through the simulator tool.
+
+### Exercised
+
+- **The join step's field, in every browser.** A guest's "I'm in" on a question, then a tap on Your name. Brave's layout (iOS 26 and 27): the page shrank to 339 and 356 points, the sheet rose and its content scrolled the field to the middle of what showed (191 to 239 of 339), the caret in it, and typing a name kept it there. Chrome's layout (iOS 27; iOS 26 earlier in the round) and Safari (iOS 26, and iOS 27 in a private tab): WebKit panned the page and the field sat above the keyboard with its caret. Installed copies (iOS 26 and 27): the same. Before the fix, Brave's layout left the field under the sheet's foot, out of reach, and the sheet dropped 35 points while typing.
+- **Join with the keyboard up.** In Brave's layout one tap on "Join as Gale Test" did nothing but drop the keyboard: the sheet's return to its place ran on the field's blur, between the press and the click, and moved the button out from under the finger. Fixed (the return waits until the tap has landed); one tap then joined on iOS 26 and 27, and in Chrome's layout, Safari and the installed copies.
+- **Tips, as a guest.** On the iOS 27 installed copy, joining as Wren showed the share tip over "Keep your calls in an account". Fixed (tips wait for the account step and any open sheet, then show); on iOS 26 in Brave's layout and in an iOS 27 private tab, no tip while the step stood, and once "Not now" closed it, Share (1 of 2) ringed on the share button with the rest blurred, then Copy the link, each remembered on the phone once shown. In the development browser for the account: the ask flow's tips one at a time (What kind of thing, Market type, AI market setup), and on a game page Copy the link and Show a code to scan, the second brought clear of the raised sheet first. Found and fixed: a tip measured under the opening's fade dropped every tip; a control under the raised sheet dropped every tip instead of its own.
+- **Nothing pans sideways.** On every screen walked the scrolling box was exactly the screen's width (402 of 402).
+- **Asking** (the development browser): the 🫖 mark suggested by the write-up beside "Your question", Decided on Tonight with "A date" beside it (no second chip for the same day), Stakes reading Dollars, beers, rounds, "pizzas" (the account's own) and "One of your own", and no next time; "One of your own" made "pizzas", saved it to You and picked it.
+- **A question of your own on a game page** (the development browser): "Your own question" under Add another on the Rays at Yankees game, the ask flow with the game's close in place of Decided and no pace chips, terms written about that game alone ("…in the Rays at Yankees game that started Thursday…"), sent, and landing on the game page with it open; entering it brought the page's one photo slot, "Add the first photo", with the open card drawing none. The deployed build's tick closed the lonely question five minutes after its first call as an expiry, so the build already running reads the new kind of question.
+- **Every link is read** (the development browser): a game's link with words around it on the joining screen opened the game's page.
+- **The guest line's "Sign up"** (iOS 26 Safari, as Kai): the app's own "Sign in" sheet (Continue with Google, Email, Continue, "Use a phone number", "Not now"), no longer the sign-in library's modal; "Not now" closed it.
+- **The code screen, signed out** (iOS 26 installed copy): six letters of a live question's code answer "You've been signed out. Sign in to finish this.", since a code joins accounts only; listed for the owner.
+
+### What broke
+
+1. **A field under the sheet's foot in Brave's layout**, and the sheet dropping while typing. Fixed (section 1).
+2. **A tap on Join with the keyboard up went nowhere** in Brave's layout. Fixed.
+3. **Every tip dropped**: the tips' own layer read as covering every control; a tip measured under the opening; a control under the raised sheet. Fixed.
+4. **A tip over the account step.** Fixed.
+5. **The guest line's "Sign up" opened the sign-in library's modal.** Fixed.
+6. **The clean-resolution rate** counted only counted people toward its "two or more in" in the first version of this round's exclusions; the stats suite caught it, and the rate keeps the profile's own rule.
+7. **The Web Inspector client's files** were pruned from the scratch folder overnight; reinstalled.
+
+### The suites and the audit
+
+Every suite: 849 tests, 846 passing on the first run and one skipped (deployed-app only); the stats suite's clean rate and the opening's timing test failed and pass after the fix and the rerun. The scoped audit: 398 mutants (182 unit, 207 database, 9 http), 395 killed on the first run; the three that survived (two of this round's, the stakes test reading two rows as one, and the guest late-close test racing production's scheduler) are killed after the tests were strengthened.
+
+### Not verified here
+
+A real phone: Brave and Chrome themselves (the test app stands in for their layouts), an account's first visit and its tips, the blank top of Now and What's on after a sign-up, which no simulator reproduced without an account, pasting a link from Messages, and a game's photos on a real night. Items 253 to 266.
+
 ## Session 41: the touch-ups round, on the iOS 26 and iOS 27 simulators
 
 **When:** October 8, 2026, in the evening, Eastern. **Who:** the "iPhone 17 Pro iOS 26" simulator (iOS 26.0) and the "iPhone 18 Pro" simulator (iOS 27.0), in Safari at the loopback origin as a visitor with no session, against the development server; the development browser's own session on `localhost:3000` (the excluded development account) for what needs an account; and a headless Chrome for the owner's `/stats` and the tiles. The walk's own questions belong to the development account and a guest, Dana; they are listed for the sweep. Touches through the simulator tool.
@@ -1595,3 +1629,17 @@ Items the simulator covered are marked in place above (61, 66, 93, 98, 101, 113,
 250. **The PIN** (41): Pass the phone, four digits in Your PIN, four in Again: the cursor stays in Again after every digit, and it turns on.
 251. **Pull to refresh** (41): pull Now until all five strokes are drawn, let go: it reloads, the fifth redrawing, then the tally settles.
 252. **Signing in and the settings** (41): signed out, Get started opens the app's own sheet; sign in. On You change your name, add a unit and see it when asking, and paste a sticker into Your marks.
+253. **Brave** (42): in Brave on the iPhone, open a question's link, tap "I'm in", tap Your name. Expect the field above the keyboard with the caret in it, typing that keeps it there, and one tap on "Join as …" joining with the keyboard still up.
+254. **Chrome** (42): the same in Chrome on the iPhone.
+255. **The installed app and Safari** (42): the same in Safari and the installed app.
+256. **After sign-up** (42): sign up from a link as a new account, then open Now and What's on. Expect each to start at its top, with nothing blank above the first line; an empty Now leads with the ideas tile, and the code boxes are headed "Someone sent you a code?" with "Got a link instead?" under them.
+257. **Sideways** (42): on the terms step and the market, drag left and right. Expect nothing to move sideways and no scrollbar along the bottom.
+258. **Tips for a new account** (42): as a new account, open Now, What's on, People, a market, asking and a person's page. Expect "Ask something" once on the first tab and never again; on a market Share, Copy the link and Show a code to scan, then on a later visit Pass the phone and Photos; when asking the mark, stickers and each choice; People's who's got who; a person's I got this one; one at a time, the rest blurred, the control ringed, each once.
+259. **Tips for a guest** (42): in a private tab, join a question from its link. Expect no tip over "Keep your calls in an account"; after "Not now", Share and Copy the link, each once.
+260. **Paste a link** (42): copy a question's link, a game's link and a link with the chat's words around it from Messages; on the joining screen tap "Paste a link" for each. Expect each to open; with a link on the clipboard that is not the app's, "There's no Dareful link on your clipboard."; with the clipboard refused, the field takes the paste.
+261. **A game's photos** (42): on a game page with two of its questions, add a photo from the page's slot while it is on, and another after it is over. Expect one strip for the whole game, before and after, and no slot inside an open card.
+262. **A question of your own** (42): on a game page, "Your own question", ask "Will Crosby score?". Expect the game's close on the terms step, the question on the page with the others, closing with them, and its people asked what happened once the game is over.
+263. **A unit of your own** (42): when asking, "One of your own", type "push-ups", Add. Expect it picked, on You under Your units, and offered next time; no "a next time" anywhere in the stakes.
+264. **Marks** (42): open Ideas. Expect a mark on every idea, each its own. Type a question without a mark and Set the terms: a mark beside "Your question" that taps open the picker to change or remove; the picker's categories in one row of icons that stays as the emoji scroll.
+265. **Decided** (42): ask something the write-up dates today. Expect Tonight picked and "A date" beside it, never the same day twice.
+266. **The penalty-kick argument** (42): after the deploy, its people open it. Expect Agree and "I see it differently"; nobody agreeing a day after its ruling showed, the tiebreaker hears it; it never settles by silence.

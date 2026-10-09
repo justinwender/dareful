@@ -1,0 +1,2 @@
+ALTER TABLE "public_questions" DROP CONSTRAINT "public_questions_key_known";--> statement-breakpoint
+ALTER TABLE "public_questions" ADD CONSTRAINT "public_questions_key_known" CHECK ("public_questions"."key" in ('home_wins', 'margin', 'total', 'first_drive') or "public_questions"."key" like 'own:%');

@@ -90,6 +90,8 @@ export const participantClaims = pgTable(
     claimedAt: ts("claimed_at"),
     /** Set when a creator merges two ghosts; the survivor is merged_into's target. */
     mergedInto: uuid("merged_into").references((): AnyPgColumn => participantClaims.id),
+    /** A guest left out of every count, as `users.excluded_from_counts` leaves out an account (the final round, section 9): set by hand only, for a test made as a guest. */
+    excludedFromCounts: boolean("excluded_from_counts").notNull().default(false),
     createdAt: ts("created_at").notNull().defaultNow(),
   },
   (t) => [
@@ -1287,7 +1289,7 @@ export const publicQuestions = pgTable(
     gameId: uuid("game_id")
       .notNull()
       .references(() => sportsGames.id),
-    /** 'home_wins' | 'margin' | 'total' | 'first_drive'. */
+    /** 'home_wins' | 'margin' | 'total' | 'first_drive', or 'own:' and the question's id for a question someone wrote on the game page (the final round, section 5), which only its own people settle. */
     key: text("key").notNull(),
     /** 'binary' | 'numeric' | 'categorical'. */
     kind: text("kind").notNull(),
@@ -1313,7 +1315,7 @@ export const publicQuestions = pgTable(
   },
   (t) => [
     unique("public_questions_game_key").on(t.gameId, t.key),
-    check("public_questions_key_known", sql`${t.key} in ('home_wins', 'margin', 'total', 'first_drive')`),
+    check("public_questions_key_known", sql`${t.key} in ('home_wins', 'margin', 'total', 'first_drive') or ${t.key} like 'own:%'`),
     check("public_questions_kind_known", sql`${t.kind} in ('binary', 'numeric', 'categorical')`),
     check("public_questions_range_numeric", sql`(${t.kind} <> 'numeric') or (${t.range} is not null and ${t.range} > 0)`),
     check("public_questions_outcome_words_four", sql`${t.outcomeWords} is null or array_length(${t.outcomeWords}, 1) = 4`),

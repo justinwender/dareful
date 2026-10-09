@@ -1,6 +1,6 @@
 "use client";
 
-import { useDynamicContext } from "@dynamic-labs/sdk-react-core";
+import { useSignInSheet } from "@/components/auth/sign-in-sheet";
 import { Button } from "@/components/ui/button";
 import { FixedLayer } from "@/components/ui/layers";
 import { GUEST_LINE_HEIGHT, guestLineWords } from "@/lib/ui/guest-words";
@@ -12,10 +12,12 @@ import { writeJoinHandoff, writeStay } from "@/lib/ui/join-handoff";
  * outside the scroller, so the page starts under it and it never covers anything. On the screen's own ground with a
  * 1px line under it; the words on the left, "Sign up" on the right. No count, no colour that changes with time, no
  * close. Signing up comes back to the screen it was tapped on: on a market, the guest's entry there is kept in the
- * account once it exists (the join handoff); anywhere else, the login stays on the screen.
+ * account once it exists (the join handoff); anywhere else, the login stays on the screen. It opens the app's own
+ * sign-in sheet, as every "Sign in" does (the final round: it was the last place opening the sign-in library's modal,
+ * which the touch-ups round took out everywhere else).
  */
 export function GuestLineView({ line, dareId, name }: { line: GuestLine; dareId: string | null; name: string }) {
-  const { setShowAuthFlow } = useDynamicContext();
+  const signIn = useSignInSheet();
   const height = GUEST_LINE_HEIGHT[line];
   return (
     <>
@@ -32,7 +34,7 @@ export function GuestLineView({ line, dareId, name }: { line: GuestLine; dareId:
             onClick={() => {
               if (dareId) writeJoinHandoff({ dareId, at: Date.now(), keep: true, ...(name.trim() ? { name: name.trim().slice(0, 40) } : {}) });
               else writeStay(window.location.pathname, Date.now());
-              setShowAuthFlow(true);
+              signIn.open();
             }}
           >
             Sign up

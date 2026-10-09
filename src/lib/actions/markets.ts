@@ -39,7 +39,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { denominationById, ensureUnitInGroup, ensureUsd } from "@/lib/ledger/denominations";
 import { createOccasionGroup, isMember, setForPeople } from "@/lib/ledger/groups";
 import { gameById, gameNamedIn } from "@/lib/sports";
-import { answersOf, callToOutcome, castVote, createFields, createTypedData, draftAlreadySaved, draftFromTemplate, draftMarket, enterMarket, lockMarket, MarketError, marketById, openMarket, sayWhatHappened, stateOf, unitOf, VOID_OUTCOME, pickInk, votingOpenNow } from "@/lib/ledger/markets";
+import { answersOf, callToOutcome, castVote, createFields, createTypedData, draftAlreadySaved, draftFromTemplate, draftMarket, draftOwnGameQuestion, enterMarket, lockMarket, MarketError, marketById, openMarket, sayWhatHappened, stateOf, unitOf, VOID_OUTCOME, pickInk, votingOpenNow } from "@/lib/ledger/markets";
 import type { CreateFields } from "@/lib/chain/typed-data";
 import { MAX_ANSWER_LENGTH, MAX_ANSWERS, MIN_ANSWERS } from "@/lib/ledger/pick-one";
 
@@ -72,10 +72,10 @@ export async function nudgeAction(rawId: string, rawTo?: string): Promise<({ ok:
  * Quick mode: one line in, terms out. The model drafts; if it is slow, down, or answers in the wrong shape, the
  * line is used as typed and the screen says so, because a market must never wait on a model.
  */
-export async function scopeMarketAction(rawLine: string, rawCriterion?: string, rawAnswers?: Array<{ question: string; yes: boolean; answer?: string }>, rawKind?: "binary" | "numeric" | "categorical", rawChoices?: string[]): Promise<ScopeResult | { error: string }> {
+export async function scopeMarketAction(rawLine: string, rawCriterion?: string, rawAnswers?: Array<{ question: string; yes: boolean; answer?: string }>, rawKind?: "binary" | "numeric" | "categorical", rawChoices?: string[], rawGameId?: string): Promise<ScopeResult | { error: string }> {
   const user = await currentUser();
   if (!user) return { error: WORDS.signedOut };
-  return writeUp({ line: rawLine, criterion: rawCriterion, answers: rawAnswers, kind: rawKind, choices: rawChoices }, user.id, await viewerZone());
+  return writeUp({ line: rawLine, criterion: rawCriterion, answers: rawAnswers, kind: rawKind, choices: rawChoices, gameId: rawGameId }, user.id, await viewerZone());
 }
 
 const Unit = z.discriminatedUnion("kind", [
@@ -117,6 +117,8 @@ const Draft = z.object({
       model: z.object({ range: z.string().regex(/^\d{1,9}$/).nullable(), typical: z.string().regex(/^\d{1,9}$/), token: z.string().max(200) }).nullable(),
     })
     .optional(),
+  /** A question of the asker's own on a game page (the final round, section 5): the game, and the set whose page it was asked from. */
+  game: z.object({ gameId: uuid, groupId: uuid }).optional(),
 });
 
 /** What the asker signs to open a question as it is sent (the games-and-the-reveal round): its `Create` over its set, the numbers as strings. */
@@ -146,18 +148,21 @@ export async function draftMarketAction(input: z.infer<typeof Draft>): Promise<{
       if (saved === "taken") return { error: "That one’s already sent. Ask it again from the start." };
     }
     if (d.argument?.tier === "contestable" && !d.argument.criterion) return { error: "Pick how it's being decided first." };
+    // A question on a game is never an argument, and goes to the set whose game page it was asked from.
+    if (d.game && d.argument) return { error: "Something in that is off." };
     // A pick-one argument carries its answers (the first-contact round); a number never does.
     if (d.answers && d.number) return { error: "Something in that is off." };
     // The terms and the decide-by never disagree (the first-contact round): a deadline the terms name is the decide-by date, in the asker's zone.
-    if (!d.argument && d.resolvesBy) {
+    if (!d.argument && !d.game && d.resolvesBy) {
       const zone = await viewerZone();
       const decided = localDate(new Date(d.resolvesBy), zone);
       const off = deadlineMismatch(d.terms, decided, new Date(), zone);
       if (off) return { error: `The terms say ${off}, and it’s decided ${datePhrase(decided, new Date(), zone)}. Make them match.` };
     }
-    if (d.who.kind === "set" && !(await isMember(d.who.groupId, user.id))) return { error: "You're not one of those people." };
-    if (d.who.kind !== "set" && d.unit.kind === "existing") return { error: "That unit isn't around any more. Pick another." };
-    const groupId = d.who.kind === "set" ? d.who.groupId : d.who.kind === "people" ? (await setForPeople(user.id, d.who.userIds)).id : (await createOccasionGroup(user.id)).id;
+    const who = d.game ? { kind: "set" as const, groupId: d.game.groupId } : d.who;
+    if (who.kind === "set" && !(await isMember(who.groupId, user.id))) return { error: "You're not one of those people." };
+    if (who.kind !== "set" && d.unit.kind === "existing") return { error: "That unit isn't around any more. Pick another." };
+    const groupId = who.kind === "set" ? who.groupId : who.kind === "people" ? (await setForPeople(user.id, who.userIds)).id : (await createOccasionGroup(user.id)).id;
     const denom = d.unit.kind === "usd" ? await ensureUsd(groupId, user.id) : d.unit.kind === "existing" ? await denominationById(d.unit.id) : await ensureUnitInGroup(groupId, user.id, d.unit);
     if (!denom) return { error: "That unit isn't around any more. Pick another." };
     // The scale (docs/design.md 3.26): the asker's when they typed one, else the model's, checked and signed by this server.
@@ -180,6 +185,28 @@ export async function draftMarketAction(input: z.infer<typeof Draft>): Promise<{
     // An argument that facts settle is ruled now and sealed (the touch-ups round, section 2): the ruling's hash goes into
     // the terms the asker signs here and everyone signs after, and nobody sees the ruling before the close.
     const sealed = d.argument?.settledBy === "facts" ? await sealRuling({ title: d.title, terms: d.terms, criterion: d.argument.criterion, answers: d.answers ? d.answers.map((a) => a.text) : null }) : null;
+    if (d.game) {
+      const row = await draftOwnGameQuestion({
+        gameId: d.game.gameId,
+        id: d.id,
+        creatorId: user.id,
+        groupId,
+        denomId: denom.id,
+        title: d.title,
+        termsText: d.terms,
+        kind: d.answers ? "categorical" : d.number ? "numeric" : "binary",
+        answers: d.answers?.map((a) => ({ text: a.text, userId: a.userId ?? null })) ?? null,
+        unit: d.number?.unit ?? null,
+        scale,
+        typical,
+        mode: d.mode,
+        mark: d.mark ?? null,
+        outcomeWords: d.number || d.answers ? null : (d.outcomeWords ?? null),
+        revealMode: d.blind ? "blind" : "open",
+        zone: await viewerZone(),
+      });
+      return { id: row.id, create: toSign(row) };
+    }
     const row = await draftMarket({
       id: d.id,
       creatorId: user.id,
@@ -346,7 +373,7 @@ export async function enterMarketAction(rawId: string, rawPosition: z.infer<type
     lockedNow = (await afterEntry(id.data)).locked;
   } catch (err) {
     console.error("an argument did not lock when its second person got in", { dareId: id.data, err });
-    return { error: say(err, "You're in, but it didn't lock. Open it again to retry.") };
+    return { error: say(err, "You're in, but it didn't close. Open it again to try again.") };
   }
   revalidatePath(`/m/${id.data}`);
   revalidatePath("/");
@@ -505,8 +532,9 @@ export async function agreeWithRulingAction(rawId: string): Promise<{ ok: true; 
 
 /**
  * Seeing the app's ruling differently (the touch-ups round, section 2): what it got wrong, required, and a photo or a
- * screenshot from someone with an account. Kept, shown to everyone in it, and sent with the ruling to the tiebreaker,
- * whose ruling settles it; the person is answered once it is kept, and the tiebreaker is heard after.
+ * screenshot if they like, never required of anyone (the final round, section 8), which a guest, with no account to hold
+ * it, sends as words. Kept, shown to everyone in it, and sent with the ruling to the tiebreaker, whose ruling settles it;
+ * the person is answered once it is kept, and the tiebreaker is heard after.
  */
 export async function disputeRulingAction(form: FormData): Promise<{ ok: true } | { error: string }> {
   const id = uuid.safeParse(form.get("dareId"));

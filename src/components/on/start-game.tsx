@@ -22,12 +22,14 @@ import { startWord } from "@/lib/sports/types";
 import type { TeamFace } from "@/lib/ui/team";
 import type { Hue } from "@/lib/ui/hue";
 import { cn } from "@/lib/utils";
+import { FIRST_CALL_CLOSE } from "@/lib/ui/copy";
+import { MakeUnit } from "@/components/markets/make-unit";
 
-type Unit = { kind: "usd" } | { kind: "existing"; id: string } | { kind: "new"; template: "beer" | "round" | "coffee" | "next_time"; label: string };
+type Unit = { kind: "usd" } | { kind: "existing"; id: string } | { kind: "new"; template: "beer" | "round" | "coffee" | null; label: string };
+/** Beside Dollars; "a next time" left the stakes in the final round (section 6), and one of your own took its place. */
 const PRESETS = [
   { template: "beer", label: "beers" },
   { template: "round", label: "rounds" },
-  { template: "next_time", label: "a next time" },
 ] as const;
 
 export type MenuItem = { key: "home_wins" | "margin" | "total" | "first_drive"; name: string; kindLabel: string; title: string; rows: { countsIf: string; tie: string | null; unclear: string } };
@@ -91,7 +93,7 @@ export function GameHeader({ game, caption, right }: { game: GameHeaderData; cap
 /** A question already on this person's page for the game, from another set (3.33, "Asking what's already asked"): offered before starting the same one. */
 export type AlreadyAsked = { dareId: string; line: string; asker: { name: string; hue: Hue } };
 
-export function StartGame({ game, menu, sets, chrome, signing, mode, closes, existing = {} }: {
+export function StartGame({ game, menu, sets, chrome, signing, mode, closes, existing = {}, ownUnits = [] }: {
   game: GameHeaderData;
   menu: MenuItem[];
   sets: SetOption[];
@@ -103,6 +105,8 @@ export function StartGame({ game, menu, sets, chrome, signing, mode, closes, exi
   closes: string;
   /** The menu's questions already on this person's page from another set, by key (3.33): the offer names one before the same is started. */
   existing?: Partial<Record<MenuItem["key"], AlreadyAsked>>;
+  /** The asker's own stake units, from You (the touch-ups round). */
+  ownUnits?: string[];
 }) {
   const router = useRouter();
   const sign = useSigner();
@@ -115,7 +119,11 @@ export function StartGame({ game, menu, sets, chrome, signing, mode, closes, exi
   const [checked, setChecked] = useState<Set<MenuItem["key"]>>(new Set(mode.kind === "add" ? [mode.key] : menu.some((m) => m.key === "home_wins") ? ["home_wins"] : []));
   // Whoever the asker sends it to; adding one keeps the game's own people.
   const who: Who = mode.kind === "add" && mode.groupId ? { kind: "set", groupId: mode.groupId } : { kind: "link" };
+  /** A game being played: its questions close five minutes after their first call, never "at first pitch" (the final round, found starting a game on the dev browser). */
+  const live = closes === FIRST_CALL_CLOSE;
   const [unit, setUnit] = useState<Unit>({ kind: "usd" });
+  /** The asker's own units: those on You, and any made here (the final round, section 6). */
+  const [mine, setMine] = useState<string[]>(ownUnits);
   const [problem, setProblem] = useState<string | null>(null);
   const [saving, startSave] = useTransition();
   const [signingStep, setSigningStep] = useState<string | null>(null);
@@ -124,7 +132,7 @@ export function StartGame({ game, menu, sets, chrome, signing, mode, closes, exi
   const units = selectedSet?.units ?? [];
 
   const unitChip = (u: Unit, label: string, key: string) => {
-    const selected = u.kind === unit.kind && (u.kind === "usd" || (u.kind === "existing" && unit.kind === "existing" && u.id === unit.id) || (u.kind === "new" && unit.kind === "new" && u.template === unit.template));
+    const selected = u.kind === unit.kind && (u.kind === "usd" || (u.kind === "existing" && unit.kind === "existing" && u.id === unit.id) || (u.kind === "new" && unit.kind === "new" && u.template === unit.template && (u.template !== null || u.label === unit.label)));
     return (
       <button key={key} type="button" onClick={() => setUnit(u)} {...chipPress(selected)}>
         <Chip size={36} selected={selected} choice>
@@ -169,7 +177,7 @@ export function StartGame({ game, menu, sets, chrome, signing, mode, closes, exi
       <AvatarStack people={selectedSet.avatars.slice(0, 4)} size={26} ring="var(--surface-2)" />
       <span>{mode.groupLabel}</span>
     </span>
-  ) : `Everything closes at ${startWord(game.sport)}.`;
+  ) : live ? FIRST_CALL_CLOSE : `Everything closes at ${startWord(game.sport)}.`;
 
   const wrap = (children: ReactNode) => (
     <Screen>
@@ -295,7 +303,7 @@ export function StartGame({ game, menu, sets, chrome, signing, mode, closes, exi
             <dt className="text-label text-ink-3">If it’s unclear</dt>
             <dd className="text-body text-ink-2">{m.rows.unclear}</dd>
             <dt className="text-label text-ink-3">Closes</dt>
-            <dd className="text-body text-ink-2">At {startWord(game.sport)}, {closes}</dd>
+            <dd className="text-body text-ink-2">{live ? FIRST_CALL_CLOSE : `At ${startWord(game.sport)}, ${closes}`}</dd>
           </dl>
         </section>
       ))}
@@ -304,8 +312,10 @@ export function StartGame({ game, menu, sets, chrome, signing, mode, closes, exi
         <h2 className="text-label text-ink-3">Stakes{chosen.length > 1 ? `, for all ${chosen.length}` : ""}</h2>
         <div className="flex flex-wrap gap-2">
           {unitChip({ kind: "usd" }, "Dollars", "usd")}
-          {units.map((u) => unitChip({ kind: "existing", id: u.id }, u.template === "next_time" ? "a next time" : u.template ? `${u.label}s` : `“${u.label}”`, u.id))}
+          {units.filter((u) => u.template !== "next_time").map((u) => unitChip({ kind: "existing", id: u.id }, u.template ? `${u.label}s` : `“${u.label}”`, u.id))}
           {PRESETS.filter((p) => !units.some((u) => u.template === p.template)).map((p) => unitChip({ kind: "new", template: p.template, label: p.template }, p.label, p.template))}
+          {mine.filter((o) => !units.some((u) => !u.template && u.label.toLowerCase() === o)).map((o) => unitChip({ kind: "new", template: null, label: o }, `“${o}”`, `own-${o}`))}
+          <MakeUnit onMade={(label) => (setMine((m) => (m.includes(label) ? m : [...m, label])), setUnit({ kind: "new", template: null, label }))} />
         </div>
         <p className="text-caption text-ink-3">One kind of thing for everyone, fixed now. Dollars and beers can’t be weighed against each other.</p>
       </section>
