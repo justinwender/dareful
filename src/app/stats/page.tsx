@@ -9,7 +9,9 @@ import { isOwner } from "@/lib/usage/owner";
 import { countedOnchain, countStats, PERCENT_STATS, snapshots, STATS, windowFor } from "@/lib/usage/stats";
 import { onchainCounts, ONCHAIN_COUNT_CAP } from "@/lib/ledger/envio";
 import { explorerAddressUrl } from "@/lib/chain/explorer";
-import { monOf, relayerRunway, RUNWAY_DAYS } from "@/lib/chain/watch";
+import { readRunway } from "@/lib/ops/runway";
+import { BY_HAND } from "@/lib/ops/lines";
+import { CreditEntry } from "@/components/you/credit-entry";
 import { within, SECTION_LIMIT_MS } from "@/lib/usage/within";
 import { redactKeys } from "@/lib/redact";
 
@@ -18,7 +20,8 @@ export const metadata: Metadata = { title: "Dareful", robots: { index: false, fo
 /**
  * The numbers (the field round, 3.1): the owner's page and nobody else's. Anyone who is not the owner, signed in
  * or not, gets the code screen exactly as for an address with no screen, so the page tells nobody it exists.
- * Two columns, since launch and the last seven days, each number with its definition; then the relayer, the chain's
+ * Two columns, since launch and the last seven days, each number with its definition; then the runway (every level
+ * production can run out of, the relayer's first, with the model API's credit typed in after a top-up), the chain's
  * counts, and the daily snapshots with the two buttons that write them. Every count leaves excluded accounts out.
  *
  * Each section reads on its own, with its own time limit and its own line when it cannot (the touch-ups round,
@@ -39,11 +42,12 @@ export default async function StatsPage() {
         <Suspense fallback={<TallyWait />}>
           <Counts />
         </Suspense>
-        <section className="flex flex-col gap-3" data-stats-relayer="">
-          <h2 className="text-label text-ink-2">The relayer</h2>
+        <section className="flex flex-col gap-3" data-stats-runway="">
+          <h2 className="text-label text-ink-2">Runway</h2>
           <Suspense fallback={<TallyWait />}>
-            <Relayer />
+            <Runway />
           </Suspense>
+          <CreditEntry />
         </section>
         <section className="flex flex-col gap-3" data-stats-chain="">
           <h2 className="text-label text-ink-2">On the chain</h2>
@@ -71,7 +75,7 @@ function Unread({ what, err }: { what: string; err: unknown }): ReactNode {
   console.error("a section of the numbers could not be read", { what, why: redactKeys(err instanceof Error ? err.message.split("\n")[0] : String(err)) });
   return (
     <p className="text-body-sm text-ink-2" data-stats-unread={what}>
-      {what === "counts" ? "The counts couldn’t be read just now." : what === "relayer" ? "The relayer couldn’t be read just now." : what === "chain" ? "The chain’s counts couldn’t be read just now." : "The days couldn’t be read just now."}
+      {what === "counts" ? "The counts couldn’t be read just now." : what === "runway" ? "The runway couldn’t be read just now." : what === "chain" ? "The chain’s counts couldn’t be read just now." : "The days couldn’t be read just now."}
     </p>
   );
 }
@@ -113,26 +117,45 @@ async function Counts() {
   );
 }
 
-/** The relayer's balance and the days it covers at the past week's rate (the touch-ups round, section 0). */
-async function Relayer() {
-  let runway: Awaited<ReturnType<typeof relayerRunway>>;
+/**
+ * Every level production can run out of, against the owner's lines (the ops round, section 1; src/lib/ops/lines.ts),
+ * each read on its own; the relayer's balance and the days it covers are the first. The owner is told by email and push
+ * when one crosses a line, and the morning email lists them all with the two read by hand.
+ */
+async function Runway() {
+  let levels: Awaited<ReturnType<typeof readRunway>>;
   try {
-    runway = await within(SECTION_LIMIT_MS.relayer, relayerRunway(new Date()));
+    levels = await within(SECTION_LIMIT_MS.relayer + 2_000, readRunway(new Date()));
   } catch (err) {
-    return <Unread what="relayer" err={err} />;
+    return <Unread what="runway" err={err} />;
   }
-  const low = runway.perDay > 0n && runway.balance < runway.perDay * RUNWAY_DAYS;
+  const word = { ok: "Fine", warn: "Past the warning line", urgent: "Urgent", unread: "Not read" } as const;
   return (
     <>
-      <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2 rounded-card border border-line bg-surface px-4 py-3 text-body-sm text-ink" data-relayer-low={low ? "" : undefined}>
-        <dt>Balance</dt>
-        <dd className="text-right tabular-nums" data-relayer-balance="">{monOf(runway.balance)} MON</dd>
-        <dt>Spent a day, the past week</dt>
-        <dd className="text-right tabular-nums">{monOf(runway.perDay)} MON</dd>
-        <dt>Days it covers</dt>
-        <dd className="text-right tabular-nums" data-relayer-days="">{runway.days === null ? "Nothing spent" : `About ${runway.days}`}</dd>
+      <dl className="flex flex-col divide-y divide-line rounded-card border border-line bg-surface text-body-sm text-ink" data-runway="">
+        {levels.map((l) => (
+          <div key={l.key} className="flex flex-col gap-0.5 px-4 py-2.5" data-runway-level={l.key} data-runway-state={l.state}>
+            <dt className="flex items-baseline justify-between gap-3">
+              <span>{l.what}</span>
+              <span className="text-caption text-ink-2">{word[l.state]}</span>
+            </dt>
+            <dd className="text-caption text-ink-3">
+              {l.reading}
+              {l.lines ? `. ${l.lines}.` : null}
+            </dd>
+          </div>
+        ))}
       </dl>
-      <p className="text-caption text-ink-3">The week counts every transaction the relayer signed, the test suites’ included, since they share it. You’re emailed when it covers less than three days.</p>
+      <ul className="flex flex-col gap-1 text-caption text-ink-3">
+        {BY_HAND.map((h) => (
+          <li key={h.what}>
+            <a href={h.url} target="_blank" rel="noreferrer" className="link-tertiary press-line" data-press="line">
+              {h.what}
+            </a>
+            , read by hand against {h.line}.
+          </li>
+        ))}
+      </ul>
     </>
   );
 }

@@ -12,6 +12,7 @@
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { MODELS, usageTap } from "@/lib/ai/client";
+import { PRICES } from "@/lib/ai/spend";
 import { arbitrate, arbitrateAnswer, arbitrateNumber, carefulQuestions, eitherOr, ruleAnswerClaim, ruleClaim, triage } from "@/lib/ai/settler";
 import { proposeAnswer, proposeNumber, proposeOutcome } from "@/lib/ai/markets";
 import { deadlineMismatch } from "@/lib/ledger/decide-by";
@@ -24,15 +25,8 @@ const ROUTES = {
   old: { drafting: "claude-sonnet-5", ruling: "claude-fable-5-1" },
   new: { drafting: "claude-haiku-4-5-20251001", ruling: "claude-sonnet-5-5" },
 } as const;
-/** Dollars per million tokens, in and out, from Anthropic's pricing page on 2026-10-04; Haiku 5.5 at a tenth of Haiku 4.5's, as the owner's brief of 2026-10-08 gives it. */
-const PRICE: Record<string, [number, number]> = {
-  "claude-haiku-4-5-20251001": [1, 5],
-  "claude-haiku-5-5": [0.1, 0.5],
-  "claude-sonnet-5": [2, 10],
-  "claude-sonnet-5-5": [2, 10],
-  "claude-opus-5-5": [4, 20],
-  "claude-fable-5-1": [10, 50],
-};
+/** Dollars per million tokens, in and out: the app's own price table (src/lib/ai/spend.ts, nano-dollars a token), so the comparison and the runway price alike. */
+const PRICE: Record<string, [number, number]> = Object.fromEntries(Object.entries(PRICES).map(([model, p]) => [model, [Number(p.input) / 1000, Number(p.output) / 1000]]));
 const BANNED = /\b(owes?|owed|debt|balance|outstanding|overdue|odds|price|wager|bet|gambl\w*|money|market)\b|—|the one picked|the chosen one/i;
 
 type Spend = { calls: number; input: number; output: number; dollars: number; ms: number; models: string[]; searches: number };

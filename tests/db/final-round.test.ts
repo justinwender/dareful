@@ -25,7 +25,7 @@ import { proposeFor, syncSchedule } from "@/lib/sports";
 import { parseScoreboard } from "@/lib/sports/espn";
 import type { FeedGame, ScheduleSource } from "@/lib/sports/types";
 import { countedOnchain, countStats } from "@/lib/usage/stats";
-import { cleanup, codeOf, counting, tempSigner, track, type Signer } from "./fixture";
+import { cleanup, codeOf, counting, tempSigner, testSchedule, track, type Signer } from "./fixture";
 
 const H = 3_600_000;
 const RUN = Math.random().toString(36).slice(2, 8);
@@ -95,7 +95,7 @@ test("silence agrees only where the signed terms say so: an argument from before
 // ------------------------------------------------------------------------------------- section 5: a question of one's own on a game page
 
 const recorded = (startsAt: Date): FeedGame => ({ ...parseScoreboard("nfl", fixture("espn-nfl-scheduled"))[0]!, sourceId: `${PREFIX}${startsAt.getTime()}`, startsAt });
-const listing = (games: FeedGame[]): ScheduleSource => ({ name: "espn", listGames: async () => games });
+const listing = (games: FeedGame[]): ScheduleSource => testSchedule(games);
 const gameRow = async (sourceId: string) => (await db.select().from(schema.sportsGames).where(and(eq(schema.sportsGames.source, "espn"), eq(schema.sportsGames.sourceId, sourceId))).limit(1))[0]!;
 
 test("a question of one's own on a game page closes at the start when asked ahead and five minutes after its first call once the game is on, is the page's own, is never the feed's to settle, and is refused once the game is over", async () => {

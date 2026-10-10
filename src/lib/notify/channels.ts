@@ -44,19 +44,33 @@ export function pushFailure(err: unknown): "dead" | "retry" | "failed" {
 export const PUSH_RETRY_MS = 600;
 
 /**
+ * Every email the app hands Resend and every push it tries, with whether it went (the ops round): what the email
+ * quota's line counts, and what the push check's failure rate reads. Never who to or what. Never throws.
+ */
+export async function recordSend(channel: "email" | "push", kind: "notice" | "ops", ok: boolean, at: Date = new Date()): Promise<void> {
+  try {
+    await db.insert(schema.channelSends).values({ at, channel, kind, ok });
+  } catch (err) {
+    console.warn("a send could not be counted", { channel, why: err instanceof Error ? err.message.split("\n")[0] : "unknown" });
+  }
+}
+
+/**
  * True if at least one of this person's browsers took it. A subscription that can never take one is deleted; a send
  * that failed on the way is tried once more, and only a second failure is logged, by its status alone.
  */
-export async function sendPush(userId: string, notice: Notice, send: typeof webpush.sendNotification = (sub, payload, opts) => webpush.sendNotification(sub, payload, opts)): Promise<boolean> {
+export async function sendPush(userId: string, notice: Notice, send: typeof webpush.sendNotification = (sub, payload, opts) => webpush.sendNotification(sub, payload, opts), kind: "notice" | "ops" = "notice"): Promise<boolean> {
   if (!vapid()) return false;
   const subs = await db.select().from(schema.pushSubscriptions).where(eq(schema.pushSubscriptions.userId, userId));
   let delivered = false;
   for (const s of subs) {
     const once = () => send({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, JSON.stringify(notice), { TTL: 60 * 60 * 12 });
+    let went = false;
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       try {
         await once();
         delivered = true;
+        went = true;
         break;
       } catch (err) {
         const what = pushFailure(err);
@@ -73,6 +87,8 @@ export async function sendPush(userId: string, notice: Notice, send: typeof webp
         break;
       }
     }
+    // One row a subscription tried, gone or not: the push check's share failing over a day (a dead subscription is a push that did not go).
+    await recordSend("push", kind, went);
   }
   return delivered;
 }
@@ -127,6 +143,7 @@ export async function sendOps(subject: string, text: string): Promise<boolean> {
   }
   const { error } = await new Resend(key).emails.send({ from, to, subject, text });
   if (error) console.error("ops email failed", { name: error.name });
+  await recordSend("email", "ops", !error);
   return !error;
 }
 
@@ -146,5 +163,6 @@ export async function sendEmail(userId: string, notice: Notice): Promise<boolean
   const text = notice.email ? `${notice.title}\n\n${notice.body}\n\nOpen it: ${notice.url}\n\n${notice.email.footer}` : `${notice.body}\n\n${notice.url}\n\nYou're getting this because a friend did something in a question you're part of. Dareful never writes because time passed.`;
   const { error } = await new Resend(key).emails.send({ from, to, subject: notice.email?.subject ?? notice.title, text });
   if (error) console.error("email failed", { userId, name: error.name });
+  await recordSend("email", "notice", !error);
   return !error;
 }

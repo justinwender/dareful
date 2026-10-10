@@ -23,7 +23,7 @@ import { leadingVotesOn } from "@/lib/ledger/settle";
 import { marketCards } from "@/lib/ledger/market-view";
 import { markReachCardShown, owesReachCard } from "@/lib/ledger/reach";
 import { discardDraft, unsentDrafts } from "@/lib/ledger/drafts";
-import { cleanup, codeOf, itHappened, tempSigner, track, type Signer } from "./fixture";
+import { cleanup, codeOf, itHappened, tempSigner, testSchedule, track, type Signer } from "./fixture";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { and, eq } from "drizzle-orm";
@@ -190,7 +190,7 @@ test("a game's question sent again after a send that failed before its signature
   const scoreboard = JSON.parse(readFileSync(new URL("../fixtures/sports/espn-nfl-scheduled.json", import.meta.url), "utf8")) as unknown;
   const prefix = track.gamePrefix(`test:first-db:${randomUUID().slice(0, 8)}:`);
   const game = parseScoreboard("nfl", scoreboard).slice(0, 1).map((x) => ({ ...x, sourceId: `${prefix}${x.sourceId}`, startsAt: new Date(Date.now() + 3 * 86_400_000) }));
-  await syncSchedule("nfl", new Date(), { name: "espn", listGames: async () => game });
+  await syncSchedule("nfl", new Date(), testSchedule(game));
   const [row] = await db.select().from(schema.sportsGames).where(eq(schema.sportsGames.sourceId, game[0]!.sourceId));
   const gameId = (row as { id: string }).id;
   const [first] = await startGame({ gameId, keys: ["margin"], creatorId: ana.user.id, groupId: g.id, denomId: usd.id, zone: "America/New_York" });

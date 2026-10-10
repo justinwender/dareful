@@ -28,6 +28,7 @@ import { db, schema } from "@/db";
 import { timed } from "@/lib/timing";
 import { monadChain, rpcUrl } from "./contracts";
 import { clearChainFailure, noteChainFailure } from "./failures";
+import { countedFetch } from "@/lib/ops/rpc-usage";
 
 export type Relayer = {
   account: PrivateKeyAccount;
@@ -48,7 +49,8 @@ export function relayer(): Relayer {
   }
   const chain = monadChain();
   // Transient HTTP failures (rate limits, gateway hiccups) retry with backoff before anything fails loudly.
-  const transport = http(rpcUrl(), { retryCount: 6, retryDelay: 1500, timeout: 30_000 });
+  // Every call is weighed at its method's cost as it goes, for the provider's monthly units (the ops round, section 1).
+  const transport = http(rpcUrl(), { retryCount: 6, retryDelay: 1500, timeout: 30_000, fetchFn: countedFetch });
   cached = {
     account,
     // Monad produces a block in well under a second. viem's default is to look for a receipt every four

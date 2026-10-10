@@ -18,7 +18,7 @@ import * as markets from "@/lib/ledger/markets";
 import { CODE_GUESSES_PER_HOUR, marketForCode, roomCodeFor } from "@/lib/ledger/rooms";
 import { starterGames, upsertGames } from "@/lib/sports";
 import { parseScoreboard } from "@/lib/sports/espn";
-import { countStats, dayWindow, peopleAndQuestions, refreshSnapshotPeople, windowFor } from "@/lib/usage/stats";
+import { countStats, dayWindow, definedCounts, publicCounts, refreshSnapshotPeople, windowFor } from "@/lib/usage/stats";
 import { publicNumbers } from "@/lib/usage/public-numbers";
 import { BEFORE_LAUNCH, cleanup, tempSigner, tempUser, track, type Signer, type User } from "./fixture";
 
@@ -114,24 +114,26 @@ test("the public numbers: accounts and guests apart, questions asked and settled
   await guest("Left out", settled, { excludedFromCounts: true });
   await guest("On a test's question", testsOwn);
 
-  const four = await peopleAndQuestions(w);
-  assert.deepEqual(four, { accounts: 2, guests: 1, questions: 3, settled: 1 }, "two counted accounts and one guest; three questions sent, one settled; the test's, the draft, the bound guest, the excluded one and a test's guest nowhere");
+  // The ops round (section 6): a question its asker called off before anyone joined is not one anybody was asked, and
+  // the questions played (someone besides the asker got in) lead, with how they stand and the sets that came back.
+  const defined = await definedCounts(w);
+  assert.deepEqual(defined, { accounts: 2, guests: 1, questions: 2, settled: 1, questions_two_in: 1, played_settled: 1, played_open: 0, played_undecided: 0, sets_two_questions: 1 }, "two counted accounts and one guest; two questions sent (the one called off is not), one settled and played; the test's, the draft, the bound guest, the excluded one and a test's guest nowhere");
   const all = await countStats(w);
-  assert.deepEqual([all.accounts, all.guests, all.questions, all.settled], [2, 1, 3, 1], "the owner's page counts them the same way");
-  assert.deepEqual(await peopleAndQuestions(dayWindow("2004-04-05")), { accounts: 0, guests: 0, questions: 0, settled: 0 }, "the window holds");
+  assert.deepEqual([all.accounts, all.guests, all.questions, all.settled, all.questions_two_in, all.played_settled, all.sets_two_questions], [2, 1, 2, 1, 1, 1, 1], "the owner's page counts them the same way");
+  assert.deepEqual(await publicCounts(dayWindow("2004-04-05")), { accounts: 0, guests: 0, questions_two_in: 0, played_settled: 0, played_open: 0, played_undecided: 0, sets_two_questions: 0 }, "the window holds");
 
   await db.insert(schema.usageSnapshots).values({ day: DAY, counts: { shares: 7 } }).onConflictDoUpdate({ target: schema.usageSnapshots.day, set: { counts: { shares: 7 } } });
   const refreshed = await refreshSnapshotPeople(true, [DAY]);
   assert.deepEqual(refreshed.map((r) => r.day), [DAY], "only the day asked for");
   const [row] = await db.select().from(schema.usageSnapshots).where(eq(schema.usageSnapshots.day, DAY));
-  assert.deepEqual(row?.counts, { shares: 7, accounts: 2, guests: 1, questions: 3, settled: 1 }, "the day gains the four and keeps what it was taken with");
+  assert.deepEqual(row?.counts, { shares: 7, ...defined }, "the day is brought in line with today's definitions and keeps what it was taken with");
 });
 
 test("the public numbers are /stats's own four since launch, with real use on the chain beside them, read at the moment they were asked for", async () => {
   const now = new Date();
   const n = await publicNumbers(now);
-  const four = await peopleAndQuestions(windowFor("launch", now));
-  assert.deepEqual({ accounts: n.accounts, guests: n.guests, questions: n.questions, settled: n.settled }, four, "the same queries over the same window");
+  const counts = await publicCounts(windowFor("launch", now));
+  assert.deepEqual({ accounts: n.accounts, guests: n.guests, questions_two_in: n.questions_two_in, played_settled: n.played_settled, played_open: n.played_open, played_undecided: n.played_undecided, sets_two_questions: n.sets_two_questions }, counts, "the same queries over the same window");
   assert.equal(n.at, now.toISOString());
   assert.ok(n.chain !== null && [n.chain.obligations, n.chain.questions, n.chain.people, n.chain.sets].every((x) => Number.isInteger(x) && x >= 0), "the chain's four, from the indexer");
 });

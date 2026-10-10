@@ -236,6 +236,12 @@ export function numberAxis(entries: NumberEntry[], unit: { singular: string; plu
 /** The axis as it travels to the browser: bigints as strings. */
 export type NumberLineAxis = {
   mode: NumberAxis["mode"];
+  /**
+   * The axis's ends in the units its entries are stored in, as decimal strings: what places a value in a slice
+   * (`columnOf`). Never read back out of a label, which on a signed margin is words ("Bears by 7", 3.40).
+   */
+  lo: string;
+  hi: string;
   columns: Array<Omit<AxisColumn, "stake" | "value"> & { stake: string; value: string | null }>;
   offLow: (Omit<OffAxis, "stake" | "value"> & { stake: string; value: string }) | null;
   offHigh: (Omit<OffAxis, "stake" | "value"> & { stake: string; value: string }) | null;
@@ -244,7 +250,17 @@ export type NumberLineAxis = {
 
 export function serialiseAxis(a: NumberAxis): NumberLineAxis {
   const off = (o: OffAxis | null) => (o ? { ...o, stake: o.stake.toString(), value: o.value.toString() } : null);
-  return { mode: a.mode, columns: a.columns.map((c) => ({ ...c, stake: c.stake.toString(), value: c.value === null ? null : c.value.toString() })), offLow: off(a.offLow), offHigh: off(a.offHigh), marker: a.marker };
+  return { mode: a.mode, lo: a.lo.toString(), hi: a.hi.toString(), columns: a.columns.map((c) => ({ ...c, stake: c.stake.toString(), value: c.value === null ? null : c.value.toString() })), offLow: off(a.offLow), offHigh: off(a.offHigh), marker: a.marker };
+}
+
+/**
+ * Which column a value stands in, 0-based, as `numberAxis` placed it on the server: its own column across per-value
+ * columns (-1 when there is none), else the slice it falls in, from the axis's numeric ends (the ops round, section 0:
+ * a margin past four either way draws slices labelled in words, and reading a label as a number threw). Pure.
+ */
+export function columnOf(v: bigint, axis: Pick<NumberLineAxis, "mode" | "lo" | "hi" | "columns">): number {
+  if (axis.mode === "values") return axis.columns.findIndex((c) => c.value !== null && BigInt(c.value) === v);
+  return sliceOf(v, BigInt(axis.lo), BigInt(axis.hi)) - 1;
 }
 
 export type RulerPin = { id: string; value: bigint; xPermille: number; off: "low" | "high" | null };

@@ -12,9 +12,11 @@ import { forgetOldFailures, tellFailures } from "@/lib/chain/failures";
 import { sendOps } from "@/lib/notify/channels";
 import { completions } from "@/lib/ledger/completions";
 import { keepWarm } from "@/lib/ops/warm";
+import { beat, opsTick } from "@/lib/ops/tick";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+// The ledger's jobs and, every five minutes, the operations jobs after them (an hourly check may take twenty seconds).
+export const maxDuration = 120;
 
 /**
  * The scheduler's one door (docs/decisions.md 2026-09-21). The database calls this once a minute (pg_cron and
@@ -60,8 +62,9 @@ export async function POST(req: Request): Promise<Response> {
     console.error("tick: chain writes could not be reconciled", err instanceof Error ? err.message : err);
     return null;
   });
-  // The relayer's gas, read after the jobs so the read never delays a send; unread is reported, never thrown.
-  const relayer = await watchRelayer(now).catch((err: unknown) => {
+  // The relayer's gas, read after the jobs so the read never delays a send; unread is reported, never thrown. The owner
+  // is told by the runway's lines (src/lib/ops/runway.ts), into which the hourly email is folded.
+  const relayer = await watchRelayer().catch((err: unknown) => {
     console.error("tick: the relayer's balance could not be read", err instanceof Error ? err.message : err);
     return null;
   });
@@ -72,5 +75,11 @@ export async function POST(req: Request): Promise<Response> {
     return 0;
   });
   if (hourly(now)) await forgetOldFailures(now).catch(() => undefined);
-  return NextResponse.json({ locked: report.locked.length, resolved: report.resolved.length, notified: report.notified.length, expired: report.expired.length, arbitrated: report.arbitrated.length, warned: report.warned.length, failed: report.failed.length, feed: { synced: sports.synced, polled: sports.polled.length, drives: sports.drives.length, proposed: sports.proposed.length, settled: sports.settled.length, voided: sports.voided.length, failed: sports.failed.length }, writes: writes ? { mined: writes.mined.length, completed: writes.completed.length, reverted: writes.reverted.length, dropped: writes.dropped.length, rebroadcast: writes.rebroadcast.length } : null, relayer, failing, warmed: await warming });
+  // The operations jobs (the ops round): health and the runway every five minutes, the morning email from 8am Eastern,
+  // after the ledger's jobs and never beside them, since the database's pooler stalls on a deep queue; none can fail it.
+  const ops = await opsTick(now);
+  const summary = { locked: report.locked.length, resolved: report.resolved.length, failed: report.failed.length + sports.failed.length, relayer: relayer?.mon ?? null, health: ops.health, told: ops.told.length, morning: ops.morning };
+  // The run, recorded once it is done: the health check's word that the scheduler is alive (a tick that dies midway records nothing).
+  await beat(now, summary).catch((err: unknown) => console.error("tick: the run could not be recorded", err instanceof Error ? err.message.split("\n")[0] : err));
+  return NextResponse.json({ locked: report.locked.length, resolved: report.resolved.length, notified: report.notified.length, expired: report.expired.length, arbitrated: report.arbitrated.length, warned: report.warned.length, failed: report.failed.length, feed: { synced: sports.synced, polled: sports.polled.length, drives: sports.drives.length, proposed: sports.proposed.length, settled: sports.settled.length, voided: sports.voided.length, failed: sports.failed.length }, writes: writes ? { mined: writes.mined.length, completed: writes.completed.length, reverted: writes.reverted.length, dropped: writes.dropped.length, rebroadcast: writes.rebroadcast.length } : null, relayer, failing, ops, warmed: await warming });
 }

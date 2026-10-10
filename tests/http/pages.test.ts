@@ -20,7 +20,7 @@ import { thumbKey } from "@/lib/media";
 import { stickerStampKey } from "@/lib/media/marks";
 import { putObject, removeObjects, storageConfigured } from "@/lib/media/storage";
 import sharp from "sharp";
-import { cleanup, cover, fictionalPhone, ghost, tempSigner, tempUser, track, type Signer, type User } from "../db/fixture";
+import { cleanup, cover, fictionalPhone, ghost, tempSigner, tempUser, testSchedule, track, type Signer, type User } from "../db/fixture";
 import { hashPhone } from "@/lib/auth/phone";
 import { enterAsGhost } from "@/lib/ledger/ghost-entry";
 import { removeMarket } from "@/lib/ledger/now-swipes";
@@ -300,7 +300,7 @@ before(async () => {
   // This run's games carry one prefix, registered so cleanup takes them and no other run's (tests/db/fixture.ts).
   const gamePrefix = track.gamePrefix(`test:pages:${randomUUID().slice(0, 8)}:`);
   const feedGame = parseScoreboard("nfl", scoreboard).slice(0, 1).map((g) => ({ ...g, sourceId: `${gamePrefix}${g.sourceId}`, startsAt: new Date(Date.now() + 5 * 86_400_000) }));
-  await syncSchedule("nfl", new Date(), { name: "espn", listGames: async () => feedGame });
+  await syncSchedule("nfl", new Date(), testSchedule(feedGame));
   const [gameRow] = await db.select().from(schema.sportsGames).where(eq(schema.sportsGames.sourceId, feedGame[0]!.sourceId));
   feedGameId = (gameRow as { id: string }).id;
   feedGroupId = mg.id;
@@ -330,7 +330,7 @@ before(async () => {
   await db.insert(schema.groupMembers).values({ groupId: fg.id, userId: rae.user.id });
   const fgUsd = await ensureUsd(fg.id, nia.user.id);
   const finalGame = parseScoreboard("nfl", scoreboard).slice(2, 3).map((g) => ({ ...g, sourceId: `${gamePrefix}${g.sourceId}`, startsAt: new Date(Date.now() + 5 * 86_400_000) }));
-  await syncSchedule("nfl", new Date(), { name: "espn", listGames: async () => finalGame });
+  await syncSchedule("nfl", new Date(), testSchedule(finalGame));
   const [finalRow] = await db.select().from(schema.sportsGames).where(eq(schema.sportsGames.sourceId, finalGame[0]!.sourceId));
   finalGameId = (finalRow as { id: string }).id;
   finalHome = finalGame[0]!.home.short;
@@ -359,7 +359,7 @@ before(async () => {
   // A game that is over (3.37, the night): a second recorded game, started thirty hours ago and complete, with two questions the final score settled in nia and rae's set.
   // Drafted while the game was ahead (a template refuses a kickoff that has passed), then the game and its questions moved back in time.
   const nightGame = parseScoreboard("nfl", scoreboard).slice(1, 2).map((g) => ({ ...g, sourceId: `${gamePrefix}${g.sourceId}`, startsAt: new Date(Date.now() + 2 * 3_600_000) }));
-  await syncSchedule("nfl", new Date(), { name: "espn", listGames: async () => nightGame });
+  await syncSchedule("nfl", new Date(), testSchedule(nightGame));
   const [nightRow] = await db.select().from(schema.sportsGames).where(eq(schema.sportsGames.sourceId, nightGame[0]!.sourceId));
   nightGameId = (nightRow as { id: string }).id;
   nightGroupId = fg.id;
@@ -1701,7 +1701,7 @@ test("a game played with more than one set is one page: each card names its peop
   const prefix = track.gamePrefix(`test:pages-sets:${randomUUID().slice(0, 8)}:`);
   const scoreboard = JSON.parse(readFileSync(new URL("../fixtures/sports/espn-nfl-scheduled.json", import.meta.url), "utf8")) as unknown;
   const listed = parseScoreboard("nfl", scoreboard).slice(3, 4).map((g) => ({ ...g, sourceId: `${prefix}${g.sourceId}`, startsAt: new Date(Date.now() + 4 * 86_400_000) }));
-  await syncSchedule("nfl", new Date(), { name: "espn", listGames: async () => listed });
+  await syncSchedule("nfl", new Date(), testSchedule(listed));
   const [row] = await db.select().from(schema.sportsGames).where(eq(schema.sportsGames.sourceId, listed[0]!.sourceId));
   const gameId = (row as { id: string }).id;
   const [tpl] = await db.select().from(schema.publicQuestions).where(and(eq(schema.publicQuestions.gameId, gameId), eq(schema.publicQuestions.key, "home_wins")));

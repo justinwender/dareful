@@ -19,6 +19,11 @@
  *   npx tsx --env-file=.env.local scripts/ops/sweep-walk-rows.ts --apply touch-ups   removes the touch-ups round's
  *   npx tsx --env-file=.env.local scripts/ops/sweep-walk-rows.ts --apply final       removes the final round's
  *   npx tsx --env-file=.env.local scripts/ops/sweep-walk-rows.ts --apply submission  removes the submission round's
+ *   npx tsx --env-file=.env.local scripts/ops/sweep-walk-rows.ts --apply ops         removes the ops round's
+ *
+ * The ops round's walk (the crossword question two guests joined from the simulators, with its drawn photo and the
+ * round covered for one of them, the penalty-kick argument one of them took the other side of, and the Bears at
+ * Packers game's two questions with the game's photo) is removed the same way once its screenshots are taken.
  */
 import { and, eq, gte, inArray, notInArray, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
@@ -33,7 +38,7 @@ const DEV = "7fc0ce05-885a-457b-8a5e-6e8768379cd2";
  * the moment from which a row carrying nothing but one of the walk's devices is the walk's too (a private tab's device
  * is the walk's own: it is made fresh and thrown away).
  */
-type Batch = { key: "touch-ups" | "final" | "submission"; name: string; dares: string[]; ownUnits?: string[]; devicesSince?: string; devices?: string[] };
+type Batch = { key: "touch-ups" | "final" | "submission" | "ops"; name: string; dares: string[]; ownUnits?: string[]; devicesSince?: string; devices?: string[] };
 const BATCHES: Batch[] = [
   {
     key: "touch-ups",
@@ -55,6 +60,12 @@ const BATCHES: Batch[] = [
     // A private tab left open on the crossword question after the first sweep kept reporting its errors until the tabs
     // were closed at 15:33 UTC; the rows that tied that device to the walk were gone by then, so it is named here.
     devices: ["4f9a2121-b4fb-4a06-947d-8fdcaf92a912"],
+  },
+  {
+    key: "ops",
+    name: "the ops round's walk (2026-10-09, evening, Eastern): the crossword question two guests joined, with its drawn photo and the round covered for one of them, the penalty-kick argument, and the Bears at Packers game's two questions with the game's photo",
+    dares: ["955aa854-be8c-44a1-98f2-5014c59c512b", "d8dd77d2-7afd-469c-9ed7-964f7c7a1978", "26b95658-480a-4068-ba34-a32f0bfa1703", "7f28b265-7138-49b1-aa01-d9e032865dac"],
+    devicesSince: "2026-10-09T23:00:00Z",
   },
 ];
 

@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { ConfirmProposal, type ConfirmPayload } from "@/components/ledger/confirm-proposal";
 import { CoveredCard } from "@/components/ledger/covered-card";
+import { MarketCardFrom } from "@/components/markets/market-card-from";
 import { Screen, TopBar } from "@/components/ledger/screen";
 import { SignInButton } from "@/components/auth/sign-in-button";
 import { currentUser } from "@/lib/auth/session";
@@ -12,6 +13,8 @@ import { claimById } from "@/lib/ledger/claims";
 import { AGAIN_LINE, againRowsFor } from "@/lib/ledger/again";
 import { denominationById } from "@/lib/ledger/denominations";
 import { confirmTypedData, proposalById } from "@/lib/ledger/proposals";
+import { marketCards } from "@/lib/ledger/market-view";
+import { possessive } from "@/lib/ui/copy";
 import type { Address } from "viem";
 import { viewerClock } from "@/lib/ui/zone";
 
@@ -50,6 +53,10 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
   }
   const proposal = await proposalById(id);
   if (!proposal) notFound();
+  // What a question left is never drawn as a cover (the ops round, section 0): its debtor confirms it under the question's
+  // story, and anyone else sees it where the question shows what it left, on its own screen.
+  const market = proposal.origin === "dare" && proposal.originId ? proposal.originId : null;
+  if (market && !(proposal.fromUser === me.id && proposal.status === "pending")) redirect(`/m/${market}`);
 
   // A cover logged against someone who is not here yet. Only the person who logged it can see it, and it is
   // where logging a cover for "someone new" always lands, whoever that person turned out to be.
@@ -108,6 +115,22 @@ export default async function ProposalPage({ params }: { params: Promise<{ id: s
     redirectTo: `/p/${other.id}`,
   };
   const state = proposal.status === "pending" ? "pending" : proposal.status === "confirmed" ? "open" : "pending";
+
+  // A question's result, for its debtor to confirm: the words of the row that led here, then the question's story with what it left between the two of them.
+  const story = market ? (await marketCards({ viewerId: me.id, withUserId: creditor.id, dareIds: [market] }))[0] ?? null : null;
+  if (market) {
+    return (
+      <Screen>
+        <TopBar back info="cover" />
+        <div className="flex flex-col gap-6 py-2">
+          <h1 className="text-serif-l text-ink">{`${possessive(creditor.displayName)} got you.`}</h1>
+          {story ? <MarketCardFrom m={story} viewerId={me.id} clock={clock} /> : null}
+          <p className="text-body text-ink-2">Sound right? One tap and it’s on the record between you two.</p>
+          <ConfirmProposal payload={payload} again={again ? AGAIN_LINE : null} />
+        </div>
+      </Screen>
+    );
+  }
 
   return (
     <Screen>

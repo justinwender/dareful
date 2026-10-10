@@ -19,6 +19,15 @@ import { encodeAbiParameters, keccak256 } from "viem";
 
 export type ProposalRow = typeof schema.obligationProposals.$inferSelect;
 
+/**
+ * The proposals a cover card may draw (the ops round, section 0): never a market's. A question with a guest in it, or one
+ * whose close the chain gave up on, settles as proposals with origin `dare` (`settleProvisional`), and those are its
+ * story's consequences, drawn with the market (`marketCards`) or on its own screen, never as "Covered". Pure.
+ */
+export function coversOnly<T extends { origin: string }>(rows: readonly T[]): T[] {
+  return rows.filter((r) => r.origin !== "dare");
+}
+
 export type ProposeCoverInput = {
   creditorId: string; // the signed-in user; only the person who covered can create the obligation
   debtor: Person; // an account-holder, or a ghost: nothing mints for a ghost until they bind and confirm

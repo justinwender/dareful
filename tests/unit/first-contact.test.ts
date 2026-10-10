@@ -599,7 +599,7 @@ test("the tiebreaker rules on Opus 5.5 with its effort said, room for its thinki
   assert.ok(/label: "rule claim",\s*model: MODELS\.ruling,/.test(settler), "an argument's proposed ruling, which the two can overrule, stays on the ruling model");
   const client = readFileSync("src/lib/ai/client.ts", "utf8");
   assert.ok(client.includes('if (req.fallback) return anthropic().beta.messages.create({ ...(params as object), betas: [FALLBACK_BETA], fallbacks: "default" }') && client.includes('export const FALLBACK_BETA = "server-side-fallback-2026-07-01";'), "the fallback asked for on the beta endpoint");
-  assert.equal(client.split("...thinkingFor(").length - 1, 2, "the effort sent when it is said, on the plain call and the streamed one, each model's own way (`thinkingFor`, the touch-ups round)");
+  assert.equal(client.split("...thinkingFor(").length - 1, 3, "the effort sent when it is said, on the plain call and the streamed one, each model's own way (`thinkingFor`, the touch-ups round), and the health check's one-token ping with it off (the ops round)");
 });
 
 test("a deadline the terms name with its year is that date, one without agrees with the same month and day in a later year, a chip moves a written year with the date, and the refusal says the year when it is not this one's", () => {

@@ -7,19 +7,20 @@ import { publicNumbers } from "@/lib/usage/public-numbers";
 import { redactKeys } from "@/lib/redact";
 
 /**
- * The public numbers as an image (the submission round, section 2), for the README: drawn on every request from numbers
- * read at most once every five minutes however often it is viewed (`unstable_cache`, the data cache every instance
- * shares), and sent so GitHub's image proxy asks again each time rather than keeping a copy (`no-cache`), while the
- * platform's own edge keeps one drawing a minute. A failed read is drawn as a line saying so, and never kept.
+ * The public numbers as an image (the submission round, section 2), for the README. GitHub's image proxy fetches it fresh
+ * on every view of the README, and every drawing costs the function's time (the ops round, section 0), so it is drawn at
+ * most once every five minutes however often it is asked for: the drawing itself is kept in the data cache every
+ * instance shares (`unstable_cache`, numbers and picture together), and the platform's edge keeps the response five
+ * minutes too (`Vercel-CDN-Cache-Control`), while `no-cache` still has GitHub's proxy and every browser ask again each
+ * time. A failed read is drawn as a line saying so, and never kept anywhere.
  */
 export const dynamic = "force-dynamic";
 
-/** How long the numbers are kept before they are read again, in seconds. */
+/** How long the numbers and their picture are kept before they are read and drawn again, in seconds. */
 export const READ_EVERY_S = 300;
-const read = unstable_cache(() => publicNumbers(), ["public-numbers-v1"], { revalidate: READ_EVERY_S });
 
-/** Fresh to every viewer and every proxy, from a drawing the edge keeps a minute. */
-export const FRESH = { "cache-control": "no-cache, max-age=0, must-revalidate", "vercel-cdn-cache-control": "max-age=60", "content-type": "image/png" };
+/** Fresh to every viewer and every proxy, from a drawing the edge keeps as long as the numbers are kept. */
+export const FRESH = { "cache-control": "no-cache, max-age=0, must-revalidate", "vercel-cdn-cache-control": `max-age=${READ_EVERY_S}`, "content-type": "image/png" };
 const NEVER_KEPT = { "cache-control": "no-store, max-age=0", "content-type": "image/png" };
 
 let fonts: Promise<TileFonts> | null = null;
@@ -35,12 +36,23 @@ function loadFonts(): Promise<TileFonts> {
   return fonts;
 }
 
+/** The numbers read and drawn, as the picture's bytes in base64 (the cache keeps text) and the moment it was drawn: a read that throws is never kept. */
+const drawing = unstable_cache(
+  async () => {
+    const png = await renderNumbersCard(await publicNumbers(), await loadFonts(), FRESH).arrayBuffer();
+    return { png: Buffer.from(png).toString("base64"), drawnAt: new Date().toISOString() };
+  },
+  ["public-numbers-png-v1"],
+  { revalidate: READ_EVERY_S },
+);
+
 export async function GET(): Promise<Response> {
-  const f = await loadFonts();
   try {
-    return renderNumbersCard(await read(), f, FRESH);
+    const kept = await drawing();
+    // When this picture was drawn, so a check can see two views share one drawing.
+    return new Response(Buffer.from(kept.png, "base64"), { headers: { ...FRESH, "x-drawn-at": kept.drawnAt } });
   } catch (err) {
     console.error("the public numbers could not be read", { why: redactKeys(err instanceof Error ? err.message.split("\n")[0] : String(err)) });
-    return renderNumbersCard(null, f, NEVER_KEPT);
+    return renderNumbersCard(null, await loadFonts(), NEVER_KEPT);
   }
 }

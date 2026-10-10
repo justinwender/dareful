@@ -22,7 +22,7 @@ import { parseScoreboard, parseSummary } from "@/lib/sports/espn";
 import { AGREE_AFTER_MS, ALONE_AFTER_MS, CONFIRM_AFTER_MS } from "@/lib/sports/results";
 import { CONSENT, SCALES } from "@/lib/sports/templates";
 import { DRIVE_ANSWERS, type CheckSource, type FeedGame, type FinalScore, type PlaySource, type ScheduleSource, type Sport } from "@/lib/sports/types";
-import { cleanup, tempSigner, track, type Signer } from "./fixture";
+import { cleanup, tempSigner, testPlays, testSchedule, track, type Signer } from "./fixture";
 
 const H = 3_600_000;
 const fixture = (name: string): unknown => JSON.parse(readFileSync(new URL(`../fixtures/sports/${name}.json`, import.meta.url), "utf8"));
@@ -31,10 +31,10 @@ const RUN = Math.random().toString(36).slice(2, 8);
 function recorded(name: string, sport: Sport, at?: (g: FeedGame) => Date): FeedGame[] {
   return parseScoreboard(sport, fixture(name)).map((g) => ({ ...g, sourceId: `test:${RUN}:${g.sourceId}`, startsAt: at ? at(g) : g.startsAt }));
 }
-const listing = (games: FeedGame[]): ScheduleSource => ({ name: "espn", listGames: async () => games });
+const listing = (games: FeedGame[]): ScheduleSource => testSchedule(games);
 const checkOf = (final: FinalScore | null): CheckSource => ({ name: "balldontlie", finalOf: async () => final });
 /** The play-by-play as a recorded summary reports it (the Packers game), or nothing yet. */
-const playsOf = (name: string | null): PlaySource => ({ name: "espn", firstDriveOf: async () => (name ? parseSummary(fixture(name)).firstDrive : null) });
+const playsOf = (name: string | null): PlaySource => testPlays(async () => (name ? parseSummary(fixture(name)).firstDrive : null));
 const lockInMirror = (id: string, set: Partial<typeof schema.dares.$inferInsert> = {}) => db.update(schema.dares).set({ lockedAt: new Date(), onchainId: Buffer.from(id.replace(/-/g, "").padEnd(64, "0"), "hex"), ...set }).where(eq(schema.dares.id, id));
 const code = async (fn: () => Promise<unknown>) => fn().then(() => null, (e: unknown) => (e instanceof markets.MarketError ? e.code : `other: ${e instanceof Error ? e.message : e}`));
 const said = async (fn: () => Promise<unknown>) => fn().then(() => null, (e: unknown) => (e instanceof Error ? e.message : String(e)));

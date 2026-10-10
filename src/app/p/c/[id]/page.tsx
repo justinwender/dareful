@@ -5,11 +5,14 @@ import { Avatar } from "@/components/ledger/avatar";
 import { CoveredCard } from "@/components/ledger/covered-card";
 import { GhostActions, type MergeOption } from "@/components/ledger/ghost-actions";
 import { CoverSheet } from "@/components/ledger/cover-sheet";
+import { MarketCardFrom } from "@/components/markets/market-card-from";
 import { Screen, TopBar } from "@/components/ledger/screen";
 import { currentUser } from "@/lib/auth/session";
 import { claimById, ghostsForCreator, proposalsWithClaim } from "@/lib/ledger/claims";
 import { denominationsByIds, denominationsForGroup, recentDenominationsForUser } from "@/lib/ledger/denominations";
 import { groupsForUser, peopleForUser } from "@/lib/ledger/groups";
+import { marketCards } from "@/lib/ledger/market-view";
+import { coversOnly } from "@/lib/ledger/proposals";
 import { hueFor } from "@/lib/ui/hue";
 import { viewerClock } from "@/lib/ui/zone";
 
@@ -32,7 +35,9 @@ export default async function GhostPage({ params }: { params: Promise<{ id: stri
   if (ghost.claimedBy) redirect(`/p/${ghost.claimedBy}`);
   if (ghost.id !== id) redirect(`/p/c/${ghost.id}`); // followed a merge to the survivor
 
-  const [rows, people, ghosts, groups, recentUnits] = await Promise.all([proposalsWithClaim(me.id, ghost.id), peopleForUser(me.id), ghostsForCreator(me.id), groupsForUser(me.id), recentDenominationsForUser(me.id)]);
+  const [all, stories, people, ghosts, groups, recentUnits] = await Promise.all([proposalsWithClaim(me.id, ghost.id), marketCards({ viewerId: me.id, withClaimId: ghost.id }), peopleForUser(me.id), ghostsForCreator(me.id), groupsForUser(me.id), recentDenominationsForUser(me.id)]);
+  // Covers only: what a question left between you and this guest is its story's consequences, drawn in its story card below, never a cover's row (the ops round, section 0).
+  const rows = coversOnly(all);
   // The units between you and this ghost, for the cover sheet (3.43): the pair's dyad's, when one exists.
   const dyad = groups.find((g) => g.isDyad && g.members.some((m) => m.claimId === ghost.id)) ?? null;
   const dyadUnits = dyad ? await denominationsForGroup(dyad.id) : [];
@@ -50,6 +55,8 @@ export default async function GhostPage({ params }: { params: Promise<{ id: stri
     ...ghosts.filter((g) => g.id !== ghost.id).map((g) => ({ kind: "claim" as const, claimId: g.id, displayName: g.displayName })),
   ];
   const them = { id: ghost.id, displayName: ghost.displayName, ghost: true };
+  // Newest first, the questions and the covers together, by the offchain clock like every timeline.
+  const events = [...stories.map((m) => ({ kind: "market" as const, at: m.at, market: m })), ...rows.map((r) => ({ kind: "cover" as const, at: r.createdAt, row: r }))].sort((a, b) => b.at.getTime() - a.at.getTime());
 
   return (
     <Screen>
@@ -63,11 +70,13 @@ export default async function GhostPage({ params }: { params: Promise<{ id: stri
           </div>
         </div>
         <GhostActions claimId={ghost.id} name={ghost.displayName} mergeOptions={mergeOptions} />
-        {rows.length === 0 ? (
+        {events.length === 0 ? (
           <p className="text-body text-ink-2">Nothing between you two yet.</p>
         ) : (
           <div className="flex flex-col gap-3">
-            {rows.map((r) => {
+            {events.map((e) => {
+              if (e.kind === "market") return <MarketCardFrom key={`m-${e.market.dare.id}`} m={e.market} viewerId={me.id} clock={clock} />;
+              const r = e.row;
               const denomination = denoms.get(r.denomId);
               if (!denomination) return null;
               const ghostIsDebtor = r.fromClaim === ghost.id;

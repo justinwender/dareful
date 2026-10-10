@@ -15,7 +15,7 @@ import * as markets from "@/lib/ledger/markets";
 import { startGame, syncSchedule } from "@/lib/sports";
 import { parseScoreboard } from "@/lib/sports/espn";
 import { FIRST_LINE } from "@/lib/ui/copy";
-import { cleanup, tempSigner, track, type Signer } from "../db/fixture";
+import { cleanup, tempSigner, testSchedule, track, type Signer } from "../db/fixture";
 
 const BASE = process.env.TEST_BASE_URL ?? "http://localhost:3000";
 
@@ -55,7 +55,7 @@ before(async () => {
   const scoreboard = JSON.parse(readFileSync(new URL("../fixtures/sports/espn-nfl-scheduled.json", import.meta.url), "utf8")) as unknown;
   const prefix = track.gamePrefix(`test:first:${randomUUID().slice(0, 8)}:`);
   const game = parseScoreboard("nfl", scoreboard).slice(0, 1).map((x) => ({ ...x, sourceId: `${prefix}${x.sourceId}`, startsAt: new Date(Date.now() + 3 * 86_400_000) }));
-  await syncSchedule("nfl", new Date(), { name: "espn", listGames: async () => game });
+  await syncSchedule("nfl", new Date(), testSchedule(game));
   const [row] = await db.select().from(schema.sportsGames).where(eq(schema.sportsGames.sourceId, game[0]!.sourceId));
   gameId = (row as { id: string }).id;
   const d0 = await markets.draftMarket({ creatorId: asker.user.id, groupId: g.id, denomId: usd.id, title: "Does the pizza come before the second act?", termsText: "Yes if the pizza is on the table before the second act starts.", resolvesBy: new Date(Date.now() + 3 * 86_400_000) });

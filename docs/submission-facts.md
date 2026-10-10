@@ -4,7 +4,7 @@ For the two videos and the submission form. The README's numbers keep counting (
 
 ## The numbers
 
-Read from production at 3:17pm Eastern on October 9, 2026 (19:17 UTC), after this round's sweeps and the mutation audit, by `scripts/ops/stats-now.ts`, which runs /stats's own queries. Accounts, guests, questions asked and settled, questions with two or more in, came by a link then asked, sets with two or more questions, clean resolutions, photos and stickers, and the two channel numbers since launch come from the ledger's own tables and reach back to launch; the rest are counted from the events table, which began on October 2, when the counting shipped.
+Read from production at 10:07pm Eastern on October 9, 2026 (02:07 UTC on October 10), after this round's walk was swept, by `scripts/ops/stats-now.ts`, which runs /stats's own queries. Accounts, guests, questions asked, settled and played, came by a link then asked, sets with two or more questions, clean resolutions, photos and stickers, and the two channel numbers since launch come from the ledger's own tables and reach back to launch; the rest are counted from the events table, which began on October 2, when the counting shipped. The README's picture leads with questions played, its split, and the groups that came back; it keeps counting after this moment.
 
 | Number | Since launch | Last 7 days | What it counts |
 | --- | --- | --- | --- |
@@ -12,9 +12,12 @@ Read from production at 3:17pm Eastern on October 9, 2026 (19:17 UTC), after thi
 | Guests | 9 | 5 | People who first joined a question in the window with a name and no account, on a question someone counted asked; a guest who has since made an account counts as that account, and excluded guests are left out. |
 | Active people | 12 | 12 | Distinct accounts with any counted event in the window. |
 | Askers | 4 | 4 | Distinct accounts that asked a question in the window. |
-| Questions asked | 54 | 26 | Questions sent in the window by counted askers, from the ledger's own table, which holds every question since the first. |
-| Questions settled | 13 | 4 | Questions by counted askers that ended in a decision in the window: by the vote of the people in, the tiebreaker, the final score or the app's ruling standing, "nobody can tell" included; one called off or expired is not settled. |
-| Questions with two or more in | 17 | 6 | Questions asked in the window that reached two entries. |
+| Questions asked | 44 | 20 | Questions sent in the window by counted askers, from the ledger's own table, which holds every question since the first; a question its asker called off before anyone joined is not counted (ten were, since launch). |
+| Questions settled | 14 | 5 | Questions by counted askers that ended in a decision in the window: by the vote of the people in, the tiebreaker, the final score or the app's ruling standing, "nobody can tell" included; one called off or expired is not settled. |
+| Questions played | 17 | 6 | Questions asked in the window that someone besides their asker got into: two or more in, counting counted people and guests only. |
+| Played, settled | 12 | 2 | Of the questions played in the window, those that have ended in a decision, as "Questions settled" counts one. |
+| Played, still open | 5 | 4 | Of the questions played in the window, those that have not ended yet: open, or closed and waiting on the call. |
+| Played, ended without a decision | 0 | 0 | Of the questions played in the window, those that ended with nothing decided: nobody called it in time. |
 | Entries | 17 | 17 | Numbers put on questions in the window, by accounts and through pass the phone. |
 | Guest entries | 8 | 8 | Numbers put on questions in the window by people with no account. |
 | Reached voting | 12 | 12 | Questions closed in the window, by the asker, the time or both sides in. |
@@ -24,7 +27,7 @@ Read from production at 3:17pm Eastern on October 9, 2026 (19:17 UTC), after thi
 | Expired | 28 | 28 | Questions that ended with nothing decided in the window. |
 | Link opens | 74 | 73 | Links opened in the window, once per person or device per link, fetchers never. |
 | Shares | 15 | 15 | Taps on share, copy, the result's share, the chalk and the relay in the window. |
-| Notices by push | 25 | 25 | Notifications that went out by push (or by both) in the window. |
+| Notices by push | 26 | 26 | Notifications that went out by push (or by both) in the window. |
 | Notices by email | 0 | 0 | Notifications that went out by email alone in the window. |
 | Notices to nobody | 51 | 51 | Notifications with no channel to send on in the window. |
 | Notices opened | 2 | 2 | Taps on a notification's link in the window, by channel. |
@@ -32,25 +35,25 @@ Read from production at 3:17pm Eastern on October 9, 2026 (19:17 UTC), after thi
 | People with a channel | 9 | 7 | Counted accounts a notice can reach, by a push subscription or an email sign-in: of everyone since launch, and of the people active in the window otherwise. |
 | Share with a channel | 60% | 58% | People with a channel as a percent of the same people: everyone since launch, or the people active in the window. |
 | Came by a link, then asked | 5 | 2 | Counted accounts whose first question was asked in the window and who were already in a question someone else asked before it: they arrived through a friend's question and went on to ask their own. |
-| Sets with two or more questions | 3 | 0 | Sets of people in which two or more questions were asked in the window by counted askers; a game's questions count once, and a question called off does not count. |
-| Clean resolutions | 69% | 75% | Of the counted askers' questions two or more people were in that ended in the window by a vote, the tiebreaker or the final score, the percent that ended with an answer, as the profile counts it: a void by vote or tiebreaker counts against it, and an expiry or the final score's own void is in neither number. |
-| Photos and stickers added | 11 | 0 | Photos put on a question or a settlement, and stickers made, in the window by counted accounts. |
+| Sets with two or more questions (the groups that came back) | 3 | 0 | Sets of people in which two or more questions were asked in the window by counted askers; a game's questions count once, and a question called off does not count. |
+| Clean resolutions | 71% | 80% | Of the counted askers' questions two or more people were in that ended in the window by a vote, the tiebreaker or the final score, the percent that ended with an answer, as the profile counts it: a void by vote or tiebreaker counts against it, and an expiry or the final score's own void is in neither number. |
+| Photos and stickers added | 12 | 1 | Photos put on a question or a settlement, and stickers made, in the window by counted accounts. |
 
-"Since launch" is from midnight Eastern on September 13, 2026, the day the build began; the first question came on the 19th. Every count leaves out the owner's test accounts, the development account, the seed's accounts and every account and guest a test made.
+"Since launch" is from midnight Eastern on September 13, 2026, the day the build began; the first question came on the 19th. Every count leaves out the owner's test accounts, the development account, the seed's accounts, the canary's two accounts and every account and guest a test made. The daily snapshots the stats page keeps carry the same definitions: every day already taken was brought in line on October 9 (`scripts/ops/snapshot-people.ts`).
 
-On Monad, from real use, at the same moment: 10 obligations, 12 questions, 10 people and 12 sets, and no question in a group of its own. These count only what counted people did: the questions on the chain with a counted account in them, and the counted accounts' own wallets, the obligations on either side of them and the sets they're registered in. A question with a guest in it is decided and settled off the chain and is not in them.
+On Monad, from real use, at the same moment: 11 obligations, 12 questions, 10 people and 12 sets, and no question in a group of its own. These count only what counted people did: the questions on the chain with a counted account in them, and the counted accounts' own wallets, the obligations on either side of them and the sets they're registered in. A question with a guest in it is decided and settled off the chain and is not in them.
 
 The test suites run against the live contracts, so most of the contracts' transactions are tests. On October 9, 2026, after the audit (19:17 UTC), 2,309 transactions had gone through: 52 real use (2.3%), 34 testing by hand on the excluded accounts (1.5%), 105 the seed script's (4.5%) and 2,118 the suites' and the audits' (91.7%), read from the indexer's events and whose wallets they name (`scripts/ops/chain-tests.ts`).
 
 ## The contracts
 
-Monad testnet, chain 10143. The relayer only submits what people's wallets signed, and pays the gas; it holds nothing else.
+Monad testnet, chain 10143. The relayer only submits what people's wallets signed, and pays the gas; it holds nothing else. Both contracts' source is verified on Sourcify, a full match of the creation and runtime code (solc 0.8.28, cancun, optimizer 200 runs, via IR), checked on October 9: [DarefulLedger](https://repo.sourcify.dev/10143/0x8E200d344fA233d85b78f85aC78c3F778397F26D) and [DarefulDares](https://repo.sourcify.dev/10143/0xd621c7770B96d2bF94638a28A15B3636cC0a3Fa0). The old explorer address, testnet.monadexplorer.com, now redirects to MonadVision, so the links here go there.
 
 | Contract | Address |
 | --- | --- |
-| DarefulLedger | [0x8E200d344fA233d85b78f85aC78c3F778397F26D](https://testnet.monadexplorer.com/address/0x8E200d344fA233d85b78f85aC78c3F778397F26D) |
-| DarefulDares | [0xd621c7770B96d2bF94638a28A15B3636cC0a3Fa0](https://testnet.monadexplorer.com/address/0xd621c7770B96d2bF94638a28A15B3636cC0a3Fa0) |
-| Relayer | [0x4534C3f805F1cc483C0b0193F754C16E0d2cdaA7](https://testnet.monadexplorer.com/address/0x4534C3f805F1cc483C0b0193F754C16E0d2cdaA7) |
+| DarefulLedger | [0x8E200d344fA233d85b78f85aC78c3F778397F26D](https://testnet.monadvision.com/address/0x8E200d344fA233d85b78f85aC78c3F778397F26D) |
+| DarefulDares | [0xd621c7770B96d2bF94638a28A15B3636cC0a3Fa0](https://testnet.monadvision.com/address/0xd621c7770B96d2bF94638a28A15B3636cC0a3Fa0) |
+| Relayer | [0x4534C3f805F1cc483C0b0193F754C16E0d2cdaA7](https://testnet.monadvision.com/address/0x4534C3f805F1cc483C0b0193F754C16E0d2cdaA7) |
 
 ## One transaction from real use for each kind of event
 
@@ -58,13 +61,13 @@ Each is the newest from real use when read on October 9 (`scripts/ops/real-use-t
 
 | Event | Transaction |
 | --- | --- |
-| A question created with its signed entries (`DareCreated`, `Entered`) | [0x36e7c059…89dc2a](https://testnet.monadexplorer.com/tx/0x36e7c05906882392a30a35b220d7598d6c763b00d13fcf1dae918a17d889dc2a), October 9 |
-| A set registered (`GroupCreated`) | [0x16d5a6ad…c6b195a](https://testnet.monadexplorer.com/tx/0x16d5a6ada77e2062bc3781ef48535c053f74cb0d86adce34bc928f779c6b195a), October 9 |
-| A unit registered (`DenomCreated`) | [0xe755e4c7…c4bf0c](https://testnet.monadexplorer.com/tx/0xe755e4c77bf380dcaa0dcdee1e92998ad71f84cadfd394506fbfaebc32c4bf0c), October 9 |
-| Decided by the vote of the people in (`DareResolved`) | [0x903db4d3…dd180f5](https://testnet.monadexplorer.com/tx/0x903db4d37f4876cb8491410069ceaeface2b48081ba385dac12fbd02add180f5), September 26 |
-| Decided by `arbitrate`, with each score and the records it minted (`DareArbitrated`, `Scored`, `mintFromDare`) | [0x0f1add16…7c41ef4](https://testnet.monadexplorer.com/tx/0x0f1add16cc1a5510ca9bb3f9a9ebe75b86301c6e8d540627bc0000b2b7c41ef4), September 28 |
-| Voided by `arbitrate` | [0x26238897…f89cb3](https://testnet.monadexplorer.com/tx/0x2623889754eb5a792042e6dc78d3520d57df2ea9a382b2b6f9bdf69e41f89cb3), October 4 |
-| A record confirmed by the person who owes it (`confirm`) | [0xe04a5e06…a154f2](https://testnet.monadexplorer.com/tx/0xe04a5e06afcb3b3a2d716d6f647b9f7722e8b3c788b337444aadb9a833a154f2), October 8 |
+| A question created with its signed entries (`DareCreated`, `Entered`) | [0x36e7c059…89dc2a](https://testnet.monadvision.com/tx/0x36e7c05906882392a30a35b220d7598d6c763b00d13fcf1dae918a17d889dc2a), October 9 |
+| A set registered (`GroupCreated`) | [0x16d5a6ad…c6b195a](https://testnet.monadvision.com/tx/0x16d5a6ada77e2062bc3781ef48535c053f74cb0d86adce34bc928f779c6b195a), October 9 |
+| A unit registered (`DenomCreated`) | [0xe755e4c7…c4bf0c](https://testnet.monadvision.com/tx/0xe755e4c77bf380dcaa0dcdee1e92998ad71f84cadfd394506fbfaebc32c4bf0c), October 9 |
+| Decided by the vote of the people in (`DareResolved`) | [0x903db4d3…dd180f5](https://testnet.monadvision.com/tx/0x903db4d37f4876cb8491410069ceaeface2b48081ba385dac12fbd02add180f5), September 26 |
+| Decided by `arbitrate`, with each score and the records it minted (`DareArbitrated`, `Scored`, `mintFromDare`) | [0x0f1add16…7c41ef4](https://testnet.monadvision.com/tx/0x0f1add16cc1a5510ca9bb3f9a9ebe75b86301c6e8d540627bc0000b2b7c41ef4), September 28 |
+| Voided by `arbitrate` | [0x26238897…f89cb3](https://testnet.monadvision.com/tx/0x2623889754eb5a792042e6dc78d3520d57df2ea9a382b2b6f9bdf69e41f89cb3), October 4 |
+| A record confirmed by the person who owes it (`confirm`) | [0xe04a5e06…a154f2](https://testnet.monadvision.com/tx/0xe04a5e06afcb3b3a2d716d6f647b9f7722e8b3c788b337444aadb9a833a154f2), October 8 |
 | A person added to an existing set (`MemberAdded`) | Real use has none yet. |
 | Voided by the vote (`DareVoided`) | Real use has none yet. |
 | Expired (`DareExpired`) | Real use has none yet. |
@@ -76,13 +79,13 @@ Each is the newest from real use when read on October 9 (`scripts/ops/real-use-t
 
 Dynamic: two embedded wallets per person and the sign-in sheet in `src/components/auth/` (`wallet-bootstrap.tsx` makes the wallets, `sign-in-sheet.tsx` and `account-step.tsx` sign in, `governance-denied.ts` marks the governance wallet denied for delegation); Monad registered in code in `src/lib/dynamic/networks.ts` and `src/components/providers.tsx`; wallets counted from the login token in `src/lib/auth/login.ts`; delegated signing for pass the phone in `src/lib/chain/delegated-signer.ts`, its webhook in `src/app/api/delegation/route.ts`, and pass the phone itself in `src/lib/ledger/pass-the-phone.ts` and `src/lib/ledger/hand-over.ts`.
 
-Envio: the indexer in `indexer/` (`config.yaml`, `schema.graphql`, `src/handlers`), hosted on Envio Cloud (deployment `ad29726`; up and four blocks behind the chain's head on October 9); every query the app makes in `src/lib/ledger/envio.ts`; the check of every question's payments against the chain in `scripts/verify-envio.ts`.
+Envio: the indexer in `indexer/` (`config.yaml`, `schema.graphql`, `src/handlers`), hosted on Envio Cloud (deployment `ad29726`, caught up to the chain's head on September 19; the free plan deletes a deployment after 30 days, so this one needs a redeploy before October 19, which is on the owner's list); every query the app makes in `src/lib/ledger/envio.ts`; the check of every question's payments against the chain in `scripts/verify-envio.ts`; the health check's lag and the runway's days left in `src/lib/ops/health.ts` and `src/lib/ops/runway.ts`.
 
-Alchemy: the relayer's RPC in `src/lib/chain/relayer.ts`, with each function's explicit gas in `src/lib/chain/gas.ts`, the balance watch in `src/lib/chain/watch.ts`, and the key kept out of every error by `src/lib/redact.ts`.
+Alchemy: the relayer's RPC in `src/lib/chain/relayer.ts`, with each function's explicit gas in `src/lib/chain/gas.ts`, the balance watch in `src/lib/chain/watch.ts`, every call weighed in compute units against the month's allowance in `src/lib/ops/rpc-usage.ts`, and the key kept out of every error by `src/lib/redact.ts`.
 
 ## What the AI costs
 
-Measured on October 9 by replaying every question counted people have written (26) on the models in use, at list prices (`scripts/dev/compare-models.ts --part=current`), since the app stores no usage:
+Measured on October 9 by replaying every question counted people have written (26) on the models in use, at list prices (`scripts/dev/compare-models.ts --part=current`), since until the ops round the app stored no usage. From the ops round on, every answer's tokens and searches are kept (`ai_calls`) and priced at the published rates (`src/lib/ai/spend.ts`), and the credit left counts down from what the owner enters on /stats:
 
 | What | Model | Cost |
 | --- | --- | --- |
@@ -95,13 +98,34 @@ Measured on October 9 by replaying every question counted people have written (2
 | An outcome proposal, when someone says what happened | Sonnet 5.5 | about $0.004 (October 4; no counted question has one yet) |
 | Help define the terms, with a web search | Haiku 5.5 and Sonnet 5.5 | 2 to 11 cents more (October 8) |
 
+## The founder, for the form
+
+The facts of the README's "Who's building it", in the owner's own words there. By the owner's ruling (docs/decisions.md, 2026-10-09, the ops round), that README section is the one place in the repository that names him and his employers; this sheet carries its facts without the employers, and his work history is in the README alone.
+
+- Justin Wender, a team of one: he designed Dareful, wrote the brief and the specifications it's built from, tested it with his own friend groups, and directed Claude Code through every phase.
+- Politics, Philosophy and Economics at Northeastern (summa cum laude), with a concentration in logic and game theory; finishing a master's in Economics and Data Science there.
+- President of NEU Blockchain, Northeastern's blockchain club.
+- Won the BNB Hack: US College Edition with Credence, an onchain credit scorecard (AUC 0.82 on 115,687 Venus Protocol borrowers), and first place at Bentley FinTech Day with research on Uniswap's fee switch.
+- Built a horse racing handicapper that prices races with gradient-boosted models and calibrates their probabilities.
+
+## How production watches itself
+
+Built in the ops round, for the weeks of judging when nobody is watching it by hand.
+
+- `/api/health` answers every system as ok, slow or down, each within its own time limit, with nothing secret in the answer, and 200 only while every core system is up (503 otherwise). Each environment keeps and reads only its own runs (production, a preview or a laptop, from `VERCEL_ENV`), and only production's reach the owner. Core: the database (`select 1`, 4 seconds), the scheduler (its last run under 3 minutes ago), the chain's node (its latest block under 2 minutes old), code at both contract addresses, the relayer over its 3 MON floor, and the hosted indexer within a minute of the chain's head. Reported beside them, deciding nothing: the model API (a one-token call, at most hourly), email (the sending domain's records), sign-in (Dynamic's read-only API), storage (a signed address for a known object), both scoreboards (today's games parse), push (the share of sends failing over the last day), and the numbers picture and a link tile drawn. The answer is shared for a minute, every run is kept in `health_runs`, the scheduler runs it every five minutes, and a core system down for ten minutes is told to the owner by email and push, once until it recovers.
+- A GitHub workflow outside the app (`.github/workflows/watch.yml`) fetches the health check, the home page and the numbers picture every fifteen minutes and after every production deploy, and fails when a core system is down, the health answer isn't production's own run, or any of the three doesn't answer; every six hours it also signs in through the app in a real browser with the Dynamic test account and opens a market and a person's page, once the owner has added its two secrets.
+- The canary, every six hours as a job of its own (`/api/canary`, by pg_cron at 17 minutes past), runs one question through every system as two accounts it signs for itself, both left out of every count: the write-up, both entries, the close onto the chain, the vote and settlement there, the indexer showing it, and its rows removed. A failed step emails the owner at once with the step and its error. One run against production on October 9 at 22:52 UTC passed in about ten seconds: the two accounts registered ([0x7eec1b93…](https://testnet.monadvision.com/tx/0x7eec1b93f3dc8df21432a55a84745d69a1a9c85a6aff7b4de6b1a2b774790808), [0x3acd0f0f…](https://testnet.monadvision.com/tx/0x3acd0f0f2f619e1d92a00caf9c7d44b8724447c5bc2085b5ec2b5395edd31640)), the question created with both signed entries ([0xac38b852…](https://testnet.monadvision.com/tx/0xac38b8520acf379ff58b276de35f77d3d7341be6da14ef296f9283629d6edd9e)), and resolved by both votes ([0x5d643ad3…](https://testnet.monadvision.com/tx/0x5d643ad3e93dc0868b3a8be13489e96874375f76cd43842b0da6093a0e88b41a)).
+- Every resource the app can run out of has a warning line and an urgent one, kept in `src/lib/ops/lines.ts`: the relayer under 10 and 5 MON (or under three days at the past week's rate); the model API's credit under $5 and $2 (or any answer saying the balance is too low); the database and storage at 70% and 90% of the free plan's 500 MB and 1 GB; email at 70 and 90 a day or 2,100 and 2,700 a month; Alchemy's compute units at 70% and 90% of 30 million a month (or a refusal); the hosted indexer at 7 and 3 days left of its 30 (or a refusal). Each line is told once when crossed, by email and a push to the owner's phone, and again only after it recovers and crosses again.
+- At 8am Eastern the scheduler emails the owner the last day: every level against its lines, Vercel's Active CPU and Supabase's egress to check by hand with their links, each system's state with every failure and when, the canary's runs, the model API's cost, the errors people saw by cause, and yesterday's numbers.
+
 ## The rounds
 
 Built is the commit's date; deployed is when Vercel put it in production, Eastern time.
 
 | Round | Commit | Built | Deployed |
 | --- | --- | --- | --- |
-| The submission round: a code like its link, pass the phone for the asker, a market's tips in one run, the numbers in public, keys out of every error | this commit | October 9 | not yet deployed |
+| The ops round: runway, health, the outside watch, the canary, the morning email, a market's result never a cover, a margin question past four that no longer crashes, and the README for judging | this commit | October 9 and 10 | not yet deployed |
+| The submission round: a code like its link, pass the phone for the asker, a market's tips in one run, the numbers in public, keys out of every error | `63e7499` | October 9 | October 9, 4:14pm |
 | The final round: the field above the keyboard, tips that show, every link, a game's photos, units of your own, marks, silence only where signed | `206d3f1` | October 9 | October 9, 7:56am |
 | The touch-ups round: the close first, the app's rulings sealed at the ask, every tap, one sheet | `9bbafe8` | October 8 | October 8, 8:53pm |
 | Games and the reveal: signed questions on the chain, calls are in, the reveal, the live score | `961a48a` | October 7 | October 7, 10:45pm |
@@ -134,5 +158,5 @@ Built is the commit's date; deployed is when Vercel put it in production, Easter
 1. Asking in one line. Screen: the ask flow's terms step. On Now tap "Ask something", type "Will Maya finish the crossword before the train gets in?", keep Quick setup, tap "Set the terms": the terms arrive as they're written, with a mark suggested and "Tonight" picked from the date in them; tap "Send it".
 2. Joining from a link with just a name. Screen: the question's link on a friend's phone. Send the link from the who's-in row; on the other phone slide to a number, tap "I'm in at", type a name, tap "Join as", then "Not now". No account, no app to install.
 3. The reveal. Screen: the question after it closes. With two or more in, tap "Close it with" (or "Calls are in" from someone else in): "Who said what" shows every call in its owner's colour, where until the close nobody could see whose was whose.
-4. The app's sealed ruling. Screen: an argument once both sides are in. Ask "Is the Golden Gate Bridge longer than the Brooklyn Bridge?" as Settle an argument; it closes the moment both sides have called, and shows "The app's ruling: yes." with its reasons, "Agree", "I see it differently", and "How to check it", which shows the seal from the signed terms, the salt and the text, so anyone can hash them and check.
-5. Settled, and on the chain. Screen: the settled question, then the explorer. Both vote what happened ("It's happened", then "Say it"), the question shows closest first and who's got who, add a photo from that night, then open the Dares contract on the explorer: the newest transactions are its `create` with both signed entries and its `resolve` with both votes, and the record minted on the Ledger.
+4. The app's sealed ruling. Screen: an argument once both sides are in. Ask "Is a major league pitch harder to hit than a penalty kick is to save?" as Settle an argument and pick the success-rate reading when the app asks which one is meant; it closes the moment both sides have called, and shows the app's ruling with its reasons, "Agree", "I see it differently", and "How to check it", which shows the seal from the signed terms, the salt and the text, so anyone can hash them and check.
+5. Settled, and on the chain. Screen: the settled question, then the explorer. Both vote what happened ("It's happened", then "Say it"), the question shows closest first and who's got who, add a photo, then open the Dares contract on the explorer: the newest transactions are its `create` with both signed entries and its `resolve` with both votes, and the record minted on the Ledger.

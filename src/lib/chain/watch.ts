@@ -1,14 +1,13 @@
 /**
  * The relayer's balance, watched from the tick. The development machine shares the relayer with production,
- * so local test runs spend the same gas that people on dareful.app depend on; below three days of use at the past
- * week's rate (the touch-ups round, section 0), or under the floor, the operator hears about it by email, once an
- * hour while it lasts, and the tick's own report carries the reading every minute. Nothing here can fail the tick: a
- * balance that cannot be read is reported as unread.
+ * so local test runs spend the same gas that people on dareful.app depend on. The tick's own report carries the reading
+ * every minute; the owner is told by the runway lines (src/lib/ops/runway.ts, the ops round), into which the hourly
+ * email for under three days or under the floor is folded: warned under ten MON, urgent under five or three days, once
+ * per crossing. Nothing here can fail the tick: a balance that cannot be read is reported as unread.
  */
 import { formatEther, parseTransaction, type Hex } from "viem";
 import { and, gt, inArray, lt } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { sendOps } from "@/lib/notify/channels";
 import { relayer } from "./relayer";
 
 /** Three MON. One full run of the database suites costs about half a MON; the floor is a few runs of warning. */
@@ -71,7 +70,7 @@ export async function spendPerDay(now: Date, baseFee: bigint): Promise<{ perDay:
   return { perDay: week / 7n, week, writes: rows.length };
 }
 
-export type RelayerWatch = { mon: string; low: boolean; told: boolean; days?: number | null };
+export type RelayerWatch = { mon: string; low: boolean };
 
 /** The balance now, with the days it covers at the past week's rate: what the owner's page shows. */
 export async function relayerRunway(now: Date): Promise<{ balance: bigint; perDay: bigint; days: number | null; writes: number }> {
@@ -81,26 +80,10 @@ export async function relayerRunway(now: Date): Promise<{ balance: bigint; perDa
   return { balance, perDay: spend.perDay, days: daysCovered(balance, spend.perDay), writes: spend.writes };
 }
 
-export async function watchRelayer(now: Date): Promise<RelayerWatch> {
+export async function watchRelayer(): Promise<RelayerWatch> {
   const { account, publicClient } = relayer();
-  // The week's rate is read at the top of the hour only, when an email could go: a minute's tick reads the balance alone.
-  if (!hourly(now)) {
-    const balance = await publicClient.getBalance({ address: account.address });
-    const low = relayerLow(balance);
-    if (low) console.warn(`relayer: ${monOf(balance)} MON, under the ${monOf(RELAYER_FLOOR)} MON floor`);
-    return { mon: monOf(balance), low, told: false };
-  }
-  const { balance, perDay, days } = await relayerRunway(now);
-  const mon = monOf(balance);
-  const low = relayerLow(balance, RELAYER_FLOOR, perDay);
-  let told = false;
-  if (low) {
-    const rate = perDay > 0n ? `, about ${days} days at the past week's rate of ${monOf(perDay)} MON a day` : "";
-    console.warn(`relayer: ${mon} MON${rate}`);
-    told = await sendOps(
-      `The relayer has ${mon} MON${days !== null ? `, about ${days} days` : ""}`,
-      `The relayer at ${account.address} has ${mon} MON${rate}. It is told when that is under three days, or under ${monOf(RELAYER_FLOOR)} MON. Every chain write on dareful.app (a close, a vote's result, a confirmation) fails once it is empty; a close stays closed and its write is tried again until it lands. Refill it from the Monad testnet faucet.\n\nThe week's rate counts every transaction the relayer signed, the test suites' included, since they share it.\n\nThis is the scheduler's hourly check; it repeats at the top of every hour while it lasts.`,
-    );
-  }
-  return { mon, low, told, days };
+  const balance = await publicClient.getBalance({ address: account.address });
+  const low = relayerLow(balance);
+  if (low) console.warn(`relayer: ${monOf(balance)} MON, under the ${monOf(RELAYER_FLOOR)} MON floor`);
+  return { mon: monOf(balance), low };
 }

@@ -58,7 +58,7 @@ export function CoveredCard(p: CoveredCardProps) {
   // A card that opens something presses to the ground of its place (9.4): the press sits on the card itself, since its fill is what a person sees.
   const press = Boolean(p.href) || p.control === true;
   const body = (
-    <article data-press={press ? "row" : undefined} className={`flex flex-col gap-2 rounded-card border border-line bg-surface px-4 py-3.5${press ? " press-row" : ""}`}>
+    <article data-cover="" data-press={press ? "row" : undefined} className={`flex flex-col gap-2 rounded-card border border-line bg-surface px-4 py-3.5${press ? " press-row" : ""}`}>
       <div className="flex items-center justify-between gap-2">
         <span className="inline-flex items-center gap-2 text-label text-ink-2">
           <StateMark state={p.onWay ? "onway" : mark} hue={!p.onWay && mark === "owed" ? (p.debtor.ghost ? "stone" : hueFor(p.debtor.id)) : undefined} />

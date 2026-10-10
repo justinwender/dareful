@@ -74,14 +74,17 @@ test("a market's and a game page's tips wait until the person is in and then run
 test("the public numbers' picture says each number with its noun and when it was read, and says so when it could not read them (section 2)", () => {
   assert.deepEqual(counted(1, "guest", "guests"), { n: "1", noun: "guest" });
   assert.deepEqual(counted(1234, "guest", "guests"), { n: "1,234", noun: "guests" });
-  const lines = numbersCardLines({ accounts: 16, guests: 1, questions: 48, settled: 20, chain: { obligations: 10, questions: 11, people: 8, sets: 1 }, at: "2026-10-09T13:41:00.000Z" });
-  assert.deepEqual(lines.groups.map((g) => [g.title, g.items.map((i) => `${i.n} ${i.noun}`)]), [
-    ["People", ["16 with accounts", "1 guest"]],
-    ["Questions", ["48 asked", "20 settled"]],
+  const counts = { accounts: 16, guests: 1, questions_two_in: 17, played_settled: 12, played_open: 5, played_undecided: 0, sets_two_questions: 6 };
+  const lines = numbersCardLines({ ...counts, chain: { obligations: 10, questions: 11, people: 8, sets: 1 }, at: "2026-10-09T13:41:00.000Z" });
+  // The ops round (section 6) leads with the questions played and adds the groups that came back.
+  assert.deepEqual(lines.groups.map((g) => [g.title, g.items.map((i) => `${i.n} ${i.noun}`), g.detail ?? null]), [
+    ["People", ["16 with accounts", "1 guest"], null],
+    ["Questions played", ["17 played"], "12 settled · 5 still open · none ended undecided"],
+    ["Groups", ["6 came back"], "for a second question"],
   ]);
   assert.equal(lines.chain, "On Monad, from real use: 10 obligations · 11 questions · 8 people · 1 set");
   assert.equal(lines.footer, "Counted 9:41am ET, October 9, 2026");
-  assert.equal(numbersCardLines({ accounts: 1, guests: 0, questions: 0, settled: 0, chain: null, at: "2026-10-09T13:41:00.000Z" }).chain, "On Monad: the indexer couldn’t be read just now.", "the chain's line says it could not be read");
+  assert.equal(numbersCardLines({ ...counts, chain: null, at: "2026-10-09T13:41:00.000Z" }).chain, "On Monad: the indexer couldn’t be read just now.", "the chain's line says it could not be read");
   assert.deepEqual(numbersCardLines(null), { groups: [], chain: "", footer: "The numbers couldn’t be read just now." });
   assert.equal(readAt("2026-12-01T05:05:00.000Z"), "12:05am ET, December 1, 2026", "Eastern, standard time");
 });
@@ -96,9 +99,10 @@ test("since launch begins on the day the build began, so nothing a test keeps lo
 test("the public numbers are read at most once every five minutes however often the picture is asked for, and sent so every proxy asks again (section 2)", () => {
   const route = read("src/app/numbers/route.ts");
   assert.ok(route.includes("export const READ_EVERY_S = 300;"));
-  assert.ok(route.includes('const read = unstable_cache(() => publicNumbers(), ["public-numbers-v1"], { revalidate: READ_EVERY_S });'), "one read shared by every instance, five minutes at a time");
-  assert.ok(route.includes('export const FRESH = { "cache-control": "no-cache, max-age=0, must-revalidate", "vercel-cdn-cache-control": "max-age=60", "content-type": "image/png" };'), "no copy kept downstream, the edge's for a minute");
-  assert.ok(route.includes("return renderNumbersCard(await read(), f, FRESH);") && route.includes("return renderNumbersCard(null, f, NEVER_KEPT);"), "a failed read is drawn and never kept");
+  // The ops round (section 0) keeps the drawing too, numbers and picture together, five minutes at a time.
+  assert.ok(route.includes("const png = await renderNumbersCard(await publicNumbers(), await loadFonts(), FRESH).arrayBuffer();") && route.includes('  ["public-numbers-png-v1"],\n  { revalidate: READ_EVERY_S },\n'), "one read and one drawing shared by every instance, five minutes at a time");
+  assert.ok(route.includes('export const FRESH = { "cache-control": "no-cache, max-age=0, must-revalidate", "vercel-cdn-cache-control": `max-age=${READ_EVERY_S}`, "content-type": "image/png" };'), "no copy kept downstream, the edge's for the five minutes");
+  assert.ok(route.includes('return new Response(Buffer.from(kept.png, "base64"), { headers: { ...FRESH, "x-drawn-at": kept.drawnAt } });') && route.includes("return renderNumbersCard(null, await loadFonts(), NEVER_KEPT);"), "a failed read is drawn and never kept");
   assert.ok(read("next.config.ts").includes('"/numbers": ["./src/lib/ui/fonts/*"]'), "the deployed route carries its fonts");
 });
 

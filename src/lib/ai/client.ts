@@ -9,6 +9,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { z } from "zod";
 import { timed } from "@/lib/timing";
+import { noteIfOutOfCredit, recordAiCall, usageOf } from "./spend";
 
 /**
  * Which model does what (the first-contact round, 2026-10-04): Haiku drafts and reads (the write-up, its date, the
@@ -51,8 +52,8 @@ export function forcesTool(model: string, refused: ReadonlySet<string> = asksPla
 }
 
 /**
- * What each answer cost, for a script that compares routings (scripts/dev/compare-models.ts) and nothing else: the
- * app never reads it, and usage is never stored (the first-contact round).
+ * What each answer cost, for a script that compares routings (scripts/dev/compare-models.ts) and nothing else. The app's
+ * own record of every answer's usage is `ai_calls` (the ops round, `recordAiCall`), which this tap does not read.
  */
 export const usageTap: { fn: ((u: { label: string; model: string; input: number; output: number; ms: number; /** Web searches the call ran (the touch-ups round). */ searches: number }) => void) | null } = { fn: null };
 
@@ -183,19 +184,29 @@ async function structuredOnce<T>(req: StructuredRequest<T>, model: string): Prom
   };
   // A search may want to run before the answer, so a call that may search never forces the answer's tool.
   const opens = forcesTool(model) && searchTool(req.search).length === 0;
+  // Every answer the API gives is kept as its usage, whatever becomes of it (the ops round, section 1), and an answer
+  // saying the credit is gone is noted before it is passed on.
+  const asked = async (forced: boolean, room: number, prior: unknown[] = []): Promise<Anthropic.Message> => {
+    const res = await ask(forced, room, prior).catch((err: unknown) => {
+      noteIfOutOfCredit(err);
+      throw err;
+    });
+    await recordAiCall(req.label, res.model || model, usageOf(res));
+    return res;
+  };
   const once = async (room: number): Promise<Anthropic.Message> => {
     let res: Anthropic.Message;
     try {
-      res = await ask(opens, room);
+      res = await asked(opens, room);
     } catch (err) {
       // Some models refuse a forced tool choice. They are asked instead; the parse below enforces the shape.
       if (opens && err instanceof Anthropic.BadRequestError && /tool_choice/.test(err.message)) {
         asksPlainly.add(model);
-        res = await ask(false, room);
+        res = await asked(false, room);
       } else throw err;
     }
     // A search loop that ran long pauses the turn: it is resumed as it stands, a couple of times at most.
-    for (let resumes = 0; res.stop_reason === "pause_turn" && resumes < RESUMES; resumes += 1) res = await ask(false, room, [{ role: "assistant", content: res.content }]);
+    for (let resumes = 0; res.stop_reason === "pause_turn" && resumes < RESUMES; resumes += 1) res = await asked(false, room, [{ role: "assistant", content: res.content }]);
     return res;
   };
   const started = Date.now();
@@ -237,11 +248,19 @@ async function structuredStream<T>(req: StructuredRequest<T> & { model: string }
       { timeout: req.timeoutMs, ...(req.model === MODELS.drafting ? { maxRetries: 0 } : {}) },
     );
     const answerBlocks = new Set<number>();
-    for await (const event of stream) {
-      if (event.type === "content_block_start" && event.content_block.type === "tool_use" && event.content_block.name === req.toolName) answerBlocks.add(event.index);
-      if (event.type === "content_block_delta" && event.delta.type === "input_json_delta" && answerBlocks.has(event.index)) onDelta(event.delta.partial_json);
+    try {
+      for await (const event of stream) {
+        if (event.type === "content_block_start" && event.content_block.type === "tool_use" && event.content_block.name === req.toolName) answerBlocks.add(event.index);
+        if (event.type === "content_block_delta" && event.delta.type === "input_json_delta" && answerBlocks.has(event.index)) onDelta(event.delta.partial_json);
+      }
+    } catch (err) {
+      noteIfOutOfCredit(err);
+      throw err;
     }
-    return stream.finalMessage();
+    const res = await stream.finalMessage();
+    // Kept as its usage, as every unstreamed answer is (the ops round, section 1).
+    await recordAiCall(req.label, res.model || req.model, usageOf(res));
+    return res;
   };
   const opens = forcesTool(req.model) && searchTool(req.search).length === 0;
   const once = async (room: number) => {
@@ -295,4 +314,22 @@ export function answerFrom<T>(res: { content: ReadonlyArray<{ type: string; name
   const block = res.content.find((b) => b.type === "tool_use" && b.name === toolName);
   if (!block) throw new Error(`the model did not answer (${label})`);
   return shape.parse(block.input);
+}
+
+/**
+ * The health check's call (the ops round, section 2), made at most once an hour: the drafting model asked for a single
+ * token, so a dead key or a spent balance shows before anyone asks a question. Kept as its usage like every call, and
+ * an answer saying the credit is gone is noted as one.
+ */
+export async function pingModel(timeoutMs = 15_000): Promise<{ model: string }> {
+  const model = MODELS.drafting;
+  try {
+    const params = { model, max_tokens: 1, messages: [{ role: "user" as const, content: "Reply with one word." }], ...thinkingFor(model, "off") } as unknown as Parameters<ReturnType<typeof anthropic>["messages"]["create"]>[0] & { stream?: false };
+    const res = (await anthropic().messages.create(params, { timeout: timeoutMs, maxRetries: 0 })) as Anthropic.Message;
+    await recordAiCall("health check", res.model || model, usageOf(res));
+    return { model: res.model || model };
+  } catch (err) {
+    noteIfOutOfCredit(err);
+    throw err;
+  }
 }

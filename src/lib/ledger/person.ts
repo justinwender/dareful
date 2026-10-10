@@ -12,7 +12,7 @@ import { inItsSetsGroup, nettablePairs } from "./closes";
 import { obligationsById, openBetween, type EnvioObligation } from "./envio";
 import { bytes16ToUuid, uuidToBytes16 } from "./ids";
 import { marketCards, type MarketCardData } from "./market-view";
-import { pendingBetween, type ProposalRow } from "./proposals";
+import { coversOnly, pendingBetween, type ProposalRow } from "./proposals";
 import { gamesOfMarkets } from "@/lib/sports";
 import { scoreLine } from "@/lib/sports/results";
 import type { TeamFace } from "@/lib/ui/team";
@@ -204,7 +204,8 @@ export async function personView(me: UserRow, them: UserRow): Promise<PersonView
       groupName: groupNames.get(o.groupId) ?? null,
     });
   }
-  for (const p of pending) {
+  // Covers only: what a question left between the two of you is its story's consequences (`marketCards`), never a cover's row (the ops round, section 0).
+  for (const p of coversOnly(pending)) {
     const denomination = denoms.get(p.denomId);
     if (!denomination) continue;
     timeline.push({ kind: "proposal", at: p.createdAt, proposal: p, denomination, groupName: groupNames.get(p.groupId) ?? null });

@@ -31,6 +31,7 @@ export const SECRET_NAMES = [
   "VAPID_PRIVATE_KEY",
   "BALLDONTLIE_API_KEY",
   "SEED_MNEMONIC",
+  "CANARY_MNEMONIC",
   "ENVIO_API_TOKEN",
 ] as const;
 

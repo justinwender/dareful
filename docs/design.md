@@ -51,6 +51,8 @@ Round D), following the phone's setting, with an Appearance row on You.
 
 ### What changed in this revision
 
+Amended 2026-10-09 by the ops round, in dated notes at the ends of 3.4 (a question's result is never a cover: its story's consequences on a friend's page and a guest's, and its story with the yep when it is confirmed) and 3.40 (a margin past four either way: no crash, and the slices' labels whole across the axis); nothing else a person sees changed.
+
 Amended 2026-10-09 by the submission round, in dated notes at the ends of 3.16 (a code works like its link for someone with no account), 3.45 (pass the phone for the asker before their call, and on a game page's share row) and 10.9 (a market's and a game page's tips as one run once the person is in, and a control pointed at only when all of it is on the screen).
 
 Amended 2026-10-09 by the final round, in dated notes at the ends of 3.14 (the ideas first on an empty Now, the code boxes' own heading), 3.17 (every link the app makes, the field always there), 3.24 (silence only where signed, the dispute's photo optional, a field above the keyboard), 3.29 (a suggested mark, the categories as icons, a unit of your own, Decided's one chip per day), 3.33 (a game's photos in one place, a question of your own), 3.47 (a mark for every idea), 4.6 ("lock" out) and 10.9 (the tips, shown).
@@ -728,6 +730,8 @@ Kinds and states:
   place of media, no shimmer, minimum 200ms on screen. A navigation never renders this.
 - **Error**: the card shape with one `body-sm` line, "Couldn't load this one," and a 44px "Try
   again" text button. Never a red state.
+
+(Amended 2026-10-09, the ops round, section 0. **A question's result is never a cover.** What a question settled here leaves (pending, with a guest in it) is its story's consequences, as what a question on the chain leaves always was: on a friend's page the question is its story card with what it left between the two under it, and the covers alone are cover cards. A guest's page draws the same: the questions you and the guest were both in as their story cards, newest first with the covers, and "Nothing between you two yet" only when there is neither. A question's result opened from its notice is the question's story card with the yep for the person who owes it, and the question itself for anyone else.)
 
 ### 3.5 Call line (binary markets)
 
@@ -3228,6 +3232,8 @@ far either way as they like.
 **Team colours stay in the stamps.** The fill, the wash, the columns and the marker keep their
 usual colours, so the market's ink still carries place and a team never colours the screen
 (4.5).
+
+(Amended 2026-10-09, the ops round, section 0. **A margin past four either way draws, and its ends are read whole.** Any call past four makes the margin's axis ten slices, and the screen placed a call by reading the slices' labels as numbers, which on a margin are words, so "Packers by 7" put "Couldn't load this one." over the game page. The axis now carries its numeric ends and places every call from them; the words stay. Across slices, on a margin and on a number question alike, the labels are the axis's: the low end at the left, the middle in the centre ("Tie" on a margin) and the high end at the right, each whole, never cut to one slice's width ("Bea…"), as 3.22 says.)
 
 ### 3.41 One tap
 

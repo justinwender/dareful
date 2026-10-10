@@ -1495,3 +1495,126 @@ export const usageEvents = pgTable(
     check("usage_events_name_short", sql`char_length(${t.name}) between 1 and 40`),
   ],
 ).enableRLS();
+
+// ------------------------------------------------------------------------------------------------------
+// Operations (the ops round, 2026-10-09): what production uses up, how it is, and what it told the owner.
+// Nothing here is the product's: no screen but the owner's reads it, and no count reads it.
+// ------------------------------------------------------------------------------------------------------
+
+/**
+ * A few named facts the operations code keeps between runs, one row each: the tick's last run (`tick`), the last time a
+ * system refused for rate or credit (`refused:alchemy`, `refused:indexer`, `refused:anthropic`), the hourly checks'
+ * last answers (`check:<name>`), and each day's morning email once sent (`morning:<day>`).
+ */
+export const opsState = pgTable("ops_state", {
+  key: text("key").primaryKey(),
+  at: ts("at").notNull().defaultNow(),
+  value: jsonb("value").notNull().default(sql`'{}'::jsonb`),
+}).enableRLS();
+
+/**
+ * One alert's state (src/lib/ops/alerts.ts): a runway line or a core system, keyed by name. `since` is when it began and
+ * is null while all is well; `told_at` is when the owner was told, once per crossing; `cleared_at` when it last came back.
+ */
+export const opsAlerts = pgTable("ops_alerts", {
+  key: text("key").primaryKey(),
+  since: ts("since"),
+  toldAt: ts("told_at"),
+  clearedAt: ts("cleared_at"),
+  /** What the level read when it was last looked at, in words, for the owner's email. */
+  reading: text("reading"),
+}).enableRLS();
+
+/** Every health run's answer (src/lib/ops/health.ts), kept through judging: each check's state and time, as the route answered it. */
+export const healthRuns = pgTable(
+  "health_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    at: ts("at").notNull().defaultNow(),
+    /** Who asked: the tick, or a request to /api/health. */
+    source: text("source").notNull(),
+    /**
+     * Where the run was made (`hereEnv` in src/lib/ops/health.ts): production, a preview, or anywhere else. Every
+     * environment shares this table and reads only its own; a row written without one is nobody's but a laptop's.
+     */
+    env: text("env").notNull().default("local"),
+    coreOk: boolean("core_ok").notNull(),
+    checks: jsonb("checks").notNull(),
+  },
+  (t) => [index("health_runs_at").on(t.at), index("health_runs_env_at").on(t.env, t.at), check("health_runs_source_known", sql`${t.source} in ('tick', 'request')`)],
+).enableRLS();
+
+/** Every answer the model API gave, by its usage (src/lib/ai/spend.ts): what the credit the owner entered has gone on. Never the prompt or the answer. */
+export const aiCalls = pgTable(
+  "ai_calls",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    at: ts("at").notNull().defaultNow(),
+    label: text("label").notNull(),
+    model: text("model").notNull(),
+    inputTokens: integer("input_tokens").notNull(),
+    outputTokens: integer("output_tokens").notNull(),
+    cacheReadTokens: integer("cache_read_tokens").notNull().default(0),
+    cacheWriteTokens: integer("cache_write_tokens").notNull().default(0),
+    searches: integer("searches").notNull().default(0),
+  },
+  (t) => [index("ai_calls_at").on(t.at)],
+).enableRLS();
+
+/** The model API's credit as the owner entered it on /stats after a top-up, in cents: the latest row is the balance at its moment. */
+export const anthropicCredit = pgTable(
+  "anthropic_credit",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    cents: money("cents").notNull(),
+    enteredAt: ts("entered_at").notNull().defaultNow(),
+    enteredBy: uuid("entered_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => [check("anthropic_credit_not_negative", sql`${t.cents} >= 0`)],
+).enableRLS();
+
+/** Every email the app sent through Resend and every push it tried, with whether it went (src/lib/notify/channels.ts): the email quota's count and the push failure rate. Never who to or what. */
+export const channelSends = pgTable(
+  "channel_sends",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    at: ts("at").notNull().defaultNow(),
+    channel: text("channel").notNull(),
+    /** A notice to a person, or a line to the owner. */
+    kind: text("kind").notNull(),
+    ok: boolean("ok").notNull(),
+  },
+  (t) => [index("channel_sends_at").on(t.at), check("channel_sends_channel_known", sql`${t.channel} in ('email', 'push')`), check("channel_sends_kind_known", sql`${t.kind} in ('notice', 'ops')`)],
+).enableRLS();
+
+/** The app's own calls to the RPC provider, by UTC day and method, with the compute units they cost (src/lib/ops/rpc-usage.ts). */
+export const rpcCalls = pgTable(
+  "rpc_calls",
+  {
+    day: text("day").notNull(),
+    method: text("method").notNull(),
+    calls: integer("calls").notNull().default(0),
+    cu: bigint("cu", { mode: "number" }).notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.day, t.method] })],
+).enableRLS();
+
+/** Every canary run (src/lib/ops/canary.ts): when, how far it got, what failed and the transactions it sent. */
+export const canaryRuns = pgTable(
+  "canary_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    startedAt: ts("started_at").notNull().defaultNow(),
+    finishedAt: ts("finished_at"),
+    ok: boolean("ok"),
+    /** The step it was on when it finished: the last one on a pass, the failing one otherwise. */
+    step: text("step"),
+    error: text("error"),
+    /** Its question, for as long as the run keeps it. */
+    dareId: uuid("dare_id"),
+    txs: jsonb("txs").notNull().default(sql`'[]'::jsonb`),
+    /** Each step's time in milliseconds, in order. */
+    steps: jsonb("steps").notNull().default(sql`'[]'::jsonb`),
+  },
+  (t) => [index("canary_runs_started").on(t.startedAt)],
+).enableRLS();

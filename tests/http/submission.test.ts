@@ -17,7 +17,7 @@ import { createGroup } from "@/lib/ledger/groups";
 import * as markets from "@/lib/ledger/markets";
 import { syncSchedule } from "@/lib/sports";
 import { parseScoreboard } from "@/lib/sports/espn";
-import { cleanup, tempSigner, track, type Signer } from "../db/fixture";
+import { cleanup, tempSigner, testSchedule, track, type Signer } from "../db/fixture";
 
 const BASE = process.env.TEST_BASE_URL ?? "http://localhost:3000";
 
@@ -63,7 +63,7 @@ before(async () => {
   const prefix = track.gamePrefix(`test:submission:${randomUUID().slice(0, 8)}:`);
   const scoreboard = JSON.parse(readFileSync(new URL("../fixtures/sports/espn-nfl-scheduled.json", import.meta.url), "utf8")) as unknown;
   const game = parseScoreboard("nfl", scoreboard).slice(0, 1).map((x) => ({ ...x, sourceId: `${prefix}${x.sourceId}`, startsAt: new Date(Date.now() + 5 * 86_400_000) }));
-  await syncSchedule("nfl", new Date(), { name: "espn", listGames: async () => game });
+  await syncSchedule("nfl", new Date(), testSchedule(game));
   const [row] = await db.select().from(schema.sportsGames).where(eq(schema.sportsGames.sourceId, game[0]!.sourceId));
   gameId = (row as { id: string }).id;
   const [tpl] = await db.select().from(schema.publicQuestions).where(eq(schema.publicQuestions.gameId, gameId));
@@ -103,7 +103,7 @@ test("the public numbers are a picture, drawn by the app and sent fresh to every
   assert.equal(r.status, 200);
   assert.equal(r.headers.get("content-type"), "image/png");
   assert.equal(r.headers.get("cache-control"), "no-cache, max-age=0, must-revalidate", "GitHub's proxy and every browser ask again");
-  assert.equal(r.headers.get("vercel-cdn-cache-control"), "max-age=60", "the platform's edge keeps one drawing a minute");
+  assert.equal(r.headers.get("vercel-cdn-cache-control"), "max-age=300", "the platform's edge keeps one drawing five minutes, as long as the app keeps it (the ops round)");
   const png = Buffer.from(await r.arrayBuffer());
   assert.equal(png.subarray(1, 4).toString("ascii"), "PNG");
   assert.deepEqual([png.readUInt32BE(16), png.readUInt32BE(20)], [1200, 600], "1200 by 600");

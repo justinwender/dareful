@@ -28,3 +28,22 @@ select cron.schedule(
 -- To stop it:   select cron.unschedule('dareful-tick');
 -- To see runs:  select status, return_message, start_time from cron.job_run_details order by start_time desc limit 10;
 -- To see replies: select status_code, created from net._http_response order by created desc limit 10;
+
+-- 4. The canary (the ops round, section 4): every six hours at seventeen past, its own door with the same secret, as a
+--    job of its own and never inside the tick's minute. Before the deploy that adds the door it answers 404, and after
+--    it the canary is off, and says so, until CANARY_MNEMONIC is set in Vercel. The canary sends its own email if a step
+--    fails, so nothing here waits for an answer.
+select cron.schedule(
+  'dareful-canary',
+  '17 */6 * * *',
+  $$
+  select net.http_post(
+    url := 'https://dareful.app/api/canary',
+    headers := jsonb_build_object('content-type', 'application/json', 'authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'dareful_tick_secret')),
+    body := '{}'::jsonb,
+    timeout_milliseconds := 55000
+  );
+  $$
+);
+
+-- To stop it:   select cron.unschedule('dareful-canary');

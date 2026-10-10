@@ -6,7 +6,27 @@
 import { inArray, like, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 
+/**
+ * What the operations tests leave if they are stopped (the ops round): the feed marks under a run's own name, alerts and
+ * facts under `test:ops:` names, and rows they date in 1999 so nothing real is ever among them. Never a real name or day.
+ */
+async function sweepOps(): Promise<number> {
+  const before = new Date("2000-01-01T00:00:00Z").toISOString();
+  const n = await Promise.all([
+    db.delete(schema.sportsFeedReads).where(like(schema.sportsFeedReads.source, "test:feed:%")).returning({ k: schema.sportsFeedReads.source }),
+    db.delete(schema.opsAlerts).where(like(schema.opsAlerts.key, "test:ops:%")).returning({ k: schema.opsAlerts.key }),
+    db.delete(schema.opsState).where(or(like(schema.opsState.key, "test:ops:%"), like(schema.opsState.key, "morning:1999-%"))).returning({ k: schema.opsState.key }),
+    db.delete(schema.healthRuns).where(sql`${schema.healthRuns.at} < ${before}::timestamptz`).returning({ k: schema.healthRuns.id }),
+    db.delete(schema.channelSends).where(sql`${schema.channelSends.at} < ${before}::timestamptz`).returning({ k: schema.channelSends.id }),
+    db.delete(schema.aiCalls).where(sql`${schema.aiCalls.at} < ${before}::timestamptz`).returning({ k: schema.aiCalls.id }),
+    db.delete(schema.rpcCalls).where(like(schema.rpcCalls.day, "1999-%")).returning({ k: schema.rpcCalls.day }),
+  ]);
+  return n.reduce((a, rows) => a + rows.length, 0);
+}
+
 async function main(): Promise<void> {
+  const ops = await sweepOps();
+  if (ops > 0) console.log(`swept ${ops} rows the operations tests left`);
   const u = (await db.select({ id: schema.users.id }).from(schema.users).where(like(schema.users.dynamicUserId, "tmp-check:%"))).map((r) => r.id);
   if (u.length === 0) {
     console.log("nothing to sweep");

@@ -4,6 +4,12 @@
  */
 import { z } from "zod";
 import { timed } from "@/lib/timing";
+import { noteRefusal } from "@/lib/ops/state";
+
+/** Whether the indexer said no for its rate: HTTP 429, or a rate limit named in its errors. Pure. */
+export function indexerRefused(status: number, said: string): boolean {
+  return status === 429 || /rate.?limit|too many requests/i.test(said);
+}
 
 const EnvioObligation = z.object({
   id: z.string(),
@@ -37,9 +43,17 @@ async function query<T>(gql: string, variables: Record<string, unknown>, shape: 
       cache: "no-store",
     }),
   );
-  if (!res.ok) throw new Error(`indexer responded ${res.status}`);
+  if (!res.ok) {
+    // The hosted endpoint answers 100 queries a minute: a refusal holds its runway line at urgent (the ops round, section 1).
+    if (indexerRefused(res.status, "")) void noteRefusal("indexer", "too many queries a minute");
+    throw new Error(`indexer responded ${res.status}`);
+  }
   const json = (await res.json()) as { data?: unknown; errors?: Array<{ message: string }> };
-  if (json.errors?.length) throw new Error(`indexer error: ${json.errors.map((e) => e.message).join("; ")}`);
+  if (json.errors?.length) {
+    const said = json.errors.map((e) => e.message).join("; ");
+    if (indexerRefused(res.status, said)) void noteRefusal("indexer", "too many queries a minute");
+    throw new Error(`indexer error: ${said}`);
+  }
   return shape.parse(json.data);
 }
 

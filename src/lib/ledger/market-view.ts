@@ -65,14 +65,14 @@ export function numbersVisible(d: DareRow, viewerHasPosition: boolean): boolean 
  * The cards for a timeline. `groupId` narrows to one group; `withUserId` narrows to markets both people are in
  * and to the consequences between just those two. Drafts are never listed: only their creator can open one.
  */
-export async function marketCards(input: { viewerId: string; groupId?: string; withUserId?: string; limit?: number }): Promise<MarketCardData[]> {
+export async function marketCards(input: { viewerId: string; groupId?: string; withUserId?: string; /** A guest in place of an account: the questions you and they were both in, and only what passed between you two (the ops round, section 0). */ withClaimId?: string; limit?: number; /** Only these questions: the one a confirm is for (the ops round, section 0). */ dareIds?: string[] }): Promise<MarketCardData[]> {
   const mine = await db.select({ groupId: schema.groupMembers.groupId }).from(schema.groupMembers).where(and(eq(schema.groupMembers.userId, input.viewerId), isNull(schema.groupMembers.leftAt)));
   const groupIds = input.groupId ? mine.map((m) => m.groupId).filter((g) => g === input.groupId) : mine.map((m) => m.groupId);
   if (groupIds.length === 0) return [];
   const dares = await db
     .select()
     .from(schema.dares)
-    .where(and(inArray(schema.dares.groupId, groupIds), isNotNull(schema.dares.creatorSignature)))
+    .where(and(inArray(schema.dares.groupId, groupIds), isNotNull(schema.dares.creatorSignature), input.dareIds ? inArray(schema.dares.id, input.dareIds) : undefined))
     .orderBy(desc(schema.dares.createdAt))
     .limit(input.limit ?? 40);
   if (dares.length === 0) return [];
@@ -83,17 +83,24 @@ export async function marketCards(input: { viewerId: string; groupId?: string; w
   const clocks = templateIds.length ? await db.select({ id: schema.publicQuestions.id, finalSeenAt: schema.sportsGames.finalSeenAt, expectedEndAt: schema.sportsGames.expectedEndAt }).from(schema.publicQuestions).innerJoin(schema.sportsGames, eq(schema.sportsGames.id, schema.publicQuestions.gameId)).where(inArray(schema.publicQuestions.id, templateIds)) : [];
   const clockOf = new Map(clocks.map((c) => [c.id, { finalSeenAt: c.finalSeenAt, expectedEndAt: c.expectedEndAt }]));
   const now = new Date();
-  const [positions, votes, edges, groups, seats, said] = await Promise.all([
+  const [positions, votes, minted, proposed, groups, seats, said] = await Promise.all([
     db.select().from(schema.darePositions).where(and(inArray(schema.darePositions.dareId, ids), isNotNull(schema.darePositions.acknowledgedAt), isNull(schema.darePositions.dismissedAt))),
     db.select({ dareId: schema.dareVotes.dareId, userId: schema.dareVotes.userId }).from(schema.dareVotes).where(and(inArray(schema.dareVotes.dareId, ids), voterIsIn)),
     db.select().from(schema.obligations).where(and(eq(schema.obligations.origin, "dare"), inArray(schema.obligations.originId, ids))),
+    // A question settled here leaves proposals where one on the chain leaves edges (PLANNING.md section 4): the pending ones are its story's consequences too, never a cover's row (the ops round, section 0).
+    db.select().from(schema.obligationProposals).where(and(eq(schema.obligationProposals.origin, "dare"), inArray(schema.obligationProposals.originId, ids), eq(schema.obligationProposals.status, "pending"))),
     db.select({ id: schema.groups.id, name: schema.groups.name }).from(schema.groups).where(inArray(schema.groups.id, groupIds)),
     // The seats, with their names and in one order everywhere (`membersOfGroups`): the account-holders are the set a sentence names.
     membersOfGroups(groupIds),
     db.select({ dareId: schema.dareStatements.dareId, userId: schema.dareStatements.userId }).from(schema.dareStatements).where(and(inArray(schema.dareStatements.dareId, ids), eq(schema.dareStatements.kind, "update"))).orderBy(schema.dareStatements.statedAt),
   ]);
+  // What each question left: its minted edges, then what it settled here and is waiting on a confirm, by participant (a guest's side is their claim).
+  const edges = [
+    ...minted.map((e) => ({ id: e.id, originId: e.originId, from: e.fromUser, to: e.toUser, quantity: e.quantity ?? 1n })),
+    ...proposed.map((p) => ({ id: p.id, originId: p.originId, from: (p.fromUser ?? p.fromClaim) as string, to: (p.toUser ?? p.toClaim) as string, quantity: p.quantity ?? 1n })),
+  ];
   // Every participant, account-holder or ghost: a ghost's number counts and draws like anyone's.
-  const people = await participantsOf([...positions.map((p) => pidOf(p)), ...said.map((x) => x.userId), ...edges.flatMap((e) => [e.fromUser, e.toUser]), ...votes.map((v) => v.userId)]);
+  const people = await participantsOf([...positions.map((p) => pidOf(p)), ...said.map((x) => x.userId), ...edges.flatMap((e) => [e.from, e.to]), ...votes.map((v) => v.userId)]);
   const nameOf = new Map(Array.from(people.values(), (u) => [u.id, u.displayName] as const));
   const ghost = (id: string) => people.get(id)?.ghost === true;
   const denoms = await denominationsByIds(Array.from(new Set(dares.map((d) => d.denomId))));
@@ -102,6 +109,8 @@ export async function marketCards(input: { viewerId: string; groupId?: string; w
   const callerOf = new Map<string, string>();
   for (const v of [...firstVotes].sort((a, b) => a.signedAt.getTime() - b.signedAt.getTime())) if (!callerOf.has(v.dareId)) callerOf.set(v.dareId, v.userId);
 
+  // The other person, an account or a guest (a position's participant id is its account's, else its claim's).
+  const withId = input.withUserId ?? input.withClaimId;
   const out: MarketCardData[] = [];
   for (const d of dares) {
     const state = stateOf(d);
@@ -109,12 +118,12 @@ export async function marketCards(input: { viewerId: string; groupId?: string; w
     // A removed market (3.15: the asker's swipe, while they were its one participant) is nobody's story: it leaves Now and every timeline, and only its own screen still opens from the link.
     if (d.resolvedBy === "removed") continue;
     const ps = positions.filter((p) => p.dareId === d.id).sort((a, b) => a.enteredAt.getTime() - b.enteredAt.getTime());
-    if (input.withUserId && !(ps.some((p) => p.userId === input.viewerId) && ps.some((p) => p.userId === input.withUserId))) continue;
+    if (withId && !(ps.some((p) => p.userId === input.viewerId) && ps.some((p) => pidOf(p) === withId))) continue;
     const denomination = denoms.get(d.denomId);
     if (!denomination) continue;
     const iAmIn = ps.some((p) => p.userId === input.viewerId);
     const show = numbersVisible(d, iAmIn);
-    const between = (e: (typeof edges)[number]) => !input.withUserId || ((e.fromUser === input.viewerId || e.toUser === input.viewerId) && (e.fromUser === input.withUserId || e.toUser === input.withUserId));
+    const between = (e: (typeof edges)[number]) => !withId || ((e.from === input.viewerId || e.to === input.viewerId) && (e.from === withId || e.to === withId));
     const unit = unitOf(d);
     const answers = answersOf(d);
     const pickedIndex = answers && state === "resolved" && d.resolvedOutcome !== null && d.resolvedOutcome !== VOID_OUTCOME ? Number(d.resolvedOutcome) : null;
@@ -136,7 +145,7 @@ export async function marketCards(input: { viewerId: string; groupId?: string; w
       answer: state === "resolved" && unit && d.resolvedOutcome !== null && d.resolvedOutcome !== VOID_OUTCOME ? d.resolvedOutcome.toString() : null,
       consequences: edges
         .filter((e) => e.originId === d.id && between(e))
-        .map((e) => ({ id: e.id, from: { id: e.fromUser, displayName: nameOf.get(e.fromUser) ?? "Someone" }, to: { id: e.toUser, displayName: nameOf.get(e.toUser) ?? "Someone" }, quantity: e.quantity ?? 1n })),
+        .map((e) => ({ id: e.id, from: { id: e.from, displayName: nameOf.get(e.from) ?? "Someone" }, to: { id: e.to, displayName: nameOf.get(e.to) ?? "Someone" }, quantity: e.quantity })),
       votesCast: votes.filter((v) => v.dareId === d.id).length,
       saidBy: ((u) => (u ? (nameOf.get(u) ?? null) : null))(said.find((x) => x.dareId === d.id)?.userId),
       needsYou: state === "open" && !iAmIn ? "Put your number in" : state === "locked" && iAmIn && votingOpen(d, d.templateId ? (clockOf.get(d.templateId) ?? null) : null, now) && !votes.some((v) => v.dareId === d.id && v.userId === input.viewerId) ? "Say how it came out" : null,

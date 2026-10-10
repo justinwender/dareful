@@ -1,0 +1,83 @@
+# Production, watched from outside the app (the ops round, section 3). The app's own alerts ride the minute tick, so a
+# dead tick would silence them; this does not. Every fifteen minutes and after every production deploy, it asks
+# /api/health, the home page and the live numbers picture (scripts/ops/outside-check.mjs) and fails when a core system is
+# down, the health answer is not production's own run, or one of the three does not answer. Every six hours it also signs
+# in through the app in a real browser with Dynamic's test account and opens a person's page and a question
+# (scripts/ops/watch-sign-in.mjs), skipped until the account's email and code are in the repository's secrets. A failed
+# run emails whoever last edited the schedule below.
+name: Watch production
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+    - cron: "7 */6 * * *"
+  deployment_status:
+  workflow_dispatch:
+    inputs:
+      sign_in:
+        description: "Run the sign-in pass too"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    # Vercel reports each deploy's status to GitHub; only a production deploy that succeeded is checked, at the domain itself
+    # (the deploy's own address sits behind Vercel's sign-in).
+    if: github.event_name != 'deployment_status' || (github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'Production')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/ops/outside-check.mjs
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/ops/outside-check.mjs
+        env:
+          WATCH_URL: https://dareful.app
+          WAIT_FOR_DEPLOY: ${{ github.event_name == 'deployment_status' && '1' || '' }}
+
+  sign-in:
+    if: (github.event_name == 'schedule' && github.event.schedule == '7 */6 * * *') || (github.event_name == 'workflow_dispatch' && inputs.sign_in)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      WATCH_URL: https://dareful.app
+      WATCH_EMAIL: ${{ secrets.WATCH_EMAIL }}
+      WATCH_CODE: ${{ secrets.WATCH_CODE }}
+    steps:
+      # Until both secrets exist the pass is skipped, saying so, and nothing below runs (the browser's folder is never made).
+      - name: Skipped until the secrets exist
+        if: env.WATCH_EMAIL == '' || env.WATCH_CODE == ''
+        run: |
+          echo "Skipped: WATCH_EMAIL and WATCH_CODE are not in the repository's secrets yet." | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/checkout@v4
+        if: env.WATCH_EMAIL != '' && env.WATCH_CODE != ''
+        with:
+          sparse-checkout: scripts/ops/watch-sign-in.mjs
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@v4
+        if: env.WATCH_EMAIL != '' && env.WATCH_CODE != ''
+        with:
+          node-version: 22
+      - name: Install a browser
+        if: env.WATCH_EMAIL != '' && env.WATCH_CODE != ''
+        run: |
+          mkdir -p "$RUNNER_TEMP/watch" && cp scripts/ops/watch-sign-in.mjs "$RUNNER_TEMP/watch/"
+          cd "$RUNNER_TEMP/watch" && npm init -y > /dev/null && npm install --no-audit --no-fund playwright@1.52.0 > /dev/null
+          npx playwright install --with-deps chromium > /dev/null
+      - name: Sign in and look around
+        if: env.WATCH_EMAIL != '' && env.WATCH_CODE != ''
+        working-directory: ${{ runner.temp }}/watch
+        run: node watch-sign-in.mjs
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: sign-in-failure
+          path: ${{ runner.temp }}/watch/watch/failed.png
+          retention-days: 14

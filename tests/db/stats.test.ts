@@ -15,7 +15,7 @@ import { syncSchedule } from "@/lib/sports";
 import { parseScoreboard } from "@/lib/sports/espn";
 import { countStats, dayOf, takeSnapshot } from "@/lib/usage/stats";
 import { hashPhone } from "@/lib/auth/phone";
-import { cleanup, fictionalPhone, tempUser, track, type User } from "./fixture";
+import { cleanup, fictionalPhone, tempUser, testSchedule, track, type User } from "./fixture";
 
 let counted: User, excluded: User;
 before(async () => {
@@ -133,7 +133,7 @@ test("the four the pitch quotes: someone who came by a friend's question and the
   const RUN = Math.random().toString(36).slice(2, 8);
   track.gamePrefix(`test:${RUN}:`);
   const game = parseScoreboard("nfl", JSON.parse(readFileSync(new URL("../fixtures/sports/espn-nfl-scheduled.json", import.meta.url), "utf8"))).slice(0, 1).map((g) => ({ ...g, sourceId: `test:${RUN}:${g.sourceId}`, startsAt: new Date(Date.now() + 2 * H) }));
-  await syncSchedule("nfl", new Date(), { name: "espn", listGames: async () => game });
+  await syncSchedule("nfl", new Date(), testSchedule(game));
   const [row] = await db.select().from(schema.sportsGames).where(and(eq(schema.sportsGames.source, "espn"), eq(schema.sportsGames.sourceId, game[0]!.sourceId)));
   const templates = await db.select().from(schema.publicQuestions).where(eq(schema.publicQuestions.gameId, row!.id));
   assert.ok(templates.length >= 2, "the game's questions");

@@ -125,14 +125,21 @@ async function verifyMarkets(): Promise<number> {
   const { publicClient } = relayer();
   const url = process.env.ENVIO_GRAPHQL_URL;
   if (!url) throw new Error("ENVIO_GRAPHQL_URL is not set");
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ query: `{ Dare(limit: 500, order_by: { createdAt: asc }) { id status outcome kind range options positions { participant stake value confidenceBps score } edges { id debtor creditor qty } } }` }),
-  });
-  const parsed = z
-    .object({ data: z.object({ Dare: z.array(z.object({ id: z.string(), status: z.string(), outcome: z.string().nullable(), kind: z.number(), range: z.string(), options: z.number(), positions: z.array(z.object({ participant: z.string(), stake: z.string(), value: z.string(), confidenceBps: z.number(), score: z.number().nullable() })), edges: z.array(z.object({ id: z.string(), debtor: z.string(), creditor: z.string(), qty: z.string() })) })) }) })
-    .parse(await res.json());
+  // Every question, a page of 500 at a time (the indexer answers at most that many in one query): the oldest first, so a
+  // run that stops partway has still checked the history.
+  const Page = z.object({ data: z.object({ Dare: z.array(z.object({ id: z.string(), status: z.string(), outcome: z.string().nullable(), kind: z.number(), range: z.string(), options: z.number(), positions: z.array(z.object({ participant: z.string(), stake: z.string(), value: z.string(), confidenceBps: z.number(), score: z.number().nullable() })), edges: z.array(z.object({ id: z.string(), debtor: z.string(), creditor: z.string(), qty: z.string() })) })) }) });
+  const all: z.infer<typeof Page>["data"]["Dare"] = [];
+  for (let offset = 0; ; offset += 500) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ query: `{ Dare(limit: 500, offset: ${offset}, order_by: [{ createdAt: asc }, { id: asc }]) { id status outcome kind range options positions { participant stake value confidenceBps score } edges { id debtor creditor qty } } }` }),
+    });
+    const page = Page.parse(await res.json()).data.Dare;
+    all.push(...page);
+    if (page.length < 500) break;
+  }
+  const parsed = { data: { Dare: all } };
 
   const STATUS = ["LOCKED", "RESOLVED", "VOIDED", "EXPIRED"];
   let bad = 0;

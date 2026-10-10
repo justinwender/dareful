@@ -7,6 +7,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { MODELS } from "@/lib/ai/client";
+import { recordAiCall, usageOf } from "@/lib/ai/spend";
 import { latestDate, longDateWords } from "@/lib/ledger/decide-by";
 import { proposeAnswer, proposeNumber, proposeOutcome, scopeMarket, scopeNumber, scopePickOne } from "@/lib/ai/markets";
 import { arbitrate, arbitrateAnswer, arbitrateNumber, carefulQuestions } from "@/lib/ai/settler";
@@ -98,6 +99,8 @@ async function main(): Promise<void> {
   await proposeOutcome({ title: "Does Riley finish the half marathon on Sunday?", terms: "Yes if Riley crosses the finish line of Sunday's half marathon, running or walking. No if Riley drops out or does not start.", statements: [{ name: "Sam", said: "Riley finished in 2:19, I was at the line" }], now });
   // What a response looks like when the model answers in prose and calls nothing: the case the parser must refuse.
   const prose = await new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }).messages.create({ model: MODELS.drafting, max_tokens: 60, messages: [{ role: "user", content: "Say hello in five words." }] });
+  // The one call here made outside `structured`, kept as its usage like every other (the ops round, section 1).
+  await recordAiCall("record prose", prose.model, usageOf(prose));
   writeFileSync(`${dir}/prose-only.json`, JSON.stringify(prose, null, 2));
 }
 

@@ -13,12 +13,33 @@ import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from 
 import { and, eq, inArray, isNull, like, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { monOf, TEST_FLOOR, TEST_FLOOR_MARK } from "@/lib/chain/watch";
+import { flushRpcUsage } from "@/lib/ops/rpc-usage";
 import * as claims from "@/lib/ledger/claims";
 import { ensureUsd } from "@/lib/ledger/denominations";
 import { proposeCover } from "@/lib/ledger/proposals";
 import { cents, units } from "@/lib/money";
+import type { FeedGame, PlaySource, ScheduleSource, Sport } from "@/lib/sports/types";
 
 export type User = typeof schema.users.$inferSelect;
+
+/**
+ * The feed every test reads games from (the ops round, section 0): its own name for this run, never the real
+ * scoreboard's. A schedule or play-by-play read writes a refresh mark under its source's name, and the suites once read
+ * under "espn", so a run marked the real NFL schedule as just read and held production's own refresh back for up to
+ * half an hour. The games a test writes still carry the feed's own source on their rows; only the mark is this run's,
+ * and cleanup removes it.
+ */
+export const TEST_FEED = `test:feed:${randomUUID().slice(0, 8)}`;
+
+/** A schedule that lists these games, read under this run's own name. */
+export function testSchedule(games: FeedGame[] | ((sport: Sport, day: string) => FeedGame[])): ScheduleSource {
+  return { name: TEST_FEED, listGames: async (sport, day) => (typeof games === "function" ? games(sport, day) : games) };
+}
+
+/** A play-by-play that answers this first drive, read under this run's own name. */
+export function testPlays(firstDriveOf: PlaySource["firstDriveOf"]): PlaySource {
+  return { name: TEST_FEED, firstDriveOf };
+}
 
 const groupIds = new Set<string>();
 const claimIds = new Set<string>();
@@ -26,6 +47,8 @@ const userIds = new Set<string>();
 const gamePrefixes = new Set<string>();
 
 export const track = {
+  /** An account a test did not make with `tempUser` (the canary's own, made under a test's ids): removed with the rest. */
+  user: (id: string) => (userIds.add(id), id),
   group: (id: string) => (groupIds.add(id), id),
   claim: (id: string) => (claimIds.add(id), id),
   /** The games this run writes carry source ids under this prefix (`test:<run>:`); cleanup removes those and no other run's. */
@@ -163,6 +186,8 @@ export async function codeOf(fn: () => Promise<unknown>): Promise<string | null>
 
 export async function cleanup(): Promise<void> {
   try {
+    // The RPC calls this run made are the provider's units spent, the tests' included: counted before the client closes.
+    await flushRpcUsage();
     await removeEverything();
   } finally {
     // Always, or a failed cleanup leaves the process alive forever with an open client.
@@ -213,6 +238,8 @@ async function removeEverything(): Promise<void> {
     }
     // Games and public questions this run made, by its own prefix, once nothing rides on them; never another run's.
     await removeTestGames(tx, [...gamePrefixes]);
+    // The refresh marks this run's own feed wrote (its schedule and its play-by-play), and no other source's.
+    await tx.delete(schema.sportsFeedReads).where(or(eq(schema.sportsFeedReads.source, TEST_FEED), eq(schema.sportsFeedReads.source, `${TEST_FEED}:summary`)));
     if (u.length) {
       // The relayer's record of a transaction stays (docs/decisions.md 2026-09-27); only its pointer at a temporary person goes.
       await tx.update(schema.chainWrites).set({ actorId: null }).where(inArray(schema.chainWrites.actorId, u));

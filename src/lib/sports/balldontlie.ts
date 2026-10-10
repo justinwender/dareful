@@ -78,6 +78,27 @@ export function gamesUrl(sport: Sport, dayIso: string): string | null {
 }
 
 
+/**
+ * The day's games from the second source, parsed (the ops round's health check): null with no key or for a sport it does
+ * not carry, and a throw when it does not answer or answers something unreadable.
+ */
+export async function checkGamesOn(sport: Sport, dayIso: string): Promise<CheckGame[] | null> {
+  const key = process.env.BALLDONTLIE_API_KEY;
+  const url = gamesUrl(sport, dayIso);
+  if (!key || !url) return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const r = await fetch(url, { signal: controller.signal, cache: "no-store", headers: { authorization: key, accept: "application/json" } });
+    if (!r.ok) throw new FeedError(`second source ${sport}: HTTP ${r.status}`);
+    return parseGames(await r.json());
+  } catch (err) {
+    throw err instanceof FeedError ? err : new FeedError(`second source ${sport}: ${err instanceof Error ? err.message : "unreadable"}`);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** The live check. The key is read here and sent as the authorization header, never logged and never in a URL. */
 export const balldontlie: CheckSource = {
   name: "balldontlie",

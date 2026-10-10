@@ -22,7 +22,7 @@ import { gameNamedIn, syncSchedule } from "@/lib/sports";
 import { parseScoreboard } from "@/lib/sports/espn";
 import { LIVE_EVERY_MS, LIVE_FRESH_MS, liveScoreFor } from "@/lib/sports/live";
 import type { FeedGame, ScheduleSource, Sport } from "@/lib/sports/types";
-import { cleanup, codeOf, tempSigner, track, type Signer } from "./fixture";
+import { cleanup, codeOf, tempSigner, testSchedule, track, type Signer } from "./fixture";
 
 const H = 3_600_000;
 const RUN = Math.random().toString(36).slice(2, 8);
@@ -30,7 +30,7 @@ const PREFIX = `test:reveal:${RUN}:`;
 const fixture = (path: string): unknown => JSON.parse(readFileSync(new URL(`../fixtures/sports/${path}.json`, import.meta.url), "utf8"));
 /** A recorded scoreboard's games, their ids prefixed so the rows are this test's own, starting when the test says. */
 const recorded = (path: string, sport: Sport, startsAt: Date): FeedGame[] => parseScoreboard(sport, fixture(path)).map((g) => ({ ...g, sourceId: `${PREFIX}${g.sourceId}`, startsAt }));
-const listing = (games: FeedGame[]): ScheduleSource => ({ name: "espn", listGames: async () => games });
+const listing = (games: FeedGame[]): ScheduleSource => testSchedule(games);
 /** A recorded final's score, for a game the test ends. */
 const finalScore = parseScoreboard("nfl", fixture("espn-nfl-final")).find((x) => x.completed)!;
 const gameRow = async (sourceId: string) => (await db.select().from(schema.sportsGames).where(and(eq(schema.sportsGames.source, "espn"), eq(schema.sportsGames.sourceId, sourceId))).limit(1))[0]!;

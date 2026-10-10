@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Avatar } from "@/components/ledger/avatar";
-import type { NumberLineAxis } from "@/lib/ledger/number-axis";
+import { columnOf, type NumberLineAxis } from "@/lib/ledger/number-axis";
 import { hueVar, type Hue } from "@/lib/ui/hue";
 import { MOTION, staggerDelay, staggeredTotal } from "@/lib/ui/motion";
 
@@ -33,10 +33,10 @@ export function NumberLine({ axis, me, heading, caption, rise = false, everyone 
   const myShare = tallest === 0n || myStake <= 0n ? 0 : Number((myStake * 1000n) / tallest) / 10;
   // Which column is mine: the per-value column of my number, the slice it falls in, or an off-axis column.
   const mineOff: "low" | "high" | null = myValue !== null && axis.offHigh && BigInt(axis.offHigh.value) === myValue ? "high" : myValue !== null && axis.offLow && BigInt(axis.offLow.value) === myValue ? "low" : null;
-  const myColumn = myValue === null || mineOff ? -1 : axis.mode === "values" ? axis.columns.findIndex((c) => c.value !== null && BigInt(c.value) === myValue) : sliceIndex(myValue, axis);
+  const myColumn = myValue === null || mineOff ? -1 : columnOf(myValue, axis);
   // The reveal (calls are in): which column each person's number stands in, the way yours is placed.
   const reveal = everyone && everyone.length > 0 ? everyone : null;
-  const placeOf = (v: bigint): number | "low" | "high" => (axis.offHigh && BigInt(axis.offHigh.value) === v ? "high" : axis.offLow && BigInt(axis.offLow.value) === v ? "low" : axis.mode === "values" ? axis.columns.findIndex((c) => c.value !== null && BigInt(c.value) === v) : sliceIndex(v, axis));
+  const placeOf = (v: bigint): number | "low" | "high" => (axis.offHigh && BigInt(axis.offHigh.value) === v ? "high" : axis.offLow && BigInt(axis.offLow.value) === v ? "low" : columnOf(v, axis));
   const callsAt = (where: number | "low" | "high") => (reveal ? reveal.filter((p) => placeOf(BigInt(p.value)) === where) : []);
   const room = reveal ? Math.max(50, 52 + 16 * (Math.max(1, ...axis.columns.map((_, i) => callsAt(i).length), callsAt("low").length, callsAt("high").length) - 1)) : 50;
 
@@ -88,7 +88,15 @@ export function NumberLine({ axis, me, heading, caption, rise = false, everyone 
         {/* The marker is the median, one of the entries: it stands in the row of on-axis columns, or over the off-axis column whose entry it is. */}
         <div className="relative grid min-w-0 gap-[3px]" style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))`, flex: n }}>
           {axis.marker?.at === "axis" ? marker : null}
-          {axis.columns.map((c, i) => column(c, i, i === myColumn, `c${c.n}`, false, callsAt(i)))}
+          {axis.columns.map((c, i) => column(axis.mode === "slices" ? { ...c, label: null } : c, i, i === myColumn, `c${c.n}`, false, callsAt(i)))}
+          {axis.mode === "slices" ? (
+            // Across slices the labels are the axis's, not a slice's (3.22): lo at the left, the midpoint in the centre, hi at the right, each whole, never cut to a slice's width ("Bears by 10", 3.40).
+            <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 flex h-[18px] items-center justify-between whitespace-nowrap text-caption text-ink-3 tabular-nums" data-axis-labels="">
+              <span>{axis.columns[0]?.label ?? ""}</span>
+              <span className="absolute left-1/2 -translate-x-1/2">{axis.columns[4]?.label ?? ""}</span>
+              <span>{axis.columns[n - 1]?.label ?? ""}</span>
+            </div>
+          ) : null}
         </div>
         {axis.offHigh ? <div className="ml-[3px] flex min-w-0 flex-1">{column(axis.offHigh, n, mineOff === "high", "off-high", axis.marker?.at === "offHigh", callsAt("high"))}</div> : null}
       </div>
@@ -97,14 +105,3 @@ export function NumberLine({ axis, me, heading, caption, rise = false, everyone 
   );
 }
 
-/** Which of ten slices a value falls in, from the columns' own layout (the server decided lo and hi; this only places a value). */
-function sliceIndex(v: bigint, axis: NumberLineAxis): number {
-  const lo = axis.columns[0]?.label ? BigInt(axis.columns[0].label.replace(/,/g, "")) : null;
-  const hiLabel = axis.columns[axis.columns.length - 1]?.label ?? null;
-  const hi = hiLabel ? BigInt(hiLabel.replace(/,/g, "").split(" ")[0] ?? "0") : null;
-  if (lo === null || hi === null || hi <= lo) return 0;
-  const d = v - lo;
-  if (d <= 0n) return 0;
-  const b = Number((d * 10n + (hi - lo) - 1n) / (hi - lo));
-  return Math.min(9, Math.max(0, b - 1));
-}
