@@ -98,7 +98,7 @@ function Pill({ owner, viewerId, label, pending = false, height, className, chil
   );
 }
 
-/** One unit's part of a token: the glyph tally, the numeral and one glyph past three, the mark and the quoted words, or whole dollars. */
+/** One unit's part of a token: the glyph tally, the numeral and one glyph past three, the mark and the quoted words, or the dollars, with their cents when there are any. */
 function UnitPart({ denomination, quantity, height }: { denomination: TokenUnit; quantity: bigint; height: 32 | 40 }) {
   const glyph = glyphKeyOf(denomination);
   const glyphSize = height === 40 ? 18 : 16;
@@ -113,7 +113,7 @@ function UnitPart({ denomination, quantity, height }: { denomination: TokenUnit;
       // eslint-disable-next-line @next/next/no-img-element
       <img src={denomination.markValue} alt="" width={16} height={16} className="h-4 w-4 shrink-0 object-cover" />
     ) : null;
-  if (denomination.monetary) return <span className="text-numeral-sm text-ink">{formatMoney(quantity, { whole: true })}</span>;
+  if (denomination.monetary) return <span className="text-numeral-sm text-ink">{formatMoney(quantity)}</span>;
   const n = Number(quantity);
   if (glyph) {
     return n <= 3 ? (

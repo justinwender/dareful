@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useSessionFacts } from "@/components/auth/device";
 import { FixedLayer } from "@/components/ui/layers";
@@ -8,7 +8,7 @@ import { tipsShownAction } from "@/lib/actions/tips";
 import { INFO_ICON_ON } from "@/lib/ui/info";
 import { infoSheet } from "@/lib/ui/info-sheets";
 import { scrollPageTo, scrollTopOf } from "@/lib/ui/scroller";
-import { CUT_PAD, tipPlacement, tipsFor, TIP_MAX_WIDTH, type Box, type Tip } from "@/lib/ui/tips";
+import { CUT_PAD, scrollAfterRun, tipPlacement, tipsFor, TIP_MAX_WIDTH, type Box, type Tip } from "@/lib/ui/tips";
 
 /** A guest's shown tips, on the phone. The touch-ups round's key held tips marked seen on a frame where none showed, so it is left behind. */
 const GUEST_KEY = "dareful_tips_shown";
@@ -65,11 +65,18 @@ function visible(el: HTMLElement, whole = false): boolean {
 function shown(selector: string, whole = false): HTMLElement | null {
   return Array.from(document.querySelectorAll<HTMLElement>(selector)).find((el) => visible(el, whole)) ?? null;
 }
-/** Whether a control is drawn on the page, on the screen or not: a tip for one off the screen brings it into view as it shows (`measure`). */
-function drawn(selector: string): HTMLElement | null {
-  return Array.from(document.querySelectorAll<HTMLElement>(selector)).find((x) => x.getBoundingClientRect().width > 0 && getComputedStyle(x).visibility !== "hidden") ?? null;
+/** Whether a control is drawn, on the screen or not. */
+const isDrawn = (x: HTMLElement): boolean => x.getBoundingClientRect().width > 0 && getComputedStyle(x).visibility !== "hidden";
+/**
+ * A control in the run's own page that a scroll of that page can bring into view (`measure`), and nothing outside it:
+ * the screen whose tips are running is the page its information icon sits in, so a control drawn anywhere else (a
+ * root the ask layer covers, another screen's) is never counted, and the page is never scrolled toward one
+ * (pre-submission bug fixes 1).
+ */
+function inPage(selector: string, page: Element | null): HTMLElement | null {
+  if (!page) return null;
+  return Array.from(document.querySelectorAll<HTMLElement>(selector)).find((x) => page.contains(x) && isDrawn(x)) ?? null;
 }
-const onPage = (selector: string): boolean => drawn(selector) !== null;
 
 /**
  * The part of the screen no fixed layer covers: under the header rows pinned at the top and above the sheet pinned at
@@ -90,8 +97,9 @@ function clearBand(): { top: number; bottom: number } {
 }
 
 /**
- * First-visit tips (docs/design.md 10.9 as amended 2026-10-08 and 2026-10-09): the owner's set (`tipsFor`), one at a
- * time, beside the control each describes (on a market or a game page every one in one sequence, once the person is in), the rest of the screen blurred and dimmed around a cut-out and the control ringed. A tap
+ * First-visit tips (docs/design.md 10.9 as amended 2026-10-08, 2026-10-09 and 2026-10-10): the owner's set (`tipsFor`),
+ * one at a time beside the control each describes, every one a screen has in one sequence however many (on a market or
+ * a game page once the person is in), the rest of the screen blurred and dimmed around a cut-out and the control ringed. A tap
  * anywhere moves on; after the last the screen is as it was. Each tip is remembered once it has shown, on the account
  * for anyone signed in and on the phone for a guest, and never before: the touch-ups round's build remembered tips on
  * the frame it chose them, and took them down on the next. Nothing under it takes a touch while it shows.
@@ -108,6 +116,23 @@ export function FirstTips() {
   const shownHere = useRef<string[]>([]);
   /** The tips whose control was brought into view, once each. */
   const broughtIn = useRef(new Set<string>());
+  /** The page whose tips are running (its information icon's), and where it was scrolled to when the run began. */
+  const runPage = useRef<Element | null>(null);
+  const startScroll = useRef<number | null>(null);
+  /**
+   * A run ends one way, whatever ended it: the last tip done, the last one that could not be pointed at, or the
+   * screen changing under it. Its layer goes with it, and a page the run scrolled to bring a control into view goes
+   * back to where it was, so a root never remembers a scroll the tips made (pre-submission bug fixes 1). A screen
+   * that changed is left where the new screen put it.
+   */
+  const endRun = useCallback((restore: boolean) => {
+    const back = restore ? scrollAfterRun(startScroll.current, scrollTopOf()) : null;
+    runPage.current = null;
+    startScroll.current = null;
+    setPlace(null);
+    setTips(null);
+    if (back !== null) scrollPageTo(back);
+  }, []);
   const remember = useEffectEvent((key: string) => {
     if (me) void tipsShownAction(key).catch(() => undefined);
     else rememberGuest(key);
@@ -126,6 +151,13 @@ export function FirstTips() {
   useEffect(() => {
     showing.current = tips !== null;
   }, [tips]);
+  // No tip outlives its screen.
+  const shownOn = useRef(pathname);
+  useEffect(() => {
+    if (shownOn.current === pathname) return;
+    shownOn.current = pathname;
+    if (showing.current) endRun(false);
+  }, [pathname, endRun]);
   useEffect(() => {
     if (!INFO_ICON_ON) return;
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -138,8 +170,9 @@ export function FirstTips() {
       // Now's content arrives into its shell; until it has, what Now will show is not on the screen yet.
       if (document.querySelector("[data-now-hint]") && !document.querySelector("[data-now]")) return later(SETTLE_MS);
       // Never over a sheet that is open (9.5), nor over the account step a guest is offered once in (the final round, on
-      // the iOS 27 simulator: the share tip blurred "Keep your calls in an account"); the tips wait for either to go.
-      if (document.querySelector('[data-sheet="open"], [data-account-step]')) return later(SETTLE_MS);
+      // the iOS 27 simulator: the share tip blurred "Keep your calls in an account"), nor over a new account's name step
+      // (pre-submission bug fixes 1: Now's tips ran under "What do your friends call you?"); the tips wait for each to go.
+      if (document.querySelector('[data-sheet="open"], [data-account-step], [data-account-setup]')) return later(SETTLE_MS);
       // The icon that is showing, the topmost: Now carries two, one for each of its states, and hides the other; the ask layer's is above its root's.
       const icon = Array.from(document.querySelectorAll<HTMLElement>("[data-info-icon]")).filter((el) => el.getBoundingClientRect().width > 0).pop();
       // A market's and a game page's tips wait until the person is in, then run as one (the submission round, section 0):
@@ -149,10 +182,15 @@ export function FirstTips() {
       const sheet = key ? infoSheet(key) : null;
       if (!sheet || !key) return;
       const seen = [...(me ? tipsSeen : guestSeen()), ...shownHere.current];
-      const chosen = tipsFor(sheet, onPage, { key, seen });
+      // A control counts when it is on the screen now, or in this screen's own page where a scroll can bring it in.
+      const page = icon?.closest("main") ?? null;
+      const counts = (selector: string) => shown(selector) !== null || inPage(selector, page) !== null;
+      const chosen = tipsFor(sheet, counts, { key, seen });
       if (chosen.length === 0) return;
       setPlace(null);
       broughtIn.current = new Set();
+      runPage.current = page;
+      startScroll.current = scrollTopOf();
       setAt(0);
       setTips(chosen);
     };
@@ -183,7 +221,7 @@ export function FirstTips() {
       // row off the screen under the second tip, and the raised sheet on a game page's open question covered the code
       // button; the submission round: a share button half under the screen's foot was ringed half off it).
       if (tip && !el && !broughtIn.current.has(tip.key)) {
-        const there = drawn(tip.target);
+        const there = inPage(tip.target, runPage.current);
         if (there) {
           broughtIn.current.add(tip.key);
           const r = there.getBoundingClientRect();
@@ -193,12 +231,12 @@ export function FirstTips() {
           return;
         }
       }
-      if (!tip) return setTips(null);
-      // One that still cannot be pointed at is left for another visit, and the rest still show: it is not remembered,
-      // since only a tip that stood beside its control is.
+      if (!tip) return endRun(true);
+      // One that still cannot be pointed at is skipped at once and left for another visit, and the rest still show: it
+      // is not remembered, since only a tip that stood beside its control is.
       if (!el) {
         const rest = tips.filter((_, i) => i !== at);
-        return setTips(rest.length > 0 ? rest : null);
+        return at < rest.length ? setTips(rest) : endRun(true);
       }
       const r = el.getBoundingClientRect();
       const radius = parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0;
@@ -224,12 +262,12 @@ export function FirstTips() {
       window.removeEventListener("resize", again);
       app?.removeEventListener("scroll", again);
     };
-  }, [tips, at]);
+  }, [tips, at, endRun]);
 
   if (!tips || !tips[at]) return null;
   const { entry } = tips[at];
   const last = at === tips.length - 1;
-  const next = () => (last ? setTips(null) : setAt(at + 1));
+  const next = () => (last ? endRun(true) : setAt(at + 1));
   const cut = place?.cut;
   const w = typeof window === "undefined" ? 0 : window.innerWidth;
   const h = typeof window === "undefined" ? 0 : window.innerHeight;

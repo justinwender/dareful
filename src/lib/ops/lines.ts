@@ -28,9 +28,17 @@ export const LINES = {
   /**
    * The hosted indexer's deployment, which the Development plan deletes at 30 days: days left, or any refusal from its
    * 100 queries a minute. Its start is read from the deployment `ENVIO_GRAPHQL_URL` points at (when it first caught up
-   * with the chain), so a redeploy moves the line with no edit here; this deployment's, for the record, was 2026-09-19.
+   * with the chain), so a redeploy moves the line with no edit here. For the record: ad29726's caught up at 02:19 UTC on
+   * 2026-09-19 and goes around October 19; its redeploy, 81dc636 (pre-submission bug fixes 1, the same tree), caught up
+   * at 18:26 UTC on 2026-10-10, lasts to November 9, and is read once `ENVIO_GRAPHQL_URL` points at it.
    */
   indexer: { lifespanDays: 30, warnDaysLeft: 7, urgentDaysLeft: 3 },
+  /**
+   * Dynamic's sandbox, which holds 1,000 users, after which nobody new can sign in until some are deleted (Dynamic's docs,
+   * "Sandbox vs live"); the README's test code makes accounts with no inbox, so judging fills it faster than people do
+   * (pre-submission bug fixes 1). Users in the environment, read from Dynamic's API. Deleting test accounts: docs/decisions.md 2026-10-10.
+   */
+  dynamic: { limit: 1_000, warn: 700, urgent: 900 },
 } as const;
 
 /** How long a refusal (for rate, for credit) keeps its line urgent after the last one. */

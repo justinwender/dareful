@@ -1,0 +1,3 @@
+ALTER TABLE "notification_log" ADD COLUMN "email_skipped" text;--> statement-breakpoint
+ALTER TABLE "notification_log" ADD COLUMN "email_skip_cause" text;--> statement-breakpoint
+ALTER TABLE "notification_log" ADD CONSTRAINT "notification_log_email_skip_known" CHECK ("notification_log"."email_skipped" is null or "notification_log"."email_skipped" in ('off', 'unread', 'refused', 'no_address', 'test_account', 'not_production'));

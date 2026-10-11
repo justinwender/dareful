@@ -80,8 +80,9 @@ export async function addSettlementPhoto(input: { obligationId: string; authorId
   if (!canSeeSettlementPhoto(input.authorId, o)) throw new MediaError("This one isn't yours to add to.", "not_party");
   if (o.mediaId) throw new MediaError("This one already has its photo.", "already");
   const { id, photo, keys } = await storePhoto(input.bytes, input.viewerZone);
+  let row: MediaRow;
   try {
-    return await db.transaction(async (tx) => {
+    row = await db.transaction(async (tx) => {
       const [row] = await tx
         .insert(schema.media)
         .values({ id, obligationId: o.id, kind: "photo", storageKey: frameKey(id), width: photo.frame.width, height: photo.frame.height, authorId: input.authorId, capturedAt: photo.capturedAt })
@@ -90,13 +91,16 @@ export async function addSettlementPhoto(input: { obligationId: string; authorId
       // One settlement photo per obligation: the update is conditional so two uploads at once cannot both win.
       const [claimed] = await tx.update(schema.obligations).set({ mediaId: row.id }).where(and(eq(schema.obligations.id, o.id), isNull(schema.obligations.mediaId))).returning({ id: schema.obligations.id });
       if (!claimed) throw new MediaError("This one already has its photo.", "already");
-      await record("photo_added", { stage: "settlement", role: "memory" }, { userId: input.authorId });
       return row;
     });
   } catch (err) {
     await removeObjects(keys);
     throw err;
   }
+  // Counted once it is stored, outside the transaction: nothing inside one asks the app's own client, so a transaction
+  // never waits for one of the pool's slots (pre-submission bug fixes 1, src/db/pool.ts).
+  await record("photo_added", { stage: "settlement", role: "memory" }, { userId: input.authorId });
+  return row;
 }
 
 /** The pipeline, then the bucket: both derivatives written, or neither. The row is the caller's to write. */

@@ -27,7 +27,9 @@ import { loadTileFonts } from "@/lib/ui/tile-fonts";
 import { renderTile } from "@/lib/ui/tiles";
 import { publicNumbers } from "@/lib/usage/public-numbers";
 import { within } from "@/lib/usage/within";
+import { emailMisses, missesLine } from "@/lib/notify/channels";
 import { DOWN_TELLS_AFTER_MS } from "./lines";
+import { hereEnv } from "./here";
 import { observe, tellDue, tellOwner, type Teller } from "./alerts";
 import { readState } from "./state";
 import { inTurns, TURN } from "./turns";
@@ -56,17 +58,23 @@ type Ctx = { now: Date; head: Promise<{ number: bigint; timestamp: bigint }> };
 type Check = { name: CheckName; core: boolean; limitMs: number; slowMs: number; every?: number; run: (ctx: Ctx) => Promise<string | null> };
 type RunOpts = { tell?: Teller; checks?: readonly Check[]; /** The alerts' names' start: a test's own, never production's. */ prefix?: string; /** Whose run it is: a test's own name, else where this server runs. */ env?: string };
 
-/**
- * Where a run is made, from the platform's own word: production, a preview, or anywhere else (a laptop, a test run).
- * A laptop's run reads its own indexer and its own pages and has no tick, so production never stands on it. Pure.
- */
-export function hereEnv(env: Record<string, string | undefined> = process.env): string {
-  return env.VERCEL_ENV === "production" ? "production" : env.VERCEL_ENV === "preview" ? "preview" : "local";
-}
+export { hereEnv } from "./here";
 
 /** Whether a run looks at the core for the owner: production's always, anywhere else only for a test with a teller of its own. Pure. */
 export function watchesHere(env: string, ownTeller: boolean): boolean {
   return ownTeller || env === "production";
+}
+
+/**
+ * The email line's word before Resend is asked (pre-submission bug fixes 1): down when it is not set up, naming what is
+ * missing (`EMAIL_FROM` was never set in production, and email was off from September 14 with nothing saying so but a
+ * log Vercel keeps an hour), and, in production, down when a counted notice over the last day was meant to go by email
+ * and did not. Null when Resend is to be asked. Pure.
+ */
+export function emailLineFirst(input: { env: string; missing: string | null; missed: string | null }): { down: string } | null {
+  if (input.missing) return { down: `${input.missing} not set` };
+  if (input.env === "production" && input.missed) return { down: input.missed };
+  return null;
 }
 
 /** A check's own failure, said in a few plain words: nothing it says can carry an address or a key. */
@@ -181,8 +189,13 @@ export const CHECKS: readonly Check[] = [
     every: HOURLY_MS,
     run: async () => {
       const key = process.env.RESEND_API_KEY;
-      const domain = (process.env.EMAIL_FROM ?? "").match(/@([^>\s]+)/)?.[1]?.toLowerCase();
-      if (!key || !domain) throw new Down("not set up");
+      const from = process.env.EMAIL_FROM;
+      const missing = !key || !from ? [key ? null : "RESEND_API_KEY", from ? null : "EMAIL_FROM"].filter(Boolean).join(" and ") : null;
+      const env = hereEnv();
+      const first = emailLineFirst({ env, missing, missed: missing === null && env === "production" ? missesLine(await emailMisses(new Date())) : null });
+      if (first) throw new Down(first.down);
+      const domain = from?.match(/@([^>\s]+)/)?.[1]?.toLowerCase();
+      if (!key || !domain) throw new Down("EMAIL_FROM has no domain");
       const res = await fetch("https://api.resend.com/domains", { headers: { authorization: `Bearer ${key}` }, cache: "no-store" });
       // The app's key can only send (Resend answers 401 to anything else), so the domain is read where Resend verifies it: its DNS records.
       if (res.status === 401 && /restricted to only send/i.test(await res.clone().text())) return sendingRecords(domain);

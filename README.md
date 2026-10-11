@@ -9,7 +9,7 @@ Live at [dareful.app](https://dareful.app) · [The demo, in two minutes](VIDEO_D
 | Criterion | Weight | Read |
 | --- | --- | --- |
 | Founder and market readiness | 25% | [Who it's for](#who-its-for), [Who's building it](#whos-building-it) |
-| Traction and path forward | 20% | [Traction](#traction), [Where this goes](#where-this-goes), [How it grows](#how-it-grows) |
+| Traction and path forward | 20% | [Traction](#traction), [Path forward](#path-forward), [How it grows](#how-it-grows) |
 | Technical execution | 20% | [Why the chain isn't decoration](#why-the-chain-isnt-decoration), [Check it yourself](#check-it-yourself), [How it works](#how-it-works), [Quality](#quality) |
 | Design and craft | 20% | [What it looks like](#what-it-looks-like), [Design and craft](#design-and-craft) |
 | Originality and track insight | 15% | [Why the chain isn't decoration](#why-the-chain-isnt-decoration), [Sponsors](#sponsors), [The AI](#the-ai) |
@@ -43,7 +43,7 @@ The picture above is drawn by the app as it runs, at [dareful.app/numbers](https
 
 It leads with questions played, since a question only one person is in is an ask, not a bet. At 10:07pm Eastern on October 9, 17 questions had been played since launch: 12 settled, 5 still open and none ended without a decision. 15 people had made accounts, 9 more had joined as guests, and 3 groups had come back for a second question.
 
-The numbers are the owner's stats page's own, with every test account left out, counted since launch (midnight Eastern, September 13, 2026):
+The numbers are the owner's stats page's own, with every test account left out (an account made with one of Dynamic's test sign-ins, as in [Try it yourself](#try-it-yourself), from the moment it's made), counted since launch (midnight Eastern, September 13, 2026):
 
 - People with accounts: accounts made since launch.
 - Guests: people who joined a question with a name and no account, on a question a counted person asked. A guest who later made an account counts as that account.
@@ -53,6 +53,8 @@ The numbers are the owner's stats page's own, with every test account left out, 
 - On Monad, from real use: the obligations with a counted person on either side, the questions on the chain with a counted person in them, the counted people registered on the chain, and the sets they're registered in.
 
 The test suites run against the live testnet contracts, so most of the contracts' transactions are tests. On October 9, 2026, after the full mutation audit, real use was 2.3% of the transactions that had gone through (52 of 2,309), read from the indexer's events and whose wallets they name ([`scripts/ops/chain-tests.ts`](scripts/ops/chain-tests.ts)). Every chain number in this README counts real use only. A question with a guest in it is decided and settled off the chain, so it isn't in the chain's counts.
+
+On October 8 a friend asked a question and shared it once, in a group chat of his in Mexico City full of people I’ve never met. Seventeen different devices opened it, fifteen in the first 45 minutes, and two people joined as guests. In the chat, the friend the question was about started bargaining over its terms, and another wrote “Nmms, qué bien jala” (“no way, it works so well”). This test showed me there's still a lot of room for improvement on the friction of joining markets - it seems like there's still too much friction to get people to join a market, and potentially not enough friction for joining as a guest to persuade people into creating an account when joining their first market.
 
 ## Path Forward
 
@@ -105,18 +107,20 @@ The screenshots are from the iOS 26 and iOS 27 simulators and a development brow
 
 ## Try it yourself
 
-A question with a guest in it is settled off the chain, so this path uses two accounts. The second account's sign-in is in the submission form, and never in this repository.
+You'll play both people in one question, so you need two accounts. Sign-in runs on Dynamic's sandbox for the hackathon, so you can make test accounts without an inbox: make up two addresses with `+dynamic_test` right before the @, such as `yourname1+dynamic_test@example.com` and `yourname2+dynamic_test@example.com` (pick a name nobody else would, since anyone with the code can open an address), and sign in to each with the code `769426`. Your own Google account or email works for either one too. A question settles on Monad only when everyone in it has an account; a question with a guest in it settles inside the app instead.
 
-1. On a phone or a desktop browser, open [dareful.app](https://dareful.app), tap “Get started”, then “Continue with Google”.
-2. Tap “Ask something” and type a question, for example “Will Chris finish the whole pizza?”. Keep “Yes or no” and “Quick setup”, tap “Set the terms”, read the terms the app wrote, pick when it's decided and the stakes, and tap “Send it”.
-3. Tap “Copy the link” (the icons at the end of the row of who's in) and open the link in a private window. Slide to a prediction, tap “I'm in at”, then “I already have an account”, and sign in with the account from the submission form; the call goes in as that account.
-4. Back on the first account, make your own call: slide to a different prediction and tap “I'm in at”.
+This path assumes you want a binary market and quick setup (as opposed to AI helping define the question), but these are customizable market settings.
+
+1. On a phone or a desktop browser, open [dareful.app](https://dareful.app) and tap “Get started”. Type your first address under “Email”, tap “Continue”, enter the code, tap “Continue”, and tell it what your friends call you.
+2. Tap “Ask something” and type a question, for example “Will Chris finish the whole pizza?”. Keep “Yes or no” and “Quick setup”, tap “Set the terms”, read the terms the app wrote, pick when it's decided and the stakes, and tap “Send it”. For a faster start, pick a question from Ideas or What's on instead. 
+3. Tap the copy-link icon at the end of the row of who's in, and open the link in a private window, which keeps the two sign-ins apart. Slide to a prediction, tap “I'm in at”, then “I already have an account” (a new address works there too), and sign in with your second address the same way. Your call goes in as that second person.
+4. Back in the first window, make your own call: slide to a different prediction and tap “I'm in at”.
 5. Close it: as the asker, tap “Close it with 2”, then “Close it now”.
 6. See who said what: once it's closed, every call shows under “Who said what”, with whose it is.
-7. Settle it: tap “It's happened”, pick what happened, tap “Say it”, and confirm in the sheet. Do the same from the other account. When the two agree it's settled: closest first, and who's got who.
+7. Settle it: tap “It's happened”, pick what happened, tap “Say it: …”, and confirm in the sheet. Do the same from the other account. When the two agree, it's settled: closest first, and who's got who.
 8. Find it on the explorer: open [the Dares contract](https://testnet.monadvision.com/address/0xd621c7770B96d2bF94638a28A15B3636cC0a3Fa0). Its newest transactions are your question's `create`, carrying both signed entries, and its `resolve`, carrying both votes, each sent by the app's relayer. The record of what one of you owes the other is minted on [the Ledger contract](https://testnet.monadvision.com/address/0x8E200d344fA233d85b78f85aC78c3F778397F26D) inside the `resolve` transaction.
 
-To join as a guest instead, open the question's link in a private window, slide to a number, tap “I'm in at”, type a name, and tap “Join as”. A name is all it takes. A question with a guest in it is decided and settled off the chain, and what it leaves waits until the guest makes an account and confirms it.
+To join as a guest instead, open the question's link in a private window, slide to a prediction, tap “I'm in at”, type a name, and tap “Join as”. A name is all it takes. A question with a guest in it is decided and settled off the chain, and what it leaves waits until the guest makes an account and confirms it.
 
 ## Design and craft
 
@@ -124,7 +128,7 @@ Five of the principles the product was specified against ([`PLANNING.md`](PLANNI
 
 - Notify about what people did, never about states of the world. Every notice names a person and what they did ("JP closed …", "Rae is in on …"); Now never counts, badges or says how long anything has waited, and its one citron dot means only that something has a clock. The one exception, a reminder to vote twelve hours in, was ruled in by name for real groups that never came back to vote.
 - The creditor authors, the debtor confirms. "I got this one" is logged from the friend's page by whoever paid, never "Gabe owes me", and nothing reaches the ledger until the other person taps yep on Now.
-- Count before amount. What's between two people reads as tallies and words ("Theo's got you" with a round's glyph); dollars show whole in lists, and the cents stay in the detail.
+- Count before amount. What's between two people reads as tallies and words ("Theo's got you" with a round's glyph) before any dollar figure, and an amount shows its cents only when it isn't whole dollars.
 - Forgiveness is a status move. "Call it even" sits beside "Settled" as an equal choice on every record its creditor holds, and it closes the record on the chain the same way.
 - One account per bet, not one per person. Joining a friend's question takes a name and nothing else; the account comes later, and only to collect what the guest is owed.
 
@@ -237,12 +241,13 @@ What a question costs, measured on October 9 by replaying every question counted
 Every fifteen minutes and after every deploy, a GitHub workflow outside the app fetches the health check, the home page and the numbers picture, and fails when any of them doesn't answer, a core system is down, or the health answer isn't production's own.
 
 - Production watches itself. [`/api/health`](https://dareful.app/api/health) answers every system as ok, slow or down: the database, the scheduler, the chain's node, both contracts, the relayer's gas and the indexer decide it, and the model API, email, sign-in, storage, both scoreboards, push and the two images the app draws are reported beside them. Every six hours a canary runs one real question through every system as two accounts that count for nothing, on the chain and back through the indexer, and removes it. Every resource the app could run out of has a warning line and an urgent one, and the owner gets an email and a push the moment one is crossed or a core system has been down for ten minutes, and a summary every morning.
-- The suites run against the real database and the live testnet contracts: 541 unit tests, 246 database tests and 131 tests against the running server (one of them only against a deployed app), 918 in all, every one passing on October 10; two sports tests can race production's own scheduler on the shared tables, and each passed when run again. Their rows are made for a run and removed after it, and their accounts are left out of every count.
+- The suites run against the real database and the live testnet contracts: 556 unit tests, 255 database tests and 131 tests against the running server (one of them only against a deployed app), 942 in all, every one passing on October 11; two sports tests can race production's own scheduler on the shared tables, and each passed when run again. Their rows are made for a run and removed after it, and their accounts are left out of every count.
 - Every test has a mutant, but the one that runs only against a deployed app: a change to the code that breaks the rule the test names, which the test has to catch. The full audit runs each one alone against the live database and contract.
-- Every round was walked by hand and recorded with what broke and what changed in [`docs/testing.md`](docs/testing.md), 44 sessions in all: on the owner's phones and in signed-in development browsers, and from the QA round on also on the iOS 26 and iOS 27 simulators, in Safari, private tabs and installed copies. The checks that need a real phone are listed and numbered there.
+- Every round was walked by hand and recorded with what broke and what changed in [`docs/testing.md`](docs/testing.md), 45 sessions in all: on the owner's phones and in signed-in development browsers, and from the QA round on also on the iOS 26 and iOS 27 simulators, in Safari, private tabs and installed copies. The checks that need a real phone are listed and numbered there.
 
 | Audit | Date | Mutants | Result |
 | --- | --- | --- | --- |
+| Scoped, pre-submission bug fixes 1 | October 10 and 11 | 580: 230 unit, 336 database, 14 http | All killed; two first ended in the runner's timeout instead of failing, their tests bounded, both killed |
 | Scoped, the ops round | October 10 | 146: 86 unit, 47 database, 13 http | 145 killed; one survived, the http copy of an edit the database test kills, which the local server can't show until this build's scheduler is running |
 | Full, the submission round | October 9 | 1,682: 997 unit, 427 database, 258 http | 1,679 killed on the run. Three survived and twelve kills could not be vouched for, because their tests also failed on the unbroken code (below); with those tests fixed, all fifteen are killed |
 | Scoped, the final round | October 9 | 398: 182 unit, 207 database, 9 http | 395 killed; three survived, their tests strengthened, all killed |
@@ -257,7 +262,7 @@ The full audit ran one mutant at a time against the live contract and the produc
 - It runs on Monad testnet. Nothing on it is worth anything, and the contracts have had no outside security review.
 - A question with a guest in it is decided and settled off the chain; what it leaves goes on the chain only as each person makes an account and confirms.
 - The test suites share the live contracts and the production database, so most of the contracts' transactions are tests (above), and the counts leave every test account out.
-- Sign-in runs on Dynamic's sandbox environment, and delegated signing for pass the phone is a sandbox feature; production use needs Dynamic's Enterprise plan.
+- Sign-in runs on Dynamic's sandbox environment, and delegated signing for pass the phone is a sandbox feature; production use needs Dynamic's Enterprise plan. The sandbox holds 1,000 users, after which nobody new can sign in until test accounts are deleted; the app reads how many it holds and warns its owner at 700.
 - The relayer alone registers people in sets. A compromised relayer could register someone who isn't real into an existing set; membership changes signed by the governance wallet are needed before mainnet. Whether Dynamic keeps each wallet's key material cryptographically apart is not proven; the server never receives the governance wallet's share.
 - There's no native app: it's a web app you can add to the home screen, and on an iPhone, notifications arrive only in the added app.
 - The indexer runs on Envio Cloud's free plan, which answers 100 queries a minute and keeps a deployment for 30 days; the app reads how many days this one has left and warns its owner a week ahead.

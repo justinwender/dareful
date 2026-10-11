@@ -15,7 +15,7 @@ import { cuThisMonth } from "./rpc-usage";
 import { lastRefusal, noteRefusal, type OpsState } from "./state";
 import { allInTurns } from "./turns";
 
-export type RunwayKey = "relayer" | "anthropic" | "database" | "storage" | "resend_day" | "resend_month" | "alchemy" | "indexer";
+export type RunwayKey = "relayer" | "anthropic" | "database" | "storage" | "resend_day" | "resend_month" | "alchemy" | "indexer" | "dynamic_users";
 export type LevelState = "ok" | "warn" | "urgent" | "unread";
 export type Level = {
   key: RunwayKey;
@@ -133,6 +133,32 @@ export function indexerLevel(startedAt: Date, refused: OpsState | null, now: Dat
   };
 }
 
+/** Dynamic's sandbox users against its 1,000: warned at 700, urgent at 900, past which sign-ups stop when it is full. Pure. */
+export function dynamicUsersLevel(users: number): Level {
+  const L = LINES.dynamic;
+  const state: LevelState = users >= L.urgent ? "urgent" : users >= L.warn ? "warn" : "ok";
+  return {
+    key: "dynamic_users",
+    what: "Dynamic's sandbox users",
+    reading: `${users.toLocaleString("en-US")} of ${L.limit.toLocaleString("en-US")}`,
+    state,
+    lines: `warned at ${L.warn}, urgent at ${L.urgent}; at ${L.limit.toLocaleString("en-US")} nobody new can sign in until test accounts are deleted`,
+    why: state === "ok" ? null : `Dynamic's sandbox holds ${users.toLocaleString("en-US")} of its ${L.limit.toLocaleString("en-US")} users`,
+  };
+}
+
+/** How many users Dynamic's environment holds, from its own count (the list's `count`, one user asked for and none read). */
+export async function dynamicUsers(): Promise<number> {
+  const env = process.env.NEXT_PUBLIC_DYNAMIC_ENVIRONMENT_ID;
+  const token = process.env.DYNAMIC_API_TOKEN;
+  if (!env || !token) throw new Error("NEXT_PUBLIC_DYNAMIC_ENVIRONMENT_ID or DYNAMIC_API_TOKEN is not set");
+  const res = await fetch(`https://app.dynamicauth.com/api/v0/environments/${env}/users?limit=1`, { headers: { authorization: `Bearer ${token}` }, cache: "no-store" });
+  if (!res.ok) throw new Error(`Dynamic answered ${res.status}`);
+  const count = ((await res.json()) as { count?: unknown }).count;
+  if (typeof count !== "number" || !Number.isInteger(count) || count < 0) throw new Error("Dynamic's answer had no count");
+  return count;
+}
+
 /**
  * When the deployment the app reads first caught up with the chain, from its own metadata: the day it was made, near
  * enough, and the day the Development plan's thirty count from. A redeploy answers with its own.
@@ -166,12 +192,16 @@ export async function storageBytes(): Promise<number> {
   return oneNumber(sql`select coalesce(sum((metadata->>'size')::bigint), 0)::bigint as n from storage.objects`);
 }
 
-/** The app's emails that went today and this month, each a UTC calendar day and month. */
+/**
+ * The app's emails that went today and this month, each a UTC calendar day and month, up to `now`: a reading for a past
+ * moment never counts what was sent after it (the runway's test reads a day in 1999, and production has sent email since
+ * October 10, pre-submission bug fixes 1).
+ */
 export async function emailsSent(now: Date): Promise<{ today: number; month: number }> {
   const day = now.toISOString().slice(0, 10);
   const month = `${now.toISOString().slice(0, 7)}-01`;
   const rows = (await db.execute(
-    sql`select count(*) filter (where at >= ${day}::date)::int as today, count(*)::int as month from channel_sends where channel = 'email' and ok and at >= ${month}::date`,
+    sql`select count(*) filter (where at >= ${day}::date)::int as today, count(*)::int as month from channel_sends where channel = 'email' and ok and at >= ${month}::date and at <= ${now.toISOString()}::timestamptz`,
   )) as unknown as Array<{ today: number; month: number }>;
   return { today: Number(rows[0]?.today ?? 0), month: Number(rows[0]?.month ?? 0) };
 }
@@ -182,7 +212,7 @@ const unread = (key: RunwayKey, what: string, err: unknown): Level => ({ key, wh
 export async function readRunway(now: Date): Promise<Level[]> {
   // Each read on its own time, a few at a time (src/lib/ops/turns.ts): the database's pooler stalls on a deep queue.
   const read = <T>(f: () => Promise<T>) => () => within(READ_LIMIT_MS, f()).then((value): PromiseSettledResult<T> => ({ status: "fulfilled", value }), (reason: unknown): PromiseSettledResult<T> => ({ status: "rejected", reason }));
-  const [relayer, credit, database, storage, emails, alchemy, indexer] = await allInTurns([
+  const [relayer, credit, database, storage, emails, alchemy, indexer, dynamic] = await allInTurns([
     read(() => relayerRunway(now)),
     read(async () => [await creditLeft(), await lastRefusal("anthropic")] as const),
     read(() => databaseBytes()),
@@ -190,6 +220,7 @@ export async function readRunway(now: Date): Promise<Level[]> {
     read(() => emailsSent(now)),
     read(async () => [await cuThisMonth(now), await lastRefusal("alchemy")] as const),
     read(async () => [await indexerStarted(), await lastRefusal("indexer")] as const),
+    read(() => dynamicUsers()),
   ]);
   return [
     relayer.status === "fulfilled" ? relayerLevel(relayer.value.balance, relayer.value.perDay) : unread("relayer", "The relayer's MON", relayer.reason),
@@ -199,6 +230,7 @@ export async function readRunway(now: Date): Promise<Level[]> {
     ...(emails.status === "fulfilled" ? resendLevels(emails.value.today, emails.value.month) : [unread("resend_day", "Resend's emails today (UTC)", emails.reason), unread("resend_month", "Resend's emails this month (UTC)", emails.reason)]),
     alchemy.status === "fulfilled" ? alchemyLevel(alchemy.value[0], alchemy.value[1], now) : unread("alchemy", "Alchemy's compute units", alchemy.reason),
     indexer.status === "fulfilled" ? indexerLevel(indexer.value[0], indexer.value[1], now) : unread("indexer", "The hosted indexer's deployment", indexer.reason),
+    dynamic.status === "fulfilled" ? dynamicUsersLevel(dynamic.value) : unread("dynamic_users", "Dynamic's sandbox users", dynamic.reason),
   ];
 }
 

@@ -16,7 +16,7 @@ import { nextPosition, roomFor, SNAP_PX, visibleAt, type SheetMeasure } from "@/
 import { addYears, clampProposal, datePhrase, dateWords, deadlineMismatch, decideByDate, decideByMoment, DECIDE_BY_SPANS, fromProposal, latestDate, longDateWords, pastTheLatest, shortDateWords, swapDateWords, termsDeadlines } from "@/lib/ledger/decide-by";
 import { kindForQuestion } from "@/lib/ui/question-shape";
 import { IDEAS, IDEA_GROUPS, blankOf, ideaById, ideaKindWords, ideasOnNow } from "@/lib/ideas";
-import { ASK_SOMETHING_KEY, CURATED_TIPS, tipPlacement, tipsFor, TIPS_AT_MOST } from "@/lib/ui/tips";
+import { ASK_SOMETHING_KEY, CURATED_TIPS, tipPlacement, tipsFor } from "@/lib/ui/tips";
 import { infoSheet } from "@/lib/ui/info-sheets";
 import { draftOnNow, DRAFT_ON_NOW_MS } from "@/lib/ledger/drafts";
 import { guestLineFor } from "@/lib/ledger/guest";
@@ -295,18 +295,18 @@ test("ideas: thirteen fixed questions in four groups, two with a blank, the tile
   assert.ok(readFileSync("src/components/home/now-content.tsx", "utf8").includes("{ideasOnNow(home.running.length) ? <IdeasTile /> : null}"), "last on Now while fewer than three are running");
 });
 
-test("first-visit tips: the owner's set, three at a time and a market's as one, each once, \"Ask something\" once for every tab, placed beside the control and kept inside the screen", () => {
+test("first-visit tips: the owner's set, every screen's as one run, each once, \"Ask something\" once for every tab, placed beside the control and kept inside the screen", () => {
   const sheet = infoSheet("market-open");
   assert.ok(sheet);
   const all = tipsFor(sheet!, () => true, { key: "market-open" });
-  assert.ok(all.length > TIPS_AT_MOST, "a market's run as one (the submission round)");
+  assert.equal(all.length, 5, "a market's run as one (the submission round)");
   assert.deepEqual(all.map((t) => t.entry.term), ["Share", "Copy the link", "Show a code to scan", "Pass the phone", "Photos"], "each way to share, pass the phone and photos, in order");
   assert.deepEqual(tipsFor(sheet!, () => true, { key: "market-open", seen: ["/tips/share", "/tips/copy", "/tips/code"] }).map((t) => t.entry.term), ["Pass the phone", "Photos"], "then pass the phone and adding photos");
   assert.equal(CURATED_TIPS["market-open"]?.find((t) => t.entry.term === "Pass the phone")?.entry.description, "A friend makes their call on your phone, with their own PIN.", "the owner's words for pass the phone");
   assert.deepEqual(tipsFor(sheet!, (s) => s === "button[data-share]", { key: "market-open" }).map((t) => t.entry.term), ["Share"], "a control not on the page is skipped");
   assert.deepEqual(tipsFor(sheet!, () => true, { key: "market-open", seen: ["/tip/share"] })[0]?.entry.term, "Share", "the touch-ups round's keys say nothing about what anyone has read");
   for (const k of ["game", "game-link", "game-night", "market-voting", "market-ended", "market-link"]) assert.equal(CURATED_TIPS[k], CURATED_TIPS["market-open"], `${k} shares the market's tips`);
-  assert.deepEqual(tipsFor(infoSheet("ask-question")!, () => true, { key: "ask-question" }).map((t) => t.entry.term), ["Add a mark", "Stickers", "What kind of thing"], "when asking: the mark, stickers, then each choice");
+  assert.deepEqual(tipsFor(infoSheet("ask-question")!, () => true, { key: "ask-question" }).map((t) => t.entry.term), ["Add a mark", "Stickers", "What kind of thing", "Market type", "AI market setup"], "when asking: the mark, stickers, then each choice, in one run (pre-submission bug fixes 1: three a visit left the last two for another time)");
   assert.deepEqual(tipsFor(infoSheet("ask-question")!, () => true, { key: "ask-question", seen: ["/tips/mark", "/tips/stickers", "/tips/pace"] }).map((t) => t.entry.term), ["Market type", "AI market setup"]);
   assert.deepEqual(tipsFor(infoSheet("people")!, () => true, { key: "people", seen: [ASK_SOMETHING_KEY] }).map((t) => t.entry.term), ["Who’s got who"]);
   assert.deepEqual(tipsFor(infoSheet("person")!, () => true, { key: "person" }).map((t) => t.entry.term), ["I got this one"]);
@@ -332,7 +332,7 @@ test("first-visit tips show (the final round, section 3): a control under the ti
   assert.ok(src.includes('if (document.getElementById("opening")) return later(SETTLE_MS);'), "waits for the opening to leave");
   assert.ok(src.includes("const rest = tips.filter((_, i) => i !== at);"), "one that cannot be pointed at leaves the rest showing");
   assert.ok(src.includes('const GUEST_KEY = "dareful_tips_shown";'), "a guest's shown tips under the new key");
-  assert.ok(src.includes(`if (document.querySelector('[data-sheet="open"], [data-account-step]')) return later(SETTLE_MS);`), "never over an open sheet or the account step a guest is offered, and shown once either has gone");
+  assert.ok(src.includes(`if (document.querySelector('[data-sheet="open"], [data-account-step], [data-account-setup]')) return later(SETTLE_MS);`), "never over an open sheet, the account step a guest is offered or a new account's name step, and shown once each has gone");
 });
 
 test("a draft is on Now for a day and on You after, and a guest's line says what an account gets until a win says it louder", () => {

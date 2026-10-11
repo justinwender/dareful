@@ -4,7 +4,11 @@
  * containing block, so they stop being fixed to the screen and ride along with it. That is the bug that made
  * the tab bar drift for weeks. So the fixed layers are portalled to the app root, never descendants of the page,
  * and none of these is ever set on the app root, on anything between it and a fixed layer, or on anything that
- * contains one. Pure: the rules here are read by the http suite over every screen's markup and by the browser
+ * contains one. The server renders a fixed layer in place, inside the page, until the app runs, so the page's own
+ * `will-change: opacity` is above one in every first frame (`PAGE_LAYER` in src/components/ledger/screen.tsx,
+ * pre-submission bug fixes 1): opacity is the one value `will-change` may name here, since it gives the page a layer
+ * of its own, which WebKit needs to draw a new account's first screens in Brave on an iPhone, and never makes it a
+ * containing block. Pure: the rules here are read by the http suite over every screen's markup and by the browser
  * walk over the live tree.
  */
 export const FIXED_LAYERS = ["tab-bar", "start", "sheet", "modal", "ask", "shell", "grain", "status-band", "guest-line", "tips"] as const;
@@ -21,7 +25,7 @@ export const FORBIDDEN_ABOVE_FIXED: ReadonlyArray<{ property: string; allowed: s
   { property: "backdrop-filter", allowed: ["none"] },
   { property: "contain", allowed: ["none", "size", "inline-size", "style"] },
   { property: "content-visibility", allowed: ["visible", "hidden"] },
-  { property: "will-change", allowed: ["auto"] },
+  { property: "will-change", allowed: ["auto", "opacity"] },
 ];
 
 /** A computed or declared style as a plain record: the value of each property, or nothing when it is not set. */
@@ -36,9 +40,9 @@ export function forbiddenOn(style: StyleRecord): string[] {
     const value = String(raw).trim().toLowerCase();
     if (value === "" || value === "initial" || value === "unset" || value === "normal") continue;
     if (property === "will-change") {
-      // `will-change` captures only when it names one of the others.
+      // Opacity and nothing else: every name it lists must be one of the two allowed.
       const names = value.split(",").map((s) => s.trim());
-      if (!names.some((n) => FORBIDDEN_ABOVE_FIXED.some((f) => f.property !== "will-change" && f.property === n))) continue;
+      if (names.every((n) => allowed.includes(n))) continue;
     } else if (allowed.includes(value)) continue;
     out.push(`${property}: ${value}`);
   }
@@ -52,8 +56,8 @@ function camel(property: string): string {
 /**
  * The Tailwind utilities that set one of those properties, read from a class attribute: `transform`, the
  * translate, rotate, scale and skew utilities, `perspective-*`, `filter` and its `blur-*` and friends,
- * `backdrop-*`, `contain-*`, `will-change-*` naming one of them, and an arbitrary property in brackets. The
- * `-none` forms are the allowed values and pass.
+ * `backdrop-*`, `contain-*`, every `will-change-*` but `auto` and `[opacity]`, and an arbitrary property in brackets.
+ * The `-none` forms are the allowed values and pass, and so does `[will-change:opacity]`.
  */
 const CLASS_RULES: ReadonlyArray<RegExp> = [
   /^-?transform(-gpu|-cpu)?$/,
@@ -63,8 +67,9 @@ const CLASS_RULES: ReadonlyArray<RegExp> = [
   /^-?(blur|brightness|contrast|drop-shadow|grayscale|hue-rotate|invert|saturate|sepia)(-(?!none$)\S+)?$/,
   /^backdrop-(?!filter-none$)\S+$/,
   /^contain-(?!none$)(layout|paint|strict|content)$/,
-  /^will-change-(transform|filter|scroll|contents)$/,
-  /^\[(transform|translate|rotate|scale|perspective|filter|backdrop-filter|contain|content-visibility|will-change):(?!none\])\S+\]$/,
+  /^will-change-(?!auto$|\[opacity\]$)\S+$/,
+  /^\[(transform|translate|rotate|scale|perspective|filter|backdrop-filter|contain|content-visibility):(?!none\])\S+\]$/,
+  /^\[will-change:(?!(auto|opacity)\])\S+\]$/,
 ];
 
 /** The classes on this element that would capture a fixed descendant. A variant prefix (`motion-safe:`, `hover:`) is stripped first. */

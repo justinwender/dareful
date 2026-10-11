@@ -15,7 +15,7 @@
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { mnemonicToAccount, type HDAccount } from "viem/accounts";
 import { db, schema } from "@/db";
-import { sendOps } from "@/lib/notify/channels";
+import { tellOrKeep } from "./untold";
 import { SendPending } from "@/lib/chain/relayer";
 import { ensureUsd } from "@/lib/ledger/denominations";
 import { createGroup } from "@/lib/ledger/groups";
@@ -229,7 +229,8 @@ export async function runCanary(deps: CanaryDeps): Promise<CanaryResult> {
   const at: CanaryStep = ok ? "remove" : error?.startsWith("its rows could not be removed") ? "remove" : failedAt;
   await db.update(schema.canaryRuns).set({ finishedAt: new Date(), ok, step: at, error, dareId, txs, steps }).where(eq(schema.canaryRuns.id, runId));
   if (!ok) {
-    const tell = deps.tell ?? sendOps;
+    // Kept until a channel carries it (pre-submission bug fixes 1); a test's own teller keeps nothing.
+    const tell = deps.tell ?? ((subject: string, text: string) => tellOrKeep(subject, text));
     await tell(`Dareful: the canary failed at ${at}`, `The canary's run at ${new Date().toISOString().slice(11, 16)} UTC failed at the step "${at}": ${error}\n\nSteps that passed: ${steps.map((s) => `${s.step} ${Math.round(s.ms / 100) / 10}s`).join(", ") || "none"}.\nTransactions: ${txs.map((t) => `${t.step} ${t.hash}`).join(", ") || "none"}.\n\nThe question's rows were removed. The health route and dareful.app/stats say how the rest stands.`).catch(() => false);
   }
   return { id: runId, ok, step: at, error, dareId, txs, steps };

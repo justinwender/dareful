@@ -66,8 +66,9 @@ async function broadcastAgain(raw: Hex): Promise<"sent" | "consumed"> {
 }
 
 async function opsAlert(subject: string, text: string): Promise<unknown> {
-  const { sendOps } = await import("@/lib/notify/channels");
-  return sendOps(subject, text);
+  // Kept until a channel carries it (pre-submission bug fixes 1): email was off in production, and these went nowhere.
+  const { tellOrKeep } = await import("@/lib/ops/untold");
+  return tellOrKeep(subject, text);
 }
 
 export async function reconcileChainWrites(now: Date, deps: ReconcileDeps): Promise<Reconciled> {

@@ -277,7 +277,7 @@ test("first-visit tips: Ask something once for every tab, each new tip once wher
   assert.deepEqual(tipsFor(market, () => true, { key: "market-open", seen: [] }).map((t) => t.key), ["/tips/share", "/tips/copy", "/tips/code", "/tips/pass", "/tips/photos"], "a market's in one run, in order (the submission round)");
   assert.deepEqual(tipsFor(market, () => true, { key: "market-open", seen: ["/tips/share", "/tips/copy", "/tips/code"] }).map((t) => t.key), ["/tips/pass", "/tips/photos"], "the rest on a later visit, each once");
   assert.deepEqual(tipsFor(market, (s) => s === "button[data-pass-phone]", { key: "market-open", seen: [] }).map((t) => t.entry.description), ["A friend makes their call on your phone, with their own PIN."], "only what is on screen");
-  assert.deepEqual(tipsFor(infoSheet("ask-question")!, () => true, { key: "ask-question", seen: [] }).map((t) => t.entry.term), ["Add a mark", "Stickers", "What kind of thing"]);
+  assert.deepEqual(tipsFor(infoSheet("ask-question")!, () => true, { key: "ask-question", seen: [] }).map((t) => t.entry.term), ["Add a mark", "Stickers", "What kind of thing", "Market type", "AI market setup"], "asking in one run (pre-submission bug fixes 1)");
   for (const tips of Object.values(CURATED_TIPS))
     for (const t of tips) {
       assert.match(t.key ?? "", /^\/[a-z0-9/[\]-]{0,39}$/, "a key the account can keep");

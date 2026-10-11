@@ -21,7 +21,7 @@ import { randomUUID } from "node:crypto";
 import { drawable, emojiInk } from "@/lib/ui/emoji-ink";
 import { inkFor, inkOf, isInkName, type InkName } from "@/lib/ui/ink";
 import { pictureMarkById } from "@/lib/media/marks";
-import { and, asc, eq, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, like, lte, or, sql } from "drizzle-orm";
 import { decodeEventLog, keccak256, stringToHex, verifyTypedData, type Address, type Hex } from "viem";
 import { db, schema } from "@/db";
 import { contracts } from "@/lib/chain/contracts";
@@ -1155,23 +1155,63 @@ export async function mirrorSettlement(d: DareRow, s: Settlement, how: { by: "qu
   await record("settled", { by: settledWord(how.by), outcome: voided ? "void" : "decided" }, {}, { dareId: d.id });
 }
 
+export type SettledHow = { by: "quorum" | "arbitration" | "feed" | "ruling"; rulingText?: string; rulingHash?: Hex };
+
+/**
+ * How the chain's record of a decided question was made, told from the record itself (pre-submission bug fixes 1): no
+ * ruling is the quorum's votes; a ruling whose hash is the one the caller's own write carried is that write's; one that
+ * is the app's sealed ruling is the app's ruling standing; one that a final-score write for this question carried is
+ * the final score's, with its words; any other is the tiebreaker's. The final score and the tiebreaker both record
+ * through `arbitrate`, and a final-score settlement that was reconciled was once filed as the tiebreaker's. Pure.
+ */
+export function recordedHow(d: Pick<DareRow, "aiOutcome" | "aiRationale" | "kind" | "outcomeLabels" | "pace">, recordedHash: string | null, given: SettledHow | undefined, feedWrites: ReadonlyArray<{ rulingHash: string; rulingText: string }>): SettledHow {
+  if (!recordedHash) return { by: "quorum" };
+  const same = (h: string | undefined) => h !== undefined && h.toLowerCase() === recordedHash.toLowerCase();
+  if (given && given.by !== "quorum" && same(given.rulingHash)) return given;
+  if (appRulingStood(d, recordedHash)) return { by: "ruling" };
+  const feed = feedWrites.find((f) => same(f.rulingHash));
+  if (feed) return { by: "feed", rulingText: feed.rulingText, rulingHash: feed.rulingHash as Hex };
+  return { by: "arbitration" };
+}
+
+/** The final-score writes sent for this question, with the ruling each carried and the ending it was (src/lib/sports). */
+export async function feedWritesFor(dareId: string): Promise<Array<{ rulingHash: string; rulingText: string; ending: string | null }>> {
+  // Found by the id's text and read in here, never cast in the query: one subject that is not JSON would fail them all.
+  const rows = await db.select({ subject: schema.chainWrites.subject }).from(schema.chainWrites).where(and(eq(schema.chainWrites.kind, "feed"), like(schema.chainWrites.subject, `%${dareId}%`)));
+  const out: Array<{ rulingHash: string; rulingText: string; ending: string | null }> = [];
+  for (const r of rows) {
+    try {
+      const s = JSON.parse(r.subject) as { dareId?: unknown; rulingHash?: unknown; rulingText?: unknown; ending?: unknown };
+      if (s.dareId === dareId && typeof s.rulingHash === "string" && typeof s.rulingText === "string") out.push({ rulingHash: s.rulingHash, rulingText: s.rulingText, ending: typeof s.ending === "string" ? s.ending : null });
+    } catch {
+      // A subject that is not JSON is not a final-score write this can read.
+    }
+  }
+  return out;
+}
+
 /**
  * If the chain says a market is decided and this database does not, take the chain's word (through the indexer,
  * the only chain reader). Covers a mirror write that failed after the transaction succeeded, and two final votes
- * arriving at once. Returns whether the market is now recorded as decided.
+ * arriving at once. How it was decided is the record's (`recordedHow`), whatever the caller expected, and a final
+ * score's ending is kept with it. Returns whether the market is now recorded as decided.
  */
-export async function reconcileFromIndexer(dareId: string, how?: { by: "quorum" | "arbitration" | "feed" | "ruling"; rulingText?: string; rulingHash?: Hex }): Promise<boolean> {
+export async function reconcileFromIndexer(dareId: string, how?: SettledHow): Promise<boolean> {
   const d = await marketById(dareId);
   if (!d || !d.onchainId) return false;
   if (d.resolvedAt) return true;
   const indexed = await dareByOnchainId(bufferToHex(d.onchainId)).catch(() => null);
   if (!indexed || (indexed.status !== "RESOLVED" && indexed.status !== "VOIDED") || !indexed.resolveTx) return false;
+  const feedWrites = indexed.rulingHash ? await feedWritesFor(d.id) : [];
+  const settled = recordedHow(d, indexed.rulingHash ?? null, how, feedWrites);
   await mirrorSettlement(d, {
     outcome: indexed.status === "VOIDED" ? VOID_OUTCOME : BigInt(indexed.outcome ?? "0"),
     txHash: indexed.resolveTx as Hex,
     scores: new Map(indexed.positions.filter((p) => p.score !== null).map((p) => [p.participant.toLowerCase(), p.score as number])),
     edges: indexed.edges.map((e) => ({ tokenId: BigInt(e.tokenId), debtor: e.debtor.toLowerCase(), creditor: e.creditor.toLowerCase(), qty: BigInt(e.qty), obligationId: e.id as Hex, unique: e.unique })),
-  }, how ?? { by: indexed.rulingHash ? (appRulingStood(d, indexed.rulingHash) ? "ruling" : "arbitration") : "quorum" });
+  }, settled);
+  const ending = settled.by === "feed" ? feedWrites.find((f) => f.rulingHash.toLowerCase() === settled.rulingHash?.toLowerCase())?.ending : null;
+  if (ending) await db.update(schema.dares).set({ feedEnding: ending }).where(and(eq(schema.dares.id, d.id), isNull(schema.dares.feedEnding)));
   return true;
 }
 

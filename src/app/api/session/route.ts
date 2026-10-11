@@ -7,6 +7,7 @@ import { evmAddressesOf, InvalidLoginToken, phoneOf, suggestedNameOf, verifyDyna
 import { clearClaimTokens, readClaimTokens } from "@/lib/auth/claim-cookie";
 import { decideLogin, loginMethod } from "@/lib/auth/login";
 import { hashPhone } from "@/lib/auth/phone";
+import { isTestSignIn } from "@/lib/auth/test-sign-in";
 import { clearSessionCookie, currentUser, issueSessionCookie, sessionDueForReissue, sessionIssuedAt } from "@/lib/auth/session";
 import { bindByBrowserTokens, bindByPhone } from "@/lib/ledger/claims";
 import { record } from "@/lib/usage";
@@ -48,6 +49,8 @@ export async function POST(req: Request): Promise<Response> {
   const phone = phoneOf(claims);
   const phoneHash = phone ? hashPhone(phone) : undefined;
   const vouched = evmAddressesOf(claims);
+  // A Dynamic test sign-in (a judge's, often two each) counts for nothing from the moment it is made (pre-submission bug fixes 1).
+  const testSignIn = isTestSignIn(claims, phone);
 
   const [existing] = await db.select().from(schema.users).where(eq(schema.users.dynamicUserId, claims.sub)).limit(1);
   const decision = decideLogin({ existing: existing ?? null, vouched, displayName });
@@ -63,12 +66,14 @@ export async function POST(req: Request): Promise<Response> {
     if (vouched.length > 2) console.error("a new login vouches for more than two embedded wallets", { sub: claims.sub, count: vouched.length });
     const [created] = await db
       .insert(schema.users)
-      .values({ dynamicUserId: claims.sub, ledgerWallet: decision.ledgerWallet, governanceWallet: decision.governanceWallet, displayName: decision.displayName, phoneHash })
+      .values({ dynamicUserId: claims.sub, ledgerWallet: decision.ledgerWallet, governanceWallet: decision.governanceWallet, displayName: decision.displayName, phoneHash, excludedFromCounts: testSignIn })
       .onConflictDoNothing({ target: schema.users.dynamicUserId })
       .returning();
     // Two tabs finishing the same signup at once: the second finds the row the first made.
     user = created ?? (await db.select().from(schema.users).where(eq(schema.users.dynamicUserId, claims.sub)).limit(1))[0];
   } else if (existing) {
+    // One made before the rule, or by a build without it, is left out the next time it signs in; nothing ever counts one back in.
+    if (testSignIn && !existing.excludedFromCounts) await db.update(schema.users).set({ excludedFromCounts: true }).where(eq(schema.users.id, existing.id));
     if (decision.kind === "rename") {
       const [renamed] = await db.update(schema.users).set({ displayName: decision.displayName }).where(eq(schema.users.id, existing.id)).returning();
       user = renamed ?? existing;

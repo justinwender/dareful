@@ -26,11 +26,21 @@ import { cn } from "@/lib/utils";
  * `flex-1` page in it was held at its minimum height whatever its content, so on a long page the bottom room fell
  * short and the last row sat under the tab bar or the sheet (the first-contact round: Now's last row, "Stakes, for
  * all 3"). A page inside another box (a market's) was never held, which is why only some screens showed it.
+ *
+ * The page is a layer of its own (`will-change: opacity`, pre-submission bug fixes 1). In a browser that shrinks its
+ * web view above the keyboard (Brave on an iPhone, and the stand-in on the simulators), a keyboard raised from the
+ * name step and then a new account's first screen left WebKit drawing nothing of what sat directly in `#app`'s own
+ * layer: Now without its header, its headline or its labels, and every later screen blank, while what had a layer of
+ * its own (a pressed row, a field, the tab bar) still drew. With the page on its own layer it draws. Opacity, never a
+ * transform: a fixed layer still renders in place inside the page until the app runs, and a transform would become
+ * its containing block (9.3; `forbiddenOn` in src/lib/ui/layers.ts lets `will-change: opacity` through).
  */
+export const PAGE_LAYER = { willChange: "opacity" } as const;
+
 export function Screen({ children, className, root = false, layer, arrive }: { children: ReactNode; className?: string; root?: boolean; /** The layer this screen lives in (the ask layer, 9.5), so the root page under it can be told apart. */ layer?: string; /** How the screen arrives (9.7): a push moves its content 24px and crossfades while its header crossfades ("step", the default off a root); a market fades in under its shell ("fade"); a root and a step in the ask layer arrive at once ("none"). */ arrive?: "step" | "fade" | "none" }) {
   const how = arrive ?? (root || layer ? "none" : "step");
   return (
-    <main data-page={layer ?? ""} data-arrive={how} className={cn("mx-auto flex w-full max-w-[430px] grow shrink-0 flex-col px-5", layer ? "pb-0" : "pb-[calc(max(2rem,env(safe-area-inset-bottom))+1rem+var(--sheet-room,0px))]", how === "step" && "page-arrive", how === "fade" && "motion-arrive", !layer && "min-h-[calc(100lvh_+_1px)]", className)}>
+    <main data-page={layer ?? ""} data-arrive={how} style={PAGE_LAYER} className={cn("mx-auto flex w-full max-w-[430px] grow shrink-0 flex-col px-5", layer ? "pb-0" : "pb-[calc(max(2rem,env(safe-area-inset-bottom))+1rem+var(--sheet-room,0px))]", how === "step" && "page-arrive", how === "fade" && "motion-arrive", !layer && "min-h-[calc(100lvh_+_1px)]", className)}>
       <Arrived />
       {children}
     </main>

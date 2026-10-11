@@ -12,7 +12,7 @@ import type { Address } from "viem";
 import { db, schema } from "@/db";
 import { marketById, quorumOf, tally, VOID_OUTCOME, votesOf, type DareRow } from "@/lib/ledger/markets";
 import { firstName } from "@/lib/ui/copy";
-import { sendEmail, sendPush } from "./channels";
+import { sendEmail, sendPush, type EmailSent, type EmailSkip } from "./channels";
 import { positionsOf } from "@/lib/ledger/markets";
 import { record } from "@/lib/usage";
 import { backstopResultNotice, backstopWarningNotice, closedNotice, deadlineNotice, voteReminderNotice, votingOpenedNotice, enteredFromNotice, rulingNotice, joinedNotice, nettedNotice, nudgeNotice, nudgeSeq, nudgeTargets, openedNotice, pinLockedNotice, pushElseEmail, recipientsAfterVote, resultNotice, voteRequest, type BackstopHow, type Notice, type WarningFlavour, FALLBACK_ZONE, REMIND_AFTER_MS, reminderSendTime, reminderZone } from "./messages";
@@ -46,15 +46,28 @@ async function deliver(userId: string, logId: string, notice: Notice, mode: "eve
   // Each channel's link says which it was (`via`) and which notice (`n`), so a tap can be counted by channel; the page takes both off the address at once.
   const byPush = { ...notice, url: viaChannel(notice.url, "push", logId) };
   const byEmail = { ...notice, url: viaChannel(notice.url, "email", logId) };
+  // Why the email did not go, when it was tried and did not (pre-submission bug fixes 1): kept on the row, which the health check's email line reads.
+  let skipped: EmailSent | null = null;
+  const byEmailSend = async (): Promise<boolean> => {
+    skipped = await sendEmail(userId, byEmail).catch((err: unknown): EmailSent => ({ went: false, skip: "refused", cause: `the send threw (${err instanceof Error ? err.name : "unknown"})` }));
+    return skipped.went;
+  };
   if (mode === "push-else-email") {
-    ({ push, email } = await pushElseEmail(() => sendPush(userId, byPush), () => sendEmail(userId, byEmail)));
+    ({ push, email } = await pushElseEmail(() => sendPush(userId, byPush), byEmailSend));
   } else {
-    [push, email] = await Promise.all([sendPush(userId, byPush).catch(() => false), sendEmail(userId, byEmail).catch(() => false)]);
+    [push, email] = await Promise.all([sendPush(userId, byPush).catch(() => false), byEmailSend()]);
   }
   const channels = [push ? "push" : null, email ? "email" : null].filter((c): c is string => c !== null);
-  if (channels.length > 0) await db.update(schema.notificationLog).set({ channels }).where(eq(schema.notificationLog.id, logId));
+  const skip = emailSkipOf(skipped);
+  if (channels.length > 0 || skip) await db.update(schema.notificationLog).set({ ...(channels.length > 0 ? { channels } : {}), ...(skip ?? {}) }).where(eq(schema.notificationLog.id, logId));
   const [row] = await db.select({ kind: schema.notificationLog.kind, dareId: schema.notificationLog.dareId }).from(schema.notificationLog).where(eq(schema.notificationLog.id, logId)).limit(1);
   await record("notification_sent", { kind: row?.kind ?? "unknown", channel: push && email ? "both" : push ? "push" : email ? "email" : "none" }, { userId }, { dareId: row?.dareId ?? null });
+}
+
+/** What a notice's row keeps about an email that was tried and did not go: the reason and its cause, clipped. Pure. */
+export function emailSkipOf(sent: EmailSent | null): { emailSkipped: EmailSkip; emailSkipCause: string | null } | null {
+  if (!sent || sent.went) return null;
+  return { emailSkipped: sent.skip, emailSkipCause: sent.cause ? sent.cause.slice(0, 120) : null };
 }
 
 /** The notice's address with the channel and the notice named in its query, before any fragment. */

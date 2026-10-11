@@ -51,6 +51,8 @@ Round D), following the phone's setting, with an Appearance row on You.
 
 ### What changed in this revision
 
+Amended 2026-10-10 by pre-submission bug fixes 1, in dated notes at the ends of 2.2 (an amount shows its cents wherever it shows unless it is whole dollars) and 10.9 (every screen's tips in one run however many, counted on the screen's own page, the page put back where the run found it, and nothing over a new account's name step); nothing else a person sees changed, but that a new account's first screens draw in Brave on an iPhone.
+
 Amended 2026-10-09 by the ops round, in dated notes at the ends of 3.4 (a question's result is never a cover: its story's consequences on a friend's page and a guest's, and its story with the yep when it is confirmed) and 3.40 (a margin past four either way: no crash, and the slices' labels whole across the axis); nothing else a person sees changed.
 
 Amended 2026-10-09 by the submission round, in dated notes at the ends of 3.16 (a code works like its link for someone with no account), 3.45 (pass the phone for the asker before their call, and on a game page's share row) and 10.9 (a market's and a game page's tips as one run once the person is in, and a control pointed at only when all of it is on the screen).
@@ -596,6 +598,8 @@ light.
 Ordering inside any mixed set: glyph tallies, then quoted words, then dollars. That ordering
 is the display-level expression of "count before amount," which is why a person view says two
 beers before it says $40.
+
+(Amended 2026-10-10, pre-submission bug fixes 1. An amount shows its cents wherever it shows, in a list as on a detail sheet, unless it is whole dollars: a list rounded to whole dollars, so a 15-cent payment read "$0" on its token, and a judge's $5 test question often ends in cents. A whole amount stays "$47"; a detail sheet may still show "$47.00".)
 
 **The mark is the escape hatch.** Because the icon set is closed at eight and can never keep
 up with what a group invents, the creator of a market or a unit may attach a mark (section 1.7). It rides in front of the words and never replaces them: the words are what the
@@ -5610,6 +5614,8 @@ the hackathon (10.3).
 (Amended 2026-10-09, the final round. **The tips are the owner's set**: "Ask something" once, on whichever tab first shows it; on a market each way to share (share, copy, the code), pass the phone ("A friend makes their call on your phone, with their own PIN.") and adding photos; when asking the mark, stickers and each choice (the kind of thing, the market type, AI market setup); on People who's got who; on a person's page I got this one. Three at a time, one at a time, each remembered once it has stood beside its control and never before. A tip waits for the opening, an open sheet and the account step a guest is offered once in; a control off the screen or under the sheet is brought into the middle of what no layer covers before its tip shows; one that still cannot be pointed at waits for another visit while the others show.)
 
 (Amended 2026-10-09, the submission round, the owner's finding: on one market he saw share, copy and the code as "3 of 3", then pass the phone and photos on the next, because a visit stopped at three. On a market or a game page the tips wait until the person is in, then run through every one whose control is on the screen in one sequence, however many that is ("1 of 5" for an account, "1 of 2" for a guest, who has no code to show or phone to pass); every other screen keeps three at most. A control is pointed at only when all of it and its ring are inside what no layer covers: a guest's share button at the screen's foot was ringed half off the bottom edge on the iOS 26 simulator, so a control partly on the screen is brought in first, and one on a fixed layer, which no scroll can move, is pointed at where it is.)
+
+(Amended 2026-10-10, pre-submission bug fixes 1. Every screen's tips run as one, however many: the limit of three a visit is gone, so asking runs all five (the mark, stickers, what kind of thing, the market type, AI market setup) and a market or a game page its five for an account and two for a guest, once the person is in. A run belongs to its screen: it counts and points at controls in its own page alone, never one drawn for another screen; it remembers where the page stood when it began and goes back there when it ends, since a root remembers its scroll and a scroll the tips made became the root's (Now came back with its header off the top); it ends cleanly when the last tip cannot be pointed at, and ends when the screen changes. Nothing shows over a new account's name step: the tips wait for "What do your friends call you?" as they wait for an open sheet. A tip that cannot be pointed at (an installed app's notifications sheet opening over a market's run, say) is skipped, not remembered, and shows on a later visit.)
 
 ## 11. The opening
 

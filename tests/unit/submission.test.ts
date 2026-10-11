@@ -8,7 +8,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { passThePhoneShows } from "@/lib/ledger/hand-over";
-import { ASK_TARGET, CURATED_TIPS, MARKET_SHEETS, runsAsOne, tipsFor, TIPS_AT_MOST } from "@/lib/ui/tips";
+import { ASK_TARGET, CURATED_TIPS, tipsFor } from "@/lib/ui/tips";
 import { infoSheet } from "@/lib/ui/info-sheets";
 import { counted, numbersCardLines, readAt } from "@/lib/ui/numbers-card";
 import { LAUNCH, windowFor } from "@/lib/usage/stats";
@@ -45,18 +45,15 @@ test("pass the phone is offered to the question's asker before their call and to
   assert.ok(read("src/app/m/[id]/market-screen.tsx").includes("pass={passThePhoneShows({ open: state === \"open\", viewerIn: mine !== null, viewerAsked: d.creatorId === me.id })"), "a market's row by the same rule");
 });
 
-test("a market's and a game page's tips wait until the person is in and then run as one sequence, however many show (section 0)", () => {
-  for (const key of MARKET_SHEETS) assert.equal(runsAsOne(key), true, key);
-  assert.equal(runsAsOne("ask-question"), false, "asking keeps three at a time");
-  assert.equal(runsAsOne(undefined), false);
+test("a market's and a game page's tips wait until the person is in and then run as one sequence, however many show (section 0; every screen's since pre-submission bug fixes 1)", () => {
   const sheet = infoSheet("market-open");
   assert.ok(sheet, "the market's sheet");
   const all = tipsFor(sheet, (selector) => selector !== ASK_TARGET, { key: "market-open", seen: [] });
   assert.deepEqual(all.map((t) => t.key), (CURATED_TIPS["market-open"] ?? []).map((t) => t.key), "every way to share, pass the phone and photos, in one run");
-  assert.ok(all.length > TIPS_AT_MOST, "past three");
+  assert.equal(all.length, 5, "past three");
   const ask = infoSheet("ask-question");
   assert.ok(ask);
-  assert.ok(tipsFor(ask, () => true, { key: "ask-question", seen: [] }).length <= TIPS_AT_MOST, "asking keeps its three");
+  assert.equal(tipsFor(ask, () => true, { key: "ask-question", seen: [] }).length, 5, "asking runs as one too: all five");
   const tips = read("src/components/ui/first-tips.tsx");
   assert.ok(tips.includes("if (icon?.dataset.tipsWait !== undefined) return;"), "nothing shows while the screen says to wait");
   assert.ok(tips.includes('attributeFilter: ["data-info-icon", "data-tips-wait"]'), "and the wait ending brings the look round again");

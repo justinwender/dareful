@@ -1377,9 +1377,20 @@ export const notificationLog = pgTable(
       .references(() => users.id),
     /** Which channels took it: any of push, email. Empty means only the in-app strip carries it. */
     channels: text("channels").array().notNull().default(sql`'{}'`),
+    /**
+     * Why its email did not go, when one was meant to (pre-submission bug fixes 1): `off` (production with Resend not set
+     * up), `unread` (the address could not be read from Dynamic) and `refused` (Resend said no), the three the health
+     * check's email line counts; `no_address` (a phone login, or an account with no Dynamic record), `test_account` (a
+     * Dynamic test sign-in, never emailed) and `not_production` (a server other than production, where email is off on
+     * purpose), which it does not. Null when the email went, or was never meant to (push carried a push-else-email notice).
+     */
+    emailSkipped: text("email_skipped", { enum: ["off", "unread", "refused", "no_address", "test_account", "not_production"] }),
+    /** What Dynamic or Resend said, for `unread` and `refused`: a status or an error's name, never an address. */
+    emailSkipCause: text("email_skip_cause"),
     createdAt: ts("created_at").notNull().defaultNow(),
   },
   (t) => [
+    check("notification_log_email_skip_known", sql`${t.emailSkipped} is null or ${t.emailSkipped} in ('off', 'unread', 'refused', 'no_address', 'test_account', 'not_production')`),
     uniqueIndex("notification_log_once").on(t.userId, t.dareId, t.kind, t.seq).where(sql`${t.dareId} is not null`),
     uniqueIndex("notification_log_once_obligation").on(t.userId, t.obligationId, t.kind, t.seq).where(sql`${t.obligationId} is not null`),
     // A netting is between two people and about no one row: once per pair per window, keyed by who did it.

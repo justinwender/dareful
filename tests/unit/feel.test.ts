@@ -186,13 +186,13 @@ test("the terms are read out of a half-written answer (9.8): the words so far, e
   assert.deepEqual(partialValues('{"title":"x","terms":"ends in a backslash\\'), { title: "x", terms: "ends in a backslash" });
 });
 
-test("whole dollars in lists, cents on a detail sheet (2.2, 3.2)", () => {
-  assert.equal(formatMoney(4720n, { whole: true }), "$47");
-  assert.equal(formatMoney(4750n, { whole: true }), "$48");
+test("an amount shows its cents unless it is whole dollars, in a list as on a detail sheet (2.2, 3.2; pre-submission bug fixes 1)", () => {
   assert.equal(formatMoney(4720n), "$47.20");
+  assert.equal(formatMoney(37n), "$0.37", "under a dollar never reads $0");
   assert.equal(formatMoney(4700n), "$47");
-  assert.equal(formatMoney(4720n, { cents: true, whole: true }), "$47.20", "cents win where the detail asks for them");
-  assert.equal(formatMoney(-150n, { whole: true }), "-$2");
+  assert.equal(formatMoney(4700n, { cents: true }), "$47.00", "a detail sheet may show them on a whole amount");
+  assert.equal(formatMoney(-150n), "-$1.50");
+  assert.equal(formatMoney(123456789n), "$1,234,567.89");
 });
 
 test("the Mixed token orders glyphs, then words, then dollars, and splits past what fits with dollars always last (2.2, 3.2, 3.10)", () => {
@@ -233,13 +233,13 @@ test("a market's ink on the document root carries both themes' layers (8.4, 9.3)
   for (const name of Object.keys(INKS) as Array<keyof typeof INKS>) assert.equal(INKS_LIGHT[name].hue, INKS[name].hue, `${name} keeps its hue across themes`);
 });
 
-test("the Mixed token draws glyphs, then words, then a rule and whole dollars, in one pill in the owner's hue (3.2)", () => {
+test("the Mixed token draws glyphs, then words, then a rule and the dollars with their cents, in one pill in the owner's hue (3.2)", () => {
   const unit = (label: string, template: "beer" | null, monetary = false) => ({ id: label, label, pluralLabel: `${label}s`, quantifiable: true, monetary, template, markKind: null, markValue: null });
   const html = renderToStaticMarkup(createElement(MixedToken, { owner: { id: "o", displayName: "Gabe Ortiz", hue: "aqua" }, other: { id: "v", displayName: "You" }, viewerId: "v", lines: [{ denomination: unit("dollar", null, true) as never, quantity: 4720n }, { denomination: unit("beer", "beer") as never, quantity: 2n }] }));
   assert.ok(html.includes('data-mixed="2"'), "one pill for two units");
   const body = html.slice(html.indexOf(">") + 1);
-  assert.ok(body.indexOf("<svg") < body.indexOf("$47"), "the glyph tally before the dollars");
-  assert.ok(body.includes("$47") && !body.includes("$47.20"), "whole dollars in the pill");
+  assert.ok(body.indexOf("<svg") < body.indexOf("$47.20"), "the glyph tally before the dollars");
+  assert.ok(body.includes(">$47.20<"), "the cents in the pill (pre-submission bug fixes 1)");
   assert.ok(html.includes("bg-line-strong"), "the rule before the dollars");
   assert.ok(/aria-label="Gabe Ortiz(?:&#x27;|’)s got you 2 beers, \$47\.20"/.test(html), `the accessible name keeps the cents: ${html.slice(0, 200)}`);
 });

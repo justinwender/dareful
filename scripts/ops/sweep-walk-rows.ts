@@ -20,10 +20,15 @@
  *   npx tsx --env-file=.env.local scripts/ops/sweep-walk-rows.ts --apply final       removes the final round's
  *   npx tsx --env-file=.env.local scripts/ops/sweep-walk-rows.ts --apply submission  removes the submission round's
  *   npx tsx --env-file=.env.local scripts/ops/sweep-walk-rows.ts --apply ops         removes the ops round's
+ *   npx tsx --env-file=.env.local scripts/ops/sweep-walk-rows.ts --apply bug-fixes-1 removes pre-submission bug fixes 1's
  *
  * The ops round's walk (the crossword question two guests joined from the simulators, with its drawn photo and the
  * round covered for one of them, the penalty-kick argument one of them took the other side of, and the Bears at
  * Packers game's two questions with the game's photo) is removed the same way once its screenshots are taken.
+ *
+ * Pre-submission bug fixes 1's walk was made by its own accounts, the nine Dynamic test sign-ins the owner made for it
+ * (left out of every count), not the development account: a batch names its askers, the development account unless it
+ * says otherwise. The accounts themselves stay, as the owner's.
  */
 import { and, eq, gte, inArray, notInArray, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
@@ -38,7 +43,20 @@ const DEV = "7fc0ce05-885a-457b-8a5e-6e8768379cd2";
  * the moment from which a row carrying nothing but one of the walk's devices is the walk's too (a private tab's device
  * is the walk's own: it is made fresh and thrown away).
  */
-type Batch = { key: "touch-ups" | "final" | "submission" | "ops"; name: string; dares: string[]; ownUnits?: string[]; devicesSince?: string; devices?: string[] };
+type Batch = { key: "touch-ups" | "final" | "submission" | "ops" | "bug-fixes-1"; name: string; dares: string[]; ownUnits?: string[]; devicesSince?: string; devices?: string[]; askers?: string[] };
+
+/** Pre-submission bug fixes 1's nine test sign-ins (Avery, Blake, Casey, Drew, Ellis, Finn, Greer, Harper, Iris), whose walk it was. */
+const BUG_FIXES_1_ACCOUNTS = [
+  "ab9ae9d3-20f7-43e9-9842-80263183a103",
+  "b6d8695a-17e8-4acd-8536-c86d4b65d207",
+  "ad355de5-e506-4462-a27b-10bae28c46b9",
+  "1ae23189-dcdb-447e-8004-f9c8d3992d3f",
+  "e992765d-21fe-4eb2-b6ba-e064888e61a6",
+  "4f44af7b-fdef-428a-82f3-3e2e9e3a2e8f",
+  "b47959b1-ba75-4129-952a-f6d9393ffe4b",
+  "20ab1bdd-88bc-4174-b487-1ea5a4e1bb80",
+  "ec9580c6-d0fe-4e5c-9fe7-dfd6c3cedefc",
+];
 const BATCHES: Batch[] = [
   {
     key: "touch-ups",
@@ -67,6 +85,13 @@ const BATCHES: Batch[] = [
     dares: ["955aa854-be8c-44a1-98f2-5014c59c512b", "d8dd77d2-7afd-469c-9ed7-964f7c7a1978", "26b95658-480a-4068-ba34-a32f0bfa1703", "7f28b265-7138-49b1-aa01-d9e032865dac"],
     devicesSince: "2026-10-09T23:00:00Z",
   },
+  {
+    key: "bug-fixes-1",
+    name: "pre-submission bug fixes 1's walk (2026-10-10, afternoon, Eastern): the Canucks at Devils question three test accounts and a guest joined, and the Boston rain question",
+    dares: ["c88a9968-7953-43f8-afd1-ae4e203d758e", "b5f35525-60bf-4c80-a347-ea4972dbc65b"],
+    devicesSince: "2026-10-10T14:00:00Z",
+    askers: BUG_FIXES_1_ACCOUNTS,
+  },
 ];
 
 type Db = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -74,32 +99,33 @@ type Db = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
 /** What a batch would remove, read fresh: its questions, their guests, their sets, and their own questions' rows on a game. */
 async function plan(tx: Db, b: Batch) {
   const D = schema.dares;
+  const askers = b.askers ?? [DEV];
   const rows = await tx.select({ id: D.id, title: D.title, groupId: D.groupId, creatorId: D.creatorId, onchainId: D.onchainId, templateId: D.templateId }).from(D).where(inArray(D.id, b.dares));
   for (const r of rows) {
-    if (r.creatorId !== DEV) throw new Error(`${r.id} was not asked by the development account; nothing is removed`);
+    if (!askers.includes(r.creatorId)) throw new Error(`${r.id} was not asked by the walk's own accounts; nothing is removed`);
     if (r.onchainId) throw new Error(`${r.id} is on the chain; nothing is removed`);
   }
   const ids = rows.map((r) => r.id);
-  // The guests in them, made by the development account, and in nothing else.
+  // The guests in them, made by the walk's own accounts, and in nothing else.
   const P = schema.darePositions;
   const guests = ids.length ? (await tx.selectDistinct({ id: P.claimId }).from(P).where(and(inArray(P.dareId, ids), sql`${P.claimId} is not null`))).map((r) => r.id as string) : [];
   const C = schema.participantClaims;
-  const ownGuests = guests.length ? (await tx.select({ id: C.id }).from(C).where(and(inArray(C.id, guests), eq(C.createdBy, DEV)))).map((r) => r.id) : [];
+  const ownGuests = guests.length ? (await tx.select({ id: C.id }).from(C).where(and(inArray(C.id, guests), inArray(C.createdBy, askers)))).map((r) => r.id) : [];
   const elsewhere = ownGuests.length ? (await tx.selectDistinct({ id: P.claimId }).from(P).where(and(inArray(P.claimId, ownGuests), notInArray(P.dareId, ids)))).map((r) => r.id as string) : [];
   const claims = ownGuests.filter((c) => !elsewhere.includes(c));
   // Everything proposed with these guests, whatever its origin (a cover logged for one of them included): a guest the
   // walk made has nothing that is not the walk's.
   const OP = schema.obligationProposals;
   const guestProposals = claims.length ? await tx.select({ id: OP.id, groupId: OP.groupId }).from(OP).where(or(inArray(OP.fromClaim, claims), inArray(OP.toClaim, claims))) : [];
-  // The sets made for them: nothing else asked in them, nothing owed in them, and nobody in them but the development account and these guests.
+  // The sets made for them: nothing else asked in them, nothing owed in them, and nobody in them but the walk's own accounts and these guests.
   const groups: string[] = [];
   for (const g of [...new Set([...rows.map((r) => r.groupId), ...guestProposals.map((r) => r.groupId)])]) {
     const [other] = await tx.select({ n: sql<number>`count(*)::int` }).from(D).where(and(eq(D.groupId, g), notInArray(D.id, ids)));
     const [owed] = await tx.select({ n: sql<number>`count(*)::int` }).from(schema.obligations).where(eq(schema.obligations.groupId, g));
     const members = await tx.select({ userId: schema.groupMembers.userId, claimId: schema.groupMembers.claimId }).from(schema.groupMembers).where(eq(schema.groupMembers.groupId, g));
-    const onlyUs = members.every((m) => m.userId === DEV || (m.claimId !== null && claims.includes(m.claimId)));
+    const onlyUs = members.every((m) => (m.userId !== null && askers.includes(m.userId)) || (m.claimId !== null && claims.includes(m.claimId)));
     const [grp] = await tx.select({ onchainId: schema.groups.onchainId, createdBy: schema.groups.createdBy }).from(schema.groups).where(eq(schema.groups.id, g));
-    if ((other?.n ?? 0) === 0 && (owed?.n ?? 0) === 0 && onlyUs && grp && !grp.onchainId && grp.createdBy === DEV) groups.push(g);
+    if ((other?.n ?? 0) === 0 && (owed?.n ?? 0) === 0 && onlyUs && grp && !grp.onchainId && grp.createdBy !== null && askers.includes(grp.createdBy)) groups.push(g);
   }
   // A question of one's own has a row of its own on its game, named for it.
   const ownRows = ids.length ? (await tx.select({ id: schema.publicQuestions.id }).from(schema.publicQuestions).where(or(...ids.map((id) => eq(schema.publicQuestions.key, `own:${id}`))))).map((r) => r.id) : [];

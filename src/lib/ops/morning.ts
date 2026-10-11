@@ -16,6 +16,7 @@ import { hereEnv, type CheckName, type CheckResult, type CheckState } from "./he
 import { claimState, putState, trimOps } from "./state";
 import { allInTurns } from "./turns";
 import { canaryOff } from "./canary";
+import { keepUntold } from "./untold";
 
 /** The hour, Eastern, from which the day's email goes. */
 export const MORNING_HOUR = 8;
@@ -153,15 +154,17 @@ export async function morningFacts(now: Date, env = hereEnv()): Promise<MorningF
 
 /**
  * The tick's part: from 8am Eastern, the day's email once. The day is claimed before anything is read, so a second
- * tick in the same minute sends nothing; a send that failed is kept as failed and not tried again that day.
+ * tick in the same minute sends nothing; one no channel carried is kept and sent by a later tick once email goes
+ * (pre-submission bug fixes 1, src/lib/ops/untold.ts), and a sender of a test's own keeps nothing.
  */
-export async function sendMorning(now: Date, send: (subject: string, text: string) => Promise<boolean> = sendOps): Promise<"sent" | "failed" | "not due" | "taken"> {
+export async function sendMorning(now: Date, send: (subject: string, text: string) => Promise<boolean> = sendOps, keep: (subject: string, text: string, at: Date) => Promise<void> = send === sendOps ? keepUntold : async () => undefined): Promise<"sent" | "failed" | "not due" | "taken"> {
   if (!morningDue(now)) return "not due";
   const key = `morning:${dayOf(now)}`;
   if (!(await claimState(key, { at: now.toISOString() }, now))) return "taken";
   // A summary that cannot be read still goes, saying so: a silent morning would read as a quiet one.
   const { subject, text } = await morningFacts(now).then(composeMorning, (err: unknown) => ({ subject: "Dareful this morning could not be read", text: `The morning summary could not be read (${err instanceof Error ? err.name : "unknown"}). The health route and dareful.app/stats say how things stand.` }));
-  const went = await send(subject, text);
+  const went = await send(subject, text).catch(() => false);
+  if (!went) await keep(subject, text, now);
   await putState(key, { sent: went }, now);
   await trimOps(now).catch(() => undefined);
   return went ? "sent" : "failed";

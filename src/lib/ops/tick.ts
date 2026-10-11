@@ -9,6 +9,7 @@ import { runHealth } from "./health";
 import { sendMorning } from "./morning";
 import { watchRunway } from "./runway";
 import { putState } from "./state";
+import { tellKept } from "./untold";
 
 /** The health checks and the runway are read on the minutes divisible by this. */
 export const OPS_EVERY_MIN = 5;
@@ -18,7 +19,7 @@ export function opsDue(now: Date): boolean {
   return now.getUTCMinutes() % OPS_EVERY_MIN === 0;
 }
 
-export type OpsReport = { health: boolean | null; told: string[]; morning: string };
+export type OpsReport = { health: boolean | null; told: string[]; morning: string; late: number };
 
 export async function opsTick(now: Date): Promise<OpsReport> {
   const say = (what: string) => (err: unknown) => {
@@ -35,7 +36,9 @@ export async function opsTick(now: Date): Promise<OpsReport> {
     told = runway?.told ?? [];
   }
   const morning = await sendMorning(now).catch((err: unknown) => (say("the morning email failed")(err), "failed"));
-  return { health, told, morning };
+  // A line to the owner no channel carried when it happened goes now, if email goes (pre-submission bug fixes 1).
+  const late = (await tellKept(now).catch(say("the kept lines could not be sent"))) ?? 0;
+  return { health, told, morning, late };
 }
 
 /** The tick's own record of a run it finished: when it started, and what it did, in counts. */

@@ -175,7 +175,8 @@ export function WalletBootstrap({ settled, sessionDynamicUserId }: { settled: bo
   if (skip || !isLoggedIn || phase.at === "idle" || phase.at === "done") return null;
 
   return (
-    <div role="dialog" aria-modal="true" aria-live="polite" data-fixed="top" className="fixed inset-0 z-50 flex flex-col justify-center bg-ground px-5 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
+    // `data-account-setup`: the first-visit tips wait while this stands over the screen (pre-submission bug fixes 1).
+    <div role="dialog" aria-modal="true" aria-live="polite" data-fixed="top" data-account-setup="" className="fixed inset-0 z-50 flex flex-col justify-center bg-ground px-5 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
       <div className="mx-auto flex w-full max-w-[420px] flex-col gap-6">
         {phase.at === "working" ? (
           // The one loader in place of the words (the touch-ups round, section 3): the words are what a screen reader hears.

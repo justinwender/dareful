@@ -1231,8 +1231,11 @@ test("a timestamp is painted in the zone the browser reported, not the server's"
 // ---------------------------------------------------------------------------------------- round D: how it feels
 
 test("every root and task screen keeps its fixed layers free of a captured ancestor (9.3): the tab bar, the Start button and the sheet, walked in the markup", async () => {
-  const { ancestorsInMarkup, capturesAbove } = await import("@/lib/ui/layers");
+  const { ancestorsInMarkup, capturesAbove, parseInlineStyle } = await import("@/lib/ui/layers");
   const screens: Array<[string, string | undefined]> = [["/", cAsker], ["/on", cAsker], ["/people", cAsker], ["/you", cAsker], [`/m/${marketId}`, cFriend], [`/m/${marketId}`, cAsker], [`/p/${friend.user.id}`, cAsker], ["/join", cAsker], ["/welcome", cU], ["/m/new", cAsker], [`/on/${feedGameId}?g=${nightGroupId}`, cRae]];
+  // The server draws a fixed layer in place, inside the page, until the app runs (9.3): the page's will-change stands
+  // above it there, and opacity is the one value the rule lets through (pre-submission bug fixes 1).
+  let underThePage = 0;
   for (const [path, cookie] of screens) {
     const r = await get(path, cookie);
     assert.equal(r.status, 200, path);
@@ -1242,9 +1245,14 @@ test("every root and task screen keeps its fixed layers free of a captured ances
       if (!chain) continue;
       assert.deepEqual(capturesAbove(chain), [], `${path}: ${name} has an ancestor that would capture it`);
       assert.ok(chain.some((a) => a.attrs["id"] === "app"), `${path}: ${name} sits under the app root`);
+      for (const page of chain.filter((a) => a.tag === "main")) {
+        underThePage += 1;
+        assert.equal(parseInlineStyle(page.attrs["style"])["will-change"], "opacity", `${path}: ${name} is inside the page, whose one will-change is opacity`);
+      }
     }
     assert.ok(!/class="[^"]*\b(transform|translate-[xy]-\d|backdrop-blur|will-change-transform)\b[^"]*"[^>]*>(?:(?!<\/main>)[\s\S])*<main/.test(r.html), `${path}: nothing above the page carries a transform`);
   }
+  assert.ok(underThePage > 0, "a fixed layer is inside the page in the server's markup, and the walk let its will-change through");
 });
 
 test("the opening (11) and the theme (8.1): the first frame is inline, in the phone's own scheme, with a launch image per iPhone in both sets, and the stored appearance goes onto html before paint", async () => {

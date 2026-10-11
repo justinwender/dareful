@@ -350,7 +350,12 @@ export async function settleByFeed(d: DareRow, template: TemplateRow, game: Game
     });
   } catch (err) {
     if (err instanceof SendPending) throw err;
-    if (await reconcileFromIndexer(d.id)) throw new MarketError("It was decided meanwhile.", "wrong_state");
+    // The chain may hold it already: this write landed though its send said otherwise, or another way decided it
+    // meanwhile. The record says which (`recordedHow`), and a final score's own is the final score's, never the tiebreaker's.
+    if (await reconcileFromIndexer(d.id, { by: "feed", rulingText: text, rulingHash: hash })) {
+      if ((await marketById(d.id))?.resolvedBy === "feed") return { txHash: "0x" as Hex, voided };
+      throw new MarketError("It was decided meanwhile.", "wrong_state");
+    }
     console.error("feed settlement failed", { dareId: d.id, err: err instanceof Error ? err.message : err });
     throw new MarketError("The feed’s answer is in, but recording it didn’t go through. Nothing changed.", "chain");
   }

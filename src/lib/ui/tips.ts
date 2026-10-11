@@ -1,12 +1,13 @@
 /**
  * First-visit tips (docs/design.md 10.9; built in the first-contact round, 2026-10-04): the first time a person opens
- * a screen, up to three of its sheet's entries (on a market or a game page, every one, once the person is in), one at a
- * time, each beside the control it describes. Pure here, so
- * the choice and the placement have tests; `FirstTips` draws them. They go with the sheets after the hackathon.
+ * a screen, every one of its tips whose control is on that screen, in one sequence, one at a time, each beside the
+ * control it describes (pre-submission bug fixes 1 took out the three a visit: asking stopped after the mark, stickers
+ * and the kind of question, and left the market type and AI market setup for some later visit). On a market or a game
+ * page the run waits until the person is in. Pure here, so the choice and the placement have tests; `FirstTips` draws
+ * them. They go with the sheets after the hackathon.
  */
 import { INFO_GROUPS, type InfoEntry, type InfoSheet } from "./info";
 
-export const TIPS_AT_MOST = 3;
 /** How far the cut-out stands off the control on every side, how far the tip stands off the ring, and how far inside the screen it keeps. */
 export const CUT_PAD = 6;
 export const TIP_GAP = 6;
@@ -58,19 +59,10 @@ function askSomethingIn(sheet: InfoSheet): InfoEntry | null {
 }
 
 /**
- * Whether a screen's tips run as one sequence, however many there are (the submission round, section 0): a market's and
- * a game page's. They wait until the person is in (the screen's information icon says so, `data-tips-wait`), since pass
- * the phone and photos show only then; with three at a time the owner saw share, copy and the code as "3 of 3" on one
- * market and the other two on the next. Pure.
- */
-export function runsAsOne(key: string | undefined): boolean {
-  return key !== undefined && (MARKET_SHEETS as readonly string[]).includes(key);
-}
-
-/**
- * A screen's tips: "Ask something" first while it was never shown and its control is on the screen, then the screen's
- * own tips that were never shown and whose control is on the screen, in order; at most three at a time, except on a
- * market or a game page, where every one runs in one sequence (`runsAsOne`). Pure.
+ * A screen's tips, as one sequence however many there are: "Ask something" first while it was never shown and its
+ * control is on the screen, then the screen's own tips that were never shown and whose control is on the screen, in
+ * order. `onScreen` is the screen's own: a control on the screen now, or in the page whose tips these are (`FirstTips`),
+ * never one drawn for another screen. Pure.
  */
 export function tipsFor(sheet: InfoSheet, onScreen: (selector: string) => boolean, opts: { key?: string; seen?: readonly string[] } = {}): Tip[] {
   const seen = opts.seen ?? [];
@@ -78,7 +70,17 @@ export function tipsFor(sheet: InfoSheet, onScreen: (selector: string) => boolea
   const ask = askSomethingIn(sheet);
   if (ask && !seen.includes(ASK_SOMETHING_KEY) && onScreen(ASK_TARGET)) out.push({ key: ASK_SOMETHING_KEY, target: ASK_TARGET, entry: ask });
   for (const t of (opts.key ? CURATED_TIPS[opts.key] : undefined) ?? []) if (!seen.includes(t.key) && onScreen(t.target)) out.push(t);
-  return runsAsOne(opts.key) ? out : out.slice(0, TIPS_AT_MOST);
+  return out;
+}
+
+/**
+ * Where the page goes back to when a run ends: where it stood when the run began, when the run moved it to bring a
+ * control into view; null when it is where it began, or when no run began. Each root remembers its scroll and restores
+ * it on arrival (`TabBar`), so a scroll the tips left behind became the root's: Now opened with its header off the top.
+ * Pure.
+ */
+export function scrollAfterRun(start: number | null, now: number): number | null {
+  return start !== null && Math.abs(now - start) >= 1 ? start : null;
 }
 
 export type Box = { x: number; y: number; width: number; height: number };

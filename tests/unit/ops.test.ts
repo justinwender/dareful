@@ -246,7 +246,7 @@ test("every answer the model API gives is kept as its usage, the health check's 
   assert.ok(client.includes("noteIfOutOfCredit(err);"), "an answer saying the credit is gone is noted");
   const channels = read("src/lib/notify/channels.ts");
   assert.equal(channels.match(/\.emails\.send\(/g)?.length, 2);
-  assert.ok(channels.includes('await recordSend("email", "ops", !error);') && channels.includes('await recordSend("email", "notice", !error);'), "both emails counted");
+  assert.ok(channels.includes('await recordSend("email", "ops", !error);') && channels.includes('await (deps.record ?? recordSend)("email", "notice", !error);'), "both emails counted (a notice's by the recorder a test may stand in for)");
   assert.ok(channels.includes('await recordSend("push", kind, went);'), "every push tried counted");
   assert.ok(read("src/lib/chain/relayer.ts").includes("fetchFn: countedFetch"), "the relayer's calls are weighed");
   assert.equal(refusalDue(undefined, 0), true);

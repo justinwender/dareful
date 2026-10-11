@@ -11,7 +11,7 @@ const H = "tests/http/submission.test.ts";
 
 const T_U_CODE = "a code typed by someone signed out opens its question as its link does, its misses counted by the network it came from (section 0)";
 const T_U_PASS = "pass the phone is offered to the question's asker before their call and to anyone in, while it is open, and to nobody else (section 0)";
-const T_U_TIPS = "a market's and a game page's tips wait until the person is in and then run as one sequence, however many show (section 0)";
+const T_U_TIPS = "a market's and a game page's tips wait until the person is in and then run as one sequence, however many show (section 0; every screen's since pre-submission bug fixes 1)";
 const T_U_CARD = "the public numbers' picture says each number with its noun and when it was read, and says so when it could not read them (section 2)";
 const T_U_LAUNCH = "since launch begins on the day the build began, so nothing a test keeps long before it is counted (section 2)";
 const T_U_CACHE = "the public numbers are read at most once every five minutes however often the picture is asked for, and sent so every proxy asks again (section 2)";
@@ -76,7 +76,7 @@ export const submission: Mutant[] = [
   { id: "row-loses-the-pass-button", file: ROW, find: "          {pass ? (", nth: 1, replace: "          {false ? (", suite: H, kills: [T_H_ROW, T_H_GAME], why: "the row is given pass the phone and draws no button for it" },
 
   // Section 0: a market's tips wait until the person is in, then run as one.
-  { id: "market-tips-three-at-a-time", file: TIPS, find: "  return runsAsOne(opts.key) ? out : out.slice(0, TIPS_AT_MOST);", replace: "  return out.slice(0, TIPS_AT_MOST);", suite: U, kills: [T_U_TIPS], why: "a market's tips stop at three, the owner's \"3 of 3\" and the rest on the next market" },
+  { id: "market-tips-three-at-a-time", file: TIPS, find: "if (!seen.includes(t.key) && onScreen(t.target)) out.push(t);\n  return out;", replace: "if (!seen.includes(t.key) && onScreen(t.target)) out.push(t);\n  return out.slice(0, 3);", suite: U, kills: [T_U_TIPS], why: "three a visit again: a market's pass the phone and photos wait for another market" },
   { id: "tips-ignore-the-wait", file: FIRST_TIPS, find: "      if (icon?.dataset.tipsWait !== undefined) return;\n", replace: "", suite: U, kills: [T_U_TIPS], why: "a market's tips show before the person is in, without pass the phone and photos" },
   { id: "tips-never-look-again", file: FIRST_TIPS, find: 'attributeFilter: ["data-info-icon", "data-tips-wait"]', replace: 'attributeFilter: ["data-info-icon"]', suite: U, kills: [T_U_TIPS], why: "the tips wait for good: getting in never brings the look round again" },
   { id: "tip-ringed-half-off-the-screen", file: FIRST_TIPS, find: "      const el = tip ? shown(tip.target, !broughtIn.current.has(tip.key)) : null;", replace: "      const el = tip ? shown(tip.target) : null;", suite: U, kills: [T_U_TIPS], why: "a control half under the screen's foot is ringed where it is, the ring and its card cut off" },

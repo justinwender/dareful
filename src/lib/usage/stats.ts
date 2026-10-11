@@ -139,10 +139,12 @@ function inWindow(col: string, w: StatWindow) {
 /**
  * Events in the window by counted actors: an excluded account's or an excluded guest's events never count, nor a guest's
  * who came in through an excluded account's link (a test's or a walk's guest, the submission round), and any other
- * guest's or a device's always do.
+ * guest's or a device's always do. An event with nobody on it (the tick's close, expiry or settlement, or a link opened
+ * on a phone with no account) counts only for a question a counted person asked or is in (pre-submission bug fixes 1): a
+ * test account's question, a judge's included, never moves a number, however it ends or whoever opens its link first.
  */
 function events(name: string, w: StatWindow, extra = sql``) {
-  return sql`select count(*)::int as n from usage_events e left join users u on u.id = e.user_id left join participant_claims c on c.id = e.claim_id left join users cu on cu.id = c.created_by where e.name = ${name} and coalesce(u.excluded_from_counts, false) = false and coalesce(c.excluded_from_counts, false) = false and coalesce(cu.excluded_from_counts, false) = false and ${inWindow("e.at", w)} ${extra}`;
+  return sql`select count(*)::int as n from usage_events e left join users u on u.id = e.user_id left join participant_claims c on c.id = e.claim_id left join users cu on cu.id = c.created_by left join dares ed on ed.id = e.dare_id left join users ea on ea.id = ed.creator_id where e.name = ${name} and coalesce(u.excluded_from_counts, false) = false and coalesce(c.excluded_from_counts, false) = false and coalesce(cu.excluded_from_counts, false) = false and (e.user_id is not null or e.claim_id is not null or e.dare_id is null or not coalesce(ea.excluded_from_counts, false) or ${COUNTED_IN("e.dare_id")} >= 1) and ${inWindow("e.at", w)} ${extra}`;
 }
 
 /** Counted accounts made in the window. */

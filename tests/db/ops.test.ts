@@ -169,7 +169,9 @@ test("the runway reads the database as Supabase counts it, the bucket's objects,
   await recordSend("push", "notice", true, at(10));
   // Earlier this month and inside the cleanup's window, so a run never leaves it for the next one to count.
   await recordSend("email", "notice", true, new Date("1999-06-14T10:00:00Z"));
-  assert.deepEqual(await emailsSent(at(23)), { today: 2, month: 3 }, "emails that went, today and this month, UTC; a failed one and a push are not Resend's");
+  // After the reading's moment, also inside the window: a reading for a moment never counts what came after it.
+  await recordSend("email", "notice", true, new Date("1999-06-16T10:00:00Z"));
+  assert.deepEqual(await emailsSent(at(23)), { today: 2, month: 3 }, "emails that went, today and this month, UTC, up to the moment read; a failed one and a push are not Resend's");
 });
 
 test("the RPC's units are added up by day and method, a write at a time, and the month is summed (section 1)", async () => {

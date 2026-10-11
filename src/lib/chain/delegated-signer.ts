@@ -222,8 +222,9 @@ export function delegationPrivateKeyPem(): string | null {
 /** The owner hears of a governance wallet being delegated, once per event: it should be impossible, so it is worth a line even in the sandbox. */
 export type Alert = (subject: string, text: string) => Promise<unknown>;
 async function opsAlert(subject: string, text: string): Promise<unknown> {
-  const { sendOps } = await import("@/lib/notify/channels");
-  return sendOps(subject, text);
+  // Kept until a channel carries it (pre-submission bug fixes 1): email was off in production, and this went nowhere.
+  const { tellOrKeep } = await import("@/lib/ops/untold");
+  return tellOrKeep(subject, text);
 }
 
 export async function receiveDelegationEvent(rawBody: string, signature: string | null | undefined, deps: { decrypt?: Decrypt; now?: Date; secret?: string; privateKeyPem?: string | null; alert?: Alert } = {}): Promise<Received> {
