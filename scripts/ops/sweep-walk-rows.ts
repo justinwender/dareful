@@ -21,6 +21,7 @@
  *   npx tsx --env-file=.env.local scripts/ops/sweep-walk-rows.ts --apply submission  removes the submission round's
  *   npx tsx --env-file=.env.local scripts/ops/sweep-walk-rows.ts --apply ops         removes the ops round's
  *   npx tsx --env-file=.env.local scripts/ops/sweep-walk-rows.ts --apply bug-fixes-1 removes pre-submission bug fixes 1's
+ *   npx tsx --env-file=.env.local scripts/ops/sweep-walk-rows.ts --apply bug-fixes-2 removes pre-submission bug fixes 2's
  *
  * The ops round's walk (the crossword question two guests joined from the simulators, with its drawn photo and the
  * round covered for one of them, the penalty-kick argument one of them took the other side of, and the Bears at
@@ -29,6 +30,11 @@
  * Pre-submission bug fixes 1's walk was made by its own accounts, the nine Dynamic test sign-ins the owner made for it
  * (left out of every count), not the development account: a batch names its askers, the development account unless it
  * says otherwise. The accounts themselves stay, as the owner's.
+ *
+ * Pre-submission bug fixes 2's walk was four of those accounts handing the phone over on questions they asked, to four
+ * stand-in friends made for it as the tests make theirs (`tmp-check:`, left out of every count, with a delegation sealed
+ * under a throwaway key so nothing reaches Dynamic): the friends are among the batch's accounts here, so the questions'
+ * sets they joined go with the questions, and `npm run test:sweep` removes the friends themselves after.
  */
 import { and, eq, gte, inArray, notInArray, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
@@ -43,7 +49,7 @@ const DEV = "7fc0ce05-885a-457b-8a5e-6e8768379cd2";
  * the moment from which a row carrying nothing but one of the walk's devices is the walk's too (a private tab's device
  * is the walk's own: it is made fresh and thrown away).
  */
-type Batch = { key: "touch-ups" | "final" | "submission" | "ops" | "bug-fixes-1"; name: string; dares: string[]; ownUnits?: string[]; devicesSince?: string; devices?: string[]; askers?: string[] };
+type Batch = { key: "touch-ups" | "final" | "submission" | "ops" | "bug-fixes-1" | "bug-fixes-2"; name: string; dares: string[]; ownUnits?: string[]; devicesSince?: string; devices?: string[]; askers?: string[] };
 
 /** Pre-submission bug fixes 1's nine test sign-ins (Avery, Blake, Casey, Drew, Ellis, Finn, Greer, Harper, Iris), whose walk it was. */
 const BUG_FIXES_1_ACCOUNTS = [
@@ -91,6 +97,13 @@ const BATCHES: Batch[] = [
     dares: ["c88a9968-7953-43f8-afd1-ae4e203d758e", "b5f35525-60bf-4c80-a347-ea4972dbc65b"],
     devicesSince: "2026-10-10T14:00:00Z",
     askers: BUG_FIXES_1_ACCOUNTS,
+  },
+  {
+    key: "bug-fixes-2",
+    name: "pre-submission bug fixes 2's walk (2026-10-12, evening, Eastern): Ellis's snow question, Greer's ferry question, Finn's bakery question and Iris's band question, each handed over to a stand-in friend",
+    dares: ["31645986-b862-4806-8439-08dbce5d61e8", "7230556f-9af6-4ece-ab51-51215367136b", "7ebda1b7-f951-4dc3-9c8b-b26ed1476a44", "66ceb3cd-5c4b-4504-8dd6-80a7b2441f2f"],
+    // The four stand-in friends (Wren, Rowan, Sage, Tamsin), temporary accounts the test sweep removes once their questions are gone.
+    askers: [...BUG_FIXES_1_ACCOUNTS, "ac6055f1-c2fe-4aed-886b-e8c73cf8e957", "2e015663-d14d-49e8-9444-2a45b3abc8fc", "0dc82ff5-8913-488e-951c-72bf1cca7ec5", "694a92be-222b-42d4-b840-3e32cc872a08"],
   },
 ];
 

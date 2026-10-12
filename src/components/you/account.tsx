@@ -77,7 +77,7 @@ export function AccountRows({ name, units, ownUnits, marks, unitsCaption, marksC
           Your units
         </h2>
         {units.length === 0 && ownUnits.length > 0 ? null : units.length === 0 ? (
-          <p className="text-body-sm text-ink-2">Nothing yet. A unit is whatever a cover or a question runs on: a beer, a coffee, a next time, dollars.</p>
+          <p className="text-body-sm text-ink-2">Nothing yet. A unit is whatever a cover or a question runs on: a beer, a coffee, a round, dollars.</p>
         ) : (
           <ul className="flex flex-col" data-your-units="">
             {units.map((u) => (

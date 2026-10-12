@@ -33,7 +33,7 @@ export default async function YouPage() {
   const [you, passThePhone, drafts] = await Promise.all([youFor(me), passThePhoneStatus(me.id), unsentDrafts(me.id)]);
   const hue = hueFor(me.id);
   const nothing = you.calibration.binary.resolved === 0 && you.calibration.numeric.resolved === 0 && you.calibration.pickOne.resolved === 0 && you.asked.counted.length === 0;
-  const unitsCaption = you.units.length === 0 ? "Beers, coffees, a next time, dollars: whatever a cover or a question runs on" : you.units.map((u) => (u.monetary ? "dollars" : glyphKeyOf(u) ? u.pluralLabel : quotedUnit(u.label))).join(", ").replace(/^./, (c) => c.toUpperCase());
+  const unitsCaption = you.units.length === 0 ? "Beers, coffees, rounds, dollars: whatever a cover or a question runs on" : you.units.map((u) => (u.monetary ? "dollars" : glyphKeyOf(u) ? u.pluralLabel : quotedUnit(u.label))).join(", ").replace(/^./, (c) => c.toUpperCase());
   const marksCaption = you.marks.length === 0 ? "The emoji and stickers you put on questions" : "The emoji you’ve used, most recent first, and your stickers";
   return (
     <Screen root>

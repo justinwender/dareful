@@ -20,7 +20,7 @@
     "test:sweep": "tsx --env-file=.env.local tests/db/sweep.ts",
     "abi:export": "node scripts/export-abis.mjs",
     "indexer:codegen": "node scripts/with-env.mjs --cwd indexer npm run codegen",
-    "indexer:dev": "node scripts/with-env.mjs --cwd indexer npm run dev",
+    "indexer:dev": "node scripts/dev/indexer-on-loopback.mjs",
     "indexer:test": "node scripts/with-env.mjs --cwd indexer npm test",
     "indexer:stop": "node scripts/with-env.mjs --cwd indexer npx envio stop"
   },

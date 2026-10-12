@@ -11,7 +11,7 @@ import { eq } from "drizzle-orm";
 import { currentUser } from "@/lib/auth/session";
 import { denominationById } from "@/lib/ledger/denominations";
 import { askerLine } from "@/lib/ledger/groups";
-import { canHandOver, handOverCandidates } from "@/lib/ledger/hand-over";
+import { canHandOver, handOverPicks } from "@/lib/ledger/hand-over";
 import { answersOf, marketById, positionsOf, stateOf, unitOf } from "@/lib/ledger/markets";
 import { participantsOf, pidOf } from "@/lib/ledger/participants";
 import { farOffThreshold } from "@/lib/ledger/scale";
@@ -45,7 +45,7 @@ export default async function HandOverPage({ params }: { params: Promise<{ id: s
   const clock = await viewerClock();
   const now = new Date(clock.now);
   const ink = inkOf(d);
-  const [positions, group, denomination, fromTemplate, candidates] = await Promise.all([positionsOf(d.id), db.select({ name: schema.groups.name }).from(schema.groups).where(eq(schema.groups.id, d.groupId)).limit(1).then((r) => r[0] ?? null), denominationById(d.denomId), templateOfMarket(d), handOverCandidates(d.id, me.id)]);
+  const [positions, group, denomination, fromTemplate, picks] = await Promise.all([positionsOf(d.id), db.select({ name: schema.groups.name }).from(schema.groups).where(eq(schema.groups.id, d.groupId)).limit(1).then((r) => r[0] ?? null), denominationById(d.denomId), templateOfMarket(d), handOverPicks(d.id, me.id)]);
   if (!denomination) notFound();
   const answers = answersOf(d);
   const person = await participantsOf([d.creatorId, ...(answers?.flatMap((a) => (a.userId ? [a.userId] : [])) ?? [])]);
@@ -112,7 +112,8 @@ export default async function HandOverPage({ params }: { params: Promise<{ id: s
           question={d.title}
           mark={markRefOf(d)}
           url={`${appUrl}/m/${d.id}`}
-          candidates={candidates.map((c) => ({ ...c, hue: hueFor(c.id) }))}
+          candidates={picks.candidates.map((c) => ({ ...c, hue: hueFor(c.id) }))}
+          nobody={picks.empty}
           changeUntil={until}
           blind={d.revealMode === "blind"}
           band={band}

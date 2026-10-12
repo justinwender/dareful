@@ -345,9 +345,36 @@ export async function bindClaimToUser(claimId: string, userId: string, via: Even
     const pending = [...asDebtor, ...asCreditor].filter((p) => p.status === "pending").map((p) => p.id);
     return { claimId: claim.id, proposalIds: pending };
   });
+  if (bound) await seatBoundEntries(bound.claimId, userId);
   // Counted once it is bound (the field round): a guest who became an account, by which door.
   if (bound && bound.claimId) await record("claim_bound", { via }, { userId, claimId: bound.claimId });
   return bound;
+}
+
+/**
+ * A guest who got into a question asked between two people has no seat in its group, since a pair's set takes nobody
+ * new (`enterAsGhost`), so the account the guest became would be refused as not one of its people when it keeps or
+ * changes the entry, and would be shown the question's invitation instead of the question. Wherever the account now
+ * holds an entry it has no seat for, it joins exactly as opening the question's link would (`joinGroupOf`; pre-submission
+ * bug fixes 2). Every other seat the guest had became the account's inside the bind.
+ */
+async function seatBoundEntries(claimId: string, userId: string): Promise<void> {
+  const held = await db
+    .select({ dareId: schema.darePositions.dareId })
+    .from(schema.darePositions)
+    .where(and(eq(schema.darePositions.userId, userId), eq(schema.darePositions.boundClaim, claimId), isNull(schema.darePositions.dismissedAt)));
+  if (held.length === 0) return;
+  // Loaded here, not at the top, so the routes that read a guest's claims (the usage door, every browser's reports) never load the markets and the chain.
+  const [{ joinGroupOf }, { marketById }] = await Promise.all([import("./rooms"), import("./markets")]);
+  for (const { dareId } of held) {
+    try {
+      // A seat the account already has stands as it is: joining changes nothing for someone in the group.
+      const d = await marketById(dareId);
+      if (d) await joinGroupOf(d, userId);
+    } catch (err) {
+      console.error("a bound entry's question did not seat its account; opening its link still will", { dareId, why: err instanceof Error ? err.message : String(err) });
+    }
+  }
 }
 
 /**

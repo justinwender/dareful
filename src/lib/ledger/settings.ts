@@ -18,8 +18,10 @@ export function nameProblem(raw: string): string | null {
 
 export const OWN_UNITS_MAX = 6;
 export const OWN_UNIT_MAX = 24;
-/** The units every question already offers (Dollars, beers, rounds, a next time) and coffee, which a set's units carry. */
-const ALREADY = new Set(["dollar", "dollars", "$", "beer", "beers", "round", "rounds", "next time", "a next time", "next times", "coffee", "coffees"]);
+/** The units every question already offers (dollars, beers, rounds) and coffee, which a set's units carry. */
+const ALREADY = new Set(["dollar", "dollars", "$", "beer", "beers", "round", "rounds", "coffee", "coffees"]);
+/** A next time left the stakes in the final round (section 6), so it is no unit of your own either, and is never told it is offered (pre-submission bug fixes 2). */
+const NOT_A_STAKE = new Set(["next time", "a next time", "next times"]);
 
 /**
  * A stake unit of your own from what was typed: a word or two, lower case, letters only, never one every question
@@ -31,6 +33,7 @@ export function ownUnitOf(raw: string, have: readonly string[]): { label: string
   if (label.length === 0) return { error: "Say what it is, like pizza." };
   if (label.length > OWN_UNIT_MAX) return { error: "A unit is a word or two." };
   if (!/^[\p{L}][\p{L}' -]*$/u.test(label)) return { error: "Letters only, like pizza." };
+  if (NOT_A_STAKE.has(label)) return { error: "A next time can’t be a stake." };
   if (ALREADY.has(label)) return { error: "That one’s offered already." };
   if (have.some((h) => h.toLowerCase() === label)) return { error: "You have that one." };
   if (have.length >= OWN_UNITS_MAX) return { error: "That’s six. Take one off first." };

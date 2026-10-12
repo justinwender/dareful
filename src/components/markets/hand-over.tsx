@@ -1,16 +1,19 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
+import { Button, buttonWait, useWaitStage } from "@/components/ui/button";
 import { enterFromHostAction } from "@/lib/actions/hand-over";
+import { attempt } from "@/lib/ui/attempt";
+import { WORDS } from "@/lib/ui/errors";
+import type { NobodyToPick } from "@/lib/ledger/hand-over";
 import type { MarkRef } from "@/lib/ui/mark";
+import { GIVE_UP_MS } from "@/lib/ui/motion";
 import { CodeSheet } from "./whos-in-row";
-import { PinStep, WhosJoining, type HandOverCandidate } from "./hand-over-steps";
+import { PinStep, pinAfterKey, WhosJoining, type HandOverCandidate } from "./hand-over-steps";
 import { MarketStage, type MarketStageProps } from "./market-stage";
 
 export type { HandOverCandidate } from "./hand-over-steps";
-const PIN_LENGTH = 4;
 /** Three wrong tries end the handoff, and nothing is said to anyone (3.45, frame 5); the PIN's own lock counts further, on the server. */
 const TRIES = 3;
 
@@ -24,45 +27,68 @@ const TRIES = 3;
  * phone, and "Hand it back to Sam". Back never returns to her entry: the screen replaces itself in history, and
  * nothing of hers is kept here.
  */
-export function HandOver({ dareId, host, question, mark, url, candidates, changeUntil, blind, band, details, stage }: { dareId: string; host: { name: string }; question: string; mark: MarkRef | null; url: string; candidates: HandOverCandidate[]; /** "until 10:40pm": how long the friend's entry is theirs to change or withdraw from their own phone. */ changeUntil: string; blind: boolean; band: ReactNode; details: ReactNode; /** The entry stage's props, as the link page draws it; rendered here in host mode, so the pick lands in this component and nothing is sent from the stage. */ stage: Omit<MarketStageProps, "host"> }) {
+export function HandOver({ dareId, host, question, mark, url, candidates, nobody, changeUntil, blind, band, details, stage }: { dareId: string; host: { name: string }; question: string; mark: MarkRef | null; url: string; candidates: HandOverCandidate[]; /** Why nobody can be picked, when nobody can (`handOverPicks`). */ nobody: NobodyToPick | null; /** "until 10:40pm": how long the friend's entry is theirs to change or withdraw from their own phone. */ changeUntil: string; blind: boolean; band: ReactNode; details: ReactNode; /** The entry stage's props, as the link page draws it; rendered here in host mode, so the pick lands in this component and nothing is sent from the stage. */ stage: Omit<MarketStageProps, "host"> }) {
   const router = useRouter();
   const [picked, setPicked] = useState<{ position: { stake: string; value: string }; words: string } | null>(null);
   const [friend, setFriend] = useState<HandOverCandidate | null>(null);
   const [pin, setPin] = useState("");
   const [wrong, setWrong] = useState(0);
-  const [sending, setSending] = useState(false);
+  /** A PIN on its way, from the fourth digit until the answer; or the screen leaving after a lock. Either way the keypad takes nothing. */
+  const [holding, setHolding] = useState<"sent" | "leaving" | null>(null);
+  // Read in the tap itself, so a tap landing in the same frame as the fourth digit sends nothing a second time.
+  const held = useRef(false);
+  // The try whose answer is shown: one given up on after a minute answers into nothing, unless it got the friend in.
+  const tryNo = useRef(0);
   const [problem, setProblem] = useState<string | null>(null);
   const [done, setDone] = useState<HandOverCandidate | null>(null);
   const [codeOpen, setCodeOpen] = useState(false);
+  // The PIN holds as every tap does (5.2): the tally past a third of a second, its line at three, and words of our own at a minute.
+  const wait = buttonWait(useWaitStage(holding === "sent"), "write");
 
   // The handoff ends by leaving, with nothing of the friend's kept: the host's own screen takes this one's place in history.
   const leave = () => router.replace(`/m/${dareId}`);
 
-  /** The fourth digit sends (3.45, frame 5): the friend's PIN and the entry go up together, and the dots clear either way. */
+  /**
+   * The fourth digit sends (3.45, frame 5): the friend's PIN and the entry go up together, the keypad holds with the tally
+   * until the answer (pre-submission bug fixes 2: three to five seconds of nothing read as frozen), and the answer takes
+   * its place: in, a wrong PIN, a lock or a refusal, with the dots cleared.
+   */
   async function send(full: string) {
-    if (!friend || !picked || sending) return;
-    setSending(true);
+    if (!friend || !picked || held.current) return;
+    held.current = true;
+    const mine = ++tryNo.current;
+    setHolding("sent");
     setProblem(null);
-    try {
-      const r = await enterFromHostAction(dareId, picked.position, friend.id, full);
+    // No answer in a minute is a failure on our end, said in its words, and the keypad takes the PIN again (5.2, as every tap's).
+    const giveUp = setTimeout(() => {
+      if (tryNo.current !== mine) return;
+      tryNo.current += 1;
+      held.current = false;
+      setHolding(null);
       setPin("");
-      if (r.ok) return setDone(friend);
-      if ("locked" in r) {
-        setProblem("That PIN is paused for an hour.");
-        setTimeout(leave, 1200);
-        return;
-      }
-      if ("wrong" in r) {
-        const n = wrong + 1;
-        setWrong(n);
-        // Three wrong tries end the handoff, and nothing is said to anyone.
-        if (n >= TRIES) return leave();
-        return setProblem("That’s not it.");
-      }
-      setProblem(r.error);
-    } finally {
-      setSending(false);
+      setProblem(WORDS.server);
+    }, GIVE_UP_MS);
+    const r = await attempt(() => enterFromHostAction(dareId, picked.position, friend.id, full));
+    clearTimeout(giveUp);
+    if ("ok" in r && r.ok) return setDone(friend);
+    if (tryNo.current !== mine) return;
+    setPin("");
+    if ("locked" in r) {
+      setHolding("leaving");
+      setProblem("That PIN is paused for an hour.");
+      setTimeout(leave, 1200);
+      return;
     }
+    held.current = false;
+    setHolding(null);
+    if ("wrong" in r) {
+      const n = wrong + 1;
+      setWrong(n);
+      // Three wrong tries end the handoff, and nothing is said to anyone.
+      if (n >= TRIES) return leave();
+      return setProblem("That’s not it.");
+    }
+    setProblem(r.error);
   }
 
   if (done) {
@@ -99,12 +125,12 @@ export function HandOver({ dareId, host, question, mark, url, candidates, change
       {!picked ? (
         <MarketStage {...stage} host={{ onPicked: (position, words) => setPicked({ position, words }) }} />
       ) : !friend ? (
-        <WhosJoining candidates={candidates} words={picked.words} onPick={setFriend} onScan={() => setCodeOpen(true)} />
+        <WhosJoining candidates={candidates} words={picked.words} host={host.name.split(/\s+/)[0] ?? host.name} empty={nobody} onPick={setFriend} onScan={() => setCodeOpen(true)} />
       ) : (
-        <PinStep friend={friend} pin={pin} problem={problem} sending={sending} onKey={(k) => {
-          const next = k === "back" ? pin.slice(0, -1) : pin.length < PIN_LENGTH ? pin + k : pin;
-          setPin(next);
-          if (next.length === PIN_LENGTH) void send(next);
+        <PinStep friend={friend} pin={pin} problem={problem} holding={holding !== null} counting={holding === "sent" && wait.pending} line={holding === "sent" ? wait.line : null} onKey={(k) => {
+          const next = pinAfterKey(pin, k, held.current);
+          setPin(next.pin);
+          if (next.send) void send(next.pin);
         }} />
       )}
       <CodeSheet open={codeOpen} onClose={() => setCodeOpen(false)} dareId={dareId} url={url} question={question} mark={mark} />

@@ -2641,6 +2641,8 @@ rate is a separate decision, and nothing here depends on it.
 
 (Amended 2026-10-08, the touch-ups round, the smallest version of each setting. **Your name** is a row above Your units, its caption the name; it opens a sheet with the name in a field and Save, refusing what the sign-up step refuses ("Say what your friends call you."). **Your units** gains your own: each a word or two, lower case, letters only, never one every question offers, six at most, each with a way to take it off, and a field "One of your own" with Add; they stand as quoted words after a next time when you ask. **Your marks** gains the paste cell from the picker: a cutout pasted there is saved to your stickers.)
 
+(Amended 2026-10-12, pre-submission bug fixes 2. Your units names no next time, which left the stakes in the final round: "Beers, coffees, rounds, dollars: whatever a cover or a question runs on" over its sheet's "Nothing yet. A unit is whatever a cover or a question runs on: a beer, a coffee, a round, dollars.", and a next time typed as one of your own is refused at the field: "A next time can't be a stake.")
+
 ### 3.35 The ballot when a final score answers it
 
 For What's on questions a final score answers (who won, how many points, how many runs), the
@@ -3588,6 +3590,8 @@ from their own phone before the close, and cannot enter again, so the remedy is 
 The steps above are built in Round B's part 3.)
 
 (Amended 2026-10-02, the field round, part 2, the owner's finding: the two PIN fields on You are numeric text fields drawn masked (`.pin-field`, `-webkit-text-security: disc`) with autocomplete off, never password fields, so the phone offers digits and neither jumps to its password manager nor moves the focus on its own; the second field takes focus once the first holds four digits, and never again.)
+
+(Amended 2026-10-12, pre-submission bug fixes 2, the owner's finding and addition. A right PIN joins the friend to the question's group as opening its link would, before anything is signed, on a market and a game page alike; a wrong PIN joins nobody. The PIN step holds as a tapped control does (5.2): from the fourth digit no key does anything, past a third of a second the four dots keep their place unseen with the tally counting in their middle and the keypad at 0.88, at three seconds "Still going. This one takes a few seconds." under them, and whatever comes back takes their place with the dots cleared. "Who's joining?" with nobody to pick says which it is: "Everyone this was sent to is in already." only when every one of the host's people is in; otherwise "None of Sam's people have pass the phone on yet." and "A friend turns it on from their own phone: You, then Pass the phone.")
 
 (Amended 2026-10-09, the submission round, the owner's finding. Step 1's "once they're in" also lets in the asker before their own call: the fourth icon shows, while the market is open, for anyone in and for its asker, so an asker who hands the phone round the table before making a call still has it (`passThePhoneShows`, the same rule on the server's side in `canHandOver`). On a game page the open question's card has drawn no row of its own since the touch-ups round gave the page one share row, and the fourth icon lived only in a card's row; the page's row now carries it for the same question its code is for, by the same rule.)
 

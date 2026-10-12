@@ -17,6 +17,7 @@ import type { SignerLoad } from "@/lib/chain/delegated-signer";
 import { peopleForUser } from "./groups";
 import { enterMarket, marketById, MarketError, positionsOf, stateOf, type PositionRow } from "./markets";
 import { checkPin, delegatedSignatureFor, whoHasPassThePhone, type PinCheck } from "./pass-the-phone";
+import { joinGroupOf } from "./rooms";
 
 export type Candidate = { id: string; name: string; /** Has pass the phone on, so can be picked; the rest show at 0.45 with "Not set up for this yet". */ ready: boolean };
 
@@ -39,15 +40,26 @@ export async function canHandOver(dareId: string, hostId: string): Promise<boole
 }
 
 /**
+ * Why "Who's joining?" has nobody to pick (pre-submission bug fixes 2, the owner's finding on production): everyone the
+ * host could pick is in already, or some of the host's people aren't in and none of them has pass the phone on, which a
+ * friend can put right from their own phone. A host with nobody here yet is the second: nobody they know has it on. The
+ * list said the first whatever the reason. Pure.
+ */
+export type NobodyToPick = "all_in" | "none_on";
+export function nobodyToPick(input: { people: number; notInYet: number }): NobodyToPick {
+  return input.people > 0 && input.notInYet === 0 ? "all_in" : "none_on";
+}
+
+/**
  * "Who's joining?" (3.45, frame 4): the people the market was sent to who aren't in yet, with whether each can be
  * picked. When nobody was named, or everyone named is already in, the list falls back to the host's own people who
  * have pass the phone on (Round C, pre-approved): the PIN is the proof of identity either way, so limiting it to
  * the named people added no protection, and a question asked of "whoever I send it to" still has friends at the
- * table. Names only; nothing of anyone's answer.
+ * table. Names only; nothing of anyone's answer. An empty list comes with why (`nobodyToPick`).
  */
-export async function handOverCandidates(dareId: string, hostId: string): Promise<Candidate[]> {
+export async function handOverPicks(dareId: string, hostId: string): Promise<{ candidates: Candidate[]; empty: NobodyToPick | null }> {
   const d = await marketById(dareId);
-  if (!d) return [];
+  if (!d) return { candidates: [], empty: null };
   const [seats, positions] = await Promise.all([
     db.select({ userId: schema.groupMembers.userId }).from(schema.groupMembers).where(and(eq(schema.groupMembers.groupId, d.groupId), isNull(schema.groupMembers.leftAt))),
     positionsOf(d.id),
@@ -56,13 +68,19 @@ export async function handOverCandidates(dareId: string, hostId: string): Promis
   const named = seats.map((s) => s.userId).filter((x): x is string => x !== null && !inIds.has(x) && x !== hostId);
   if (named.length > 0) {
     const [users, ready] = await Promise.all([db.select({ id: schema.users.id, displayName: schema.users.displayName }).from(schema.users).where(inArray(schema.users.id, named)), whoHasPassThePhone(named)]);
-    return users.map((u) => ({ id: u.id, name: u.displayName, ready: ready.has(u.id) })).sort((a, b) => Number(b.ready) - Number(a.ready) || a.name.localeCompare(b.name));
+    return { candidates: users.map((u) => ({ id: u.id, name: u.displayName, ready: ready.has(u.id) })).sort((a, b) => Number(b.ready) - Number(a.ready) || a.name.localeCompare(b.name)), empty: null };
   }
   // The fallback: the host's own people, ready only, since nobody here was named and a dimmed row would name nobody's absence.
-  const mine = (await peopleForUser(hostId)).map((p) => p.user).filter((u) => !inIds.has(u.id));
-  if (mine.length === 0) return [];
-  const ready = await whoHasPassThePhone(mine.map((u) => u.id));
-  return mine.filter((u) => ready.has(u.id)).map((u) => ({ id: u.id, name: u.displayName, ready: true })).sort((a, b) => a.name.localeCompare(b.name));
+  const people = (await peopleForUser(hostId)).map((p) => p.user);
+  const mine = people.filter((u) => !inIds.has(u.id));
+  const ready = mine.length > 0 ? await whoHasPassThePhone(mine.map((u) => u.id)) : new Set<string>();
+  const candidates = mine.filter((u) => ready.has(u.id)).map((u) => ({ id: u.id, name: u.displayName, ready: true })).sort((a, b) => a.name.localeCompare(b.name));
+  return { candidates, empty: candidates.length > 0 ? null : nobodyToPick({ people: people.length, notInYet: mine.length }) };
+}
+
+/** The list alone, for the checks that need no reason. */
+export async function handOverCandidates(dareId: string, hostId: string): Promise<Candidate[]> {
+  return (await handOverPicks(dareId, hostId)).candidates;
 }
 
 export type HostedEntry = { ok: true; position: PositionRow } | { ok: false; pin: PinCheck & { ok: false } } | { ok: false; refused: string };
@@ -72,6 +90,12 @@ export type HostedEntry = { ok: true; position: PositionRow } | { ok: false; pin
  * be one of the people it was sent to, not in, with pass the phone on. The PIN is checked first, and counted
  * against the friend's lock with the host named; only a right PIN reaches the signer, whose signature is the
  * friend's delegated share over the entry the server itself built, recorded against this request.
+ *
+ * A right PIN joins the friend to the question's group first, exactly as opening its link would (`joinGroupOf`), and
+ * only then is anything signed (pre-submission bug fixes 2): a question is joined by its link or code since the
+ * games-and-the-reveal round, and the friend picked from the host's own people (the fallback above) has opened neither,
+ * so the entry and the terms over the question's own group were both refused as not a member's, on every question asked
+ * without naming anyone since October 7. A wrong PIN joins nobody.
  */
 export async function enterFromHost(input: { dareId: string; hostId: string; friendId: string; stake: bigint; value: bigint; pin: string; request: string; deps?: { load?: SignerLoad } }): Promise<HostedEntry> {
   if (input.hostId === input.friendId) return { ok: false, refused: "That's you. Use your own entry." };
@@ -81,6 +105,13 @@ export async function enterFromHost(input: { dareId: string; hostId: string; fri
   if (!candidate.ready) return { ok: false, refused: "They haven't set up pass the phone on their own phone yet." };
   const pin = await checkPin(input.friendId, input.pin, { hostUserId: input.hostId });
   if (!pin.ok) return { ok: false, pin };
+  try {
+    const d = await marketById(input.dareId);
+    if (!d) return { ok: false, refused: "That one doesn't exist." };
+    await joinGroupOf(d, input.friendId);
+  } catch (err) {
+    return { ok: false, refused: err instanceof MarketError ? err.message : "That didn't go through. Try again." };
+  }
   let signature: Hex | null;
   try {
     signature = await delegatedSignatureFor(input.friendId, { action: "enter", dareId: input.dareId, stake: input.stake.toString(), value: input.value.toString() }, input.request, input.deps ?? {});
@@ -88,8 +119,16 @@ export async function enterFromHost(input: { dareId: string; hostId: string; fri
     return { ok: false, refused: err instanceof MarketError ? err.message : "That didn't go through. Try again." };
   }
   if (!signature) return { ok: false, refused: "Their setup isn't reachable right now. They can get in from their own phone." };
-  // The terms over the question's own group, beside the entry, as every entry carries them (the games-and-the-reveal round). Without it the entry still stands.
-  const question = await delegatedSignatureFor(input.friendId, { action: "create_question", dareId: input.dareId }, input.request, input.deps ?? {}).catch(() => null);
+  // The terms over the question's own group, beside the entry, as every entry carries them (the games-and-the-reveal round). Without them the entry
+  // still stands, but never quietly again: their refusal hid that the friend was never a member (pre-submission bug fixes 2).
+  let question: Hex | null = null;
+  let why = "the signer answered nothing";
+  try {
+    question = await delegatedSignatureFor(input.friendId, { action: "create_question", dareId: input.dareId }, input.request, input.deps ?? {});
+  } catch (err) {
+    why = err instanceof Error ? err.message : String(err);
+  }
+  if (!question) console.error("a hand-over's entry went in without the terms over the question's own group", { dareId: input.dareId, why });
   try {
     const position = await enterMarket({ dareId: input.dareId, userId: input.friendId, stake: input.stake, value: input.value, signature, enteredBy: input.hostId, questionSignature: question });
     return { ok: true, position };
