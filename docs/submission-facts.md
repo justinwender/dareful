@@ -3,7 +3,7 @@
 For the two videos and the submission form. The videos, both unlisted:
 
 - The demo: https://youtu.be/hXyMfEGSLRw
-- The pitch: https://youtu.be/rpPnKCN5eQM
+- The pitch: https://youtu.be/LCKwCI77st0
 
 The README's numbers keep counting (its picture is drawn by the app as it runs); the numbers here are fixed, read from production at the moment given beside them. Nothing here names a real person but the owner.
 

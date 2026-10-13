@@ -4,7 +4,7 @@ Dareful is a social prediction app for friend groups: someone asks the group a q
 
 Two things draw people in. The first is questions only your friends can answer, like "can John run a faster 40-yard dash than the slowest guy at the NFL combine?" or "will Chris finish the entire pizza?", which no sportsbook or prediction market will ever list. The second is live events made social: on a sportsbook every bet is against the house, and on Dareful the same game is a bet between friends, for a few dollars or a beer, whether they're watching together or from different cities. The stakes are the group's own (dollars, beers, rounds, or a unit the group makes up), every question keeps a record of the event in its photos and stickers, and for now friends settle up however they already do while Dareful keeps the record ([Path forward](#path-forward) says why).
 
-Live at [dareful.app](https://dareful.app) · [The demo](https://youtu.be/hXyMfEGSLRw) · [The pitch](https://youtu.be/rpPnKCN5eQM) · [Try it yourself](#try-it-yourself)
+Live at [dareful.app](https://dareful.app) · [The demo](https://youtu.be/hXyMfEGSLRw) · [The pitch](https://youtu.be/LCKwCI77st0) · [Try it yourself](#try-it-yourself)
 
 ## Where each criterion is answered
 

@@ -1744,7 +1744,7 @@ Found in the code and left for the owner, since this batch changes no code: the 
 
 The owner's brief, one commit, docs only: the app's code is unchanged. Checked in the development browser, on Monad's public RPC and in the database (docs/testing.md session 48). No migration.
 
-The videos. The demo is https://youtu.be/hXyMfEGSLRw and the pitch https://youtu.be/rpPnKCN5eQM, both unlisted (their pages read on October 12: "Dareful Demo" and "Dareful Pitch"), in the README's top line and at the head of the facts sheet in place of the earlier demo and the pitch's placeholder. Their labels carry no running time, by the owner's ruling; the facts sheet puts each on a line of its own, so it copies into the form whole.
+The videos. The demo is https://youtu.be/hXyMfEGSLRw and the pitch https://youtu.be/LCKwCI77st0, both unlisted (their pages read on October 12: "Dareful Demo" and "Dareful Pitch"), in the README's top line and at the head of the facts sheet in place of the earlier demo and the pitch's placeholder. Their labels carry no running time, by the owner's ruling; the facts sheet puts each on a line of its own, so it copies into the form whole.
 
 The criteria at the top of the README keep each criterion and its links to its sections, without the percentages, by the owner's ruling.
 
