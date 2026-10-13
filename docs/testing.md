@@ -1018,6 +1018,29 @@ The four positions under a thumb on a phone (the snap, the full position scrolli
 
 The page as the owner (the variable is not set on the local server during the suites); the two buttons on a phone; the chain's counts against the indexer in production. Items 171 to 173 and 184.
 
+## Session 49: pre-submission docs changes, against production, the chain and GitHub
+
+When: October 13, 2026, midday, Eastern. Who: nobody signed in. Production's database, the hosted indexer production reads, the chain on Monad's public RPC and GitHub's public API were read; the one write was a run of production's own canary. The local indexer had been stopped, so every script that reads an indexer read the hosted one.
+
+### Exercised
+
+- The canary (section 2). `.env.local`'s mnemonic gives the four wallets stored for the canary's two accounts (yes for each, nothing else printed). Production's canary, called once at 16:38 UTC with the scheduler's bearer (the next scheduled run was 18:17 UTC), passed all nine steps in 7.6 seconds: accounts, the write-up on the model API, the ask, both calls, the question on the chain, the votes, the settlement, the hosted indexer showing it settled, and its rows removed. Before it, `canary_runs` held twelve failures in a row, every scheduled run from October 10 at 18:17 UTC to October 13 at 12:17 UTC, each at its first step.
+- The numbers (section 1): `scripts/ops/stats-now.ts` at 16:21 UTC, `scripts/ops/chain-tests.ts` and `scripts/ops/real-use-txs.ts` at 16:22 UTC, `rpc_calls`, the runway's readings in `ops_alerts`, and Vercel's deployments. Every real-use transaction the tables link was decoded from the chain with the app's ABIs for its method id and events.
+- The outside watch: its 30 runs since October 10 from GitHub's public API, all passing, and the sign-in job's steps on each of its eight six-hourly runs, each skipped at "Skipped until the secrets exist".
+- The form's claims against the code, in four read-only passes (Dynamic, Envio, Alchemy, and the notices with the rest), and production's browser code read for the RPC it names.
+- Every link in `README.md`, `docs/submission-facts.md` and `indexer/README.md`: every anchor and named path resolves; twelve external links answered 200; seventeen Monadscan transactions (the two canary ones among them) each showed Success with its hash, and the three addresses loaded.
+- Both contracts verified on Monadscan (the owner's addition): `forge verify-contract` through Etherscan's API, with Sourcify's settings and the deployment's constructor arguments, answered "Pass - Verified" for both. After it, the questions contract's method column read Create, Resolve and Arbitrate, DarefulLedger's Create Group, Add Member, Create Denom and Confirm, and the demo's two transactions decoded to `create(...)` and `resolve(...)`. Forge's own resubmission to Sourcify answered that both were already verified.
+
+### What broke
+
+1. The canary failed from October 10 to 13: `CANARY_MNEMONIC` had been pasted into Vercel with its quotes. Fixed by the owner; passed on its first run after.
+2. Claims in the documents that production or the code contradicts, corrected: the watch's every fifteen minutes (21 scheduled runs in three days); "none yet" of a person added to a set (one on October 11); one real-use argument on the chain (three); the demo's question as not real use (one of its accounts is counted); the notices' one exception (five clock notices besides the reminder); every call signed (a guest's isn't); every ruling sealed (only when facts settle it); three values read straight from the contracts (more). The form's sentences that the same findings touch are in the report to the owner.
+3. Left for a later batch, being code: the app's own explorer links, the deadline notice at a game's kickoff, a void-rule question opening and expiring in one tick, an argument a guest closed notifying nobody, the warning's and the backstop's two rules for agreeing, and a setting pasted with its quotes, which the app should name as that.
+
+### Not verified here
+
+The README as GitHub shows it after the push, and the submission form itself. Item 304.
+
 ## Session 48: pre-submission bug fixes 4, in the development browser, on the chain and against the model API
 
 When: October 12, 2026, late evening, Eastern. Who: nobody signed in. The development browser opened public pages only (Monadscan, MonadVision, YouTube); the chain was read on Monad's public RPC with the app's own ABIs and Foundry's `cast`; the model API was called from this machine with the owner's new key, which was never printed.
@@ -1873,3 +1896,4 @@ Items the simulator covered are marked in place above (61, 66, 93, 98, 101, 113,
 301. Voting from your own phone after joining on someone else's (47): a friend with pass the phone on gets into your question on your phone; close it and tap "It's happened" on yours. Expect the friend's notice that it has happened on their own phone, their vote made there, and no way to vote for them on yours.
 302. ~~The README on GitHub (47)~~: superseded on 2026-10-12 by item 303 (both videos linked, and the explorer links on Monadscan).
 303. The README on GitHub (48): after the push, open the repository. Expect "The demo" and "The pitch" each to play its video; the criteria with no percentages; one sentence under the four screenshots of "A sticker from a photo"; and every explorer link (step 8 of "Try it yourself", "Check it yourself"'s `create` and `resolve`, the contracts and the real-use table) to open on Monadscan with its transaction or address, the Dares contract's transactions showing `create` as 0x93918133 and `resolve` as 0xa8f993a1.
+304. The README on GitHub (49): after the push, read it as a judge would. Expect the opening to say "a social prediction app for friend groups" with the two things that draw people in, the wallets named the everyday wallet and the voting wallet, every explorer link opening on Monadscan, which names each transaction's function (the demo's Create and Resolve), the traction numbers dated 12:21pm Eastern on October 13, and the canary's pass at 12:38pm Eastern on October 13.
