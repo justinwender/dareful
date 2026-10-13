@@ -1018,6 +1018,33 @@ The four positions under a thumb on a phone (the snap, the full position scrolli
 
 The page as the owner (the variable is not set on the local server during the suites); the two buttons on a phone; the chain's counts against the indexer in production. Items 171 to 173 and 184.
 
+## Session 47: pre-submission bug fixes 3, on the iOS 26 simulator
+
+When: October 12, 2026, evening, Eastern. Who: Finn, one of the owner's test sign-ins (left out of every count), in an installed copy on the iOS 26 simulator in light appearance, against the development server on 127.0.0.1, with the game page's photo (Brian Giesen's, CC BY 2.0) added to that simulator's library. Next's development badge was hidden from its own preferences for the session, which changes nothing in the project. The walk's question, its photo and both stickers, with their six stored files, are swept (`scripts/ops/sweep-walk-rows.ts --apply bug-fixes-3`). Touches through the simulator tool.
+
+### Exercised
+
+- A sticker from a question's photo (section 2). Finn asked "Will we make it to Lambeau before kickoff?" (the write-up suggested a football and asked which reading was meant), made his call (72%, $5), stepped through the market's tips, and was asked "Want a heads-up?" at once, which he declined. He added the game's photo from the library, opened it full screen and tapped "Make a sticker": the cutter was ready in 0.8 seconds (the model kept from an earlier session), a tap on the lower chest of the Packers' number 12 cut in 0.4 seconds with the next lineman's leg and cleat in it, and "Keep it" stored it. A second sticker, from a tap on his number, cut in 0.3 seconds and came out clean. "Ask something with it" opened the question step wearing it, the room in ochre (the stored ink of both stickers); a typed "Who's first…" switched the market type to Pick one by the question's shape, and a typed "Will we beat the traffic to Lambeau?" back to Yes or no. Nothing was sent. The cut was also pinched in on the simulator to show its dashed outline.
+- The README's notice step (section 1): the "Want a heads-up?" sheet shows in the installed copy as soon as the first call is in.
+- The sports database file (section 0), five times in a row, twice: with only the backstop moved onto the test's own clock, run three failed on the finals poll; with every read, warning and backstop on it, five runs passed from 00:44 to 00:52 UTC.
+- The 54 mutants bug fixes 2 left (section 0), all killed.
+
+### What broke
+
+1. The sports tests raced production's tick four ways: the backstop, the finals poll, the first-drive poll and the warning. Fixed in the tests alone: every final they see is ahead of the real clock, and their own reads, warnings and backstop run on a clock ahead of it.
+2. The README's demo link said two minutes; the video runs 3 minutes 51 seconds. Fixed.
+3. Two figures in the README's Mexico City paragraph did not match production. Fixed, the owner's words otherwise kept.
+4. The facts sheet's rounds table still showed pre-submission bug fixes 1 as this commit, not yet deployed. Fixed.
+5. Not a fault of the app: the first cut took in a neighbour's leg, as the model read that one tap; a tap on the number cut him alone. MediaPipe's startup line counts as a console error in Next's development overlay, and nowhere a person sees.
+
+### The suites and the audit
+
+Every suite after the audit, on Monad's public RPC: 566 unit tests, 260 database tests one file at a time and 131 against the running server (one skipped: it runs only against a deployed app), 957 in all, every one passing on October 12. The type check, the linter and the type budget pass. The audit: the 54 mutants bug fixes 2 left and this batch's 17 (every mutant on a file it changed or naming a test it changed), 71 in all, every one killed (docs/decisions.md 2026-10-12, pre-submission bug fixes 3). The relayer went from 43.80 MON to 34.75 MON. /stats before and after: every number the same, read at 00:20 and again at 01:19 UTC on October 13, so nothing this batch did moved a count.
+
+### Not verified here
+
+A notice arriving by email and by push, which needs the owner's own email or Google on the first account; a friend who joined on someone else's phone voting from their own; and the README as GitHub shows it. Items 299 to 302.
+
 ## Session 46: pre-submission bug fixes 2, on the iOS 26 and iOS 27 simulators
 
 When: October 12, 2026, evening, Eastern. Who: four of the accounts the owner made for session 45 with Dynamic's test sign-ins, left out of every count: Ellis in the iOS 26 Brave stand-in, Finn in an iOS 26 installed copy, Greer in the iOS 27 stand-in and Iris in an iOS 27 installed copy, against the development server on 127.0.0.1; and four stand-in friends made for the walk as the tests make theirs (Wren, Rowan, Sage and Tamsin: temporary accounts left out of every count, each one of a host's people, with pass the phone set up by a PIN and a delegation sealed under a throwaway key, so a right PIN reaches the signer, the signer answers nothing, and nothing reaches Dynamic). Safari on both simulators had no session left; signing in is the owner's. The walk's rows are swept (`scripts/ops/sweep-walk-rows.ts --apply bug-fixes-2`, then `npm run test:sweep` for the friends). Touches through the simulator tool; the PIN's wait read from screenshots taken every 0.4 seconds around the fourth digit.
@@ -1819,3 +1846,7 @@ Items the simulator covered are marked in place above (61, 66, 93, 98, 101, 113,
 296. Pass the phone on a game page (46): on a game question asked without naming anyone, from the game page's share row, as 293 through the PIN. Expect the friend in, and the game page on their own phone with the question as theirs.
 297. The same in Safari and the added app (46): 293's PIN step in Safari and in the app added to the home screen. Expect the tally until the answer in both.
 298. Your units (46): open You. Expect "Beers, coffees, rounds, dollars: whatever a cover or a question runs on" under Your units (or your own units), and "next time" typed under "One of your own" refused with "A next time can't be a stake."
+299. A notice by email (47): sign in to one account with your own email or Google and to a second with a `+dynamic_test` address. Ask something from the first and make your call; get in from the second; close it from the first ("Close it with 2"); then from the second tap "It's happened" and call it before the first does. Expect three emails from hello@dareful.app, for the second getting in, saying it has happened, and calling it, and none for the close.
+300. A notice by push (47): on the iPhone, in the app added to the home screen, as the first account, make your call on a question and answer "Want a heads-up?" with "Turn on notifications", then allow it. Then 299's three acts from the second account. Expect each as a push, and its email as well.
+301. Voting from your own phone after joining on someone else's (47): a friend with pass the phone on gets into your question on your phone; close it and tap "It's happened" on yours. Expect the friend's notice that it has happened on their own phone, their vote made there, and no way to vote for them on yours.
+302. The README on GitHub (47): open the repository. Expect the demo's link to play the video, the pitch's link to read VIDEO_PITCH_LINK until you put its address in, and the four screenshots under "A sticker from a photo".

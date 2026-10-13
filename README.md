@@ -2,7 +2,7 @@
 
 Dareful settles the small bets a friend group already makes: someone asks a question, everyone puts a number on it, and the people in it decide what happened. Each person is scored on how close they came, and what that leaves between friends goes into a ledger of records on Monad that nobody can move or sell, signed by the people it binds, with no money held anywhere.
 
-Live at [dareful.app](https://dareful.app) · [The demo, in two minutes](VIDEO_DEMO_LINK) · [How it's built](VIDEO_BUILD_LINK) · [Try it yourself](#try-it-yourself)
+Live at [dareful.app](https://dareful.app) · [The demo, in under four minutes](https://youtu.be/2IQJ2cqXhdo) · [The pitch](VIDEO_PITCH_LINK) · [Try it yourself](#try-it-yourself)
 
 ## Where each criterion is answered
 
@@ -54,7 +54,7 @@ The numbers are the owner's stats page's own, with every test account left out (
 
 The test suites run against the live testnet contracts, so most of the contracts' transactions are tests. On October 9, 2026, after the full mutation audit, real use was 2.3% of the transactions that had gone through (52 of 2,309), read from the indexer's events and whose wallets they name ([`scripts/ops/chain-tests.ts`](scripts/ops/chain-tests.ts)). Every chain number in this README counts real use only. A question with a guest in it is decided and settled off the chain, so it isn't in the chain's counts.
 
-On October 8 a friend asked a question and shared it once, in a group chat of his in Mexico City full of people I’ve never met. Seventeen different devices opened it, fifteen in the first 45 minutes, and two people joined as guests. In the chat, the friend the question was about started bargaining over its terms, and another wrote “Nmms, qué bien jala” (“no way, it works so well”). This test showed me there's still a lot of room for improvement on the friction of joining markets - it seems like there's still too much friction to get people to join a market, and potentially not enough friction for joining as a guest to persuade people into creating an account when joining their first market.
+On October 8 a friend asked a question and shared it once, in a group chat of his in Mexico City full of people I’ve never met. Sixteen different devices opened it, fourteen in the first 45 minutes, and two people joined as guests. In the chat, the friend the question was about started bargaining over its terms, and another wrote “Nmms, qué bien jala” (“no way, it works so well”). This test showed me there's still a lot of room for improvement on the friction of joining markets - it seems like there's still too much friction to get people to join a market, and potentially not enough friction for joining as a guest to persuade people into creating an account when joining their first market.
 
 ## Path Forward
 
@@ -103,7 +103,26 @@ Next I'm seeding groups where the bets already happen: my fantasy football leagu
   </tr>
 </table>
 
-The screenshots are from the iOS 26 and iOS 27 simulators and a development browser, in light appearance, on walk data with made-up names. The crossword was drawn for this README. The game page's photo is ["Packers - Bears Game"](https://www.flickr.com/photos/briangiesen/6575070991/) by Brian Giesen, licensed under [CC BY 2.0](https://creativecommons.org/licenses/by/2.0/), from a 2011 game at Lambeau Field.
+The screenshots are from the iOS 26 and iOS 27 simulators and a development browser, in light appearance, on walk data with made-up names. The crossword was drawn for this README. The game page's photo is ["Packers - Bears Game"](https://www.flickr.com/photos/briangiesen/6575070991/) by Brian Giesen, licensed under [CC BY 2.0](https://creativecommons.org/licenses/by/2.0/), from a 2011 game at Lambeau Field; the sticker below was cut from it in the app, a change to the original.
+
+### A sticker from a photo
+
+<table>
+  <tr>
+    <td width="25%"><img src="docs/readme/sticker-photo.jpg" alt="A question's photo full screen, with Make a sticker, Save and Remove under it"></td>
+    <td width="25%"><img src="docs/readme/sticker-cut.jpg" alt="The cut, pinched in: the Packers' number 12 outlined in dashed cream"></td>
+    <td width="25%"><img src="docs/readme/sticker-kept.jpg" alt="The sticker kept, with its cream edge, In your stickers, and Ask something with it"></td>
+    <td width="25%"><img src="docs/readme/sticker-ask.jpg" alt="The question step wearing the sticker as its mark"></td>
+  </tr>
+  <tr>
+    <td>A question's photo, full screen: Make a sticker.</td>
+    <td>The cut, pinched in: the Packers' number 12, tapped and outlined.</td>
+    <td>Kept, in your stickers: Ask something with it.</td>
+    <td>The next question wears it, in the colour the app measured from it.</td>
+  </tr>
+</table>
+
+A photo on one question becomes the mark on the next. Open a question's photo full screen and tap "Make a sticker", then tap what to keep. The cut is made in the browser, on the phone: Google's MediaPipe interactive segmenter loads only when the sheet opens (its runtime, about 11 MB of WebAssembly, and its model, about 6 MB, which the browser keeps after), the tap asks it for the subject at that point, and the subject takes a dashed cream outline. On the iOS 26 simulator the kept model loaded in 0.8 seconds and each cut took 0.3 to 0.4. "Keep it" uploads the cutout alone, and the server trims and squares it, bakes in a cream die-cut edge, and measures its colour from its own pixels by the rule that colours every emoji: only clearly coloured pixels count, each weighted by how colourful it is, and the heaviest hue wins. On an iPhone, a subject lifted with the phone's own Copy Subject can be pasted into the same sheet instead, which is also the way in while the model first loads or where it can't load at all. "Ask something with it" opens the question step with the sticker as its mark, and the question takes its colour: here ochre, not the green you might expect. By that rule the Packers' dark green (#203731) is barely a colour at all (its OKLCH chroma is 0.03, under the 0.04 line), and the gold of the helmet and pants (#FFB612, chroma 0.17) outweighs it. A sticker is its maker's: it reaches only them and the groups whose questions wear it ([`src/lib/ui/cut-subject.ts`](src/lib/ui/cut-subject.ts), [`src/lib/media/sticker.ts`](src/lib/media/sticker.ts), [`src/lib/media/cutout.ts`](src/lib/media/cutout.ts)).
 
 ## Try it yourself
 
@@ -121,6 +140,8 @@ This path assumes you want a binary market and quick setup (as opposed to AI hel
 8. Find it on the explorer: open [the Dares contract](https://testnet.monadvision.com/address/0xd621c7770B96d2bF94638a28A15B3636cC0a3Fa0). Its newest transactions are your question's `create`, carrying both signed entries, and its `resolve`, carrying both votes, each sent by the app's relayer. The record of what one of you owes the other is minted on [the Ledger contract](https://testnet.monadvision.com/address/0x8E200d344fA233d85b78f85aC78c3F778397F26D) inside the `resolve` transaction.
 
 To join as a guest instead, open the question's link in a private window, slide to a prediction, tap “I'm in at”, type a name, and tap “Join as”. A name is all it takes. A question with a guest in it is decided and settled off the chain, and what it leaves waits until the guest makes an account and confirms it.
+
+To see a notice arrive, which is optional: sign in to the first account with your own email or Google in step 1, since a test address is never emailed. A notice goes out when the other person does something, by push where notifications are on and by email from hello@dareful.app, each notice on every channel that takes it. When your second account gets in, the first hears “Sam is in” (with the second account's name and the question); when the second taps “It's happened” once you've closed it, that it says the question has happened; and when the second calls it before you do, that it called it. Closing the question sends nothing by itself, since the vote waits until it has happened. For push too, make the first account's call before the second gets in: once you're in on a question, the app asks once per account, “Want a heads-up?”, and “Turn on notifications” raises the browser's own prompt. On an iPhone it asks only in the app added to the home screen (Share, then Add to Home Screen, then open it from there and sign in), since Safari on an iPhone can't take a push; on Android or a desktop browser, the browser itself is enough. Your address is read from your sign-in when a notice is sent, and never stored.
 
 ## Design and craft
 
@@ -241,12 +262,14 @@ What a question costs, measured on October 9 by replaying every question counted
 Every fifteen minutes and after every deploy, a GitHub workflow outside the app fetches the health check, the home page and the numbers picture, and fails when any of them doesn't answer, a core system is down, or the health answer isn't production's own.
 
 - Production watches itself. [`/api/health`](https://dareful.app/api/health) answers every system as ok, slow or down: the database, the scheduler, the chain's node, both contracts, the relayer's gas and the indexer decide it, and the model API, email, sign-in, storage, both scoreboards, push and the two images the app draws are reported beside them. Every six hours a canary runs one real question through every system as two accounts that count for nothing, on the chain and back through the indexer, and removes it. Every resource the app could run out of has a warning line and an urgent one, and the owner gets an email and a push the moment one is crossed or a core system has been down for ten minutes, and a summary every morning.
-- The suites run against the real database and the live testnet contracts: 556 unit tests, 255 database tests and 131 tests against the running server (one of them only against a deployed app), 942 in all, every one passing on October 11; two sports tests can race production's own scheduler on the shared tables, and each passed when run again. Their rows are made for a run and removed after it, and their accounts are left out of every count.
+- The suites run against the real database and the live testnet contracts: 566 unit tests, 260 database tests and 131 tests against the running server (one of them only against a deployed app), 957 in all, every one passing on October 12. The sports tests share their tables with production's own scheduler, which acts on every game once a minute, so every final they see is ahead of the real clock and their own reads, warnings and backstop run on a clock ahead of it; their file passed five runs in a row. Their rows are made for a run and removed after it, and their accounts are left out of every count.
 - Every test has a mutant, but the one that runs only against a deployed app: a change to the code that breaks the rule the test names, which the test has to catch. The full audit runs each one alone against the live database and contract.
-- Every round was walked by hand and recorded with what broke and what changed in [`docs/testing.md`](docs/testing.md), 45 sessions in all: on the owner's phones and in signed-in development browsers, and from the QA round on also on the iOS 26 and iOS 27 simulators, in Safari, private tabs and installed copies. The checks that need a real phone are listed and numbered there.
+- Every round was walked by hand and recorded with what broke and what changed in [`docs/testing.md`](docs/testing.md), 47 sessions in all: on the owner's phones and in signed-in development browsers, and from the QA round on also on the iOS 26 and iOS 27 simulators, in Safari, private tabs and installed copies. The checks that need a real phone are listed and numbered there.
 
 | Audit | Date | Mutants | Result |
 | --- | --- | --- | --- |
+| Scoped, pre-submission bug fixes 3 | October 12 | 17: 1 unit, 16 database | All killed |
+| Scoped, pre-submission bug fixes 2 | October 12 | 149: 59 unit, 81 database, 9 http | All killed: 95 before the batch shipped for the demo, and the 54 left after |
 | Scoped, pre-submission bug fixes 1 | October 10 and 11 | 580: 230 unit, 336 database, 14 http | All killed; two first ended in the runner's timeout instead of failing, their tests bounded, both killed |
 | Scoped, the ops round | October 10 | 146: 86 unit, 47 database, 13 http | 145 killed; one survived, the http copy of an edit the database test kills, which the local server can't show until this build's scheduler is running |
 | Full, the submission round | October 9 | 1,682: 997 unit, 427 database, 258 http | 1,679 killed on the run. Three survived and twelve kills could not be vouched for, because their tests also failed on the unbroken code (below); with those tests fixed, all fifteen are killed |
@@ -263,6 +286,7 @@ The full audit ran one mutant at a time against the live contract and the produc
 - A question with a guest in it is decided and settled off the chain; what it leaves goes on the chain only as each person makes an account and confirms.
 - The test suites share the live contracts and the production database, so most of the contracts' transactions are tests (above), and the counts leave every test account out.
 - Sign-in runs on Dynamic's sandbox environment, and delegated signing for pass the phone is a sandbox feature; production use needs Dynamic's Enterprise plan. The sandbox holds 1,000 users, after which nobody new can sign in until test accounts are deleted; the app reads how many it holds and warns its owner at 700.
+- Someone who joins on a friend's phone with pass the phone says calls are in and votes from their own phone. Their vote is a signature only their own phone can make, since the wallet that votes is never delegated, so nobody can vote for them; saying calls are in from the phone they joined on is for after the hackathon.
 - The relayer alone registers people in sets. A compromised relayer could register someone who isn't real into an existing set; membership changes signed by the governance wallet are needed before mainnet. Whether Dynamic keeps each wallet's key material cryptographically apart is not proven; the server never receives the governance wallet's share.
 - There's no native app: it's a web app you can add to the home screen, and on an iPhone, notifications arrive only in the added app.
 - The indexer runs on Envio Cloud's free plan, which answers 100 queries a minute and keeps a deployment for 30 days; the app reads how many days this one has left and warns its owner a week ahead.

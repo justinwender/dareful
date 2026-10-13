@@ -1,47 +1,47 @@
 # Submission facts
 
-For the two videos and the submission form. The README's numbers keep counting (its picture is drawn by the app as it runs); the numbers here are fixed, read from production at the moment given beside them. Nothing here names a real person or a real question.
+For the two videos and the submission form. The demo: https://youtu.be/2IQJ2cqXhdo (3 minutes 51 seconds). The pitch's link is still to come. The README's numbers keep counting (its picture is drawn by the app as it runs); the numbers here are fixed, read from production at the moment given beside them. Nothing here names a real person or a real question.
 
 ## The numbers
 
-Read from production at 10:07pm Eastern on October 9, 2026 (02:07 UTC on October 10), after this round's walk was swept, by `scripts/ops/stats-now.ts`, which runs /stats's own queries. Accounts, guests, questions asked, settled and played, came by a link then asked, sets with two or more questions, clean resolutions, photos and stickers, and the two channel numbers since launch come from the ledger's own tables and reach back to launch; the rest are counted from the events table, which began on October 2, when the counting shipped. The README's picture leads with questions played, its split, and the groups that came back; it keeps counting after this moment.
+Read from production at 9:19pm Eastern on October 12, 2026 (01:19 UTC on October 13), after pre-submission bug fixes 3's walk was swept and its suites had run, by `scripts/ops/stats-now.ts`, which runs /stats's own queries. Accounts, guests, questions asked, settled and played, came by a link then asked, sets with two or more questions, clean resolutions, photos and stickers, and the two channel numbers since launch come from the ledger's own tables and reach back to launch; the rest are counted from the events table, which began on October 2, when the counting shipped. The README's picture leads with questions played, its split, and the groups that came back; it keeps counting after this moment.
 
 | Number | Since launch | Last 7 days | What it counts |
 | --- | --- | --- | --- |
-| Accounts | 15 | 5 | Accounts made in the window, excluded ones left out. |
-| Guests | 9 | 5 | People who first joined a question in the window with a name and no account, on a question someone counted asked; a guest who has since made an account counts as that account, and excluded guests are left out. |
-| Active people | 12 | 12 | Distinct accounts with any counted event in the window. |
-| Askers | 4 | 4 | Distinct accounts that asked a question in the window. |
-| Questions asked | 44 | 20 | Questions sent in the window by counted askers, from the ledger's own table, which holds every question since the first; a question its asker called off before anyone joined is not counted (ten were, since launch). |
-| Questions settled | 14 | 5 | Questions by counted askers that ended in a decision in the window: by the vote of the people in, the tiebreaker, the final score or the app's ruling standing, "nobody can tell" included; one called off or expired is not settled. |
-| Questions played | 17 | 6 | Questions asked in the window that someone besides their asker got into: two or more in, counting counted people and guests only. |
-| Played, settled | 12 | 2 | Of the questions played in the window, those that have ended in a decision, as "Questions settled" counts one. |
-| Played, still open | 5 | 4 | Of the questions played in the window, those that have not ended yet: open, or closed and waiting on the call. |
+| Accounts | 17 | 5 | Accounts made in the window, excluded ones left out. |
+| Guests | 8 | 3 | People who first joined a question in the window with a name and no account, on a question someone counted asked; a guest who has since made an account counts as that account, and excluded guests are left out. |
+| Active people | 14 | 8 | Distinct accounts with any counted event in the window. |
+| Askers | 5 | 5 | Distinct accounts that asked a question in the window. |
+| Questions asked | 45 | 18 | Questions sent in the window by counted askers, from the ledger's own table, which holds every question since the first; a question its asker called off before anyone joined is not counted. |
+| Questions settled | 15 | 3 | Questions by counted askers that ended in a decision in the window: by the vote of the people in, the tiebreaker, the final score or the app's ruling standing, "nobody can tell" included; one called off or expired is not settled. |
+| Questions played | 18 | 5 | Questions asked in the window that someone besides their asker got into: two or more in, counting counted people and guests only. |
+| Played, settled | 13 | 2 | Of the questions played in the window, those that have ended in a decision, as "Questions settled" counts one. |
+| Played, still open | 5 | 3 | Of the questions played in the window, those that have not ended yet: open, or closed and waiting on the call. |
 | Played, ended without a decision | 0 | 0 | Of the questions played in the window, those that ended with nothing decided: nobody called it in time. |
-| Entries | 17 | 17 | Numbers put on questions in the window, by accounts and through pass the phone. |
-| Guest entries | 8 | 8 | Numbers put on questions in the window by people with no account. |
-| Reached voting | 12 | 12 | Questions closed in the window, by the asker, the time or both sides in. |
-| Settled by vote | 0 | 0 | Questions the people in them decided in the window. |
-| Settled by the tiebreaker | 1 | 1 | Questions the tiebreaker called in the window. |
-| Settled by the final score | 3 | 3 | Questions the feed's backstop settled in the window. |
-| Expired | 19 | 19 | Questions that ended with nothing decided in the window, on a question a counted person asked or is in. Recounted for this moment on October 10, when an event with nobody on it stopped counting for a test account's question: the 28 first read here held nine of the development account's own walk questions. |
-| Link opens | 71 | 71 | Links opened in the window, once per person or device per link, fetchers never; a phone with no account counts only on a question a counted person asked or is in. Recounted the same way: the 74 and 73 first read here held three opens of the development account's walk questions. |
-| Shares | 15 | 15 | Taps on share, copy, the result's share, the chalk and the relay in the window. |
-| Notices by push | 26 | 26 | Notifications that went out by push (or by both) in the window. |
-| Notices by email | 0 | 0 | Notifications that went out by email alone in the window. |
-| Notices to nobody | 51 | 51 | Notifications with no channel to send on in the window. |
-| Notices opened | 2 | 2 | Taps on a notification's link in the window, by channel. |
-| Errors shown | 65 | 65 | Problems shown on a screen in the window, by cause. |
-| People with a channel | 9 | 7 | Counted accounts a notice can reach, by a push subscription or an email sign-in: of everyone since launch, and of the people active in the window otherwise. |
-| Share with a channel | 60% | 58% | People with a channel as a percent of the same people: everyone since launch, or the people active in the window. |
+| Entries | 25 | 20 | Numbers put on questions in the window, by accounts and through pass the phone. |
+| Guest entries | 8 | 6 | Numbers put on questions in the window by people with no account. |
+| Reached voting | 14 | 10 | Questions closed in the window, by the asker, the time or both sides in. |
+| Settled by vote | 4 | 4 | Questions the people in them decided in the window. |
+| Settled by the tiebreaker | 1 | 0 | Questions the tiebreaker called in the window. |
+| Settled by the final score | 3 | 1 | Questions the feed's backstop settled in the window. |
+| Expired | 19 | 9 | Questions that ended with nothing decided in the window, on a question a counted person asked or is in. |
+| Link opens | 82 | 62 | Links opened in the window, once per person or device per link, fetchers never; a phone with no account counts only on a question a counted person asked or is in. |
+| Shares | 24 | 20 | Taps on share, copy, the result's share, the chalk and the relay in the window. |
+| Notices by push | 34 | 17 | Notifications that went out by push (or by both) in the window. |
+| Notices by email | 3 | 3 | Notifications that went out by email alone in the window. |
+| Notices to nobody | 53 | 5 | Notifications with no channel to send on in the window. |
+| Notices opened | 2 | 0 | Taps on a notification's link in the window, by channel. |
+| Errors shown | 90 | 89 | Problems shown on a screen in the window, by cause. |
+| People with a channel | 10 | 3 | Counted accounts a notice can reach, by a push subscription or an email sign-in: of everyone since launch, and of the people active in the window otherwise. |
+| Share with a channel | 59% | 38% | People with a channel as a percent of the same people: everyone since launch, or the people active in the window. |
 | Came by a link, then asked | 5 | 2 | Counted accounts whose first question was asked in the window and who were already in a question someone else asked before it: they arrived through a friend's question and went on to ask their own. |
 | Sets with two or more questions (the groups that came back) | 3 | 0 | Sets of people in which two or more questions were asked in the window by counted askers; a game's questions count once, and a question called off does not count. |
-| Clean resolutions | 71% | 80% | Of the counted askers' questions two or more people were in that ended in the window by a vote, the tiebreaker or the final score, the percent that ended with an answer, as the profile counts it: a void by vote or tiebreaker counts against it, and an expiry or the final score's own void is in neither number. |
-| Photos and stickers added | 12 | 1 | Photos put on a question or a settlement, and stickers made, in the window by counted accounts. |
+| Clean resolutions | 73% | 100% | Of the counted askers' questions two or more people were in that ended in the window by a vote, the tiebreaker or the final score, the percent that ended with an answer, as the profile counts it: a void by vote or tiebreaker counts against it, and an expiry or the final score's own void is in neither number. |
+| Photos and stickers added | 16 | 5 | Photos put on a question or a settlement, and stickers made, in the window by counted accounts. |
 
 "Since launch" is from midnight Eastern on September 13, 2026, the day the build began; the first question came on the 19th. Every count leaves out the owner's test accounts, the development account, the seed's accounts, the canary's two accounts and every account and guest a test made. The daily snapshots the stats page keeps carry the same definitions: every day already taken was brought in line on October 9 (`scripts/ops/snapshot-people.ts`).
 
-On Monad, from real use, at the same moment: 11 obligations, 12 questions, 10 people and 12 sets, and no question in a group of its own. These count only what counted people did: the questions on the chain with a counted account in them, and the counted accounts' own wallets, the obligations on either side of them and the sets they're registered in. A question with a guest in it is decided and settled off the chain and is not in them.
+On Monad, from real use, at the same moment: 20 obligations, 17 questions, 12 people and 16 sets, and no question in a group of its own. These count only what counted people did: the questions on the chain with a counted account in them, and the counted accounts' own wallets, the obligations on either side of them and the sets they're registered in. A question with a guest in it is decided and settled off the chain and is not in them.
 
 The test suites run against the live contracts, so most of the contracts' transactions are tests. On October 9, 2026, after the audit (19:17 UTC), 2,309 transactions had gone through: 52 real use (2.3%), 34 testing by hand on the excluded accounts (1.5%), 105 the seed script's (4.5%) and 2,118 the suites' and the audits' (91.7%), read from the indexer's events and whose wallets they name (`scripts/ops/chain-tests.ts`).
 
@@ -77,7 +77,7 @@ Each is the newest from real use when read on October 9 (`scripts/ops/real-use-t
 
 ## Where each sponsor lives in the code
 
-Dynamic: two embedded wallets per person and the sign-in sheet in `src/components/auth/` (`wallet-bootstrap.tsx` makes the wallets, `sign-in-sheet.tsx` and `account-step.tsx` sign in, `governance-denied.ts` marks the governance wallet denied for delegation); Monad registered in code in `src/lib/dynamic/networks.ts` and `src/components/providers.tsx`; wallets counted from the login token in `src/lib/auth/login.ts`; delegated signing for pass the phone in `src/lib/chain/delegated-signer.ts`, its webhook in `src/app/api/delegation/route.ts`, and pass the phone itself in `src/lib/ledger/pass-the-phone.ts` and `src/lib/ledger/hand-over.ts`.
+Dynamic: two embedded wallets per person and the sign-in sheet in `src/components/auth/` (`wallet-bootstrap.tsx` makes the wallets, `sign-in-sheet.tsx` and `account-step.tsx` sign in, `governance-denied.ts` marks the governance wallet denied for delegation); Monad registered in code in `src/lib/dynamic/networks.ts` and `src/components/providers.tsx`; wallets counted from the login token in `src/lib/auth/login.ts`; delegated signing for pass the phone in `src/lib/chain/delegated-signer.ts`, its webhook in `src/app/api/delegation/route.ts`, and pass the phone itself in `src/lib/ledger/pass-the-phone.ts` and `src/lib/ledger/hand-over.ts`, where a right PIN joins the friend to the question's group before their own share signs (since pre-submission bug fixes 2).
 
 Envio: the indexer in `indexer/` (`config.yaml`, `schema.graphql`, `src/handlers`), hosted on Envio Cloud (deployment `ad29726`, caught up to the chain's head on September 19, and its redeploy `81dc636`, the same indexer, caught up on October 10 at 18:26 UTC and checked with `verify-envio`; the free plan deletes a deployment after 30 days, so the redeploy lasts to about November 9 once the app reads it, which is the owner's switch, and the first goes around October 19); every query the app makes in `src/lib/ledger/envio.ts`; the check of every question's payments against the chain in `scripts/verify-envio.ts`; the health check's lag and the runway's days left in `src/lib/ops/health.ts` and `src/lib/ops/runway.ts`.
 
@@ -124,7 +124,9 @@ Built is the commit's date; deployed is when Vercel put it in production, Easter
 
 | Round | Commit | Built | Deployed |
 | --- | --- | --- | --- |
-| Pre-submission bug fixes 1: a new account's first screens, every screen's tips in one run, email that sends, a pool that never stalls, cents, test sign-ins left out, the indexer's redeploy | this commit | October 10 | not yet deployed |
+| Pre-submission bug fixes 3: the 54 mutants bug fixes 2 left, the sports tests on their own clock, the README for submission (the demo, a notice arriving, a sticker from a photo) | this commit | October 12 | not yet deployed |
+| Pre-submission bug fixes 2: pass the phone lets a friend in (a right PIN joins them to the question's group before anything is signed; it had refused every friend on a question asked without naming anyone since October 7), the PIN's wait, why nobody can be picked, a guest's seat at sign-up | `590823d` | October 12 | October 12, 7:24pm |
+| Pre-submission bug fixes 1: a new account's first screens, every screen's tips in one run, email that sends, a pool that never stalls, cents, test sign-ins left out, the indexer's redeploy | `584d051` | October 10 and 11 | October 11, 11:25am |
 | The ops round: runway, health, the outside watch, the canary, the morning email, a market's result never a cover, a margin question past four that no longer crashes, and the README for judging | `49dd454` | October 9 and 10 | October 10, 10:22am |
 | The submission round: a code like its link, pass the phone for the asker, a market's tips in one run, the numbers in public, keys out of every error | `63e7499` | October 9 | October 9, 4:14pm |
 | The final round: the field above the keyboard, tips that show, every link, a game's photos, units of your own, marks, silence only where signed | `206d3f1` | October 9 | October 9, 7:56am |

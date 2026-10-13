@@ -38,6 +38,16 @@ const playsOf = (name: string | null): PlaySource => testPlays(async () => (name
 const lockInMirror = (id: string, set: Partial<typeof schema.dares.$inferInsert> = {}) => db.update(schema.dares).set({ lockedAt: new Date(), onchainId: Buffer.from(id.replace(/-/g, "").padEnd(64, "0"), "hex"), ...set }).where(eq(schema.dares.id, id));
 const code = async (fn: () => Promise<unknown>) => fn().then(() => null, (e: unknown) => (e instanceof markets.MarketError ? e.code : `other: ${e instanceof Error ? e.message : e}`));
 const said = async (fn: () => Promise<unknown>) => fn().then(() => null, (e: unknown) => (e instanceof Error ? e.message : String(e)));
+/**
+ * Production's tick runs once a minute on the real clock against this same database: it reads the finals and the
+ * play-by-play of every game a question rides on, marking each one read, warns before the final score acts, and takes
+ * any question whose final was seen a day before it, as it settled this file's own margin question 150 ms before the
+ * test sent its void (pre-submission bug fixes 3). So every final here is seen ahead of the real present, and the
+ * test's own reads, warnings and backstop run on a clock ahead of it by more than a read's interval: whatever the tick
+ * does meanwhile, it never finds anything here due first, and each test holds that for the backstop.
+ */
+const tickCannotReach = async (ids: string[], check: CheckSource) =>
+  assert.deepEqual(await feedBackstop(new Date(), { check, onlyIds: ids }), { settled: [], voided: [], failed: [] }, "on the real clock, the one production's tick runs on, none of them is due");
 
 let asker: Signer, friend: Signer, groupId: string, denomId: string;
 before(async () => {
@@ -134,7 +144,8 @@ test("a game in progress proposes nothing; a final puts the score's answer on ev
   }
   await db.update(schema.sportsGames).set({ startsAt: new Date(Date.now() - 4 * H), expectedEndAt: new Date(Date.now() - H), polledAt: null }).where(eq(schema.sportsGames.id, game.id));
   live[0]!.startsAt = new Date(Date.now() - 4 * H);
-  const running = await pollFinals(new Date(), { source: listing(live), onlyIds: ids });
+  // A read's interval ahead, on the test's own clock: production's tick may have read this game a moment ago.
+  const running = await pollFinals(new Date(Date.now() + POLL_EVERY_MS + 60_000), { source: listing(live), onlyIds: ids });
   assert.deepEqual([running.polled.length, running.proposed], [1, []], "read, and nothing proposed: the game is in progress whatever the scores say");
   assert.equal((await markets.marketById(ids[0]!))?.feedOutcome, null);
   // The final: the same game, complete. The recorded final of a different game stands in with this game's id, since one
@@ -166,16 +177,19 @@ test("a game in progress proposes nothing; a final puts the score's answer on ev
   assert.equal(g3.finalConfirmedAt?.getTime(), t3.getTime(), "the one confirmation re-read");
   const t4 = new Date(t3.getTime() + CONFIRM_AFTER_MS + 60_000);
   assert.deepEqual((await pollFinals(t4, { source: listing([corrected]), onlyIds: ids })).polled, [], "then it is not read again");
-  // The warning before the final score acts: once, nineteen hours after the final, and never again.
-  await db.update(schema.sportsGames).set({ finalSeenAt: new Date(Date.now() - 19 * H), finalConfirmedAt: new Date(Date.now() - 18 * H) }).where(eq(schema.sportsGames.id, game.id));
+  // The warning before the final score acts: once, nineteen hours after the final, and never again. The final two days
+  // ahead of the real clock, the test's own tick nineteen hours after it: production's tick never warns here first.
+  const finalAt = new Date(Date.now() + 48 * H);
+  const warnAt = new Date(finalAt.getTime() + 19 * H);
+  await db.update(schema.sportsGames).set({ finalSeenAt: finalAt, finalConfirmedAt: new Date(finalAt.getTime() + H) }).where(eq(schema.sportsGames.id, game.id));
   const warned: string[] = [];
   // The second source is asked once at warning time, so the warning can say which ending is coming: both agree, so the final score acts a day on.
-  const w1 = await tick(new Date(), async () => undefined, { onlyIds: ids, notifyWarning: async (id, flavour) => void warned.push(`${flavour}:${id}`), check: checkOf({ home: corrected.homeScore!, away: corrected.awayScore! }) });
+  const w1 = await tick(warnAt, async () => undefined, { onlyIds: ids, notifyWarning: async (id, flavour) => void warned.push(`${flavour}:${id}`), check: checkOf({ home: corrected.homeScore!, away: corrected.awayScore! }) });
   assert.deepEqual(w1.warned.map((w) => w.flavour), ["score", "score", "score"], "the final score's warning, on each question the score decides");
   assert.deepEqual(w1.arbitrated, [], "the tiebreaker everyone agreed to is the final score, so the model is never asked");
   const gw = (await db.select().from(schema.sportsGames).where(eq(schema.sportsGames.id, game.id)))[0]!;
   assert.deepEqual([gw.checkHomeScore, gw.checkedAt !== null], [corrected.homeScore, true], "the second source's answer kept on the row for the backstop");
-  const w2 = await tick(new Date(), async () => undefined, { onlyIds: ids, notifyWarning: async (id, flavour) => void warned.push(`${flavour}:${id}`), check: checkOf({ home: corrected.homeScore!, away: corrected.awayScore! }) });
+  const w2 = await tick(warnAt, async () => undefined, { onlyIds: ids, notifyWarning: async (id, flavour) => void warned.push(`${flavour}:${id}`), check: checkOf({ home: corrected.homeScore!, away: corrected.awayScore! }) });
   assert.deepEqual([w2.warned, warned.length], [[], 3], "never a second");
 });
 
@@ -202,15 +216,18 @@ test("the backstop on the chain: both sources agreeing settles a day on and coun
   assert.deepEqual(await toArbitrate(new Date(Date.now() + 72 * H), inArray(schema.dares.id, Object.values(made).map((d) => d.id)), 3), [], "the final score's questions never take the tiebreaker's places, however long they wait");
   assert.equal(await code(() => arbitrateMarket(made.total!.id, asker.user.id)), "wrong_state", "the final score is the tiebreaker everyone agreed to");
   const final = { ...recorded("espn-nfl-final", "nfl")[0]!, sourceId: one[0]!.sourceId, home: one[0]!.home, away: one[0]!.away };
-  const seen = new Date(Date.now() - AGREE_AFTER_MS - H);
+  // The final is seen three hours ahead of the real clock, and every read and backstop below runs from it (`tickCannotReach`).
+  const seen = new Date(Date.now() + 3 * H);
+  const day = new Date(seen.getTime() + AGREE_AFTER_MS + H);
   await db.update(schema.sportsGames).set({ polledAt: null }).where(eq(schema.sportsGames.id, game.id));
   await pollFinals(seen, { source: listing([final]), onlyIds: Object.values(made).map((d) => d.id) });
   await db.update(schema.sportsGames).set({ finalSeenAt: seen, finalConfirmedAt: new Date(seen.getTime() + CONFIRM_AFTER_MS) }).where(eq(schema.sportsGames.id, game.id));
   const score: FinalScore = { home: final.homeScore!, away: final.awayScore! };
   const ids = (k: string) => [made[k]!.id];
+  await tickCannotReach(Object.values(made).map((d) => d.id), checkOf(score));
 
   // 1. Both sources report the same final: settled, as `feed`, counted clean, with the notice after.
-  const agree = await feedBackstop(new Date(), { check: checkOf(score), onlyIds: ids("home_wins") });
+  const agree = await feedBackstop(day, { check: checkOf(score), onlyIds: ids("home_wins") });
   assert.deepEqual([agree.settled, agree.voided, agree.failed], [ids("home_wins"), [], []], "settled on the chain");
   const won = (await markets.marketById(made.home_wins!.id))!;
   assert.deepEqual([won.resolvedBy, won.resolvedOutcome, markets.stateOf(won)], ["feed", score.home > score.away ? 1n : 0n, "resolved"]);
@@ -226,7 +243,7 @@ test("the backstop on the chain: both sources agreeing settles a day on and coun
 
   // 2. Two different finals: void, with the ruling saying why, and no toll against the asker.
   await db.update(schema.sportsGames).set({ checkHomeScore: null, checkAwayScore: null, checkedAt: null }).where(eq(schema.sportsGames.id, game.id));
-  const differ = await feedBackstop(new Date(), { check: checkOf({ home: score.home, away: score.away + 3 }), onlyIds: ids("margin") });
+  const differ = await feedBackstop(day, { check: checkOf({ home: score.home, away: score.away + 3 }), onlyIds: ids("margin") });
   assert.deepEqual([differ.settled, differ.voided, differ.failed], [[], ids("margin"), []], "voided on the chain");
   const voided = (await markets.marketById(made.margin!.id))!;
   assert.deepEqual([voided.resolvedBy, voided.resolvedOutcome, markets.stateOf(voided)], ["feed", markets.VOID_OUTCOME, "voided"]);
@@ -235,7 +252,7 @@ test("the backstop on the chain: both sources agreeing settles a day on and coun
 
   // 3. No second source: it waits at a day, and settles on the scoreboard alone three days on, its final unchanged.
   await db.update(schema.sportsGames).set({ checkHomeScore: null, checkAwayScore: null, checkedAt: null }).where(eq(schema.sportsGames.id, game.id));
-  const waits = await feedBackstop(new Date(), { check: checkOf(null), onlyIds: ids("total") });
+  const waits = await feedBackstop(day, { check: checkOf(null), onlyIds: ids("total") });
   assert.deepEqual([waits.settled, waits.voided, waits.failed], [[], [], []], "hockey, or a second source that is down or late: nothing yet");
   assert.equal(markets.stateOf((await markets.marketById(made.total!.id))!), "locked");
   const later = new Date(seen.getTime() + ALONE_AFTER_MS + 60_000);
@@ -249,9 +266,10 @@ test("the backstop on the chain: both sources agreeing settles a day on and coun
   // 4. The first drive, from the play-by-play: read once the game has it, proposed on the ballot, read again unchanged, and settled three days on, on one source.
   const drive = made.first_drive!;
   // Production's tick reads every game in the shared database once a minute, and a summary it cannot fetch (this
-  // run's made-up game) marks the game read for ten minutes; the mark is cleared here as the finals' is above.
+  // run's made-up game) marks the game read for ten minutes; the mark is cleared here as the finals' is above, and the
+  // reads run half an hour and more ahead of the real clock, past any mark the tick leaves meanwhile.
   await db.update(schema.sportsGames).set({ summaryPolledAt: null }).where(eq(schema.sportsGames.id, game.id));
-  const noPlays = await pollSummaries(new Date(), { play: playsOf("espn-nfl-summary-scheduled"), onlyIds: [drive.id] });
+  const noPlays = await pollSummaries(new Date(seen.getTime() - 150 * 60_000), { play: playsOf("espn-nfl-summary-scheduled"), onlyIds: [drive.id] });
   assert.deepEqual([noPlays.read, noPlays.proposed], [[game.id], []], "a summary with no play-by-play yet: read, nothing proposed");
   await db.update(schema.sportsGames).set({ summaryPolledAt: null }).where(eq(schema.sportsGames.id, game.id));
   const readAt = new Date(seen.getTime() - 2 * H);
@@ -292,21 +310,24 @@ test("the tick's two feed queues give places up: with one place, a question wait
   for (const m of [waiting, ready]) await db.update(schema.dares).set({ lockedAt: new Date(), resolvesBy: new Date(Date.now() - 30 * H) }).where(eq(schema.dares.id, m.d.id));
   const finalFor = (g: FeedGame): FeedGame => ({ ...recorded("espn-nfl-final", "nfl")[0]!, sourceId: g.sourceId, home: g.home, away: g.away });
   const finals = [finalFor(waiting.feed), finalFor(ready.feed)];
-  const seen = new Date(Date.now() - AGREE_AFTER_MS - 2 * H);
+  // Seen an hour ahead of the real clock, so production's tick can never reach either first (`tickCannotReach`).
+  const seen = new Date(Date.now() + H);
   await pollFinals(seen, { source: listing(finals), onlyIds: [waiting.d.id, ready.d.id] });
   await db.update(schema.sportsGames).set({ finalSeenAt: seen, finalConfirmedAt: new Date(seen.getTime() + CONFIRM_AFTER_MS) }).where(eq(schema.sportsGames.id, waiting.gameId));
   await db.update(schema.sportsGames).set({ finalSeenAt: new Date(seen.getTime() + H), finalConfirmedAt: new Date(seen.getTime() + H + CONFIRM_AFTER_MS) }).where(eq(schema.sportsGames.id, ready.gameId));
   const score: FinalScore = { home: finals[1]!.homeScore!, away: finals[1]!.awayScore! };
+  await tickCannotReach([waiting.d.id, ready.d.id], checkOf(score));
   const asked: string[] = [];
   const check: CheckSource = { name: "balldontlie", finalOf: async (q) => (asked.push(q.homeAbbr), q.homeAbbr === ready.feed.home.abbr ? score : null) };
-  const one = await feedBackstop(new Date(), { check, onlyIds: [waiting.d.id, ready.d.id], limit: 1 });
+  const one = await feedBackstop(new Date(seen.getTime() + AGREE_AFTER_MS + 2 * H), { check, onlyIds: [waiting.d.id, ready.d.id], limit: 1 });
   assert.deepEqual([one.settled, one.voided, one.failed], [[ready.d.id], [], []], "the one place goes to the question that can settle, though the waiting one is older");
   assert.deepEqual(asked, [waiting.feed.home.abbr, ready.feed.home.abbr], "read in order, the waiting one first");
   assert.equal(markets.stateOf((await markets.marketById(waiting.d.id))!), "locked", "and the waiting one still waits");
   assert.deepEqual([(await markets.marketById(ready.d.id))!.resolvedBy, (await markets.marketById(ready.d.id))!.feedEnding], ["feed", "agreed"]);
 
   // 2. The finals poll. A listing that throws leaves the result as it was and marks its games read, so they wait the usual interval and hold no place meanwhile.
-  const now = new Date();
+  // A read's interval ahead of the real clock, past any read production's tick made of this game meanwhile.
+  const now = new Date(Date.now() + POLL_EVERY_MS + 60_000);
   assert.deepEqual((await gamesToPoll(now, [down.d.id])).map((g) => g.id), [down.gameId], "due: its end is behind us and it has never been read");
   const source = `test:${RUN}`;
   const failing = { name: source, listGames: async () => { throw new Error("the scoreboard is down"); } } as unknown as ScheduleSource;
@@ -340,14 +361,15 @@ test("the backstop reads each question's own answer: a second scoreboard with th
   }
   await db.update(schema.sportsGames).set({ startsAt: new Date(Date.now() - 30 * H), expectedEndAt: new Date(Date.now() - 27 * H), polledAt: null }).where(eq(schema.sportsGames.id, game.id));
   const final = { ...recorded("espn-nfl-final", "nfl")[0]!, sourceId: one[0]!.sourceId, home: one[0]!.home, away: one[0]!.away };
-  const seen = new Date(Date.now() - AGREE_AFTER_MS - H);
+  const seen = new Date(Date.now() + H);
   const ids = [made.home_wins!.id, made.margin!.id];
   await pollFinals(seen, { source: listing([final]), onlyIds: ids });
   await db.update(schema.sportsGames).set({ finalSeenAt: seen, finalConfirmedAt: new Date(seen.getTime() + CONFIRM_AFTER_MS) }).where(eq(schema.sportsGames.id, game.id));
   // The second source has the winner right and the loser's score off by three.
   const winnerHome = final.homeScore! > final.awayScore!;
   const off: FinalScore = winnerHome ? { home: final.homeScore!, away: Math.max(0, final.awayScore! - 3) } : { home: Math.max(0, final.homeScore! - 3), away: final.awayScore! };
-  const r = await feedBackstop(new Date(), { check: checkOf(off), onlyIds: ids });
+  await tickCannotReach(ids, checkOf(off));
+  const r = await feedBackstop(new Date(seen.getTime() + AGREE_AFTER_MS + H), { check: checkOf(off), onlyIds: ids });
   assert.deepEqual([r.settled, r.voided, r.failed], [[made.home_wins!.id], [made.margin!.id], []], "who wins settles on the winner both name; the margin, answered differently, voids");
   const won = (await markets.marketById(made.home_wins!.id))!;
   assert.deepEqual([won.resolvedOutcome, won.feedEnding], [winnerHome ? 1n : 0n, "agreed"]);

@@ -22,6 +22,7 @@
  *   npx tsx --env-file=.env.local scripts/ops/sweep-walk-rows.ts --apply ops         removes the ops round's
  *   npx tsx --env-file=.env.local scripts/ops/sweep-walk-rows.ts --apply bug-fixes-1 removes pre-submission bug fixes 1's
  *   npx tsx --env-file=.env.local scripts/ops/sweep-walk-rows.ts --apply bug-fixes-2 removes pre-submission bug fixes 2's
+ *   npx tsx --env-file=.env.local scripts/ops/sweep-walk-rows.ts --apply bug-fixes-3 removes pre-submission bug fixes 3's
  *
  * The ops round's walk (the crossword question two guests joined from the simulators, with its drawn photo and the
  * round covered for one of them, the penalty-kick argument one of them took the other side of, and the Bears at
@@ -35,6 +36,10 @@
  * stand-in friends made for it as the tests make theirs (`tmp-check:`, left out of every count, with a delegation sealed
  * under a throwaway key so nothing reaches Dynamic): the friends are among the batch's accounts here, so the questions'
  * sets they joined go with the questions, and `npm run test:sweep` removes the friends themselves after.
+ *
+ * Pre-submission bug fixes 3's walk was one of those accounts making a sticker from a question's photo for the README:
+ * the question with its photo, and the two stickers cut from it (`stickers`), each a row of its own with two stored
+ * files, removed with the question. A sticker a question or a unit outside the batch still wears is never removed.
  */
 import { and, eq, gte, inArray, notInArray, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
@@ -49,7 +54,7 @@ const DEV = "7fc0ce05-885a-457b-8a5e-6e8768379cd2";
  * the moment from which a row carrying nothing but one of the walk's devices is the walk's too (a private tab's device
  * is the walk's own: it is made fresh and thrown away).
  */
-type Batch = { key: "touch-ups" | "final" | "submission" | "ops" | "bug-fixes-1" | "bug-fixes-2"; name: string; dares: string[]; ownUnits?: string[]; devicesSince?: string; devices?: string[]; askers?: string[] };
+type Batch = { key: "touch-ups" | "final" | "submission" | "ops" | "bug-fixes-1" | "bug-fixes-2" | "bug-fixes-3"; name: string; dares: string[]; ownUnits?: string[]; devicesSince?: string; devices?: string[]; askers?: string[]; stickers?: string[] };
 
 /** Pre-submission bug fixes 1's nine test sign-ins (Avery, Blake, Casey, Drew, Ellis, Finn, Greer, Harper, Iris), whose walk it was. */
 const BUG_FIXES_1_ACCOUNTS = [
@@ -105,6 +110,13 @@ const BATCHES: Batch[] = [
     // The four stand-in friends (Wren, Rowan, Sage, Tamsin), temporary accounts the test sweep removes once their questions are gone.
     askers: [...BUG_FIXES_1_ACCOUNTS, "ac6055f1-c2fe-4aed-886b-e8c73cf8e957", "2e015663-d14d-49e8-9444-2a45b3abc8fc", "0dc82ff5-8913-488e-951c-72bf1cca7ec5", "694a92be-222b-42d4-b840-3e32cc872a08"],
   },
+  {
+    key: "bug-fixes-3",
+    name: "pre-submission bug fixes 3's walk (2026-10-12, evening, Eastern): Finn's Lambeau question with the game's photo, and the two stickers cut from it",
+    dares: ["c43f02fc-78a8-4c54-9c4c-5ff3858c2eaa"],
+    askers: BUG_FIXES_1_ACCOUNTS,
+    stickers: ["7fa0abae-2c50-4ac6-89b9-19eb4449b8c3", "e4a78741-7784-4f54-879d-e0d9c822011f"],
+  },
 ];
 
 type Db = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -144,7 +156,15 @@ async function plan(tx: Db, b: Batch) {
   const ownRows = ids.length ? (await tx.select({ id: schema.publicQuestions.id }).from(schema.publicQuestions).where(or(...ids.map((id) => eq(schema.publicQuestions.key, `own:${id}`))))).map((r) => r.id) : [];
   // The photos' stored files, removed once the rows are gone (the frame and the square, `src/lib/media`).
   const photos = ids.length ? await tx.select({ id: schema.media.id }).from(schema.media).where(inArray(schema.media.dareId, ids)) : [];
-  const objects = photos.flatMap((m) => [frameKey(m.id), thumbKey(m.id)]);
+  // The stickers the walk cut, the walk's own accounts', worn by nothing outside the batch, with their two stored files each.
+  const stickers = b.stickers?.length ? await tx.select({ id: schema.pictureMarks.id, ownerId: schema.pictureMarks.ownerId, sourceKey: schema.pictureMarks.sourceKey, stampKey: schema.pictureMarks.stampKey }).from(schema.pictureMarks).where(inArray(schema.pictureMarks.id, b.stickers)) : [];
+  for (const m of stickers) {
+    if (!askers.includes(m.ownerId)) throw new Error(`sticker ${m.id} is not the walk's own; nothing is removed`);
+    const [worn] = await tx.select({ n: sql<number>`count(*)::int` }).from(D).where(and(eq(D.markValue, m.id), sql`${D.markKind} in ('sticker', 'image')`, ids.length ? notInArray(D.id, ids) : undefined));
+    const [unit] = await tx.select({ n: sql<number>`count(*)::int` }).from(schema.denominations).where(and(eq(schema.denominations.markValue, m.id), eq(schema.denominations.markKind, "image")));
+    if ((worn?.n ?? 0) > 0 || (unit?.n ?? 0) > 0) throw new Error(`sticker ${m.id} is still worn; nothing is removed`);
+  }
+  const objects = [...photos.flatMap((m) => [frameKey(m.id), thumbKey(m.id)]), ...stickers.flatMap((m) => [m.sourceKey, m.stampKey])];
   // The rows a walk's private tabs left with nothing on them but their device: an error shown, a game's link opened.
   const U = schema.usageEvents;
   let deviceRows: string[] = [];
@@ -165,11 +185,11 @@ async function plan(tx: Db, b: Batch) {
           .where(and(inArray(U.deviceId, devices), sql`${U.dareId} is null`, sql`${U.claimId} is null`, sql`${U.userId} is null`, gte(U.at, new Date(b.devicesSince))))
       ).map((r) => r.id);
   }
-  return { rows, ids, claims, groups, ownRows, guestProposals: guestProposals.map((r) => r.id), objects, deviceRows };
+  return { rows, ids, claims, groups, ownRows, guestProposals: guestProposals.map((r) => r.id), objects, deviceRows, stickers: stickers.map((m) => m.id) };
 }
 
 async function remove(tx: Db, p: Awaited<ReturnType<typeof plan>>) {
-  const { ids, claims, groups, ownRows, guestProposals, deviceRows } = p;
+  const { ids, claims, groups, ownRows, guestProposals, deviceRows, stickers } = p;
   if (ids.length) {
     await tx.delete(schema.notificationLog).where(inArray(schema.notificationLog.dareId, ids));
     await tx.delete(schema.roomCodes).where(inArray(schema.roomCodes.dareId, ids));
@@ -188,6 +208,7 @@ async function remove(tx: Db, p: Awaited<ReturnType<typeof plan>>) {
     await tx.delete(schema.dares).where(inArray(schema.dares.id, ids));
   }
   if (ownRows.length) await tx.delete(schema.publicQuestions).where(inArray(schema.publicQuestions.id, ownRows));
+  if (stickers.length) await tx.delete(schema.pictureMarks).where(inArray(schema.pictureMarks.id, stickers));
   if (guestProposals.length) await tx.delete(schema.obligationProposals).where(inArray(schema.obligationProposals.id, guestProposals));
   if (deviceRows.length) await tx.delete(schema.usageEvents).where(inArray(schema.usageEvents.id, deviceRows));
   if (claims.length) {
@@ -215,7 +236,7 @@ async function main() {
     console.log(`${b.name}:`);
     for (const r of p.rows) console.log(`  question ${r.id.slice(0, 8)} "${r.title}"`);
     console.log(
-      `  ${p.claims.length} guest(s), ${p.guestProposals.length} proposal(s) with them, ${p.groups.length} set(s), ${p.ownRows.length} own question row(s), ${p.objects.length} stored photo file(s), ${p.deviceRows.length} device-only usage row(s)${b.ownUnits ? `, and the unit(s) ${b.ownUnits.join(", ")} on the development account` : ""}`,
+      `  ${p.claims.length} guest(s), ${p.guestProposals.length} proposal(s) with them, ${p.groups.length} set(s), ${p.ownRows.length} own question row(s), ${p.stickers.length} sticker(s), ${p.objects.length} stored photo and sticker file(s), ${p.deviceRows.length} device-only usage row(s)${b.ownUnits ? `, and the unit(s) ${b.ownUnits.join(", ")} on the development account` : ""}`,
     );
     if (which !== b.key) continue;
     let objects: string[] = [];
