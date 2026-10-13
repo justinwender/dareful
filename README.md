@@ -2,17 +2,17 @@
 
 Dareful settles the small bets a friend group already makes: someone asks a question, everyone puts a number on it, and the people in it decide what happened. Each person is scored on how close they came, and what that leaves between friends goes into a ledger of records on Monad that nobody can move or sell, signed by the people it binds, with no money held anywhere.
 
-Live at [dareful.app](https://dareful.app) · [The demo, in under four minutes](https://youtu.be/2IQJ2cqXhdo) · [The pitch](VIDEO_PITCH_LINK) · [Try it yourself](#try-it-yourself)
+Live at [dareful.app](https://dareful.app) · [The demo](https://youtu.be/hXyMfEGSLRw) · [The pitch](https://youtu.be/rpPnKCN5eQM) · [Try it yourself](#try-it-yourself)
 
 ## Where each criterion is answered
 
-| Criterion | Weight | Read |
-| --- | --- | --- |
-| Founder and market readiness | 25% | [Who it's for](#who-its-for), [Who's building it](#whos-building-it) |
-| Traction and path forward | 20% | [Traction](#traction), [Path forward](#path-forward), [How it grows](#how-it-grows) |
-| Technical execution | 20% | [Why the chain isn't decoration](#why-the-chain-isnt-decoration), [Check it yourself](#check-it-yourself), [How it works](#how-it-works), [Quality](#quality) |
-| Design and craft | 20% | [What it looks like](#what-it-looks-like), [Design and craft](#design-and-craft) |
-| Originality and track insight | 15% | [Why the chain isn't decoration](#why-the-chain-isnt-decoration), [Sponsors](#sponsors), [The AI](#the-ai) |
+| Criterion | Read |
+| --- | --- |
+| Founder and market readiness | [Who it's for](#who-its-for), [Who's building it](#whos-building-it) |
+| Traction and path forward | [Traction](#traction), [Path forward](#path-forward), [How it grows](#how-it-grows) |
+| Technical execution | [Why the chain isn't decoration](#why-the-chain-isnt-decoration), [Check it yourself](#check-it-yourself), [How it works](#how-it-works), [Quality](#quality) |
+| Design and craft | [What it looks like](#what-it-looks-like), [Design and craft](#design-and-craft) |
+| Originality and track insight | [Why the chain isn't decoration](#why-the-chain-isnt-decoration), [Sponsors](#sponsors), [The AI](#the-ai) |
 
 ## Who it's for
 
@@ -122,7 +122,7 @@ The screenshots are from the iOS 26 and iOS 27 simulators and a development brow
   </tr>
 </table>
 
-A photo on one question becomes the mark on the next. Open a question's photo full screen and tap "Make a sticker", then tap what to keep. The cut is made in the browser, on the phone: Google's MediaPipe interactive segmenter loads only when the sheet opens (its runtime, about 11 MB of WebAssembly, and its model, about 6 MB, which the browser keeps after), the tap asks it for the subject at that point, and the subject takes a dashed cream outline. On the iOS 26 simulator the kept model loaded in 0.8 seconds and each cut took 0.3 to 0.4. "Keep it" uploads the cutout alone, and the server trims and squares it, bakes in a cream die-cut edge, and measures its colour from its own pixels by the rule that colours every emoji: only clearly coloured pixels count, each weighted by how colourful it is, and the heaviest hue wins. On an iPhone, a subject lifted with the phone's own Copy Subject can be pasted into the same sheet instead, which is also the way in while the model first loads or where it can't load at all. "Ask something with it" opens the question step with the sticker as its mark, and the question takes its colour: here ochre, not the green you might expect. By that rule the Packers' dark green (#203731) is barely a colour at all (its OKLCH chroma is 0.03, under the 0.04 line), and the gold of the helmet and pants (#FFB612, chroma 0.17) outweighs it. A sticker is its maker's: it reaches only them and the groups whose questions wear it ([`src/lib/ui/cut-subject.ts`](src/lib/ui/cut-subject.ts), [`src/lib/media/sticker.ts`](src/lib/media/sticker.ts), [`src/lib/media/cutout.ts`](src/lib/media/cutout.ts)).
+A photo on one question becomes the mark on the next: the cut is made on the phone by Google's MediaPipe interactive segmenter, and the server adds the cream edge and measures the sticker's colour from its own pixels ([`src/lib/ui/cut-subject.ts`](src/lib/ui/cut-subject.ts), [`src/lib/media/sticker.ts`](src/lib/media/sticker.ts)).
 
 ## Try it yourself
 
@@ -137,7 +137,7 @@ This path assumes you want a binary market and quick setup (as opposed to AI hel
 5. Close it: as the asker, tap “Close it with 2”, then “Close it now”.
 6. See who said what: once it's closed, every call shows under “Who said what”, with whose it is.
 7. Settle it: tap “It's happened”, pick what happened, tap “Say it: …”, and confirm in the sheet. Do the same from the other account. When the two agree, it's settled: closest first, and who's got who.
-8. Find it on the explorer: open [the Dares contract](https://testnet.monadvision.com/address/0xd621c7770B96d2bF94638a28A15B3636cC0a3Fa0). Its newest transactions are your question's `create`, carrying both signed entries, and its `resolve`, carrying both votes, each sent by the app's relayer. The record of what one of you owes the other is minted on [the Ledger contract](https://testnet.monadvision.com/address/0x8E200d344fA233d85b78f85aC78c3F778397F26D) inside the `resolve` transaction.
+8. Find it on the explorer: open [the Dares contract](https://testnet.monadscan.com/address/0xd621c7770B96d2bF94638a28A15B3636cC0a3Fa0) on Monadscan. Among its newest transactions are your question's `create`, carrying both signed entries, and its `resolve`, carrying both votes, each sent by the app's relayer. Monadscan names a method by its id, since the contracts' source is verified on Sourcify rather than on Monadscan: `create` shows as 0x93918133 and `resolve` as 0xa8f993a1. The record of what one of you owes the other is minted on [the Ledger contract](https://testnet.monadscan.com/address/0x8E200d344fA233d85b78f85aC78c3F778397F26D) inside the `resolve` transaction.
 
 To join as a guest instead, open the question's link in a private window, slide to a prediction, tap “I'm in at”, type a name, and tap “Join as”. A name is all it takes. A question with a guest in it is decided and settled off the chain, and what it leaves waits until the guest makes an account and confirms it.
 
@@ -168,22 +168,22 @@ Everything one person controls stays off the chain: the question's words, the ph
 
 ## Check it yourself
 
-Recompute a real question from the chain. On September 26, two people put $10 each on a yes-or-no question, one at 74% and one at 88%, and it happened. Its [`create`](https://testnet.monadvision.com/tx/0xbb12705fae816c10a86b123847a1d612eceeea34befec80649755d06bb2c042d) carries both signed calls (`Entered`, stake 1000 cents, values 7400 and 8800 in basis points), and its [`resolve`](https://testnet.monadvision.com/tx/0x903db4d37f4876cb8491410069ceaeface2b48081ba385dac12fbd02add180f5) carries both votes for yes, then a `Scored` event for each person and the one record it minted:
+Recompute the question from [the demo](https://youtu.be/hXyMfEGSLRw) from the chain. On October 12, three people called a yes-or-no question, one at 90% with $20 on it and two with $10 each, at 10% and 35%, and it didn't happen. Its [`create`](https://testnet.monadscan.com/tx/0x39c3479b5379916fe2e58bde70ff956edf4ac1a8afdf30db372bd1677689c86b) carries the three signed calls (`Entered`, stakes 2000, 1000 and 1000 cents, values 9000, 1000 and 3500 in basis points), and its [`resolve`](https://testnet.monadscan.com/tx/0xf3d85015fb4f6cf1612ceac4f3d8a938420b28c5461574aa2cd44fe51d897e23) carries two votes for no, a majority of the three, then a `Scored` event for each person and the three records it minted:
 
-- Each score is the Brier rule in basis points: 10000 − (10000 − 7400)² / 10000 = 9324, and 10000 − (10000 − 8800)² / 10000 = 9856.
-- Each pair settles on the difference: the smaller stake × (9856 − 9324) / (people in − 1) / 10000 = 1000 × 532 / 1 / 10000 = 53.2, truncated toward zero to 53. So the 74% caller owes the 88% caller 53 cents, which is the record minted in the `resolve`.
+- Each score is the Brier rule in basis points, here for an answer of no: 10000 − 9000² / 10000 = 1900, 10000 − 1000² / 10000 = 9900, and 10000 − 3500² / 10000 = 8775.
+- Each pair settles on the difference: the smaller stake × (the higher score − the lower) / (people in − 1) / 10000, truncated toward zero. The 90% caller owes the 10% caller 1000 × 8000 / 2 / 10000 = 400 cents, and the 35% caller 1000 × 6875 / 2 / 10000 = 343.75, truncated to 343; the 35% caller owes the 10% caller 1000 × 1125 / 2 / 10000 = 56.25, truncated to 56. Those are the three records minted in the `resolve`: $4, $3.43 and $0.56. The 90% caller pays $7.43 in all; nobody ever pays more than their stake.
 
 The contract's scoring functions are public, so the same numbers come from the deployed contract itself (Foundry's `cast`, on Monad's public RPC):
 
 ```bash
-cast call 0xd621c7770B96d2bF94638a28A15B3636cC0a3Fa0 "scoreBinary(uint256,uint256)(uint16)" 7400 1 --rpc-url https://testnet-rpc.monad.xyz
+cast call 0xd621c7770B96d2bF94638a28A15B3636cC0a3Fa0 "scoreBinary(uint256,uint256)(uint16)" 9000 0 --rpc-url https://testnet-rpc.monad.xyz
 ```
 
 ```bash
-cast call 0xd621c7770B96d2bF94638a28A15B3636cC0a3Fa0 "pairwiseTransfer(uint256,uint256,uint16,uint16,uint256)(int256)" 1000 1000 9324 9856 2 --rpc-url https://testnet-rpc.monad.xyz
+cast call 0xd621c7770B96d2bF94638a28A15B3636cC0a3Fa0 "pairwiseTransfer(uint256,uint256,uint16,uint16,uint256)(int256)" 2000 1000 1900 8775 3 --rpc-url https://testnet-rpc.monad.xyz
 ```
 
-The first answers 9324; the second answers -53, the first person paying the second.
+The first answers 1900, the 90% caller's score; the second answers -343, the 90% caller paying the 35% caller.
 
 Check a sealed ruling. When an argument closes, "How to check it" under the app's ruling shows the seal from the terms everyone signed, the salt and the ruling's text. Save the text to `text.txt` and, from a clone of this repository after `npm install`:
 
@@ -196,6 +196,8 @@ It prints the seal: keccak-256 of the salt's 32 bytes followed by the text, whos
 Check every question at once. [`scripts/verify-envio.ts`](scripts/verify-envio.ts) recomputes every question on the chain from its entries and outcome with the contract's rule, compares each payment with the chain and with what the indexer recorded, and checks the indexer's open records between every pair of the seed's people against the contract's own balances. It reads the app's database and the chain, so it runs with the app's environment (`npm run verify:envio`); the scoring check above needs only Foundry's `cast`, and the seal check a clone of this repository.
 
 The contracts' source is verified on Sourcify, a full match for both: [DarefulDares](https://repo.sourcify.dev/10143/0xd621c7770B96d2bF94638a28A15B3636cC0a3Fa0) and [DarefulLedger](https://repo.sourcify.dev/10143/0x8E200d344fA233d85b78f85aC78c3F778397F26D), built with solc 0.8.28 from [`contracts/`](contracts).
+
+Every explorer link in this README goes to Monadscan, which shows each one. On October 12, MonadVision answered NODE_REQUEST_ERROR, with nothing loaded, for transactions the chain has: their receipts, read from Monad's public RPC, say success.
 
 ## How it works
 
@@ -213,21 +215,21 @@ What goes on the chain, and why:
 
 | Contract (Monad testnet, chain 10143) | Address |
 | --- | --- |
-| DarefulLedger: the records, sets, members and units | [0x8E200d344fA233d85b78f85aC78c3F778397F26D](https://testnet.monadvision.com/address/0x8E200d344fA233d85b78f85aC78c3F778397F26D) |
-| DarefulDares: questions, entries, votes, scores | [0xd621c7770B96d2bF94638a28A15B3636cC0a3Fa0](https://testnet.monadvision.com/address/0xd621c7770B96d2bF94638a28A15B3636cC0a3Fa0) |
-| The relayer, which pays gas and holds nothing else | [0x4534C3f805F1cc483C0b0193F754C16E0d2cdaA7](https://testnet.monadvision.com/address/0x4534C3f805F1cc483C0b0193F754C16E0d2cdaA7) |
+| DarefulLedger: the records, sets, members and units | [0x8E200d344fA233d85b78f85aC78c3F778397F26D](https://testnet.monadscan.com/address/0x8E200d344fA233d85b78f85aC78c3F778397F26D) |
+| DarefulDares: questions, entries, votes, scores | [0xd621c7770B96d2bF94638a28A15B3636cC0a3Fa0](https://testnet.monadscan.com/address/0xd621c7770B96d2bF94638a28A15B3636cC0a3Fa0) |
+| The relayer, which pays gas and holds nothing else | [0x4534C3f805F1cc483C0b0193F754C16E0d2cdaA7](https://testnet.monadscan.com/address/0x4534C3f805F1cc483C0b0193F754C16E0d2cdaA7) |
 
 One transaction from real use for each kind of event (from [`scripts/ops/real-use-txs.ts`](scripts/ops/real-use-txs.ts); a test's transaction never stands in for one):
 
 | Event | Real use |
 | --- | --- |
-| A question created with its signed entries (`DareCreated`, `Entered`) | [October 9](https://testnet.monadvision.com/tx/0x36e7c05906882392a30a35b220d7598d6c763b00d13fcf1dae918a17d889dc2a) |
-| A set registered (`GroupCreated`) | [October 9](https://testnet.monadvision.com/tx/0x16d5a6ada77e2062bc3781ef48535c053f74cb0d86adce34bc928f779c6b195a) |
-| A unit registered (`DenomCreated`) | [October 9](https://testnet.monadvision.com/tx/0xe755e4c77bf380dcaa0dcdee1e92998ad71f84cadfd394506fbfaebc32c4bf0c) |
-| Decided by the vote of the people in (`DareResolved`) | [September 26](https://testnet.monadvision.com/tx/0x903db4d37f4876cb8491410069ceaeface2b48081ba385dac12fbd02add180f5) |
-| Decided by `arbitrate`, with each score and the records it minted (`DareArbitrated`, `Scored`, `mintFromDare`) | [September 28](https://testnet.monadvision.com/tx/0x0f1add16cc1a5510ca9bb3f9a9ebe75b86301c6e8d540627bc0000b2b7c41ef4) |
-| Voided by `arbitrate` | [October 4](https://testnet.monadvision.com/tx/0x2623889754eb5a792042e6dc78d3520d57df2ea9a382b2b6f9bdf69e41f89cb3) |
-| A record confirmed by the person who owes it (`confirm`) | [October 8](https://testnet.monadvision.com/tx/0xe04a5e06afcb3b3a2d716d6f647b9f7722e8b3c788b337444aadb9a833a154f2) |
+| A question created with its signed entries (`DareCreated`, `Entered`) | [October 9](https://testnet.monadscan.com/tx/0x36e7c05906882392a30a35b220d7598d6c763b00d13fcf1dae918a17d889dc2a) |
+| A set registered (`GroupCreated`) | [October 9](https://testnet.monadscan.com/tx/0x16d5a6ada77e2062bc3781ef48535c053f74cb0d86adce34bc928f779c6b195a) |
+| A unit registered (`DenomCreated`) | [October 9](https://testnet.monadscan.com/tx/0xe755e4c77bf380dcaa0dcdee1e92998ad71f84cadfd394506fbfaebc32c4bf0c) |
+| Decided by the vote of the people in (`DareResolved`) | [September 26](https://testnet.monadscan.com/tx/0x903db4d37f4876cb8491410069ceaeface2b48081ba385dac12fbd02add180f5) |
+| Decided by `arbitrate`, with each score and the records it minted (`DareArbitrated`, `Scored`, `mintFromDare`) | [September 28](https://testnet.monadscan.com/tx/0x0f1add16cc1a5510ca9bb3f9a9ebe75b86301c6e8d540627bc0000b2b7c41ef4) |
+| Voided by `arbitrate` | [October 4](https://testnet.monadscan.com/tx/0x2623889754eb5a792042e6dc78d3520d57df2ea9a382b2b6f9bdf69e41f89cb3) |
+| A record confirmed by the person who owes it (`confirm`) | [October 8](https://testnet.monadscan.com/tx/0xe04a5e06afcb3b3a2d716d6f647b9f7722e8b3c788b337444aadb9a833a154f2) |
 
 Real use has none yet of a person added to an existing set, a void by vote, an expiry, settling or calling it even, cancelling out, or a sealed ruling (the one argument real use has on the chain was asked before rulings were sealed).
 
@@ -264,7 +266,7 @@ Every fifteen minutes and after every deploy, a GitHub workflow outside the app 
 - Production watches itself. [`/api/health`](https://dareful.app/api/health) answers every system as ok, slow or down: the database, the scheduler, the chain's node, both contracts, the relayer's gas and the indexer decide it, and the model API, email, sign-in, storage, both scoreboards, push and the two images the app draws are reported beside them. Every six hours a canary runs one real question through every system as two accounts that count for nothing, on the chain and back through the indexer, and removes it. Every resource the app could run out of has a warning line and an urgent one, and the owner gets an email and a push the moment one is crossed or a core system has been down for ten minutes, and a summary every morning.
 - The suites run against the real database and the live testnet contracts: 566 unit tests, 260 database tests and 131 tests against the running server (one of them only against a deployed app), 957 in all, every one passing on October 12. The sports tests share their tables with production's own scheduler, which acts on every game once a minute, so every final they see is ahead of the real clock and their own reads, warnings and backstop run on a clock ahead of it; their file passed five runs in a row. Their rows are made for a run and removed after it, and their accounts are left out of every count.
 - Every test has a mutant, but the one that runs only against a deployed app: a change to the code that breaks the rule the test names, which the test has to catch. The full audit runs each one alone against the live database and contract.
-- Every round was walked by hand and recorded with what broke and what changed in [`docs/testing.md`](docs/testing.md), 47 sessions in all: on the owner's phones and in signed-in development browsers, and from the QA round on also on the iOS 26 and iOS 27 simulators, in Safari, private tabs and installed copies. The checks that need a real phone are listed and numbered there.
+- Every round was walked by hand and recorded with what broke and what changed in [`docs/testing.md`](docs/testing.md), 48 sessions in all: on the owner's phones and in signed-in development browsers, and from the QA round on also on the iOS 26 and iOS 27 simulators, in Safari, private tabs and installed copies. The checks that need a real phone are listed and numbered there.
 
 | Audit | Date | Mutants | Result |
 | --- | --- | --- | --- |

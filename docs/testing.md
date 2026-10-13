@@ -1018,6 +1018,28 @@ The four positions under a thumb on a phone (the snap, the full position scrolli
 
 The page as the owner (the variable is not set on the local server during the suites); the two buttons on a phone; the chain's counts against the indexer in production. Items 171 to 173 and 184.
 
+## Session 48: pre-submission bug fixes 4, in the development browser, on the chain and against the model API
+
+When: October 12, 2026, late evening, Eastern. Who: nobody signed in. The development browser opened public pages only (Monadscan, MonadVision, YouTube); the chain was read on Monad's public RPC with the app's own ABIs and Foundry's `cast`; the model API was called from this machine with the owner's new key, which was never printed.
+
+### Exercised
+
+- The explorer links (section 4). The owner's reading: the README's `create` and `resolve` for September 26's question showed NODE_REQUEST_ERROR on MonadVision with nothing loaded. Every transaction the README and the facts sheet linked, twelve, has a receipt with status success on Monad's public RPC, so none is a hash the relayer recorded that never landed. MonadVision would not open here: its Cloudflare check held the development browser at "Just a moment..." and a plain request got 403, and that check is not one to get past. SocialScan answered 429. Monadscan opened every one. After the change, every explorer link in both files was opened again in the development browser: thirteen transactions, each "Success" with its hash and block, and the three addresses; the Dares contract's two newest transactions were the demo question's `resolve` and `create`, shown by their method ids, 0xa8f993a1 and 0x93918133.
+- The demo's question (section 4). From the transaction the owner gave, 0xf3d85015…, the indexer's record of the question it resolved gave its `create`, 0x39c3479b…. Both receipts decoded with the app's ABIs: three `Entered` (2000 cents at 9000, 1000 at 1000 and 1000 at 3500), `DareResolved` for no with two votes, `Scored` 1900, 9900 and 8775, and three records minted, 400, 343 and 56. The database's row agrees (dollars, decided by the people in, nets −743, +456 and +287, no guest), and the deployed contract's `scoreBinary(9000, 0)` answered 1900 and `pairwiseTransfer` −400, −343 and −56 for the three pairs.
+- The videos (section 1): both pages read on YouTube, "Dareful Demo" and "Dareful Pitch", both unlisted.
+- The model API's new key (the owner's note). One fresh process down every model path the app has: the health check's ping and the streamed write-up (85 pieces) on Haiku 5.5, the argument's triage and the sealed ruling on Sonnet 5.5, and the tiebreaker with its fallback on Opus 5.5, the last two with the web search tool in the request; all five answered, in 1.3 to 4.9 seconds. The development server, restarted, answered its health check with the model line ok at 10:30pm. Production, on the owner's redeploy (made at 10:22pm, live at 10:28pm): its health check's model line ran fresh at 11:20pm and answered ok in 1.4 seconds (the 11:15pm run reused 10:15pm's answer, a moment short of an hour old). That the redeploy carries the new key is read from its timing, 36 seconds after `.env.local` changed, and not from the key: Vercel's event log refused this session, and its variables were not read, since reading them can return a value.
+
+### What broke
+
+1. Explorer links that didn't load for the owner: MonadVision's, by the owner's reading; the chain has every transaction. Every link is now Monadscan's.
+2. The development server held the old key after the change: Next reloaded `.env.local`, but the app makes its model client once per process (`anthropic()`), and this one was made at its 9:03pm health check. Restarted.
+3. Left for the owner, since this batch is docs only: /stats' contract links and `scripts/ops/real-use-txs.ts` still name testnet.monadexplorer.com, which redirects to MonadVision.
+4. Not a fault, and not changed: the hourly model check runs every 65 minutes, since a run on the hour finds the kept answer a moment short of an hour old.
+
+### Not verified here
+
+The README as GitHub shows it after the push, and MonadVision itself. Item 303.
+
 ## Session 47: pre-submission bug fixes 3, on the iOS 26 simulator
 
 When: October 12, 2026, evening, Eastern. Who: Finn, one of the owner's test sign-ins (left out of every count), in an installed copy on the iOS 26 simulator in light appearance, against the development server on 127.0.0.1, with the game page's photo (Brian Giesen's, CC BY 2.0) added to that simulator's library. Next's development badge was hidden from its own preferences for the session, which changes nothing in the project. The walk's question, its photo and both stickers, with their six stored files, are swept (`scripts/ops/sweep-walk-rows.ts --apply bug-fixes-3`). Touches through the simulator tool.
@@ -1849,4 +1871,5 @@ Items the simulator covered are marked in place above (61, 66, 93, 98, 101, 113,
 299. A notice by email (47): sign in to one account with your own email or Google and to a second with a `+dynamic_test` address. Ask something from the first and make your call; get in from the second; close it from the first ("Close it with 2"); then from the second tap "It's happened" and call it before the first does. Expect three emails from hello@dareful.app, for the second getting in, saying it has happened, and calling it, and none for the close.
 300. A notice by push (47): on the iPhone, in the app added to the home screen, as the first account, make your call on a question and answer "Want a heads-up?" with "Turn on notifications", then allow it. Then 299's three acts from the second account. Expect each as a push, and its email as well.
 301. Voting from your own phone after joining on someone else's (47): a friend with pass the phone on gets into your question on your phone; close it and tap "It's happened" on yours. Expect the friend's notice that it has happened on their own phone, their vote made there, and no way to vote for them on yours.
-302. The README on GitHub (47): open the repository. Expect the demo's link to play the video, the pitch's link to read VIDEO_PITCH_LINK until you put its address in, and the four screenshots under "A sticker from a photo".
+302. ~~The README on GitHub (47)~~: superseded on 2026-10-12 by item 303 (both videos linked, and the explorer links on Monadscan).
+303. The README on GitHub (48): after the push, open the repository. Expect "The demo" and "The pitch" each to play its video; the criteria with no percentages; one sentence under the four screenshots of "A sticker from a photo"; and every explorer link (step 8 of "Try it yourself", "Check it yourself"'s `create` and `resolve`, the contracts and the real-use table) to open on Monadscan with its transaction or address, the Dares contract's transactions showing `create` as 0x93918133 and `resolve` as 0xa8f993a1.

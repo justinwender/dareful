@@ -1,6 +1,11 @@
 # Submission facts
 
-For the two videos and the submission form. The demo: https://youtu.be/2IQJ2cqXhdo (3 minutes 51 seconds). The pitch's link is still to come. The README's numbers keep counting (its picture is drawn by the app as it runs); the numbers here are fixed, read from production at the moment given beside them. Nothing here names a real person or a real question.
+For the two videos and the submission form. The videos, both unlisted:
+
+- The demo: https://youtu.be/hXyMfEGSLRw
+- The pitch: https://youtu.be/rpPnKCN5eQM
+
+The README's numbers keep counting (its picture is drawn by the app as it runs); the numbers here are fixed, read from production at the moment given beside them. Nothing here names a real person or a real question.
 
 ## The numbers
 
@@ -47,13 +52,17 @@ The test suites run against the live contracts, so most of the contracts' transa
 
 ## The contracts
 
-Monad testnet, chain 10143. The relayer only submits what people's wallets signed, and pays the gas; it holds nothing else. Both contracts' source is verified on Sourcify, a full match of the creation and runtime code (solc 0.8.28, cancun, optimizer 200 runs, via IR), checked on October 9: [DarefulLedger](https://repo.sourcify.dev/10143/0x8E200d344fA233d85b78f85aC78c3F778397F26D) and [DarefulDares](https://repo.sourcify.dev/10143/0xd621c7770B96d2bF94638a28A15B3636cC0a3Fa0). The old explorer address, testnet.monadexplorer.com, now redirects to MonadVision, so the links here go there.
+Monad testnet, chain 10143. The relayer only submits what people's wallets signed, and pays the gas; it holds nothing else. Both contracts' source is verified on Sourcify, a full match of the creation and runtime code (solc 0.8.28, cancun, optimizer 200 runs, via IR), checked on October 9: [DarefulLedger](https://repo.sourcify.dev/10143/0x8E200d344fA233d85b78f85aC78c3F778397F26D) and [DarefulDares](https://repo.sourcify.dev/10143/0xd621c7770B96d2bF94638a28A15B3636cC0a3Fa0).
+
+The explorer links here and in the README go to Monadscan (testnet.monadscan.com), where every one was opened on October 12 and showed its transaction or address. MonadVision, where the old testnet.monadexplorer.com now redirects, answered NODE_REQUEST_ERROR with nothing loaded for the README's two links to a question's `create` and `resolve` on October 12, though the chain has both: every transaction linked here has a receipt with status success on Monad's public RPC. Why MonadVision can't show them is not known: its bot check refuses an automated browser, so the owner's reading is the only one. Monadscan names a method by its id, since the source is verified on Sourcify and not on Monadscan: `create` is 0x93918133 and `resolve` is 0xa8f993a1.
+
+The question from the demo, which the README's "Check it yourself" recomputes: its [`create`](https://testnet.monadscan.com/tx/0x39c3479b5379916fe2e58bde70ff956edf4ac1a8afdf30db372bd1677689c86b) at 9:57pm Eastern on October 12, with three signed calls (90% on $20, 10% and 35% on $10 each), and its [`resolve`](https://testnet.monadscan.com/tx/0xf3d85015fb4f6cf1612ceac4f3d8a938420b28c5461574aa2cd44fe51d897e23) at 9:58pm, two votes for no, scores 1900, 9900 and 8775, and three records minted, $4, $3.43 and $0.56. Two of its three accounts are left out of every count, so it is not real use and not in the table below.
 
 | Contract | Address |
 | --- | --- |
-| DarefulLedger | [0x8E200d344fA233d85b78f85aC78c3F778397F26D](https://testnet.monadvision.com/address/0x8E200d344fA233d85b78f85aC78c3F778397F26D) |
-| DarefulDares | [0xd621c7770B96d2bF94638a28A15B3636cC0a3Fa0](https://testnet.monadvision.com/address/0xd621c7770B96d2bF94638a28A15B3636cC0a3Fa0) |
-| Relayer | [0x4534C3f805F1cc483C0b0193F754C16E0d2cdaA7](https://testnet.monadvision.com/address/0x4534C3f805F1cc483C0b0193F754C16E0d2cdaA7) |
+| DarefulLedger | [0x8E200d344fA233d85b78f85aC78c3F778397F26D](https://testnet.monadscan.com/address/0x8E200d344fA233d85b78f85aC78c3F778397F26D) |
+| DarefulDares | [0xd621c7770B96d2bF94638a28A15B3636cC0a3Fa0](https://testnet.monadscan.com/address/0xd621c7770B96d2bF94638a28A15B3636cC0a3Fa0) |
+| Relayer | [0x4534C3f805F1cc483C0b0193F754C16E0d2cdaA7](https://testnet.monadscan.com/address/0x4534C3f805F1cc483C0b0193F754C16E0d2cdaA7) |
 
 ## One transaction from real use for each kind of event
 
@@ -61,13 +70,13 @@ Each is the newest from real use when read on October 9 (`scripts/ops/real-use-t
 
 | Event | Transaction |
 | --- | --- |
-| A question created with its signed entries (`DareCreated`, `Entered`) | [0x36e7c059…89dc2a](https://testnet.monadvision.com/tx/0x36e7c05906882392a30a35b220d7598d6c763b00d13fcf1dae918a17d889dc2a), October 9 |
-| A set registered (`GroupCreated`) | [0x16d5a6ad…c6b195a](https://testnet.monadvision.com/tx/0x16d5a6ada77e2062bc3781ef48535c053f74cb0d86adce34bc928f779c6b195a), October 9 |
-| A unit registered (`DenomCreated`) | [0xe755e4c7…c4bf0c](https://testnet.monadvision.com/tx/0xe755e4c77bf380dcaa0dcdee1e92998ad71f84cadfd394506fbfaebc32c4bf0c), October 9 |
-| Decided by the vote of the people in (`DareResolved`) | [0x903db4d3…dd180f5](https://testnet.monadvision.com/tx/0x903db4d37f4876cb8491410069ceaeface2b48081ba385dac12fbd02add180f5), September 26 |
-| Decided by `arbitrate`, with each score and the records it minted (`DareArbitrated`, `Scored`, `mintFromDare`) | [0x0f1add16…7c41ef4](https://testnet.monadvision.com/tx/0x0f1add16cc1a5510ca9bb3f9a9ebe75b86301c6e8d540627bc0000b2b7c41ef4), September 28 |
-| Voided by `arbitrate` | [0x26238897…f89cb3](https://testnet.monadvision.com/tx/0x2623889754eb5a792042e6dc78d3520d57df2ea9a382b2b6f9bdf69e41f89cb3), October 4 |
-| A record confirmed by the person who owes it (`confirm`) | [0xe04a5e06…a154f2](https://testnet.monadvision.com/tx/0xe04a5e06afcb3b3a2d716d6f647b9f7722e8b3c788b337444aadb9a833a154f2), October 8 |
+| A question created with its signed entries (`DareCreated`, `Entered`) | [0x36e7c059…89dc2a](https://testnet.monadscan.com/tx/0x36e7c05906882392a30a35b220d7598d6c763b00d13fcf1dae918a17d889dc2a), October 9 |
+| A set registered (`GroupCreated`) | [0x16d5a6ad…c6b195a](https://testnet.monadscan.com/tx/0x16d5a6ada77e2062bc3781ef48535c053f74cb0d86adce34bc928f779c6b195a), October 9 |
+| A unit registered (`DenomCreated`) | [0xe755e4c7…c4bf0c](https://testnet.monadscan.com/tx/0xe755e4c77bf380dcaa0dcdee1e92998ad71f84cadfd394506fbfaebc32c4bf0c), October 9 |
+| Decided by the vote of the people in (`DareResolved`) | [0x903db4d3…dd180f5](https://testnet.monadscan.com/tx/0x903db4d37f4876cb8491410069ceaeface2b48081ba385dac12fbd02add180f5), September 26 |
+| Decided by `arbitrate`, with each score and the records it minted (`DareArbitrated`, `Scored`, `mintFromDare`) | [0x0f1add16…7c41ef4](https://testnet.monadscan.com/tx/0x0f1add16cc1a5510ca9bb3f9a9ebe75b86301c6e8d540627bc0000b2b7c41ef4), September 28 |
+| Voided by `arbitrate` | [0x26238897…f89cb3](https://testnet.monadscan.com/tx/0x2623889754eb5a792042e6dc78d3520d57df2ea9a382b2b6f9bdf69e41f89cb3), October 4 |
+| A record confirmed by the person who owes it (`confirm`) | [0xe04a5e06…a154f2](https://testnet.monadscan.com/tx/0xe04a5e06afcb3b3a2d716d6f647b9f7722e8b3c788b337444aadb9a833a154f2), October 8 |
 | A person added to an existing set (`MemberAdded`) | Real use has none yet. |
 | Voided by the vote (`DareVoided`) | Real use has none yet. |
 | Expired (`DareExpired`) | Real use has none yet. |
@@ -114,7 +123,7 @@ Built in the ops round, for the weeks of judging when nobody is watching it by h
 
 - `/api/health` answers every system as ok, slow or down, each within its own time limit, with nothing secret in the answer, and 200 only while every core system is up (503 otherwise). Each environment keeps and reads only its own runs (production, a preview or a laptop, from `VERCEL_ENV`), and only production's reach the owner. Core: the database (`select 1`, 4 seconds), the scheduler (its last run under 3 minutes ago), the chain's node (its latest block under 2 minutes old), code at both contract addresses, the relayer over its 3 MON floor, and the hosted indexer within a minute of the chain's head. Reported beside them, deciding nothing: the model API (a one-token call, at most hourly), email (the sending domain's records), sign-in (Dynamic's read-only API), storage (a signed address for a known object), both scoreboards (today's games parse), push (the share of sends failing over the last day), and the numbers picture and a link tile drawn. The answer is shared for a minute, every run is kept in `health_runs`, the scheduler runs it every five minutes, and a core system down for ten minutes is told to the owner by email and push, once until it recovers.
 - A GitHub workflow outside the app (`.github/workflows/watch.yml`) fetches the health check, the home page and the numbers picture every fifteen minutes and after every production deploy, and fails when a core system is down, the health answer isn't production's own run, or any of the three doesn't answer; every six hours it also signs in through the app in a real browser with the Dynamic test account and opens a market and a person's page, once the owner has added its two secrets.
-- The canary, every six hours as a job of its own (`/api/canary`, by pg_cron at 17 minutes past), runs one question through every system as two accounts it signs for itself, both left out of every count: the write-up, both entries, the close onto the chain, the vote and settlement there, the indexer showing it, and its rows removed. A failed step emails the owner at once with the step and its error. One run against production on October 9 at 22:52 UTC passed in about ten seconds: the two accounts registered ([0x7eec1b93…](https://testnet.monadvision.com/tx/0x7eec1b93f3dc8df21432a55a84745d69a1a9c85a6aff7b4de6b1a2b774790808), [0x3acd0f0f…](https://testnet.monadvision.com/tx/0x3acd0f0f2f619e1d92a00caf9c7d44b8724447c5bc2085b5ec2b5395edd31640)), the question created with both signed entries ([0xac38b852…](https://testnet.monadvision.com/tx/0xac38b8520acf379ff58b276de35f77d3d7341be6da14ef296f9283629d6edd9e)), and resolved by both votes ([0x5d643ad3…](https://testnet.monadvision.com/tx/0x5d643ad3e93dc0868b3a8be13489e96874375f76cd43842b0da6093a0e88b41a)).
+- The canary, every six hours as a job of its own (`/api/canary`, by pg_cron at 17 minutes past), runs one question through every system as two accounts it signs for itself, both left out of every count: the write-up, both entries, the close onto the chain, the vote and settlement there, the indexer showing it, and its rows removed. A failed step emails the owner at once with the step and its error. One run against production on October 9 at 22:52 UTC passed in about ten seconds: the two accounts registered ([0x7eec1b93…](https://testnet.monadscan.com/tx/0x7eec1b93f3dc8df21432a55a84745d69a1a9c85a6aff7b4de6b1a2b774790808), [0x3acd0f0f…](https://testnet.monadscan.com/tx/0x3acd0f0f2f619e1d92a00caf9c7d44b8724447c5bc2085b5ec2b5395edd31640)), the question created with both signed entries ([0xac38b852…](https://testnet.monadscan.com/tx/0xac38b8520acf379ff58b276de35f77d3d7341be6da14ef296f9283629d6edd9e)), and resolved by both votes ([0x5d643ad3…](https://testnet.monadscan.com/tx/0x5d643ad3e93dc0868b3a8be13489e96874375f76cd43842b0da6093a0e88b41a)).
 - Every resource the app can run out of has a warning line and an urgent one, kept in `src/lib/ops/lines.ts`: the relayer under 10 and 5 MON (or under three days at the past week's rate); the model API's credit under $5 and $2 (or any answer saying the balance is too low); the database and storage at 70% and 90% of the free plan's 500 MB and 1 GB; email at 70 and 90 a day or 2,100 and 2,700 a month; Alchemy's compute units at 70% and 90% of 30 million a month (or a refusal); the hosted indexer at 7 and 3 days left of its 30 (or a refusal); Dynamic's sandbox at 700 and 900 of its 1,000 users, past which nobody new can sign in until test accounts are deleted. Each line is told once when crossed, by email and a push to the owner's phone, and again only after it recovers and crosses again.
 - At 8am Eastern the scheduler emails the owner the last day: every level against its lines, Vercel's Active CPU and Supabase's egress to check by hand with their links, each system's state with every failure and when, the canary's runs, the model API's cost, the errors people saw by cause, and yesterday's numbers.
 
@@ -124,7 +133,8 @@ Built is the commit's date; deployed is when Vercel put it in production, Easter
 
 | Round | Commit | Built | Deployed |
 | --- | --- | --- | --- |
-| Pre-submission bug fixes 3: the 54 mutants bug fixes 2 left, the sports tests on their own clock, the README for submission (the demo, a notice arriving, a sticker from a photo) | this commit | October 12 | not yet deployed |
+| Pre-submission bug fixes 4: the two videos' links, the criteria without weights, the sticker in its screenshots, the explorer links on Monadscan, and the demo's question to check | this commit | October 12 | not yet deployed |
+| Pre-submission bug fixes 3: the 54 mutants bug fixes 2 left, the sports tests on their own clock, the README for submission (the demo, a notice arriving, a sticker from a photo) | `32ff760` | October 12 | October 12, 9:43pm, and again at 10:28pm with the model API's new key |
 | Pre-submission bug fixes 2: pass the phone lets a friend in (a right PIN joins them to the question's group before anything is signed; it had refused every friend on a question asked without naming anyone since October 7), the PIN's wait, why nobody can be picked, a guest's seat at sign-up | `590823d` | October 12 | October 12, 7:24pm |
 | Pre-submission bug fixes 1: a new account's first screens, every screen's tips in one run, email that sends, a pool that never stalls, cents, test sign-ins left out, the indexer's redeploy | `584d051` | October 10 and 11 | October 11, 11:25am |
 | The ops round: runway, health, the outside watch, the canary, the morning email, a market's result never a cover, a margin question past four that no longer crashes, and the README for judging | `49dd454` | October 9 and 10 | October 10, 10:22am |
