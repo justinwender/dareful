@@ -18,16 +18,24 @@ Live at [dareful.app](https://dareful.app) · [The demo](https://youtu.be/hXyMfE
 
 ## Who it's for
 
-Dareful is for a friend group of four to eight people who share a group chat and see each other most weeks. I'm in several groups like that, and they already bet: beers on the game, a round on whether someone finishes the pizza, five dollars on an argument at dinner. Today those bets live in the group chat and in people's memories. Sportsbooks and prediction markets price events anyone can look up, and neither has a place for a bet about things your friends bet on, like whether Chris finishes the pizza or whether John falls asleep during the movie.
+Dareful is for a friend group of four to eight people who share a group chat and see each other every couple weeks. I'm in several groups like that, and they already bet: beers on the game, a round on whether someone finishes the pizza, five dollars on an argument at dinner. Today those bets live in the group chat and in people's memories. Sportsbooks and prediction markets price events anyone can look up, and neither has a place for a bet about things your friends bet on, like whether Chris finishes the pizza or whether John falls asleep during the movie.
 
-Groups like mine will switch because Dareful asks for nothing they don't already do. A question is a link dropped into the chat they already have, anyone joins with just a name, it works the same on Android, and the app helps maintain a ledger of who owes what to whom. Every bet starts with a decision the group was already making, and the record is what that decision leaves behind.
+Groups like mine use the app because Dareful asks for nothing they don't already do. A question is a link dropped into the chat they already have, anyone joins with just a name, it works the same on Android, and the app helps maintain a ledger of who owes what to whom. Every bet starts with a decision the group was already making, and the record is what that decision leaves behind.
 
 What real groups changed in their first weeks on dareful.app:
+
+- September 24. A friend told me the first design looked like it could have been any app's. Its one accent color, a marigold, came out, and every question now gets its own ink when it's asked: from its mark (the emoji, sticker or picture its asker picked), otherwise from the question itself, kept apart from the other questions open between the same people. A question's own screen is drawn in its ink, and everywhere else the ink sits behind its mark, so a list of questions reads as one app and each question still feels like its own place.
+- September 26. Friends wanted to bet on bigger things than the questions they made up, like the game they were watching, and still only with each other. What's on now lists the games ahead and the ones being played: anyone can start questions on a game until its final (who wins, by how much, the total), and the final score proposes the answer.
+
+<details>
+<summary>Four things that broke for real groups in October, and how each was fixed</summary>
 
 - October 2. Questions on a game never closed. The scoreboard's day was read in UTC, so an evening game in the East was looked up under the next day's date and its final never came, and the scheduler's queue kept skipping questions that couldn't close, so one with five people in it never reached the front. The day is now the scoreboard's own, the queue leaves out what can't close, and a game's questions close at kickoff.
 - October 2. People didn't come back to vote. Of the first fourteen questions to reach voting, four sent anyone a request to vote, and those reached nobody: most people had never allowed notifications. Everyone in a question now hears when voting opens, and anyone still out gets one reminder twelve hours in.
 - October 4. Joining from a link asked for more than a name: a phone number, and a check against it when someone picked a name already there. Now a name is all it takes: the call is saved first, and keeping it in an account is offered after, with Google, email or a phone.
 - October 4. A question about something months away came back with no terms, because the write-up stopped at four months. It now names the date it's decided by, up to three years out, and says so plainly when a question can't be known that soon.
+
+</details>
 
 ## Who's building it
 
@@ -45,6 +53,9 @@ The picture above is drawn by the app as it runs, at [dareful.app/numbers](https
 
 It leads with questions played: questions someone besides the asker got into. At 12:21pm Eastern on October 13, 18 questions had been played since launch: 13 settled, 5 still open and none ended without a decision. 17 people had made accounts and 8 more had joined as guests, 3 groups had come back for a second question, and 5 people had come in through a friend's question and gone on to ask their own. On Monad, real use had made 22 records, 18 questions, 12 people and 17 sets.
 
+<details>
+<summary>How each number is counted, and why most of the chain's transactions are tests</summary>
+
 The numbers are the owner's stats page's own, with every test account left out (an account made with one of Dynamic's test sign-ins, as in [Try it yourself](#try-it-yourself), from the moment it's made), counted since launch (midnight Eastern, September 13, 2026):
 
 - People with accounts: accounts made since launch.
@@ -57,13 +68,15 @@ The numbers are the owner's stats page's own, with every test account left out (
 
 The test suites run against the live testnet contracts, so most of the contracts' transactions are tests. On October 13, 2026, real use was 2.3% of the transactions that had gone through (77 of 3,284), read from the indexer's events and whose wallets they name ([`scripts/ops/chain-tests.ts`](scripts/ops/chain-tests.ts)). Every chain number in this README counts real use only. A question with a guest in it is decided and settled off the chain, so it isn't in the chain's counts.
 
+</details>
+
 On October 8 a friend asked a question and shared it once, in a group chat of his in Mexico City full of people I’ve never met. Sixteen different devices opened it, fourteen in the first 45 minutes, and two people joined as guests. In the chat, the friend the question was about started bargaining over its terms, and another wrote “Nmms, qué bien jala” (“no way, it works so well”). This test showed me there's still a lot of room for improvement on the friction of joining markets - it seems like there's still too much friction to get people to join a market, and potentially not enough friction for joining as a guest to persuade people into creating an account when joining their first market.
 
 ## Path Forward
 
 Today, Dareful settles the small bets friends already make: whether Chris finishes the pizza, who wins Red Sox at Yankees, whether a major league pitch is harder to hit than a Premier League penalty kick is to save. Calls from people with accounts are signed, and when everyone in a question has an account, it's settled on Monad. Whatever anyone owes goes into a ledger the group can trust without anyone holding the money.
 
-The ledger is the part I want to grow. Friend groups already keep one in their heads: who covered dinner, who owes a round, whose turn it is to pay. Next, Dareful adds the games groups already play around that ledger, starting with credit card roulette. Then, I'll add more social ledger features such as splitting a receipt by what each person ordered, and later shared questions for big events, where everyone still plays only against their own friends. These features will make the "You" page much more robust than it is in the current iteration of Dareful.
+The ledger is the part I want to grow. Friend groups already keep one in their heads: who covered dinner, who owes a round, whose turn it is to pay. Next, Dareful adds the games groups already play around that ledger, starting with credit card roulette. Then, I'll add more social ledger features such as splitting a receipt by what each person ordered, and later shared questions for big events (besides sports, which are already in the app), where everyone still plays only against their own friends. These features will make the "You" page much more robust than it is in the current iteration of Dareful.
 
 I've ruled out two things in this version: one for now and one permanently. For now, no money moves through Dareful: what anyone owes is a record, and people pay each other however they already do. Moving money on friends' bets would make Dareful a gambling operator and a money transmitter, and both need licenses. The app would work better if it could settle in dollars itself, and my goal is to settle in real funds on Monad once Dareful holds those licenses, on the same signatures, votes and records it keeps now. Permanently, Dareful will not take a cut of anyone's bet. A cut would turn the app from a bystander into the house, paid more the more everyone bets. That's how a sportsbook makes its money, and Dareful is a social app.
 
@@ -144,9 +157,19 @@ This path assumes you want a binary market and quick setup (as opposed to AI hel
 
 To join as a guest instead, open the question's link in a private window, slide to a prediction, tap “I'm in at”, type a name, and tap “Join as”. A name is all it takes. A question with a guest in it is decided and settled off the chain, and what it leaves waits until the guest makes an account and confirms it.
 
+<details>
+<summary>Optional: see a notice arrive</summary>
+
 To see a notice arrive, which is optional: sign in to the first account with your own email or Google in step 1, since a test address is never emailed. A notice goes out when the other person does something, by push where notifications are on and by email from hello@dareful.app, each notice on every channel that takes it. When your second account gets in, the first hears “Sam is in” (with the second account's name and the question); when the second taps “It's happened” once you've closed it, that it says the question has happened; and when the second calls it before you do, that it called it. Closing the question sends nothing by itself, since the vote waits until it has happened. For push too, make the first account's call before the second gets in: once you're in on a question, the app asks once per account, “Want a heads-up?”, and “Turn on notifications” raises the browser's own prompt. On an iPhone it asks only in the app added to the home screen (Share, then Add to Home Screen, then open it from there and sign in), since Safari on an iPhone can't take a push; on Android or a desktop browser, the browser itself is enough. Your address is read from your sign-in when a notice is sent, and never stored.
 
+</details>
+
 ## Design and craft
+
+Dareful is built around how a friend group already socializes, with nothing to unlock and nothing to install. A question is a link dropped into the group chat the friends already have, anyone joins with a name on any phone, a friend without their phone makes their call on yours with their own PIN, and nobody sees a wallet, a token or a fee. Calls stay anonymous until the close, and then the reveal shows who said what, each call in its owner's colour. Every question is drawn in its own ink, taken from the emoji, sticker or picture its asker picked, and keeps a record of the event in its photos and stickers.
+
+<details>
+<summary>The five principles it was specified against, and where each shows</summary>
 
 Five of the principles the product was specified against ([`PLANNING.md`](PLANNING.md), section 2), and where each shows:
 
@@ -156,9 +179,13 @@ Five of the principles the product was specified against ([`PLANNING.md`](PLANNI
 - Forgiveness is a status move. "Call it even" sits beside "Settled" as an equal choice on every record its creditor holds, and it closes the record on the chain the same way.
 - One account per bet, not one per person. Joining a friend's question takes a name and nothing else; the account comes later, and only to collect what the guest is owed.
 
+</details>
+
 The design itself is specified in [`docs/design.md`](docs/design.md): every token as a literal value, a dark and a light appearance from one set of tokens, nine type tokens and a lint that holds every screen to four sizes, and the motion, layers and sheets drawn for a phone held in one hand.
 
 ## Why the chain isn't decoration
+
+In Dareful, what a group creates stays with the group. The argument a group was already having, or the game it was already watching, becomes calls each person signs; the people in a question decide what happened by their own votes; and each record of what someone won is held in the wallet of the friend it's owed to, where nobody else, the app included, can move or change it (only that friend can close it, by marking it settled or calling it even). Dareful takes no cut, and neither of its planned revenues touches a bet: sponsored live events, paid by brands, and, once Dareful holds a money transmission license, the yield on money waiting between payments, which could sit in a vault on Monad. The stakes are real (dollars, beers, rounds), and friends settle them however they already do.
 
 A friend group's ledger only works if nobody, the app included, can quietly change it. The chain carries exactly the parts two people have to agree on, and the app can't forge any of them:
 
@@ -214,6 +241,9 @@ Every person has two wallets: an everyday wallet, which signs what binds only it
 
 The app reads the chain's history only through the indexer, never scanning a log. Some values come straight from the contracts over the RPC, where a signature or a send depends on them: a record's close counter and a pair's netting nonce, a question's voters, whether a set, a person or a unit is registered yet, the relayer's own nonce, receipts and balance, and the health checks. A settlement is first recorded from its own transaction's receipt, with the indexer as the fallback.
 
+<details>
+<summary>What goes on the chain, function by function</summary>
+
 What goes on the chain, and why:
 
 - Signed calls. A call is an EIP-712 message signed by its owner's everyday wallet over exactly the numbers they sent. At the close, one transaction puts the question on the chain (`create`) with its terms' hash and every signed call, and they land together or not at all.
@@ -222,11 +252,16 @@ What goes on the chain, and why:
 - Records. Each person is scored (Brier for yes or no, the miss over the scale for a number, all or nothing for pick one), and the lower scorer pays the higher, pair by pair, never more than their stake. Each payment is a non-transferable ERC-1155 record, minted inside the settlement with a 16-byte id its Postgres row shares. A cover ("I got this one") is minted when the person who owes it confirms it (`confirm`); settling and calling it even (`close`) and cancelling out (`net`) burn them.
 - The sealed ruling. When an argument is asked and facts can settle it, the app rules at once and seals the ruling: the seal is keccak-256 of a random 32-byte salt followed by the ruling's text, and it ends the terms everyone signs. The terms' hash goes on the chain with the question, so the ruling is fixed before anyone calls.
 
+</details>
+
 | Contract (Monad testnet, chain 10143) | Address |
 | --- | --- |
 | DarefulLedger: the records, sets, members and units | [0x8E200d344fA233d85b78f85aC78c3F778397F26D](https://testnet.monadscan.com/address/0x8E200d344fA233d85b78f85aC78c3F778397F26D) |
 | DarefulDares: questions, calls, votes, scores | [0xd621c7770B96d2bF94638a28A15B3636cC0a3Fa0](https://testnet.monadscan.com/address/0xd621c7770B96d2bF94638a28A15B3636cC0a3Fa0) |
 | The relayer, which pays gas and holds nothing else | [0x4534C3f805F1cc483C0b0193F754C16E0d2cdaA7](https://testnet.monadscan.com/address/0x4534C3f805F1cc483C0b0193F754C16E0d2cdaA7) |
+
+<details>
+<summary>One transaction from real use for each kind of event</summary>
 
 One transaction from real use for each kind of event (from [`scripts/ops/real-use-txs.ts`](scripts/ops/real-use-txs.ts); a test's transaction never stands in for one):
 
@@ -243,6 +278,8 @@ One transaction from real use for each kind of event (from [`scripts/ops/real-us
 | A record confirmed by the person who owes it (`Confirmed`) | Confirm | [October 8](https://testnet.monadscan.com/tx/0xe04a5e06afcb3b3a2d716d6f647b9f7722e8b3c788b337444aadb9a833a154f2) |
 
 Real use has none yet of a void by vote, an expiry, settling or calling it even, cancelling out, or a sealed ruling (the three arguments real use has on the chain were asked before rulings were sealed, on October 8). The names in parentheses are the contracts' events, which the indexer stores.
+
+</details>
 
 ## Sponsors
 
@@ -266,7 +303,12 @@ Alchemy's Monad testnet RPC carries every transaction Dareful sends. Every actio
 
 Every call is in [`src/lib/ai/`](src/lib/ai) behind a typed function, its answer checked with Zod, with a plain fallback, so a model is never on the critical path: it proposes, the asker approves the terms, and the people in decide. A draft that fails is asked once of Sonnet and counted. No test or audit process can call the live API. Besides what people ask for, and the tiebreaker when the people in a question stall, the app calls a model on a schedule twice: the health check's one-token ping, about once an hour while the API answers and on every check while it doesn't, and the canary's write-up every six hours. Every answer's tokens and searches are now kept, priced at the published rates, so the app knows what it has spent.
 
+<details>
+<summary>What a question costs</summary>
+
 What a question costs, measured on October 9 by replaying every question counted people have written (26) on the models in use, at list prices ([`scripts/dev/compare-models.ts --part=current`](scripts/dev/compare-models.ts)): $0.0004 for a question's terms on average ($0.0005 at most), and $0.017 for an argument (the terms, the check at $0.005 and the sealed ruling at $0.011). The tiebreaker, when it runs, cost $0.010 to $0.013 a ruling on Opus 5.5 (every past ruling replayed on October 6). An outcome proposal measured about $0.004 on Sonnet 5.5 on October 4. Help define the terms with a web search adds 2 to 11 cents (measured October 8).
+
+</details>
 
 ## Quality
 
@@ -278,6 +320,9 @@ A GitHub workflow outside the app fetches the health check, the home page and th
 - The suites run against the real database and the live testnet contracts: 566 unit tests, 260 database tests and 131 tests against the running server (one of them only against a deployed app), 957 in all, every one passing on October 12. The sports tests share their tables with production's own scheduler, which acts on every game once a minute, so every final they see is ahead of the real clock and their own reads, warnings and backstop run on a clock ahead of it; their file passed five runs in a row. Their rows are made for a run and removed after it, and their accounts are left out of every count.
 - Every test has a mutant, but the one that runs only against a deployed app: a change to the code that breaks the rule the test names, which the test has to catch. The full audit runs each one alone against the live database and contract.
 - Every round was walked by hand and recorded with what broke and what changed in [`docs/testing.md`](docs/testing.md), 49 sessions in all: on the owner's phones and in signed-in development browsers, and from the QA round on also on the iOS 26 and iOS 27 simulators, in Safari, private tabs and installed copies. The checks that need a real phone are listed and numbered there.
+
+<details>
+<summary>Every mutation audit, and what the last full one found</summary>
 
 | Audit | Date | Mutants | Result |
 | --- | --- | --- | --- |
@@ -292,6 +337,8 @@ A GitHub workflow outside the app fetches the health check, the home page and th
 | Full, first contact's second pass | October 6 | 1,480 | 1,477 killed in the run and three run alone after the development server crashed six hours in, all killed |
 
 The full audit ran one mutant at a time against the live contract and the production database, with its chain calls on Monad's public RPC and the local indexer so production kept its own RPC key and its indexer's queries, and spent 8.10 MON in four hours. Its closing run of every suite on the unbroken code found eight tests failing for reasons outside the product: the runner's one-process mode had left the live-API guard off (the runner now turns live calls off by name, held by a test of its own), the public RPC answers fifteen requests a second and the chain-scoring tests read faster than that (they now pace their reads), and two tests were written before this round's changes (updated). Nothing the audit did moved a number on the stats page, and every account it made is left out of every count.
+
+</details>
 
 ## Limits
 
