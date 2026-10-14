@@ -139,7 +139,7 @@ The screenshots are from the iOS 26 and iOS 27 simulators and a development brow
   </tr>
   <tr>
     <td>A question's photo, full screen: Make a sticker.</td>
-    <td>The cut, pinched in: the Packers' number 12, tapped and outlined.</td>
+    <td>The cut, pinched in: Aaron Rodgers tapped and outlined.</td>
     <td>Kept, in your stickers: Ask something with it.</td>
     <td>The next question wears it, in the colour the app measured from it.</td>
   </tr>
