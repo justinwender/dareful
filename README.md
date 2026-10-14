@@ -24,7 +24,7 @@ Groups like mine use the app because Dareful asks for nothing they don't already
 
 What real groups changed in their first weeks on dareful.app:
 
-- September 24. A friend told me the first design looked like it could have been any app's. Its one accent color, a marigold, came out, and every question now gets its own ink when it's asked: from its mark (the emoji, sticker or picture its asker picked), otherwise from the question itself, kept apart from the other questions open between the same people. A question's own screen is drawn in its ink, and everywhere else the ink sits behind its mark, so a list of questions reads as one app and each question still feels like its own place.
+- September 24. A friend told me the original app design looked generic. Its one accent color, a marigold, came out, and every question now gets its own ink when it's asked: from its mark (the emoji, sticker or picture its asker picked), otherwise from the question itself, kept apart from the other questions open between the same people. A question's own screen is drawn in its ink, and everywhere else the ink sits behind its mark, so a list of questions reads as one app and each question still feels like its own place.
 - September 26. Friends wanted to bet on bigger things than the questions they made up, like the game they were watching, and still only with each other. What's on now lists the games ahead and the ones being played: anyone can start questions on a game until its final (who wins, by how much, the total), and the final score proposes the answer.
 
 <details>
@@ -89,6 +89,13 @@ Most apps on a phone are built to hold your attention, which pulls you out of th
 Growth is built into how a question travels. Every question goes out as a link into a group chat, anyone in that chat joins with a name, and what a guest is owed waits until they make an account to collect it, so every group that plays brings its whole chat in.
 
 Next I'm seeding groups where the bets already happen: my fantasy football league, NEU Blockchain and its alumni, and watch parties through the NFL season and the MLB playoffs, which my 'What’s on' page already lists. Additionally, I'll try to push the app out through family, other friends, and secondary channels (friends of friends, other blockchain clubs, etc.). The numbers I'm watching are groups that ask a second question, guests who make an account to collect what they're owed, and groups that come back the next week.
+
+The plan, by date:
+
+- By December 31, 2026: 250 accounts, about forty groups of the size Dareful is built for, from my extended family, college friends, coworkers, and the friends and family they bring in. Credit card roulette and splitting a receipt by what each person ordered go in, and the join step gets the work the Mexico City question showed it needs.
+- Early 2027: Dareful in the App Store and on Monad mainnet, after an outside security review of the contracts, membership changes signed by the voting wallet, and Dynamic's live environment in place of the sandbox. Multi-answer questions arrive with the new contracts, along with more of the games groups already play and video on a question.
+- Through 2027: heavier marketing (Instagram ads, and live events built out around the big games), and the first sponsored live events once groups come back every week, since a sponsor pays to reach groups already watching together.
+- By the end of 2027: settling in real funds on Monad where friend-to-friend stakes are legal, through a licensed partner or Dareful's own licenses, with accounts in the thousands; the yield on money waiting between payments starts only then.
 
 ## What it looks like
 
@@ -160,7 +167,7 @@ To join as a guest instead, open the question's link in a private window, slide 
 <details>
 <summary>Optional: see a notice arrive</summary>
 
-To see a notice arrive, which is optional: sign in to the first account with your own email or Google in step 1, since a test address is never emailed. A notice goes out when the other person does something, by push where notifications are on and by email from hello@dareful.app, each notice on every channel that takes it. When your second account gets in, the first hears “Sam is in” (with the second account's name and the question); when the second taps “It's happened” once you've closed it, that it says the question has happened; and when the second calls it before you do, that it called it. Closing the question sends nothing by itself, since the vote waits until it has happened. For push too, make the first account's call before the second gets in: once you're in on a question, the app asks once per account, “Want a heads-up?”, and “Turn on notifications” raises the browser's own prompt. On an iPhone it asks only in the app added to the home screen (Share, then Add to Home Screen, then open it from there and sign in), since Safari on an iPhone can't take a push; on Android or a desktop browser, the browser itself is enough. Your address is read from your sign-in when a notice is sent, and never stored.
+Sign in to the first account with your own email or Google in step 1, since a test address is never emailed. A notice goes out when the other person does something, by push where notifications are on and by email from hello@dareful.app, each notice on every channel that takes it. When your second account gets in, the first hears “Sam is in” (with the second account's name and the question); when the second taps “It's happened” once you've closed it, that it says the question has happened; and when the second calls it before you do, that it called it. Closing the question sends nothing by itself, since the vote waits until it has happened. For push too, make the first account's call before the second gets in: once you're in on a question, the app asks once per account, “Want a heads-up?”, and “Turn on notifications” raises the browser's own prompt. On an iPhone it asks only in the app added to the home screen (Share, then Add to Home Screen, then open it from there and sign in), since Safari on an iPhone can't take a push; on Android or a desktop browser, the browser itself is enough. Your address is read from your sign-in when a notice is sent, and never stored.
 
 </details>
 
@@ -171,7 +178,7 @@ Dareful is built around how a friend group already socializes, with nothing to u
 <details>
 <summary>The five principles it was specified against, and where each shows</summary>
 
-Five of the principles the product was specified against ([`PLANNING.md`](PLANNING.md), section 2), and where each shows:
+From ([`PLANNING.md`](PLANNING.md), section 2):
 
 - Notify about what people did, never about states of the world. Most notices name a person and what they did ("JP closed …", "Rae is in on …"), and Now never counts, badges or says how long anything has waited; its one citron dot means only that something has a clock. The rest mark a clock everyone in agreed to when they entered: the close time ("Time's up on yours" to the asker), the vote opening at the close time or a game's final ("Time's up on Sam's …", "The final is in on Sam's …"), and a warning before, and a notice after, the final score or the tiebreaker settles a question the people in didn't. One more, a reminder to vote twelve hours in, was ruled in by name for real groups that never came back to vote.
 - The creditor authors, the debtor confirms. "I got this one" is logged from the friend's page by whoever paid, never "Gabe owes me", and nothing reaches the ledger until the other person taps yep on Now.
@@ -244,8 +251,6 @@ The app reads the chain's history only through the indexer, never scanning a log
 <details>
 <summary>What goes on the chain, function by function</summary>
 
-What goes on the chain, and why:
-
 - Signed calls. A call is an EIP-712 message signed by its owner's everyday wallet over exactly the numbers they sent. At the close, one transaction puts the question on the chain (`create`) with its terms' hash and every signed call, and they land together or not at all.
 - Each question's own voters. The contract reads the quorum from the voting wallets of exactly the people in: the question goes in its set's group when that group is exactly them, and otherwise in a group of its own registered at the close. Nobody outside a question can vote on it.
 - Settlement. A vote is a signature from the voter's voting wallet, which the server never holds, so the server can write the ledger but can never cast a vote; the settlement (`resolve`) checks a majority of the people in. When they don't decide, the relayer records the tiebreaker's ruling, the final score or the app's ruling standing, with the ruling's hash (`arbitrate`), and an expiry ends a question nobody called, minting nothing (`expire`).
@@ -263,7 +268,7 @@ What goes on the chain, and why:
 <details>
 <summary>One transaction from real use for each kind of event</summary>
 
-One transaction from real use for each kind of event (from [`scripts/ops/real-use-txs.ts`](scripts/ops/real-use-txs.ts); a test's transaction never stands in for one):
+Read by [`scripts/ops/real-use-txs.ts`](scripts/ops/real-use-txs.ts); a test's transaction never stands in for one:
 
 | Event | Monadscan's method | Real use |
 | --- | --- | --- |
